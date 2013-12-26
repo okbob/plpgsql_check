@@ -1,0 +1,523 @@
+LOAD 'plpgsql';
+CREATE EXTENSION plpgsql_check;
+--
+-- check function statement tests
+--
+--should fail - is not plpgsql
+select * from plpgsql_check_function_tb('session_user()');
+ERROR:  "session_user"() is not a plpgsql function
+create table t1(a int, b int);
+create function f1()
+returns void as $$
+begin
+  if false then
+    update t1 set c = 30;
+  end if;
+  if false then
+    raise notice '% %', r.c;
+  end if;
+end;
+$$ language plpgsql;
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select * from plpgsql_check_function_tb('f1()', fatal_errors := true);
+ functionid | lineno |   statement   | sqlstate |                  message                   | detail | hint | level | position |        query         
+------------+--------+---------------+----------+--------------------------------------------+--------+------+-------+----------+----------------------
+ f1         |      4 | SQL statement | 42703    | column "c" of relation "t1" does not exist |        |      | error |       15 | update t1 set c = 30
+(1 row)
+
+select * from plpgsql_check_function_tb('f1()', fatal_errors := false);
+ functionid | lineno |   statement   | sqlstate |                  message                   | detail | hint | level | position |        query         
+------------+--------+---------------+----------+--------------------------------------------+--------+------+-------+----------+----------------------
+ f1         |      4 | SQL statement | 42703    | column "c" of relation "t1" does not exist |        |      | error |       15 | update t1 set c = 30
+ f1         |      7 | RAISE         | 42P01    | missing FROM-clause entry for table "r"    |        |      | error |        8 | SELECT r.c
+ f1         |      7 | RAISE         | 42601    | too few parameters specified for RAISE     |        |      | error |        0 | 
+(3 rows)
+
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno |   statement   | sqlstate |                  message                   | detail | hint | level | position |        query         
+------------+--------+---------------+----------+--------------------------------------------+--------+------+-------+----------+----------------------
+ f1         |      4 | SQL statement | 42703    | column "c" of relation "t1" does not exist |        |      | error |       15 | update t1 set c = 30
+(1 row)
+
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+drop function f1();
+create function g1(out a int, out b int)
+as $$
+  select 10,20;
+$$ language sql;
+create function f1()
+returns void as $$
+declare r record;
+begin
+  r := g1();
+  if false then
+    raise notice '%', r.c;
+  end if;
+end;
+$$ language plpgsql;
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement | sqlstate |           message           | detail | hint | level | position | query 
+------------+--------+-----------+----------+-----------------------------+--------+------+-------+----------+-------
+ f1         |      6 | RAISE     | 42703    | record "r" has no field "c" |        |      | error |        0 | 
+(1 row)
+
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+drop function f1();
+drop function g1();
+create function g1(out a int, out b int)
+returns setof record as $$
+select * from t1;
+$$ language sql;
+create function f1()
+returns void as $$
+declare r record;
+begin
+  for r in select * from g1()
+  loop
+    raise notice '%', r.c;
+  end loop;
+end;
+$$ language plpgsql;
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement | sqlstate |           message           | detail | hint | level | position | query 
+------------+--------+-----------+----------+-----------------------------+--------+------+-------+----------+-------
+ f1         |      6 | RAISE     | 42703    | record "r" has no field "c" |        |      | error |        0 | 
+(1 row)
+
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+create or replace function f1()
+returns void as $$
+declare r record;
+begin
+  for r in select * from g1()
+  loop
+    r.c := 20;
+  end loop;
+end;
+$$ language plpgsql;
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement  | sqlstate |           message           | detail | hint | level | position | query 
+------------+--------+------------+----------+-----------------------------+--------+------+-------+----------+-------
+ f1         |      6 | assignment | 42703    | record "r" has no field "c" |        |      | error |        0 | 
+(1 row)
+
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+drop function f1();
+drop function g1();
+create function f1()
+returns int as $$
+declare r int;
+begin
+  if false then
+    r := a + b;
+  end if;
+  return r;
+end;
+$$ language plpgsql;
+select f1();
+ f1 
+----
+   
+(1 row)
+
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement  | sqlstate |          message          | detail | hint | level | position |    query     
+------------+--------+------------+----------+---------------------------+--------+------+-------+----------+--------------
+ f1         |      5 | assignment | 42703    | column "a" does not exist |        |      | error |        8 | SELECT a + b
+(1 row)
+
+select f1();
+ f1 
+----
+   
+(1 row)
+
+drop function f1();
+create or replace function f1()
+returns void as $$
+begin
+  if false then
+    raise notice '%', 1, 2;
+  end if;
+end;
+$$ language plpgsql;
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement | sqlstate |                 message                 | detail | hint | level | position | query 
+------------+--------+-----------+----------+-----------------------------------------+--------+------+-------+----------+-------
+ f1         |      4 | RAISE     | 42601    | too many parameters specified for RAISE |        |      | error |        0 | 
+(1 row)
+
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+drop function f1();
+create or replace function f1()
+returns void as $$
+begin
+  if false then
+    raise notice '% %';
+  end if;
+end;
+$$ language plpgsql;
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement | sqlstate |                message                 | detail | hint | level | position | query 
+------------+--------+-----------+----------+----------------------------------------+--------+------+-------+----------+-------
+ f1         |      4 | RAISE     | 42601    | too few parameters specified for RAISE |        |      | error |        0 | 
+(1 row)
+
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+drop function f1();
+create or replace function f1()
+returns void as $$
+declare r int[];
+begin
+  if false then
+    r[c+10] := 20;
+  end if;
+end;
+$$ language plpgsql;
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement  | sqlstate |          message          | detail | hint | level | position |    query    
+------------+--------+------------+----------+---------------------------+--------+------+-------+----------+-------------
+ f1         |      5 | assignment | 42703    | column "c" does not exist |        |      | error |        8 | SELECT c+10
+(1 row)
+
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+drop function f1();
+create or replace function f1()
+returns void as $$
+declare r int;
+begin
+  if false then
+    r[10] := 20;
+  end if;
+end;
+$$ language plpgsql set search_path = public;
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement  | sqlstate |              message               | detail | hint | level | position | query 
+------------+--------+------------+----------+------------------------------------+--------+------+-------+----------+-------
+ f1         |      5 | assignment | 42804    | subscripted object is not an array |        |      | error |        0 | 
+(1 row)
+
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+drop function f1();
+create type _exception_type as (
+  state text,
+  message text,
+  detail text);
+create or replace function f1()
+returns void as $$
+declare
+  _exception record;
+begin
+  _exception := NULL::_exception_type;
+exception when others then
+  get stacked diagnostics
+        _exception.state = RETURNED_SQLSTATE,
+        _exception.message = MESSAGE_TEXT,
+        _exception.detail = PG_EXCEPTION_DETAIL,
+        _exception.hint = PG_EXCEPTION_HINT;
+end;
+$$ language plpgsql;
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno |    statement    | sqlstate |                 message                 | detail | hint | level | position | query 
+------------+--------+-----------------+----------+-----------------------------------------+--------+------+-------+----------+-------
+ f1         |      7 | GET DIAGNOSTICS | 42703    | record "_exception" has no field "hint" |        |      | error |        0 | 
+(1 row)
+
+drop function f1();
+create or replace function f1_trg()
+returns trigger as $$
+begin
+  if new.a > 10 then
+    raise notice '%', new.b;
+    raise notice '%', new.c;
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+create trigger t1_f1 before insert on t1
+  for each row
+  execute procedure f1_trg();
+insert into t1 values(6,30);
+select * from plpgsql_check_function_tb('f1_trg()','t1');
+ functionid | lineno | statement | sqlstate |            message            | detail | hint | level | position | query 
+------------+--------+-----------+----------+-------------------------------+--------+------+-------+----------+-------
+ f1_trg     |      5 | RAISE     | 42703    | record "new" has no field "c" |        |      | error |        0 | 
+(1 row)
+
+insert into t1 values(6,30);
+create or replace function f1_trg()
+returns trigger as $$
+begin
+  new.a := new.a + 10;
+  new.b := new.b + 10;
+  new.c := 30;
+  return new;
+end;
+$$ language plpgsql;
+-- should to fail
+select * from plpgsql_check_function_tb('f1_trg()','t1');
+ functionid | lineno | statement  | sqlstate |            message            | detail | hint | level | position | query 
+------------+--------+------------+----------+-------------------------------+--------+------+-------+----------+-------
+ f1_trg     |      5 | assignment | 42703    | record "new" has no field "c" |        |      | error |        0 | 
+(1 row)
+
+-- should to fail but not crash
+insert into t1 values(6,30);
+ERROR:  record "new" has no field "c"
+CONTEXT:  PL/pgSQL function f1_trg() line 5 at assignment
+create or replace function f1_trg()
+returns trigger as $$
+begin
+  new.a := new.a + 10;
+  new.b := new.b + 10;
+  return new;
+end;
+$$ language plpgsql;
+-- ok
+select * from plpgsql_check_function_tb('f1_trg()', 't1');
+ functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query 
+------------+--------+-----------+----------+---------+--------+------+-------+----------+-------
+(0 rows)
+
+-- ok
+insert into t1 values(6,30);
+select * from t1;
+ a  | b  
+----+----
+  6 | 30
+  6 | 30
+ 16 | 40
+(3 rows)
+
+drop trigger t1_f1 on t1;
+drop function f1_trg();
+-- test of showing caret on correct place for multiline queries
+create or replace function f1()
+returns void as $$
+begin
+  select
+  var
+  from
+  foo;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno |   statement   | sqlstate |            message            | detail | hint | level | position | query  
+------------+--------+---------------+----------+-------------------------------+--------+------+-------+----------+--------
+ f1         |      3 | SQL statement | 42P01    | relation "foo" does not exist |        |      | error |       23 | select+
+            |        |               |          |                               |        |      |       |          |   var +
+            |        |               |          |                               |        |      |       |          |   from+
+            |        |               |          |                               |        |      |       |          |   foo
+(1 row)
+
+drop function f1();
+create or replace function f1()
+returns int as $$
+begin
+  return (select a
+             from t1
+            where hh = 20);
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement | sqlstate |          message           | detail | hint | level | position |           query            
+------------+--------+-----------+----------+----------------------------+--------+------+-------+----------+----------------------------
+ f1         |      3 | RETURN    | 42703    | column "hh" does not exist |        |      | error |       57 | SELECT (select a          +
+            |        |           |          |                            |        |      |       |          |              from t1      +
+            |        |           |          |                            |        |      |       |          |             where hh = 20)
+(1 row)
+
+create or replace function f1()
+returns int as $$
+begin
+  return (select a
+             from txxxxxxx
+            where hh = 20);
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement | sqlstate |              message               | detail | hint | level | position |           query            
+------------+--------+-----------+----------+------------------------------------+--------+------+-------+----------+----------------------------
+ f1         |      3 | RETURN    | 42P01    | relation "txxxxxxx" does not exist |        |      | error |       36 | SELECT (select a          +
+            |        |           |          |                                    |        |      |       |          |              from txxxxxxx+
+            |        |           |          |                                    |        |      |       |          |             where hh = 20)
+(1 row)
+
+drop function f1();
+drop table t1;
+drop type _exception_type;
+-- raise warnings when target row has different number of attributies in
+-- SELECT INTO statement
+create or replace function f1()
+returns void as $$
+declare a1 int; a2 int;
+begin
+  select 10,20 into a1,a2;
+end;
+$$ language plpgsql;
+-- should be ok
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query 
+------------+--------+-----------+----------+---------+--------+------+-------+----------+-------
+(0 rows)
+
+create or replace function f1()
+returns void as $$
+declare a1 int; a2 int;
+begin
+  select 10,20 into a1;
+end;
+$$ language plpgsql;
+-- raise warning
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno |   statement   | sqlstate |                  message                  |                            detail                             |                      hint                       |  level  | position | query 
+------------+--------+---------------+----------+-------------------------------------------+---------------------------------------------------------------+-------------------------------------------------+---------+----------+-------
+ f1         |      4 | SQL statement | 00000    | too many attributies for target variables | There are less target variables than output columns in query. | Check target variables in SELECT INTO statement | warning |        0 | 
+(1 row)
+
+create or replace function f1()
+returns void as $$
+declare a1 int; a2 int;
+begin
+  select 10 into a1,a2;
+end;
+$$ language plpgsql;
+-- raise warning
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno |   statement   | sqlstate |                 message                  |                            detail                             |                       hint                       |  level  | position | query 
+------------+--------+---------------+----------+------------------------------------------+---------------------------------------------------------------+--------------------------------------------------+---------+----------+-------
+ f1         |      4 | SQL statement | 00000    | too few attributies for target variables | There are more target variables than output columns in query. | Check target variables in SELECT INTO statement. | warning |        0 | 
+(1 row)
+
+-- bogus code
+set check_function_bodies to off;
+create or replace function f1()
+returns void as $$
+adasdfsadf
+$$ language plpgsql;
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement | sqlstate |               message                | detail | hint | level | position |   query    
+------------+--------+-----------+----------+--------------------------------------+--------+------+-------+----------+------------
+ f1         |    569 |           | 42601    | syntax error at or near "adasdfsadf" |        |      | error |        2 |           +
+            |        |           |          |                                      |        |      |       |          | adasdfsadf+
+            |        |           |          |                                      |        |      |       |          | 
+(1 row)
+
+drop function f1();
+-- check event trigger function 
+create or replace function f1() returns event_trigger as $$
+BEGIN
+    RAISE NOTICE 'test_event_trigger: % %', tg_event, tg_tag;
+END
+$$ language plpgsql;
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query 
+------------+--------+-----------+----------+---------+--------+------+-------+----------+-------
+(0 rows)
+
+-- should fail
+create or replace function f1() returns event_trigger as $$
+BEGIN
+    RAISE NOTICE 'test_event_trigger: % %', tg_event, tg_tagX;
+END
+$$ language plpgsql;
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement | sqlstate |             message             | detail | hint | level | position |     query      
+------------+--------+-----------+----------+---------------------------------+--------+------+-------+----------+----------------
+ f1         |      3 | RAISE     | 42703    | column "tg_tagx" does not exist |        |      | error |        8 | SELECT tg_tagX
+(1 row)
+
+drop function f1();
