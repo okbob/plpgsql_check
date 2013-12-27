@@ -10,7 +10,7 @@ MAJORVERSION := $(basename $(VERSION))
 endif
 
 REGRESS_OPTS = --dbname=$(PL_TESTDB) --load-language=plpgsql
-REGRESS = plpgsql_check
+REGRESS = plpgsql_check_passive plpgsql_check_active
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config

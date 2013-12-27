@@ -8,7 +8,7 @@ PostgreSQL 9.3 is required.
 The SQL statements inside PL/pgSQL functions are checked by validator for semantic errors. These errors
 can be found by plpgsql_check_function:
 
-## Usage
+# Active mode
 
     postgres=# load 'plpgsql';
     LOAD
@@ -68,7 +68,28 @@ can be found by plpgsql_check_function:
     8       END;
     9       $function$
 
-## Limits
+# Passive mode
+
+Functions should be checked on start - plpgsql_check module must be loaded.
+
+## Configuration
+
+    plpgsql_check.mode = [ disabled | by_function | first_start | every_start ]
+
+Note: first_start is not fully supported - it is same as every start this moment.
+Default option is "by_function"
+
+    plpgsql_check.show_nonperformance_warnings = false
+    plpgsql_check.show_performance_warnings = false
+
+You can enable passive mode by
+
+    load 'plpgsql_check';
+    set plpgsql_check.mode = 'every_start';
+
+    SELECT fx(10); -- run functions 
+
+# Limits
 
 _plpgsql_check_ should find almost all errors on really static code. When developer uses some
 PLpgSQL's dynamic features like dynamic SQL or record data type, then false positives are

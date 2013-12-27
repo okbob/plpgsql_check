@@ -47,8 +47,9 @@ PG_MODULE_MAGIC;
  * Interface
  *
  */
-Datum plpgsql_check_function_tb(PG_FUNCTION_ARGS);
+void _PG_init(void);
 
+Datum plpgsql_check_function_tb(PG_FUNCTION_ARGS);
 
 /*
  * columns of plpgsql_check_function_table result
@@ -81,12 +82,19 @@ enum
 	PLPGSQL_CHECK_FORMAT_XML
 };
 
+enum
+{
+	PLPGSQL_CHECK_MODE_DISABLED,		/* all functionality is disabled */
+	PLPGSQL_CHECK_MODE_BY_FUNCTION,	/* checking is allowed via CHECK function only (default) */
+	PLPGSQL_CHECK_MODE_FIRST_START,	/* check only when function is called first time */
+	PLPGSQL_CHECK_MODE_EVERY_START	/* check on every start */
+};
+
 typedef struct PLpgSQL_checkstate
 {
 	Oid		fn_oid;		/* oid of checked function */
 	List	 	*argnames;	/* function arg names */
 	PLpgSQL_execstate *estate;	/* check state is estate extension */
-	bool	is_estate_fake;		/* true when estate is fake */
 	Tuplestorestate *tuple_store;	/* result target */
 	TupleDesc	tupdesc;	/* result description */
 	bool	    fatal_errors;	/* stop on first error */
@@ -112,6 +120,7 @@ static void check_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 static void check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 					  PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
 				   int targetdno, bool use_element_type, bool is_expression);
+static void check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func);
 static void check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype,
 					   TupleDesc tupdesc,
 					   Tuplestorestate *tupstore,
@@ -163,12 +172,201 @@ static void tuplestore_put_error_tabular(Tuplestorestate *tuple_store, TupleDesc
 								 const char *message, const char *detail, const char *hint,
 								 int level, int position, const char *query);
 
+static bool plpgsql_check_other_warnings = false;
+static bool plpgsql_check_performance_warnings = false;
+static int plpgsql_check_mode = PLPGSQL_CHECK_MODE_BY_FUNCTION;
+
+static PLpgSQL_plugin plugin_funcs = { NULL, check_on_func_beg, NULL, NULL, NULL};
+
+static const struct config_enum_entry plpgsql_check_mode_options[] = {
+	{"disabled", PLPGSQL_CHECK_MODE_DISABLED, false},
+	{"by_function", PLPGSQL_CHECK_MODE_BY_FUNCTION, false},
+	{"first_start", PLPGSQL_CHECK_MODE_FIRST_START, false},
+	{"every_start", PLPGSQL_CHECK_MODE_EVERY_START, false},
+	{NULL, 0, false}
+};
+
 /*
- * ----------
- * plpgsql_check_function - main interface
+ * Module initialization
+ *
+ * join to PLpgSQL executor
+ *
+ */
+void 
+_PG_init(void)
+{
+	PLpgSQL_plugin ** var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable( "PLpgSQL_plugin" );
+
+	/* Be sure we do initialization only once (should be redundant now) */
+	static bool inited = false;
+
+	if (inited)
+		return;
+
+	*var_ptr = &plugin_funcs;
+
+	DefineCustomEnumVariable("plpgsql_check.mode",
+					    "choose a mode for enhanced checking",
+					    NULL,
+					    &plpgsql_check_mode,
+					    PLPGSQL_CHECK_MODE_BY_FUNCTION,
+					    plpgsql_check_mode_options,
+					    PGC_SUSET, 0,
+					    NULL, NULL, NULL);
+
+	DefineCustomBoolVariable("plpgsql_check.show_nonperformance_warnings",
+					    "when is true, then warning (except performance warnings) are showed",
+					    NULL,
+					    &plpgsql_check_other_warnings,
+					    false,
+					    PGC_SUSET, 0,
+					    NULL, NULL, NULL);
+
+	DefineCustomBoolVariable("plpgsql_check.show_performance_warnings",
+					    "when is true, then performance warnings are showed",
+					    NULL,
+					    &plpgsql_check_performance_warnings,
+					    false,
+					    PGC_SUSET, 0,
+					    NULL, NULL, NULL);
+
+	inited = true;
+}
+
+/*
+ * plpgsql_check_func_beg 
+ *
+ *      callback function - called by plgsql executor, when function is started
+ *      and local variables are initialized.
+ *
+ */
+static void
+check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
+{
+	const char *err_text = estate->err_text;
+
+	if (plpgsql_check_mode == PLPGSQL_CHECK_MODE_FIRST_START ||
+		   plpgsql_check_mode == PLPGSQL_CHECK_MODE_EVERY_START)
+	{
+		int i;
+		PLpgSQL_rec *saved_records;
+		PLpgSQL_var *saved_vars;
+		MemoryContext oldcontext;
+		ResourceOwner oldowner;
+		PLpgSQL_checkstate cstate;
+
+		setup_cstate(&cstate, func->fn_oid, NULL, NULL, true,
+							    plpgsql_check_other_warnings,
+							     plpgsql_check_performance_warnings);
+
+		/* use real estate */
+		cstate.estate = estate;
+
+		/*
+		 * During the check stage a rec and vars variables are modified, so we should
+		 * to save their content
+		 */
+		saved_records = palloc(sizeof(PLpgSQL_rec) * estate->ndatums);
+		saved_vars = palloc(sizeof(PLpgSQL_var) * estate->ndatums);
+
+		for (i = 0; i < estate->ndatums; i++)
+		{
+			if (estate->datums[i]->dtype == PLPGSQL_DTYPE_REC)
+			{
+				PLpgSQL_rec *rec = (PLpgSQL_rec *) estate->datums[i];
+
+				saved_records[i].tup = rec->tup;
+				saved_records[i].tupdesc = rec->tupdesc;
+				saved_records[i].freetup = rec->freetup;
+				saved_records[i].freetupdesc = rec->freetupdesc;
+
+				/* don't release a original tupdesc and original tup */
+				rec->freetup = false;
+				rec->freetupdesc = false;
+			}
+			else if (estate->datums[i]->dtype == PLPGSQL_DTYPE_VAR)
+			{
+				PLpgSQL_var *var = (PLpgSQL_var *) estate->datums[i];
+
+				saved_vars[i].value = var->value;
+				saved_vars[i].isnull = var->isnull;
+				saved_vars[i].freeval = var->freeval;
+
+				var->freeval = false;
+			}
+		}
+
+		estate->err_text = NULL;
+
+		/*
+		 * Raised exception should be trapped in outer functtion. Protection
+		 * against outer trap is QUERY_CANCELED exception. 
+		 */
+		oldcontext = CurrentMemoryContext;
+		oldowner = CurrentResourceOwner;
+
+		PG_TRY();
+		{
+			/*
+			 * Now check the toplevel block of statements
+			 */
+			check_stmt(&cstate, (PLpgSQL_stmt *) func->action);
+		}
+		PG_CATCH();
+		{
+			ErrorData  *edata;
+
+			/* Save error info */
+			MemoryContextSwitchTo(oldcontext);
+			edata = CopyErrorData();
+			FlushErrorState();
+			CurrentResourceOwner = oldowner;
+
+			release_exprs(cstate.exprs);
+
+			edata->sqlerrcode = ERRCODE_QUERY_CANCELED;
+			ReThrowError(edata);
+		}
+		PG_END_TRY();
+
+		estate->err_text = err_text;
+		estate->err_stmt = NULL;
+
+		/* return back a original rec variables */
+		for (i = 0; i < estate->ndatums; i++)
+		{
+			if (estate->datums[i]->dtype == PLPGSQL_DTYPE_REC)
+			{
+				PLpgSQL_rec *rec = (PLpgSQL_rec *) estate->datums[i];
+
+				if (rec->freetupdesc)
+					FreeTupleDesc(rec->tupdesc);
+
+				rec->tup = saved_records[i].tup;
+				rec->tupdesc = saved_records[i].tupdesc;
+				rec->freetup = saved_records[i].freetup;
+				rec->freetupdesc = saved_records[i].freetupdesc;
+			}
+			else if (estate->datums[i]->dtype == PLPGSQL_DTYPE_VAR)
+			{
+				PLpgSQL_var *var = (PLpgSQL_var *) estate->datums[i];
+
+				var->value = saved_vars[i].value;
+				var->isnull = saved_vars[i].isnull;
+				var->freeval = saved_vars[i].freeval;
+			}
+		}
+
+		pfree(saved_records);
+		pfree(saved_vars);
+	}
+}
+
+/*
+ * plpgsql_check_function_tb - main interface
  *
  * It ensure a detailed validation and returns result as multicolumn table
- * ----------
+ *
  */
 PG_FUNCTION_INFO_V1(plpgsql_check_function_tb);
 
@@ -215,9 +413,9 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	MemoryContextSwitchTo(oldcontext);
 
 	check_plpgsql_function(procTuple, relid, trigtype,
-						   tupdesc, tupstore,
-						   PLPGSQL_CHECK_FORMAT_TABULAR,
-							   fatal_errors, other_warnings, performance_warnings);
+							   tupdesc, tupstore,
+							   PLPGSQL_CHECK_FORMAT_TABULAR,
+								   fatal_errors, other_warnings, performance_warnings);
 
 	ReleaseSysCache(procTuple);
 
@@ -398,39 +596,48 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 
 		save_nestlevel = load_configuration(procTuple, &reload_config);
 
-		/* Get a compiled function */
-		function = plpgsql_compile(&fake_fcinfo, false);
-
-		/* Must save and restore prior value of cur_estate */
-		cur_estate = function->cur_estate;
-
-		/* recheck trigtype */
-		Assert(function->fn_is_trigger == trigtype);
-
-		setup_plpgsql_estate(&estate, function, (ReturnSetInfo *) fake_fcinfo.resultinfo);
-		cstate.estate = &estate;
-
-		/*
-		 * Mark the function as busy, ensure higher than zero usage. There is no
-		 * reason for protection function against delete, but I afraid of asserts.
-		 */
-		function->use_count++;
-
-		/* Create a fake runtime environment and process check */
-		switch (trigtype)
+		/* have to wait for this decision to loaded configuration */
+		if (plpgsql_check_mode != PLPGSQL_CHECK_MODE_DISABLED)
 		{
-			case PLPGSQL_DML_TRIGGER:
-				trigger_check(function, (Node *) &trigdata, &estate, &cstate);
-				break;
+			/* Get a compiled function */
+			function = plpgsql_compile(&fake_fcinfo, false);
 
-			case PLPGSQL_EVENT_TRIGGER:
-				trigger_check(function, (Node *) &etrigdata, &estate, &cstate);
-				break;
+			/* Must save and restore prior value of cur_estate */
+			cur_estate = function->cur_estate;
 
-			case PLPGSQL_NOT_TRIGGER:
-				function_check(function, &fake_fcinfo, &estate, &cstate);
-				break;
+			/* recheck trigtype */
+			Assert(function->fn_is_trigger == trigtype);
+
+			setup_plpgsql_estate(&estate, function, (ReturnSetInfo *) fake_fcinfo.resultinfo);
+			cstate.estate = &estate;
+
+			/*
+			 * Mark the function as busy, ensure higher than zero usage. There is no
+			 * reason for protection function against delete, but I afraid of asserts.
+			 */
+			function->use_count++;
+
+			/* Create a fake runtime environment and process check */
+			switch (trigtype)
+			{
+				case PLPGSQL_DML_TRIGGER:
+					trigger_check(function, (Node *) &trigdata, &estate, &cstate);
+					break;
+
+				case PLPGSQL_EVENT_TRIGGER:
+					trigger_check(function, (Node *) &etrigdata, &estate, &cstate);
+					break;
+
+				case PLPGSQL_NOT_TRIGGER:
+					function_check(function, &fake_fcinfo, &estate, &cstate);
+					break;
+			}
+
+			function->cur_estate = cur_estate;
+			function->use_count--;
 		}
+		else
+			elog(NOTICE, "plpgsql_check is disabled");
 
 		/*
 		 * reload back a GUC. XXX: isn't this done automatically by subxact
@@ -446,8 +653,6 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 		if (OidIsValid(relid))
 			relation_close(trigdata.tg_relation, AccessShareLock);
 
-		function->cur_estate = cur_estate;
-		function->use_count--;
 		release_exprs(cstate.exprs);
 
 		SPI_restore_connection();
