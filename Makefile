@@ -2,7 +2,7 @@
 
 MODULE_big = plpgsql_check
 OBJS = plpgsql_check.o
-DATA = plpgsql_check--0.1.sql
+DATA = plpgsql_check--0.7.sql
 EXTENSION = plpgsql_check
 
 ifndef MAJORVERSION

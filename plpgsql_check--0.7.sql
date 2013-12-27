@@ -14,5 +14,14 @@ RETURNS TABLE(functionid regproc,
               "position" int,
               query text)
 AS 'MODULE_PATHNAME'
-LANGUAGE C
-RETURNS NULL ON NULL INPUT;
+LANGUAGE C STRICT;
+
+CREATE FUNCTION plpgsql_check_function(funcoid regprocedure,
+                                       relid regclass DEFAULT 0,
+                                       format text DEFAULT 'text',
+                                       fatal_errors boolean DEFAULT true,
+                                       others_warnings boolean DEFAULT true,
+                                       performance_warnings boolean DEFAULT false)
+RETURNS SETOF text
+AS 'MODULE_PATHNAME'
+LANGUAGE C STRICT;

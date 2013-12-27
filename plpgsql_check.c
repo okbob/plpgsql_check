@@ -31,6 +31,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "executor/spi_priv.h"
+#include "tsearch/ts_locale.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
@@ -38,6 +39,7 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 #include "utils/rel.h"
+#include "utils/xml.h"
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -50,6 +52,7 @@ PG_MODULE_MAGIC;
 void _PG_init(void);
 
 Datum plpgsql_check_function_tb(PG_FUNCTION_ARGS);
+Datum plpgsql_check_function(PG_FUNCTION_ARGS);
 
 /*
  * columns of plpgsql_check_function_table result
@@ -77,6 +80,7 @@ enum
 
 enum
 {
+	PLPGSQL_CHECK_FORMAT_ELOG,
 	PLPGSQL_CHECK_FORMAT_TEXT,
 	PLPGSQL_CHECK_FORMAT_TABULAR,
 	PLPGSQL_CHECK_FORMAT_XML
@@ -101,6 +105,7 @@ typedef struct PLpgSQL_checkstate
 	bool	    performance_warnings;	/* show performace warnings */
 	bool	    other_warnings;	/* show other warnings */
 	int	 	   format;	/* output format */
+	StringInfo	   sinfo;	/* aux. stringInfo used for result string concat */
 	MemoryContext		   check_cxt;
 	List			   *exprs;	/* list of all expression created by checker */
 }	PLpgSQL_checkstate;
@@ -120,6 +125,8 @@ static void check_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 static void check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 					  PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
 				   int targetdno, bool use_element_type, bool is_expression);
+static void check_function_epilog(PLpgSQL_checkstate *cstate);
+static void check_function_prolog(PLpgSQL_checkstate *cstate);
 static void check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func);
 static void check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype,
 					   TupleDesc tupdesc,
@@ -139,6 +146,12 @@ static TupleDesc expr_get_desc(PLpgSQL_checkstate *cstate,
 										  bool expand_record,
 										  bool is_expression);
 static void init_datum_dno(PLpgSQL_checkstate *cstate, int varno);
+static void format_error_xml(StringInfo str,
+						  PLpgSQL_execstate *estate,
+								 int sqlerrcode, int lineno,
+								 const char *message, const char *detail, const char *hint,
+								 int level, int position,
+								 const char *query);
 static void function_check(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 								   PLpgSQL_execstate *estate, PLpgSQL_checkstate *cstate);
 static PLpgSQL_datum *copy_plpgsql_datum(PLpgSQL_datum *datum);
@@ -154,7 +167,8 @@ static void prepare_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, int cur
 static void release_exprs(List *exprs);
 static void setup_cstate(PLpgSQL_checkstate *cstate,
 							 Oid fn_oid, TupleDesc tupdesc, Tuplestorestate *tupstore,
-							 bool fatal_errors, bool other_warnings, bool perform_warnings);
+							 bool fatal_errors, bool other_warnings, bool perform_warnings,
+												    int format);
 static void setup_fake_fcinfo(FmgrInfo *flinfo,
 						 FunctionCallInfoData *fcinfo,
 										 TriggerData *trigdata,
@@ -166,11 +180,18 @@ static void setup_plpgsql_estate(PLpgSQL_execstate *estate,
 static void trigger_check(PLpgSQL_function *func,
 							  Node *trigdata,
 								  PLpgSQL_execstate *estate, PLpgSQL_checkstate *cstate);
+static void tuplestore_put_error_text(Tuplestorestate *tuple_store, TupleDesc tupdesc,
+						  PLpgSQL_execstate *estate, Oid fn_oid,
+								 int sqlerrcode, int lineno,
+								 const char *message, const char *detail, const char *hint,
+								 int level, int position, const char *query);
 static void tuplestore_put_error_tabular(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 						  PLpgSQL_execstate *estate, Oid fn_oid,
 								 int sqlerrcode, int lineno,
 								 const char *message, const char *detail, const char *hint,
 								 int level, int position, const char *query);
+static void tuplestore_put_text_line(Tuplestorestate *tuple_store, TupleDesc tupdesc,
+								    const char *message, int len);
 
 static bool plpgsql_check_other_warnings = false;
 static bool plpgsql_check_performance_warnings = false;
@@ -251,16 +272,20 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 		int i;
 		PLpgSQL_rec *saved_records;
 		PLpgSQL_var *saved_vars;
-		MemoryContext oldcontext;
+		MemoryContext oldcontext,
+					 old_cxt;
 		ResourceOwner oldowner;
 		PLpgSQL_checkstate cstate;
 
 		setup_cstate(&cstate, func->fn_oid, NULL, NULL, true,
 							    plpgsql_check_other_warnings,
-							     plpgsql_check_performance_warnings);
+							    plpgsql_check_performance_warnings,
+							    PLPGSQL_CHECK_FORMAT_ELOG);
 
 		/* use real estate */
 		cstate.estate = estate;
+
+		old_cxt = MemoryContextSwitchTo(cstate.check_cxt);
 
 		/*
 		 * During the check stage a rec and vars variables are modified, so we should
@@ -357,13 +382,95 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 			}
 		}
 
-		pfree(saved_records);
-		pfree(saved_vars);
+		MemoryContextSwitchTo(old_cxt);
+		MemoryContextDelete(cstate.check_cxt);
 	}
 }
 
 /*
- * plpgsql_check_function_tb - main interface
+ * plpgsql_check_function
+ *
+ * Extended check with formatted text output
+ *
+ */
+PG_FUNCTION_INFO_V1(plpgsql_check_function);
+
+Datum
+plpgsql_check_function(PG_FUNCTION_ARGS)
+{
+	Oid			funcoid = PG_GETARG_OID(0);
+	Oid			relid = PG_GETARG_OID(1);
+	char			*format_str = text_to_cstring(PG_GETARG_TEXT_PP(2));
+	bool			fatal_errors = PG_GETARG_BOOL(3);
+	bool			other_warnings = PG_GETARG_BOOL(4);
+	bool			performance_warnings = PG_GETARG_BOOL(5);
+	TupleDesc	tupdesc;
+	HeapTuple	procTuple;
+	Tuplestorestate *tupstore;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	PLpgSQL_trigtype trigtype;
+	char *format_lower_str;
+	int format;
+
+	format_lower_str = lowerstr(format_str);
+	if (strcmp(format_lower_str, "text") == 0)
+		format = PLPGSQL_CHECK_FORMAT_TEXT;
+	else if (strcmp(format_lower_str, "xml") == 0)
+		format = PLPGSQL_CHECK_FORMAT_XML;
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("unrecognize format: \"%s\"",
+									 format_lower_str),
+				 errhint("Only \"text\" and \"xml\" formats are supported.")));
+
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not allowed in this context")));
+
+	procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcoid));
+	if (!HeapTupleIsValid(procTuple))
+		elog(ERROR, "cache lookup failed for function %u", funcoid);
+
+	trigtype = get_trigtype(procTuple);
+	precheck_conditions(procTuple, trigtype, relid);
+
+	/* need to build tuplestore in query context */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	tupdesc = CreateTupleDescCopy(rsinfo->expectedDesc);
+	tupstore = tuplestore_begin_heap(false, false, work_mem);
+	MemoryContextSwitchTo(oldcontext);
+
+	check_plpgsql_function(procTuple, relid, trigtype,
+							   tupdesc, tupstore,
+							   format,
+								   fatal_errors, other_warnings, performance_warnings);
+
+	ReleaseSysCache(procTuple);
+
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	return (Datum) 0;
+}
+
+/*
+ * plpgsql_check_function_tb
  *
  * It ensure a detailed validation and returns result as multicolumn table
  *
@@ -555,9 +662,12 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 									  funcoid, trigtype);
 
 	setup_cstate(&cstate, funcoid, tupdesc, tupstore,
-							    fatal_errors, other_warnings, performance_warnings);
+							    fatal_errors, other_warnings, performance_warnings,
+										    format);
 
 	old_cxt = MemoryContextSwitchTo(cstate.check_cxt);
+
+	check_function_prolog(&cstate);
 
 	if (OidIsValid(relid))
 		trigdata.tg_relation = relation_open(relid, AccessShareLock);
@@ -685,6 +795,8 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 		SPI_restore_connection();
 	}
 	PG_END_TRY();
+
+	check_function_epilog(&cstate);
 
 	MemoryContextSwitchTo(old_cxt);
 	MemoryContextDelete(cstate.check_cxt);
@@ -908,7 +1020,8 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 			 Tuplestorestate *tupstore,
 			 bool fatal_errors,
 			 bool other_warnings,
-			 bool performance_warnings)
+			 bool performance_warnings,
+			 int format)
 {
 	cstate->fn_oid = fn_oid;
 	cstate->estate = NULL;
@@ -920,7 +1033,8 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->argnames = NIL;
 	cstate->exprs = NIL;
 
-	cstate->format = PLPGSQL_CHECK_FORMAT_TABULAR;
+	cstate->format = format;
+	cstate->sinfo = NULL;
 
 	cstate->check_cxt = AllocSetContextCreate(CurrentMemoryContext,
 										 "plpgsql_check temporary cxt",
@@ -1720,7 +1834,6 @@ check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 	PG_END_TRY();
 }
 
-
 /*
  * Check composed lvalue There is nothing to check on rec variables
  */
@@ -2244,6 +2357,64 @@ datum_get_refname(PLpgSQL_datum *d)
 #define SET_RESULT_INT32(anum, ival)	SET_RESULT((anum), Int32GetDatum((ival)))
 #define SET_RESULT_OID(anum, oid)	SET_RESULT((anum), ObjectIdGetDatum((oid)))
 
+/*
+ * error processing switch - ignore warnings when it is necessary,
+ * store fields to result tuplestore or raise exception to out
+ *
+ */
+static void
+put_error(PLpgSQL_checkstate *cstate,
+					  int sqlerrcode,
+					  int lineno,
+					  const char *message,
+					  const char *detail,
+					  const char *hint,
+					  int level,
+					  int position,
+					  const char *query)
+{
+	/* ignore warnings when is not requested */
+	if ((level == PLPGSQL_CHECK_WARNING_PERFORMANCE && !cstate->performance_warnings) ||
+			    (level == PLPGSQL_CHECK_WARNING_OTHERS && !cstate->other_warnings))
+		return;
+
+	if (cstate->tuple_store != NULL)
+	{
+		switch (cstate->format)
+		{
+			case PLPGSQL_CHECK_FORMAT_TABULAR:
+				tuplestore_put_error_tabular(cstate->tuple_store, cstate->tupdesc,
+								 cstate->estate, cstate->fn_oid,
+									 sqlerrcode, lineno, message, detail,
+									 hint, level, position, query);
+				break;
+
+			case PLPGSQL_CHECK_FORMAT_TEXT:
+				tuplestore_put_error_text(cstate->tuple_store, cstate->tupdesc,
+								 cstate->estate, cstate->fn_oid,
+									 sqlerrcode, lineno, message, detail,
+									 hint, level, position, query);
+				break;
+
+			case PLPGSQL_CHECK_FORMAT_XML:
+				format_error_xml(cstate->sinfo, cstate->estate,
+								 sqlerrcode, lineno, message, detail,
+								 hint, level, position, query);
+				break;
+		}
+	}
+	else
+	{
+		/* use error fields as parameters of postgres exception */
+		ereport(level == PLPGSQL_CHECK_ERROR ? ERROR : WARNING,
+				(sqlerrcode ? errcode(sqlerrcode) : 0,
+				 errmsg_internal("%s", message),
+				 (detail != NULL) ? errdetail_internal("%s", detail) : 0,
+				 (hint != NULL) ? errhint("%s", hint) : 0,
+				 (query != NULL) ? internalerrquery(query) : 0,
+				 (position != 0) ? internalerrposition(position) : 0));
+	}
+}
 
 /*
  * store error fields to result tuplestore
@@ -2307,49 +2478,207 @@ tuplestore_put_error_tabular(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 }
 
 /*
- * error processing switch - ignore warnings when it is necessary,
- * store fields to result tuplestore or raise exception to out
- *
+ * collects errors and warnings in plain text format
  */
 static void
-put_error(PLpgSQL_checkstate *cstate,
-					  int sqlerrcode,
-					  int lineno,
-					  const char *message,
-					  const char *detail,
-					  const char *hint,
-					  int level,
-					  int position,
-					  const char *query)
+tuplestore_put_error_text(Tuplestorestate *tuple_store, TupleDesc tupdesc,
+						  PLpgSQL_execstate *estate,
+								 Oid fn_oid,
+								 int sqlerrcode,
+								 int lineno,
+								 const char *message,
+								 const char *detail,
+								 const char *hint,
+								 int level,
+								 int position,
+								 const char *query)
 {
-	/* ignore warnings when is not requested */
-	if ((level == PLPGSQL_CHECK_WARNING_PERFORMANCE && !cstate->performance_warnings) ||
-			    (level == PLPGSQL_CHECK_WARNING_OTHERS && !cstate->other_warnings))
-		return;
+	StringInfoData  sinfo;
+	const char *level_str;
 
-	if (cstate->tuple_store != NULL)
+	Assert(message != NULL);
+
+	initStringInfo(&sinfo);
+
+	switch (level)
 	{
-		switch (cstate->format)
-		{
-			case PLPGSQL_CHECK_FORMAT_TABULAR:
-				tuplestore_put_error_tabular(cstate->tuple_store, cstate->tupdesc,
-								 cstate->estate, cstate->fn_oid,
-									 sqlerrcode, lineno, message, detail,
-									 hint, level, position, query);
-				break;
-		}
+		case PLPGSQL_CHECK_ERROR:
+			level_str = "error";
+			break;
+		case PLPGSQL_CHECK_WARNING_OTHERS:
+			level_str = "warning";
+			break;
+		case PLPGSQL_CHECK_WARNING_PERFORMANCE:
+			level_str = "performance";
+			break;
 	}
+
+	if (estate != NULL && estate->err_stmt != NULL)
+		appendStringInfo(&sinfo, "%s:%s:%d:%s:%s",
+				 level_str,
+				 unpack_sql_state(sqlerrcode),
+				 estate->err_stmt->lineno,
+			    plpgsql_stmt_typename(estate->err_stmt),
+				 message);
 	else
+		appendStringInfo(&sinfo, "%s:%s:%s",
+				 level_str,
+				 unpack_sql_state(sqlerrcode),
+				 message);
+
+	tuplestore_put_text_line(tuple_store, tupdesc, sinfo.data, sinfo.len);
+	resetStringInfo(&sinfo);
+
+	if (query != NULL) 
 	{
-		/* use error fields as parameters of postgres exception */
-		ereport(level == PLPGSQL_CHECK_ERROR ? ERROR : WARNING,
-				(sqlerrcode ? errcode(sqlerrcode) : 0,
-				 errmsg_internal("%s", message),
-				 (detail != NULL) ? errdetail_internal("%s", detail) : 0,
-				 (hint != NULL) ? errhint("%s", hint) : 0,
-				 (query != NULL) ? internalerrquery(query) : 0,
-				 (position != 0) ? internalerrposition(position) : 0));
+		char           *query_line;	/* pointer to beginning of current line */
+		int             line_caret_pos;
+		bool            is_first_line = true;
+		char           *_query = pstrdup(query);
+		char           *ptr;
+
+		ptr = _query;
+		query_line = ptr;
+		line_caret_pos = position;
+
+		while (*ptr != '\0')
+		{
+			/* search end of lines and replace '\n' by '\0' */
+			if (*ptr == '\n')
+			{
+				*ptr = '\0';
+				if (is_first_line)
+				{
+					appendStringInfo(&sinfo, "Query: %s", query_line);
+					is_first_line = false;
+				} else
+					appendStringInfo(&sinfo, "       %s", query_line);
+
+				tuplestore_put_text_line(tuple_store, tupdesc, sinfo.data, sinfo.len);
+				resetStringInfo(&sinfo);
+
+				if (line_caret_pos > 0 && position == 0)
+				{
+					appendStringInfo(&sinfo, "--     %*s",
+						       line_caret_pos, "^");
+
+					tuplestore_put_text_line(tuple_store, tupdesc, sinfo.data, sinfo.len);
+					resetStringInfo(&sinfo);
+
+					line_caret_pos = 0;
+				}
+				/* store caret position offset for next line */
+
+				if (position > 1)
+					line_caret_pos = position - 1;
+
+				/* go to next line */
+				query_line = ptr + 1;
+			}
+			ptr += pg_mblen(ptr);
+
+			if (position > 0)
+				position--;
+		}
+
+		/* flush last line */
+		if (query_line != NULL)
+		{
+			if (is_first_line)
+				appendStringInfo(&sinfo, "Query: %s", query_line);
+			else
+				appendStringInfo(&sinfo, "       %s", query_line);
+
+			tuplestore_put_text_line(tuple_store, tupdesc, sinfo.data, sinfo.len);
+			resetStringInfo(&sinfo);
+
+			if (line_caret_pos > 0 && position == 0)
+			{
+				appendStringInfo(&sinfo, "--     %*s",
+						 line_caret_pos, "^");
+				tuplestore_put_text_line(tuple_store, tupdesc, sinfo.data, sinfo.len);
+				resetStringInfo(&sinfo);
+			}
+		}
+
+		pfree(_query);
 	}
+
+	if (detail != NULL)
+	{
+		appendStringInfo(&sinfo, "Detail: %s", detail);
+		tuplestore_put_text_line(tuple_store, tupdesc, sinfo.data, sinfo.len);
+		resetStringInfo(&sinfo);
+	}
+
+	if (hint != NULL) 
+	{
+		appendStringInfo(&sinfo, "Hint: %s", hint);
+		tuplestore_put_text_line(tuple_store, tupdesc, sinfo.data, sinfo.len);
+		resetStringInfo(&sinfo);
+	}
+
+	pfree(sinfo.data);
+}
+
+
+
+/*
+ * format_error_xml formats and collects a identifided issues
+ */
+static void
+format_error_xml(StringInfo str,
+						  PLpgSQL_execstate *estate,
+								 int sqlerrcode,
+								 int lineno,
+								 const char *message,
+								 const char *detail,
+								 const char *hint,
+								 int level,
+								 int position,
+								 const char *query)
+{
+	const char *level_str;
+
+	Assert(message != NULL);
+
+	switch (level)
+	{
+		case PLPGSQL_CHECK_ERROR:
+			level_str = "error";
+			break;
+		case PLPGSQL_CHECK_WARNING_OTHERS:
+			level_str = "warning";
+			break;
+		case PLPGSQL_CHECK_WARNING_PERFORMANCE:
+			level_str = "performance";
+			break;
+	}
+
+	/* flush tag */
+	appendStringInfoString(str, "  <Issue>\n");
+
+	appendStringInfo(str, "    <Level>%s</level>\n", level_str);
+	appendStringInfo(str, "    <Sqlstate>%s</Sqlstate>\n",
+						 unpack_sql_state(sqlerrcode));
+	appendStringInfo(str, "    <Message>%s</Message>\n",
+							 escape_xml(message));
+	if (estate->err_stmt != NULL)
+		appendStringInfo(str, "    <Stmt lineno=\"%d\">%s</Stmt>\n",
+				 estate->err_stmt->lineno,
+			   plpgsql_stmt_typename(estate->err_stmt));
+	if (hint != NULL)
+		appendStringInfo(str, "    <Hint>%s</Hint>\n",
+								 escape_xml(hint));
+	if (detail != NULL)
+		appendStringInfo(str, "    <Detail>%s</Detail>\n",
+								 escape_xml(detail));
+	if (query != NULL)
+		appendStringInfo(str, "    <Query position=\"%d\">%s</Query>\n",
+							 position, escape_xml(query));
+
+	/* flush closing tag */
+	appendStringInfoString(str, "  </Issue>\n");
 }
 
 /*
@@ -2368,4 +2697,59 @@ put_error_edata(PLpgSQL_checkstate *cstate,
 				  PLPGSQL_CHECK_ERROR,
 				  edata->internalpos,
 				  edata->internalquery);
+}
+
+/*
+ * Append text line (StringInfo) to one column tuple store
+ *
+ */
+static void
+tuplestore_put_text_line(Tuplestorestate *tuple_store, TupleDesc tupdesc,
+								    const char *message, int len)
+{
+	Datum           value;
+	bool            isnull = false;
+	HeapTuple       tuple;
+
+	if (len >= 0)
+		value = PointerGetDatum(cstring_to_text_with_len(message, len));
+	else
+		value = PointerGetDatum(cstring_to_text(message));
+
+	tuple = heap_form_tuple(tupdesc, &value, &isnull);
+	tuplestore_puttuple(tuple_store, tuple);
+}
+
+/*
+ * routines for beginning and finishing function checking
+ *
+ * it is used primary for XML format - create almost left and almost right tag per function
+ *
+ */
+static void
+check_function_prolog(PLpgSQL_checkstate *cstate)
+{
+	/* XML format requires StringInfo buffer */
+	if (cstate->format == PLPGSQL_CHECK_FORMAT_XML)
+	{
+		if (cstate->sinfo != NULL)
+			resetStringInfo(cstate->sinfo);
+		else
+			cstate->sinfo = makeStringInfo();
+
+		/* create a initial tag */
+		appendStringInfo(cstate->sinfo, "<Function oid=\"%d\">\n", cstate->fn_oid);
+	}
+}
+
+static void
+check_function_epilog(PLpgSQL_checkstate *cstate)
+{
+	if (cstate->format == PLPGSQL_CHECK_FORMAT_XML)
+	{
+		appendStringInfoString(cstate->sinfo, "</Function>");
+
+		tuplestore_put_text_line(cstate->tuple_store, cstate->tupdesc,
+					    cstate->sinfo->data, cstate->sinfo->len);
+	}
 }

@@ -1,7 +1,7 @@
 plpgsql_check
 =============
 
-plpgsql_check is next generation of plpgsql_check. It allows to check source code by explicit call plpgsql_check_function.
+plpgsql_check is next generation of plpgsql_lint. It allows to check source code by explicit call plpgsql_check_function.
 
 PostgreSQL 9.3 is required.
 
@@ -33,7 +33,7 @@ can be found by plpgsql_check_function:
 
     CREATE FUNCTION
 
-    postgres=# select f1(); -- execution doesn't find a bug
+    postgres=# select f1(); -- execution doesn't find a bug due empty table t1
       f1 
      ────
        
@@ -67,6 +67,36 @@ can be found by plpgsql_check_function:
     7         END LOOP;
     8       END;
     9       $function$
+
+
+Function plpgsql_check_function() has two possible formats: text or xml
+
+    select * from plpgsql_check_function('f1()', fatal_errors := false);
+                             plpgsql_check_function                         
+    ------------------------------------------------------------------------
+     error:42703:4:SQL statement:column "c" of relation "t1" does not exist
+     Query: update t1 set c = 30
+     --                   ^
+     error:42P01:7:RAISE:missing FROM-clause entry for table "r"
+     Query: SELECT r.c
+     --            ^
+     error:42601:7:RAISE:too few parameters specified for RAISE
+    (7 rows)
+
+    postgres=# select * from plpgsql_check_function('fx()', format:='xml');
+                     plpgsql_check_function                     
+    ────────────────────────────────────────────────────────────────
+     <Function oid="16400">                                        ↵
+       <Issue>                                                     ↵
+         <Level>error</level>                                      ↵
+         <Sqlstate>42P01</Sqlstate>                                ↵
+         <Message>relation "foo111" does not exist</Message>       ↵
+         <Stmt lineno="3">RETURN</Stmt>                            ↵
+         <Query position="23">SELECT (select a from foo111)</Query>↵
+       </Issue>                                                    ↵
+      </Function>
+     (1 row)
+
 
 # Passive mode
 
@@ -108,9 +138,10 @@ should be redesigned or plpgsql_check should be disabled for this function.
     END;
     $$ LANGUAGE plpgsql SET plpgsql.enable_check TO false;
 
-_A usage of plpgsql_check adds a small overhead and you should use it only in develop or preprod environments._
+_A usage of plpgsql_check adds a small overhead (in enabled passive mode) and you should use
+it only in develop or preprod environments._
 
-### Dynamic SQL
+## Dynamic SQL
 
 This module doesn't check queries that are assembled in runtime. It is not possible
 to identify result of dynamic queries - so _plpgsql_check_ cannot to set correct type to record
@@ -118,13 +149,13 @@ variables and cannot to check a dependent SQLs and expressions. Don't use record
 as target for dynamic queries or disable _plpgsql_check_ for functions that use a dynamic
 queries.
 
-### Temporary tables
+## Temporary tables
 
 _plpgsql_check_ cannot to verify queries over temporary tables that are created in plpgsql's function
 runtime. For this use case is necessary to create a fake temp table or disable _plpgsql_check_ for this
 function.
 
-## Licence
+# Licence
 
 Copyright (c) Pavel Stehule (pavel.stehule@gmail.com)
 
@@ -146,7 +177,7 @@ Copyright (c) Pavel Stehule (pavel.stehule@gmail.com)
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
 
-## Note
+# Note
 
 If you like it, send a postcard to address
 
@@ -157,4 +188,3 @@ If you like it, send a postcard to address
 
 
 I invite any questions, comments, bug reports, patches on mail address pavel.stehule@gmail.com
-
