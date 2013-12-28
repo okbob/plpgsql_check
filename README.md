@@ -1,6 +1,12 @@
 plpgsql_check
 =============
 
+I founded this project, because I would to publish a code, that I wrote last two years, when I tried to write enhanced checking for PostgreSQL upstream. It was not fully successful - integration into upstream requires some larger plpgsql refactoring - probably it will not be done in next two years (now is Dec 2013). But written code is fully functional and can be used in production. So I created this extension to be available for all plpgsql developers.
+
+If you like it and if you would to join to development of this extension, register self to [postgresql extension hacking](https://groups.google.com/forum/#!forum/postgresql-extensions-hacking) google group.
+
+I invite any ideas, patches, bugreports
+
 plpgsql_check is next generation of plpgsql_lint. It allows to check source code by explicit call plpgsql_check_function.
 
 PostgreSQL 9.3 is required.
