@@ -1,13 +1,21 @@
 plpgsql_check
 =============
 
-I founded this project, because I would to publish a code, that I wrote last two years, when I tried to write enhanced checking for PostgreSQL upstream. It was not fully successful - integration into upstream requires some larger plpgsql refactoring - probably it will not be done in next two years (now is Dec 2013). But written code is fully functional and can be used in production. So I created this extension to be available for all plpgsql developers.
+I founded this project, because I would to publish a code, that I wrote last two years,
+when I tried to write enhanced checking for PostgreSQL upstream. It was not fully
+successful - integration into upstream requires some larger plpgsql refactoring - probably
+it will not be done in next two years (now is Dec 2013). But written code is fully functional
+and can be used in production. So I created this extension to be available for all
+plpgsql developers.
 
-If you like it and if you would to join to development of this extension, register self to [postgresql extension hacking](https://groups.google.com/forum/#!forum/postgresql-extensions-hacking) google group.
+If you like it and if you would to join to development of this extension, register
+self to [postgresql extension hacking](https://groups.google.com/forum/#!forum/postgresql-extensions-hacking)
+google group.
 
 I invite any ideas, patches, bugreports
 
-plpgsql_check is next generation of plpgsql_lint. It allows to check source code by explicit call plpgsql_check_function.
+plpgsql_check is next generation of plpgsql_lint. It allows to check source code by explicit call
+<i>plpgsql_check_function</i>.
 
 PostgreSQL 9.3 is required.
 
@@ -116,16 +124,20 @@ Functions should be checked on start - plpgsql_check module must be loaded.
     plpgsql_check.show_nonperformance_warnings = false
     plpgsql_check.show_performance_warnings = false
 
+Default mode is <i>by_function</i>, that means so enhanced check is done only in
+active mode - by <i>plpgsql_check_function</i>.
+
 You can enable passive mode by
 
+    load 'plpgsql';
     load 'plpgsql_check';
     set plpgsql_check.mode = 'every_start';
 
-    SELECT fx(10); -- run functions 
+    SELECT fx(10); -- run functions - function is checked before runtime starts it
 
 # Limits
 
-_plpgsql_check_ should find almost all errors on really static code. When developer uses some
+<i>plpgsql_check</i> should find almost all errors on really static code. When developer uses some
 PLpgSQL's dynamic features like dynamic SQL or record data type, then false positives are
 possible. These should be rare - in well written code - and then the affected function
 should be redesigned or plpgsql_check should be disabled for this function.
@@ -142,21 +154,21 @@ should be redesigned or plpgsql_check should be disabled for this function.
     END;
     $$ LANGUAGE plpgsql SET plpgsql.enable_check TO false;
 
-_A usage of plpgsql_check adds a small overhead (in enabled passive mode) and you should use
-it only in develop or preprod environments._
+<i>A usage of plpgsql_check adds a small overhead (in enabled passive mode) and you should use
+it only in develop or preprod environments.</i>
 
 ## Dynamic SQL
 
 This module doesn't check queries that are assembled in runtime. It is not possible
-to identify result of dynamic queries - so _plpgsql_check_ cannot to set correct type to record
+to identify result of dynamic queries - so <i>plpgsql_check</i> cannot to set correct type to record
 variables and cannot to check a dependent SQLs and expressions. Don't use record variable
-as target for dynamic queries or disable _plpgsql_check_ for functions that use a dynamic
+as target for dynamic queries or disable <i>plpgsql_check</i> for functions that use a dynamic
 queries.
 
 ## Temporary tables
 
-_plpgsql_check_ cannot to verify queries over temporary tables that are created in plpgsql's function
-runtime. For this use case is necessary to create a fake temp table or disable _plpgsql_check_ for this
+<i>plpgsql_check</i> cannot to verify queries over temporary tables that are created in plpgsql's function
+runtime. For this use case is necessary to create a fake temp table or disable <i>plpgsql_check</i> for this
 function.
 
 # Licence
