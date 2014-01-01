@@ -19,6 +19,8 @@
  *
  * 2) We have to have workable environment for plpgsql_parser_setup function
  *
+ * 3) We need a own edition of signatures and oids as protection agains repeated check.
+ *
  */
 
 #include "plpgsql.h"
@@ -90,7 +92,7 @@ enum
 {
 	PLPGSQL_CHECK_MODE_DISABLED,		/* all functionality is disabled */
 	PLPGSQL_CHECK_MODE_BY_FUNCTION,	/* checking is allowed via CHECK function only (default) */
-	PLPGSQL_CHECK_MODE_FIRST_START,	/* check only when function is called first time */
+	PLPGSQL_CHECK_MODE_FRESH_START,	/* check only when function is called first time */
 	PLPGSQL_CHECK_MODE_EVERY_START	/* check on every start */
 };
 
@@ -108,6 +110,7 @@ typedef struct PLpgSQL_checkstate
 	StringInfo	   sinfo;	/* aux. stringInfo used for result string concat */
 	MemoryContext		   check_cxt;
 	List			   *exprs;	/* list of all expression created by checker */
+	bool		is_active_mode;	/* true, when checking is started by plpgsql_check_function */
 }	PLpgSQL_checkstate;
 
 
@@ -139,13 +142,14 @@ static void check_row_or_rec(PLpgSQL_checkstate *cstate, PLpgSQL_row *row, PLpgS
 static void check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt);
 static void check_stmts(PLpgSQL_checkstate *cstate, List *stmts);
 static void check_target(PLpgSQL_checkstate *cstate, int varno);
+static PLpgSQL_datum *copy_plpgsql_datum(PLpgSQL_datum *datum);
 static char *datum_get_refname(PLpgSQL_datum *d);
 static TupleDesc expr_get_desc(PLpgSQL_checkstate *cstate,
 							  PLpgSQL_expr *query,
 										  bool use_element_type,
 										  bool expand_record,
 										  bool is_expression);
-static void init_datum_dno(PLpgSQL_checkstate *cstate, int varno);
+
 static void format_error_xml(StringInfo str,
 						  PLpgSQL_execstate *estate,
 								 int sqlerrcode, int lineno,
@@ -154,9 +158,12 @@ static void format_error_xml(StringInfo str,
 								 const char *query);
 static void function_check(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 								   PLpgSQL_execstate *estate, PLpgSQL_checkstate *cstate);
-static PLpgSQL_datum *copy_plpgsql_datum(PLpgSQL_datum *datum);
 static PLpgSQL_trigtype get_trigtype(HeapTuple procTuple);
+static void init_datum_dno(PLpgSQL_checkstate *cstate, int varno);
+static bool is_checked(PLpgSQL_function *func);
 static int load_configuration(HeapTuple procTuple, bool *reload_config);
+static void mark_as_checked(PLpgSQL_function *func);
+static void plpgsql_check_HashTableInit(void);
 static void put_error(PLpgSQL_checkstate *cstate,
 					  int sqlerrcode, int lineno,
 					  const char *message, const char *detail, const char *hint,
@@ -168,7 +175,8 @@ static void release_exprs(List *exprs);
 static void setup_cstate(PLpgSQL_checkstate *cstate,
 							 Oid fn_oid, TupleDesc tupdesc, Tuplestorestate *tupstore,
 							 bool fatal_errors, bool other_warnings, bool perform_warnings,
-												    int format);
+												    int format,
+												    bool is_active_mode);
 static void setup_fake_fcinfo(FmgrInfo *flinfo,
 						 FunctionCallInfoData *fcinfo,
 										 TriggerData *trigdata,
@@ -195,6 +203,7 @@ static void tuplestore_put_text_line(Tuplestorestate *tuple_store, TupleDesc tup
 
 static bool plpgsql_check_other_warnings = false;
 static bool plpgsql_check_performance_warnings = false;
+static bool plpgsql_check_fatal_errors = true;
 static int plpgsql_check_mode = PLPGSQL_CHECK_MODE_BY_FUNCTION;
 
 static PLpgSQL_plugin plugin_funcs = { NULL, check_on_func_beg, NULL, NULL, NULL};
@@ -202,10 +211,26 @@ static PLpgSQL_plugin plugin_funcs = { NULL, check_on_func_beg, NULL, NULL, NULL
 static const struct config_enum_entry plpgsql_check_mode_options[] = {
 	{"disabled", PLPGSQL_CHECK_MODE_DISABLED, false},
 	{"by_function", PLPGSQL_CHECK_MODE_BY_FUNCTION, false},
-	{"first_start", PLPGSQL_CHECK_MODE_FIRST_START, false},
+	{"fresh_start", PLPGSQL_CHECK_MODE_FRESH_START, false},
 	{"every_start", PLPGSQL_CHECK_MODE_EVERY_START, false},
 	{NULL, 0, false}
 };
+
+/* ----------
+ * Hash table for checked functions
+ * ----------
+ */
+static HTAB *plpgsql_check_HashTable = NULL;
+
+typedef struct plpgsql_hashent
+{
+	PLpgSQL_func_hashkey key;
+	TransactionId fn_xmin;
+	ItemPointerData fn_tid;
+	bool is_checked;
+} plpgsql_check_HashEnt;
+
+#define FUNCS_PER_USER		128 /* initial table size */
 
 /*
  * Module initialization
@@ -251,6 +276,16 @@ _PG_init(void)
 					    PGC_SUSET, 0,
 					    NULL, NULL, NULL);
 
+	DefineCustomBoolVariable("plpgsql_check.fatal_errors",
+					    "when is true, then plpgsql check stops execution on detected error",
+					    NULL,
+					    &plpgsql_check_fatal_errors,
+					    true,
+					    PGC_SUSET, 0,
+					    NULL, NULL, NULL);
+
+	plpgsql_check_HashTableInit();
+
 	inited = true;
 }
 
@@ -266,7 +301,7 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 {
 	const char *err_text = estate->err_text;
 
-	if (plpgsql_check_mode == PLPGSQL_CHECK_MODE_FIRST_START ||
+	if (plpgsql_check_mode == PLPGSQL_CHECK_MODE_FRESH_START ||
 		   plpgsql_check_mode == PLPGSQL_CHECK_MODE_EVERY_START)
 	{
 		int i;
@@ -277,10 +312,26 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 		ResourceOwner oldowner;
 		PLpgSQL_checkstate cstate;
 
-		setup_cstate(&cstate, func->fn_oid, NULL, NULL, true,
+		/*
+		 * don't allow repeated execution on checked function
+		 * when it is not requsted. 
+		 */
+		if (plpgsql_check_mode == PLPGSQL_CHECK_MODE_FRESH_START &&
+			is_checked(func))
+		{
+			elog(NOTICE, "function \"%s\" was checked already",
+							    func->fn_signature);
+			return;
+		}
+
+		mark_as_checked(func);
+
+		setup_cstate(&cstate, func->fn_oid, NULL, NULL,
+							    plpgsql_check_fatal_errors,
 							    plpgsql_check_other_warnings,
 							    plpgsql_check_performance_warnings,
-							    PLPGSQL_CHECK_FORMAT_ELOG);
+							    PLPGSQL_CHECK_FORMAT_ELOG,
+							    false);
 
 		/* use real estate */
 		cstate.estate = estate;
@@ -663,7 +714,8 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 
 	setup_cstate(&cstate, funcoid, tupdesc, tupstore,
 							    fatal_errors, other_warnings, performance_warnings,
-										    format);
+										    format,
+										    true);
 
 	old_cxt = MemoryContextSwitchTo(cstate.check_cxt);
 
@@ -1021,7 +1073,8 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 			 bool fatal_errors,
 			 bool other_warnings,
 			 bool performance_warnings,
-			 int format)
+			 int format,
+			 bool is_active_mode)
 {
 	cstate->fn_oid = fn_oid;
 	cstate->estate = NULL;
@@ -1034,6 +1087,8 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->exprs = NIL;
 
 	cstate->format = format;
+	cstate->is_active_mode = is_active_mode;
+
 	cstate->sinfo = NULL;
 
 	cstate->check_cxt = AllocSetContextCreate(CurrentMemoryContext,
@@ -2405,8 +2460,19 @@ put_error(PLpgSQL_checkstate *cstate,
 	}
 	else
 	{
+		int elevel;
+
+		/*
+		 * when a passive mode is active and fatal_errors is false, then
+		 * raise warning everytime.
+		 */
+		if (!cstate->is_active_mode && !cstate->fatal_errors)
+			elevel = WARNING;
+		else
+			elevel = level == PLPGSQL_CHECK_ERROR ? ERROR : WARNING;
+
 		/* use error fields as parameters of postgres exception */
-		ereport(level == PLPGSQL_CHECK_ERROR ? ERROR : WARNING,
+		ereport(elevel,
 				(sqlerrcode ? errcode(sqlerrcode) : 0,
 				 errmsg_internal("%s", message),
 				 (detail != NULL) ? errdetail_internal("%s", detail) : 0,
@@ -2752,4 +2818,68 @@ check_function_epilog(PLpgSQL_checkstate *cstate)
 		tuplestore_put_text_line(cstate->tuple_store, cstate->tupdesc,
 					    cstate->sinfo->data, cstate->sinfo->len);
 	}
+}
+
+/****************************************************************************************
+ * A maintaining of hash table of checked funtcions
+ *
+ ****************************************************************************************
+ *
+ */
+
+/*
+ * We cannot to attach to DELETE event - so we don't need implement delete here.
+ */
+
+/* exported so we can call it from plpgsql_check_init() */
+static void
+plpgsql_check_HashTableInit(void)
+{
+	HASHCTL		ctl;
+
+	/* don't allow double-initialization */
+	Assert(plpgsql_check_HashTable == NULL);
+
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.keysize = sizeof(PLpgSQL_func_hashkey);
+	ctl.entrysize = sizeof(plpgsql_check_HashEnt);
+	ctl.hash = tag_hash;
+	plpgsql_check_HashTable = hash_create("plpgsql_check function cache",
+									FUNCS_PER_USER,
+									&ctl,
+									HASH_ELEM | HASH_FUNCTION);
+}
+
+static bool
+is_checked(PLpgSQL_function *func)
+{
+	plpgsql_check_HashEnt *hentry;
+
+	hentry = (plpgsql_check_HashEnt *) hash_search(plpgsql_check_HashTable,
+											 (void *) func->fn_hashkey,
+											 HASH_FIND,
+											 NULL);
+
+	if (hentry != NULL && hentry->fn_xmin == func->fn_xmin &&
+			  ItemPointerEquals(&hentry->fn_tid, &func->fn_tid))
+		return hentry->is_checked;
+
+	return false;
+}
+
+static void
+mark_as_checked(PLpgSQL_function *func)
+{
+	plpgsql_check_HashEnt *hentry;
+	bool		found;
+
+	hentry = (plpgsql_check_HashEnt *) hash_search(plpgsql_check_HashTable,
+											 (void *) func->fn_hashkey,
+											 HASH_ENTER,
+											 &found);
+
+	hentry->fn_xmin = func->fn_xmin;
+	hentry->fn_tid = func->fn_tid;
+
+	hentry->is_checked = true;
 }

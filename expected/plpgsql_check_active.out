@@ -491,7 +491,7 @@ $$ language plpgsql;
 select * from plpgsql_check_function_tb('f1()');
  functionid | lineno | statement | sqlstate |               message                | detail | hint | level | position |   query    
 ------------+--------+-----------+----------+--------------------------------------+--------+------+-------+----------+------------
- f1         |    569 |           | 42601    | syntax error at or near "adasdfsadf" |        |      | error |        2 |           +
+ f1         |    571 |           | 42601    | syntax error at or near "adasdfsadf" |        |      | error |        2 |           +
             |        |           |          |                                      |        |      |       |          | adasdfsadf+
             |        |           |          |                                      |        |      |       |          | 
 (1 row)

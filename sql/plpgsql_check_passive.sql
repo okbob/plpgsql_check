@@ -165,6 +165,42 @@ $$ language plpgsql;
 
 select f1();
 
+
+create or replace function f1()
+returns void as $$
+begin
+  if false then
+    insert into badbadtable values(10,20);
+  end if;
+  return;
+end;
+$$ language plpgsql;
+
+set plpgsql_check.mode = 'fresh_start';
+
+select f1();
+-- should not raise exception there
+select f1();
+
+create or replace function f1()
+returns void as $$
+begin
+  if false then
+    insert into badbadtable values(10,20);
+  end if;
+  return;
+end;
+$$ language plpgsql;
+
+-- after refreshing it should to raise exception again
+select f1();
+
+set plpgsql_check.mode = 'every_start';
+
+-- should to raise warning only
+set plpgsql_check.fatal_errors = false;
+select f1();
+
 drop function f1();
 
 drop table t1;

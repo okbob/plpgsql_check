@@ -110,10 +110,8 @@ Functions should be checked on start - plpgsql_check module must be loaded.
 
 ## Configuration
 
-    plpgsql_check.mode = [ disabled | by_function | first_start | every_start ]
-
-Note: first_start is not fully supported - it is same as every start this moment.
-Default option is "by_function"
+    plpgsql_check.mode = [ disabled | by_function | fresh_start | every_start ]
+    plpgsql_check.fatal_errors = [ yes | no ]
 
     plpgsql_check.show_nonperformance_warnings = false
     plpgsql_check.show_performance_warnings = false
