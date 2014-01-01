@@ -211,6 +211,7 @@ LINE 1: insert into badbadtable values(10,20)
                     ^
 QUERY:  insert into badbadtable values(10,20)
 CONTEXT:  PL/pgSQL function f1() line 4 at SQL statement
+PL/pgSQL function f1() line 4 at SQL statement
  f1 
 ----
  

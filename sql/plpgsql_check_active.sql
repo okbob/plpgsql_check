@@ -383,16 +383,7 @@ select * from plpgsql_check_function_tb('f1()');
 
 drop function f1();
 
-
-
-
-
-
-
-
-
 create table t1(a int, b int);
-
 
 create function f1()
 returns void as $$

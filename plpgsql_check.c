@@ -60,7 +60,7 @@ Datum plpgsql_check_function(PG_FUNCTION_ARGS);
  * columns of plpgsql_check_function_table result
  *
  */
-#define Natts_result					10
+#define Natts_result					11
 
 #define Anum_result_functionid			0
 #define Anum_result_lineno			1
@@ -72,6 +72,7 @@ Datum plpgsql_check_function(PG_FUNCTION_ARGS);
 #define Anum_result_level			7
 #define Anum_result_position			8
 #define Anum_result_query			9
+#define Anum_result_context			10
 
 enum
 {
@@ -149,13 +150,13 @@ static TupleDesc expr_get_desc(PLpgSQL_checkstate *cstate,
 										  bool use_element_type,
 										  bool expand_record,
 										  bool is_expression);
-
 static void format_error_xml(StringInfo str,
 						  PLpgSQL_execstate *estate,
 								 int sqlerrcode, int lineno,
 								 const char *message, const char *detail, const char *hint,
 								 int level, int position,
-								 const char *query);
+								 const char *query,
+								 const char *context);
 static void function_check(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 								   PLpgSQL_execstate *estate, PLpgSQL_checkstate *cstate);
 static PLpgSQL_trigtype get_trigtype(HeapTuple procTuple);
@@ -167,7 +168,8 @@ static void plpgsql_check_HashTableInit(void);
 static void put_error(PLpgSQL_checkstate *cstate,
 					  int sqlerrcode, int lineno,
 					  const char *message, const char *detail, const char *hint,
-					  int level, int position, const char *query);
+					  int level, int position,
+						 const char *query, const char *context);
 static void put_error_edata(PLpgSQL_checkstate *cstate, ErrorData *edata);
 static void precheck_conditions(HeapTuple procTuple, PLpgSQL_trigtype trigtype, Oid relid);
 static void prepare_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, int cursorOptions);
@@ -192,12 +194,14 @@ static void tuplestore_put_error_text(Tuplestorestate *tuple_store, TupleDesc tu
 						  PLpgSQL_execstate *estate, Oid fn_oid,
 								 int sqlerrcode, int lineno,
 								 const char *message, const char *detail, const char *hint,
-								 int level, int position, const char *query);
+								 int level, int position,
+									 const char *query, const char *context);
 static void tuplestore_put_error_tabular(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 						  PLpgSQL_execstate *estate, Oid fn_oid,
 								 int sqlerrcode, int lineno,
 								 const char *message, const char *detail, const char *hint,
-								 int level, int position, const char *query);
+								 int level, int position,
+									 const char *query, const char *context);
 static void tuplestore_put_text_line(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 								    const char *message, int len);
 
@@ -1333,7 +1337,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 												  "Local variable overlap function parameter.",
 												  NULL,
 												  PLPGSQL_CHECK_WARNING_OTHERS,
-												  0, NULL);
+												  0, NULL, NULL);
 									pfree(str.data);
 								}
 							}
@@ -1498,7 +1502,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 									  "Cannot to contine in check.",
 					  "Don't use dynamic SQL and record type together, when you would check function.",
 									  PLPGSQL_CHECK_WARNING_OTHERS,
-									  0, NULL);
+									  0, NULL, NULL);
 
 						/*
 						 * don't continue in checking. Behave should be
@@ -1649,7 +1653,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 										  "Cannot to contine in check.",
 						  "Don't use dynamic SQL and record type together, when you would check function.",
 										  PLPGSQL_CHECK_WARNING_OTHERS,
-										  0, NULL);
+										  0, NULL, NULL);
 
 							/*
 							 * don't continue in checking. Behave should be
@@ -1842,7 +1846,7 @@ check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 								  "There are more target variables than output columns in query.",
 						  "Check target variables in SELECT INTO statement.",
 								  PLPGSQL_CHECK_WARNING_OTHERS,
-								  0, NULL);
+								  0, NULL, NULL);
 				else if (targetrow->nfields < tupdesc->natts)
 					put_error(cstate,
 								  0, 0,
@@ -1850,7 +1854,7 @@ check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 								  "There are less target variables than output columns in query.",
 						   "Check target variables in SELECT INTO statement",
 								  PLPGSQL_CHECK_WARNING_OTHERS,
-								  0, NULL);
+								  0, NULL, NULL);
 			}
 			ReleaseTupleDesc(tupdesc);
 		}
@@ -2102,7 +2106,7 @@ assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc)
 						  NULL,
 						  NULL,
 						  PLPGSQL_CHECK_ERROR,
-						  0, NULL);
+						  0, NULL, NULL);
 
 		else if (var->datatype->typoid != tupdesc->attrs[0]->atttypid)
 		{
@@ -2119,7 +2123,7 @@ assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc)
 						  str.data,
 						  "Hidden casting can be a performance issue.",
 						  PLPGSQL_CHECK_WARNING_PERFORMANCE,
-						  0, NULL);
+						  0, NULL, NULL);
 
 			pfree(str.data);
 		}
@@ -2147,7 +2151,7 @@ assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 					  0, 0,
 					  "tuple descriptor is empty", NULL, NULL,
 					  PLPGSQL_CHECK_WARNING_OTHERS,
-					  0, NULL);
+					  0, NULL, NULL);
 		return;
 	}
 
@@ -2426,7 +2430,8 @@ put_error(PLpgSQL_checkstate *cstate,
 					  const char *hint,
 					  int level,
 					  int position,
-					  const char *query)
+					  const char *query,
+					  const char *context)
 {
 	/* ignore warnings when is not requested */
 	if ((level == PLPGSQL_CHECK_WARNING_PERFORMANCE && !cstate->performance_warnings) ||
@@ -2441,20 +2446,20 @@ put_error(PLpgSQL_checkstate *cstate,
 				tuplestore_put_error_tabular(cstate->tuple_store, cstate->tupdesc,
 								 cstate->estate, cstate->fn_oid,
 									 sqlerrcode, lineno, message, detail,
-									 hint, level, position, query);
+									 hint, level, position, query, context);
 				break;
 
 			case PLPGSQL_CHECK_FORMAT_TEXT:
 				tuplestore_put_error_text(cstate->tuple_store, cstate->tupdesc,
 								 cstate->estate, cstate->fn_oid,
 									 sqlerrcode, lineno, message, detail,
-									 hint, level, position, query);
+									 hint, level, position, query, context);
 				break;
 
 			case PLPGSQL_CHECK_FORMAT_XML:
 				format_error_xml(cstate->sinfo, cstate->estate,
 								 sqlerrcode, lineno, message, detail,
-								 hint, level, position, query);
+								 hint, level, position, query, context);
 				break;
 		}
 	}
@@ -2478,7 +2483,8 @@ put_error(PLpgSQL_checkstate *cstate,
 				 (detail != NULL) ? errdetail_internal("%s", detail) : 0,
 				 (hint != NULL) ? errhint("%s", hint) : 0,
 				 (query != NULL) ? internalerrquery(query) : 0,
-				 (position != 0) ? internalerrposition(position) : 0));
+				 (position != 0) ? internalerrposition(position) : 0,
+				 (context != NULL) ? errcontext("%s", context) : 0));
 	}
 }
 
@@ -2497,7 +2503,8 @@ tuplestore_put_error_tabular(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 								 const char *hint,
 								 int level,
 								 int position,
-								 const char *query)
+								 const char *query,
+								 const char *context)
 {
 	Datum	values[Natts_result];
 	bool	nulls[Natts_result];
@@ -2515,7 +2522,7 @@ tuplestore_put_error_tabular(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 	else
 	{
 		/* lineno is based on edata */
-		SET_RESULT_INT32(Anum_result_lineno, lineno);
+		SET_RESULT_NULL(Anum_result_lineno);
 		SET_RESULT_NULL(Anum_result_statement);
 	} 
 
@@ -2539,6 +2546,7 @@ tuplestore_put_error_tabular(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 
 	SET_RESULT_INT32(Anum_result_position, position);
 	SET_RESULT_TEXT(Anum_result_query, query);
+	SET_RESULT_TEXT(Anum_result_context, context);
 
 	tuplestore_putvalues(tuple_store, tupdesc, values, nulls);
 }
@@ -2557,10 +2565,12 @@ tuplestore_put_error_text(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 								 const char *hint,
 								 int level,
 								 int position,
-								 const char *query)
+								 const char *query,
+								 const char *context)
 {
 	StringInfoData  sinfo;
 	const char *level_str;
+	bool			use_sql_lineno = false;
 
 	Assert(message != NULL);
 
@@ -2587,10 +2597,12 @@ tuplestore_put_error_text(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 			    plpgsql_stmt_typename(estate->err_stmt),
 				 message);
 	else
+	{
 		appendStringInfo(&sinfo, "%s:%s:%s",
 				 level_str,
 				 unpack_sql_state(sqlerrcode),
 				 message);
+	}
 
 	tuplestore_put_text_line(tuple_store, tupdesc, sinfo.data, sinfo.len);
 	resetStringInfo(&sinfo);
@@ -2677,17 +2689,22 @@ tuplestore_put_error_text(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 		resetStringInfo(&sinfo);
 	}
 
-	if (hint != NULL) 
+	if (hint != NULL)
 	{
 		appendStringInfo(&sinfo, "Hint: %s", hint);
 		tuplestore_put_text_line(tuple_store, tupdesc, sinfo.data, sinfo.len);
 		resetStringInfo(&sinfo);
 	}
 
+	if (context != NULL) 
+	{
+		appendStringInfo(&sinfo, "Context: %s", context);
+		tuplestore_put_text_line(tuple_store, tupdesc, sinfo.data, sinfo.len);
+		resetStringInfo(&sinfo);
+	}
+
 	pfree(sinfo.data);
 }
-
-
 
 /*
  * format_error_xml formats and collects a identifided issues
@@ -2702,7 +2719,8 @@ format_error_xml(StringInfo str,
 								 const char *hint,
 								 int level,
 								 int position,
-								 const char *query)
+								 const char *query,
+								 const char *context)
 {
 	const char *level_str;
 
@@ -2743,6 +2761,10 @@ format_error_xml(StringInfo str,
 		appendStringInfo(str, "    <Query position=\"%d\">%s</Query>\n",
 							 position, escape_xml(query));
 
+	if (context != NULL)
+		appendStringInfo(str, "    <Context>%s</Context>\n",
+							 escape_xml(context));
+
 	/* flush closing tag */
 	appendStringInfoString(str, "  </Issue>\n");
 }
@@ -2762,7 +2784,8 @@ put_error_edata(PLpgSQL_checkstate *cstate,
 				  edata->hint,
 				  PLPGSQL_CHECK_ERROR,
 				  edata->internalpos,
-				  edata->internalquery);
+				  edata->internalquery,
+				  edata->context);
 }
 
 /*
