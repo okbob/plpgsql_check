@@ -12,15 +12,15 @@ endif
 REGRESS_OPTS = --dbname=$(PL_TESTDB) --load-language=plpgsql
 REGRESS = plpgsql_check_passive plpgsql_check_active plpgsql_check_active-$(MAJORVERSION) plpgsql_check_passive-$(MAJORVERSION)
 
-ifdef USE_PGXS
-PG_CONFIG = pg_config
-PGXS := $(shell $(PG_CONFIG) --pgxs)
-include $(PGXS)
-else
+ifdef NO_PGXS
 subdir = contrib/plpgsql_check
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
+else
+PG_CONFIG = pg_config
+PGXS := $(shell $(PG_CONFIG) --pgxs)
+include $(PGXS)
 endif
 
 ifeq ($(PORTNAME), darwin)
