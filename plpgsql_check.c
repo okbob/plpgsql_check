@@ -112,6 +112,7 @@ typedef struct PLpgSQL_checkstate
 	MemoryContext		   check_cxt;
 	List			   *exprs;	/* list of all expression created by checker */
 	bool		is_active_mode;	/* true, when checking is started by plpgsql_check_function */
+	Bitmapset *used_variables; /* track which variables have been used; bit per varno */
 }	PLpgSQL_checkstate;
 
 
@@ -204,6 +205,9 @@ static void tuplestore_put_error_tabular(Tuplestorestate *tuple_store, TupleDesc
 									 const char *query, const char *context);
 static void tuplestore_put_text_line(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 								    const char *message, int len);
+static void report_unused_variables(PLpgSQL_checkstate *cstate);
+static void record_variable_usage(PLpgSQL_checkstate *cstate, int dno);
+
 
 static bool plpgsql_check_other_warnings = false;
 static bool plpgsql_check_performance_warnings = false;
@@ -391,6 +395,7 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 			 * Now check the toplevel block of statements
 			 */
 			check_stmt(&cstate, (PLpgSQL_stmt *) func->action);
+			report_unused_variables(&cstate);
 		}
 		PG_CATCH();
 		{
@@ -893,6 +898,7 @@ function_check(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 	 * Now check the toplevel block of statements
 	 */
 	check_stmt(cstate, (PLpgSQL_stmt *) func->action);
+	report_unused_variables(cstate);
 }
 
 /*
@@ -963,6 +969,7 @@ trigger_check(PLpgSQL_function *func, Node *tdata,
 	 * Now check the toplevel block of statements
 	 */
 	check_stmt(cstate, (PLpgSQL_stmt *) func->action);
+	report_unused_variables(cstate);
 }
 
 /*
@@ -1089,6 +1096,7 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->performance_warnings = performance_warnings;
 	cstate->argnames = NIL;
 	cstate->exprs = NIL;
+	cstate->used_variables = NULL;
 
 	cstate->format = format;
 	cstate->is_active_mode = is_active_mode;
@@ -1352,6 +1360,15 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 						{
 							check_stmts(cstate, ((PLpgSQL_exception *) lfirst(l))->action);
 						}
+
+						/*
+						 * Mark the hidden variables SQLSTATE and SQLERRM used
+						 * even if they actually weren't.  Not using them
+						 * should practically never be a sign of a problem, so
+						 * there's no point in annoying the user.
+						 */
+						record_variable_usage(cstate, stmt_block->exceptions->sqlstate_varno);
+						record_variable_usage(cstate, stmt_block->exceptions->sqlerrm_varno);
 					}
 				}
 				break;
@@ -1778,6 +1795,59 @@ check_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 		check_expr_as_rvalue(cstate, expr, NULL, NULL, -1, false, false);
 }
 
+static void
+record_variable_usage(PLpgSQL_checkstate *cstate, int dno)
+{
+	if (dno >= 0)
+		cstate->used_variables = bms_add_member(cstate->used_variables, dno);
+}
+
+/*
+ * Reports all unused variables explicitly DECLAREd by the user.  Ignores IN
+ * and OUT variables and special variables created by PL/PgSQL.
+ */
+static void
+report_unused_variables(PLpgSQL_checkstate *cstate)
+{
+	int i;
+	PLpgSQL_execstate *estate = cstate->estate;
+
+	for (i = 0; i < estate->ndatums; i++)
+	{
+		int dtype = estate->datums[i]->dtype;
+		PLpgSQL_variable *var;
+
+		if (dtype != PLPGSQL_DTYPE_VAR &&
+			dtype != PLPGSQL_DTYPE_ROW &&
+			dtype != PLPGSQL_DTYPE_REC)
+			continue;
+
+		/* skip special internal variables */
+		var = (PLpgSQL_variable *) estate->datums[i];
+		if (var->lineno < 1)
+			continue;
+		/* skip internal vars created for INTO lists  */
+		if (dtype == PLPGSQL_DTYPE_ROW &&
+			((PLpgSQL_row *) var)->rowtupdesc == NULL)
+			continue;
+
+		if (!bms_is_member(i, cstate->used_variables))
+		{
+			StringInfoData ctx;
+			initStringInfo(&ctx);
+			appendStringInfo(&ctx, "variable %s declared on line %d", var->refname, var->lineno);
+			put_error(cstate,
+					  0, 0,
+					  "unused declared variable",
+					  NULL,
+					  NULL,
+					  PLPGSQL_CHECK_WARNING_OTHERS,
+					  0, NULL, ctx.data);
+		}
+	}
+}
+
+
 /*
  * Verify an assignment of 'expr' to 'target'
  *
@@ -1829,6 +1899,9 @@ check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 	PG_TRY();
 	{
 		prepare_expr(cstate, expr, 0);
+		/* record all variables used by the query */
+		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
+
 		tupdesc = expr_get_desc(cstate, expr, use_element_type, true, is_expression);
 		if (tupdesc)
 		{
@@ -1901,7 +1974,6 @@ check_row_or_rec(PLpgSQL_checkstate *cstate, PLpgSQL_row *row, PLpgSQL_rec *rec)
 {
 	int			fnum;
 
-	/* there are nothing to check on rec now */
 	if (row != NULL)
 	{
 		for (fnum = 0; fnum < row->nfields; fnum++)
@@ -1913,6 +1985,14 @@ check_row_or_rec(PLpgSQL_checkstate *cstate, PLpgSQL_row *row, PLpgSQL_rec *rec)
 			check_target(cstate, row->varnos[fnum]);
 		}
 	}
+	else if (rec != NULL)
+	{
+		/*
+		 * There are no checks done on records currently; just record that the
+		 * variable is not unused.
+		 */
+		record_variable_usage(cstate, rec->dno);
+	}
 }
 
 /*
@@ -1923,6 +2003,8 @@ static void
 check_target(PLpgSQL_checkstate *cstate, int varno)
 {
 	PLpgSQL_datum *target = cstate->estate->datums[varno];
+
+	record_variable_usage(cstate, varno);
 
 	switch (target->dtype)
 	{

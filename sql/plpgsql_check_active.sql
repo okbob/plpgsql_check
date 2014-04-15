@@ -330,7 +330,7 @@ select * from plpgsql_check_function_tb('f1()');
 
 create or replace function f1()
 returns void as $$
-declare a1 int; a2 int;
+declare a1 int;
 begin
   select 10,20 into a1;
 end;
@@ -705,7 +705,7 @@ select * from plpgsql_check_function('f1()');
 
 create or replace function f1()
 returns void as $$
-declare a1 int; a2 int;
+declare a1 int;
 begin
   select 10,20 into a1;
 end;
@@ -757,4 +757,50 @@ $$ language plpgsql;
 select * from plpgsql_check_function('f1()');
 
 drop function f1();
+
+-- unused variables
+create or replace function f1(_input1 int)
+returns table(_output1 int, _output2 int)
+as $$
+declare
+_f1 int;
+_f2 int;
+_f3 int;
+_f4 int;
+_f5 int;
+_r record;
+begin
+if true then
+	_f1 := 1;
+end if;
+select 1, 2 into _f3, _f4;
+perform 1 where _f5 is null;
+select 1 into _r;
+
+-- check that SQLSTATE and SQLERRM don't raise false positives
+begin
+exception when raise_exception then
+end;
+
+end
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1(int)');
+
+drop function f1(int);
+
+-- check that NEW and OLD are not reported unused
+create table f1tbl();
+create or replace function f1()
+returns trigger
+as $$
+begin
+return null;
+end
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', 'f1tbl');
+
+drop function f1();
+drop table f1tbl;
 
