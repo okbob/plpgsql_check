@@ -804,3 +804,21 @@ select * from plpgsql_check_function('f1()', 'f1tbl');
 drop function f1();
 drop table f1tbl;
 
+-- assignments with/without implicit casts
+create or replace function f1() returns void as $$
+declare
+intval integer;
+begin
+	intval := 1; -- OK
+	intval := '1'; -- OK
+	intval := text '1'; -- not OK
+
+	select 1 into intval; -- OK
+	select '1' into intval; -- OK
+	select text '1' into intval; -- not OK
+end
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()');
+
+drop function f1();
