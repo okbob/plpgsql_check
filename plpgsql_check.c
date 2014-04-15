@@ -2570,7 +2570,6 @@ tuplestore_put_error_text(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 {
 	StringInfoData  sinfo;
 	const char *level_str;
-	bool			use_sql_lineno = false;
 
 	Assert(message != NULL);
 
@@ -2586,6 +2585,9 @@ tuplestore_put_error_text(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 			break;
 		case PLPGSQL_CHECK_WARNING_PERFORMANCE:
 			level_str = "performance";
+			break;
+		default:
+			level_str = "???";
 			break;
 	}
 
@@ -2736,6 +2738,9 @@ format_error_xml(StringInfo str,
 			break;
 		case PLPGSQL_CHECK_WARNING_PERFORMANCE:
 			level_str = "performance";
+			break;
+		default:
+			level_str = "???";
 			break;
 	}
 
