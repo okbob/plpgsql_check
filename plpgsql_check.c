@@ -2233,7 +2233,7 @@ assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, int
 	{
 		PLpgSQL_var *var = (PLpgSQL_var *) target;
 
-		if (type_is_rowtype(tupdesc->attrs[0]->atttypid))
+		if (type_is_rowtype(tupdesc->attrs[n]->atttypid))
 		{
 			put_error(cstate,
 						  ERRCODE_DATATYPE_MISMATCH, 0,
@@ -2245,7 +2245,7 @@ assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, int
 		}
 		else
 		{
-			check_assignment_target_type(cstate, tupdesc->attrs[0]->atttypid,
+			check_assignment_target_type(cstate, tupdesc->attrs[n]->atttypid,
 										 var->datatype->typoid);
 		}
 	}
