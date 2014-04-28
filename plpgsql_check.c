@@ -1833,16 +1833,16 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 
 		if (!bms_is_member(i, cstate->used_variables))
 		{
-			StringInfoData ctx;
-			initStringInfo(&ctx);
-			appendStringInfo(&ctx, "variable %s declared on line %d", var->refname, var->lineno);
+			StringInfoData detail;
+			initStringInfo(&detail);
+			appendStringInfo(&detail, "variable %s declared on line %d", var->refname, var->lineno);
 			put_error(cstate,
 					  0, 0,
 					  "unused declared variable",
-					  NULL,
+					  detail.data,
 					  NULL,
 					  PLPGSQL_CHECK_WARNING_OTHERS,
-					  0, NULL, ctx.data);
+					  0, NULL, NULL);
 		}
 	}
 }

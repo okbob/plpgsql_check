@@ -1096,7 +1096,7 @@ select * from plpgsql_check_function('f1(int)');
              plpgsql_check_function              
 -------------------------------------------------
  warning:00000:0:RETURN:unused declared variable
- Context: variable _f2 declared on line 4
+ Detail: variable _f2 declared on line 4
 (2 rows)
 
 drop function f1(int);
