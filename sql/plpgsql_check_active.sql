@@ -758,6 +758,8 @@ select * from plpgsql_check_function('f1()');
 
 drop function f1();
 
+create table f1tbl(a int, b int);
+
 -- unused variables
 create or replace function f1(_input1 int)
 returns table(_output1 int, _output2 int)
@@ -769,6 +771,7 @@ _f3 int;
 _f4 int;
 _f5 int;
 _r record;
+_tbl f1tbl;
 begin
 if true then
 	_f1 := 1;
@@ -776,6 +779,7 @@ end if;
 select 1, 2 into _f3, _f4;
 perform 1 where _f5 is null;
 select 1 into _r;
+select 1, 2 into _tbl;
 
 -- check that SQLSTATE and SQLERRM don't raise false positives
 begin
@@ -788,6 +792,7 @@ $$ language plpgsql;
 select * from plpgsql_check_function('f1(int)');
 
 drop function f1(int);
+drop table f1tbl;
 
 -- check that NEW and OLD are not reported unused
 create table f1tbl();
