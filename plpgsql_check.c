@@ -1984,6 +1984,7 @@ check_row_or_rec(PLpgSQL_checkstate *cstate, PLpgSQL_row *row, PLpgSQL_rec *rec)
 
 			check_target(cstate, row->varnos[fnum]);
 		}
+		record_variable_usage(cstate, row->dno);
 	}
 	else if (rec != NULL)
 	{
