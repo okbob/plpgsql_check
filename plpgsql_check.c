@@ -28,7 +28,23 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 
+#if PG_VERSION_NUM >= 90300
 #include "access/htup_details.h"
+
+#else
+
+/* Older version doesn't support event triggers */
+typedef struct {}  EventTriggerData;
+
+typedef enum PLpgSQL_trigtype
+{
+	PLPGSQL_DML_TRIGGER,
+	PLPGSQL_EVENT_TRIGGER,
+	PLPGSQL_NOT_TRIGGER
+} PLpgSQL_trigtype;
+
+#endif
+
 #include "catalog/pg_language.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -472,7 +488,7 @@ plpgsql_check_function(PG_FUNCTION_ARGS)
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	PLpgSQL_trigtype trigtype;
 	char *format_lower_str;
-	int format;
+	int format = PLPGSQL_CHECK_FORMAT_TEXT;
 
 	format_lower_str = lowerstr(format_str);
 	if (strcmp(format_lower_str, "text") == 0)
@@ -619,8 +635,14 @@ get_trigtype(HeapTuple procTuple)
 		if (proc->prorettype == TRIGGEROID ||
 			(proc->prorettype == OPAQUEOID && proc->pronargs == 0))
 			return PLPGSQL_DML_TRIGGER;
+
+#if PG_VERSION_NUM >= 90300
+
 		else if (proc->prorettype == EVTTRIGGEROID)
 			return PLPGSQL_EVENT_TRIGGER;
+
+#endif
+
 		else if (proc->prorettype != RECORDOID &&
 				 proc->prorettype != VOIDOID &&
 				 !IsPolymorphicType(proc->prorettype))
@@ -777,7 +799,23 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 			cur_estate = function->cur_estate;
 
 			/* recheck trigtype */
+
+#if PG_VERSION_NUM >= 90300
+
 			Assert(function->fn_is_trigger == trigtype);
+
+#else
+
+#ifdef USE_ASSERT_CHECKING
+
+			if (function->fn_is_trigger)
+				Assert(trigtype == PLPGSQL_DML_TRIGGER);
+			else
+				Assert(trigtype == PLPGSQL_NOT_TRIGGER);
+
+#endif
+
+#endif
 
 			setup_plpgsql_estate(&estate, function, (ReturnSetInfo *) fake_fcinfo.resultinfo);
 			cstate.estate = &estate;
@@ -957,11 +995,17 @@ trigger_check(PLpgSQL_function *func, Node *tdata,
 		init_datum_dno(cstate, func->tg_nargs_varno);
 		init_datum_dno(cstate, func->tg_argv_varno);
 	}
+
+#if PG_VERSION_NUM >= 90300
+
 	else if (IsA(tdata, EventTriggerData))
 	{
 		init_datum_dno(cstate, func->tg_event_varno);
 		init_datum_dno(cstate, func->tg_tag_varno);
 	}
+
+#endif
+
 	else
 		elog(ERROR, "unexpected environment");
 
@@ -1064,12 +1108,18 @@ setup_fake_fcinfo(FmgrInfo *flinfo,
 		trigdata->type = T_TriggerData;
 		fcinfo->context = (Node *) trigdata;
 	}
+
+#if PG_VERSION_NUM >= 90300
+
 	else if (trigtype == PLPGSQL_EVENT_TRIGGER)
 	{
 		MemSet(etrigdata, 0, sizeof(etrigdata));
 		etrigdata->type = T_EventTriggerData;
 		fcinfo->context = (Node *) etrigdata;
 	}
+
+#endif
+
 }
 
 /*

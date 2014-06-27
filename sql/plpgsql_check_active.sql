@@ -362,27 +362,6 @@ select * from plpgsql_check_function_tb('f1()');
 
 drop function f1();
 
--- check event trigger function 
-create or replace function f1() returns event_trigger as $$
-BEGIN
-    RAISE NOTICE 'test_event_trigger: % %', tg_event, tg_tag;
-END
-$$ language plpgsql;
-
-
-select * from plpgsql_check_function_tb('f1()');
-
--- should fail
-create or replace function f1() returns event_trigger as $$
-BEGIN
-    RAISE NOTICE 'test_event_trigger: % %', tg_event, tg_tagX;
-END
-$$ language plpgsql;
-
-select * from plpgsql_check_function_tb('f1()');
-
-drop function f1();
-
 create table t1(a int, b int);
 
 create function f1()
@@ -731,27 +710,6 @@ set check_function_bodies to off;
 create or replace function f1()
 returns void as $$
 adasdfsadf
-$$ language plpgsql;
-
-select * from plpgsql_check_function('f1()');
-
-drop function f1();
-
--- check event trigger function 
-create or replace function f1() returns event_trigger as $$
-BEGIN
-    RAISE NOTICE 'test_event_trigger: % %', tg_event, tg_tag;
-END
-$$ language plpgsql;
-
-
-select * from plpgsql_check_function('f1()');
-
--- should fail
-create or replace function f1() returns event_trigger as $$
-BEGIN
-    RAISE NOTICE 'test_event_trigger: % %', tg_event, tg_tagX;
-END
 $$ language plpgsql;
 
 select * from plpgsql_check_function('f1()');

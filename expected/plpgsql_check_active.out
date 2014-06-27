@@ -497,30 +497,6 @@ select * from plpgsql_check_function_tb('f1()');
 (1 row)
 
 drop function f1();
--- check event trigger function 
-create or replace function f1() returns event_trigger as $$
-BEGIN
-    RAISE NOTICE 'test_event_trigger: % %', tg_event, tg_tag;
-END
-$$ language plpgsql;
-select * from plpgsql_check_function_tb('f1()');
- functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
-(0 rows)
-
--- should fail
-create or replace function f1() returns event_trigger as $$
-BEGIN
-    RAISE NOTICE 'test_event_trigger: % %', tg_event, tg_tagX;
-END
-$$ language plpgsql;
-select * from plpgsql_check_function_tb('f1()');
- functionid | lineno | statement | sqlstate |             message             | detail | hint | level | position |     query      | context 
-------------+--------+-----------+----------+---------------------------------+--------+------+-------+----------+----------------+---------
- f1         |      3 | RAISE     | 42703    | column "tg_tagx" does not exist |        |      | error |        8 | SELECT tg_tagX | 
-(1 row)
-
-drop function f1();
 create table t1(a int, b int);
 create function f1()
 returns void as $$
@@ -1038,32 +1014,6 @@ select * from plpgsql_check_function('f1()');
         
  Context: compilation of PL/pgSQL function "f1" near line 1
 (6 rows)
-
-drop function f1();
--- check event trigger function 
-create or replace function f1() returns event_trigger as $$
-BEGIN
-    RAISE NOTICE 'test_event_trigger: % %', tg_event, tg_tag;
-END
-$$ language plpgsql;
-select * from plpgsql_check_function('f1()');
- plpgsql_check_function 
-------------------------
-(0 rows)
-
--- should fail
-create or replace function f1() returns event_trigger as $$
-BEGIN
-    RAISE NOTICE 'test_event_trigger: % %', tg_event, tg_tagX;
-END
-$$ language plpgsql;
-select * from plpgsql_check_function('f1()');
-               plpgsql_check_function                
------------------------------------------------------
- error:42703:3:RAISE:column "tg_tagx" does not exist
- Query: SELECT tg_tagX
- --            ^
-(3 rows)
 
 drop function f1();
 create table f1tbl(a int, b int);
