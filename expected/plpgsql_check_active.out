@@ -1070,3 +1070,29 @@ select * from plpgsql_check_function('f1()', 'f1tbl');
 
 drop function f1();
 drop table f1tbl;
+-- assignments with/without implicit casts
+create or replace function f1() returns void as $$
+declare
+intval integer;
+begin
+	intval := 1; -- OK
+	intval := '1'; -- OK
+	intval := text '1'; -- not OK
+
+	select 1 into intval; -- OK
+	select '1' into intval; -- OK
+	select text '1' into intval; -- not OK
+end
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()');
+                                   plpgsql_check_function                                   
+--------------------------------------------------------------------------------------------
+ warning:42804:7:assignment:target variable has a different type than expression result
+ Detail: assign "text" value to "integer" variable
+ Hint: The input expression type does not have an implicit cast to the target type.
+ warning:42804:11:SQL statement:target variable has a different type than expression result
+ Detail: assign "text" value to "integer" variable
+ Hint: The input expression type does not have an implicit cast to the target type.
+(6 rows)
+
+drop function f1();

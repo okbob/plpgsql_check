@@ -49,6 +49,7 @@ typedef enum PLpgSQL_trigtype
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "executor/spi_priv.h"
+#include "parser/parse_coerce.h"
 #include "tsearch/ts_locale.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
@@ -132,7 +133,7 @@ typedef struct PLpgSQL_checkstate
 }	PLpgSQL_checkstate;
 
 
-static void assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc);
+static void assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, int n);
 static void assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 						  PLpgSQL_row *row, PLpgSQL_rec *rec,
 						  TupleDesc tupdesc);
@@ -223,6 +224,8 @@ static void tuplestore_put_text_line(Tuplestorestate *tuple_store, TupleDesc tup
 								    const char *message, int len);
 static void report_unused_variables(PLpgSQL_checkstate *cstate);
 static void record_variable_usage(PLpgSQL_checkstate *cstate, int dno);
+static void check_assignment_target_type(PLpgSQL_checkstate *cstate, Oid inputexprtyp,
+										 Oid targettyp);
 
 
 static bool plpgsql_check_other_warnings = false;
@@ -1958,10 +1961,12 @@ check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 			if (targetrow != NULL || targetrec != NULL)
 				assign_tupdesc_row_or_rec(cstate, targetrow, targetrec, tupdesc);
 			if (targetdno != -1)
-				assign_tupdesc_dno(cstate, targetdno, tupdesc);
+				assign_tupdesc_dno(cstate, targetdno, tupdesc, 0);
 
 			if (targetrow)
 			{
+				int i;
+
 				if (targetrow->nfields > tupdesc->natts)
 					put_error(cstate,
 								  0, 0,
@@ -1978,6 +1983,15 @@ check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 						   "Check target variables in SELECT INTO statement",
 								  PLPGSQL_CHECK_WARNING_OTHERS,
 								  0, NULL, NULL);
+
+				/*
+				 * Finally, check that the individual expressions can be
+				 * assigned to their respective targets.
+				 */
+				for (i = 0; i < targetrow->nfields; i++)
+				{
+					assign_tupdesc_dno(cstate, targetrow->varnos[i], tupdesc, i);
+				}
 			}
 			ReleaseTupleDesc(tupdesc);
 		}
@@ -2220,10 +2234,48 @@ prepare_expr(PLpgSQL_checkstate *cstate,
 }
 
 /*
- * Assign a tuple descriptor to variable specified by dno
+ * Checks that an expression of type inputexprtyp can safely be assigned to a
+ * target of type targettyp.
  */
 static void
-assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc)
+check_assignment_target_type(PLpgSQL_checkstate *cstate, Oid inputexprtyp, Oid targettyp)
+{
+	StringInfoData	str;
+
+	initStringInfo(&str);
+	appendStringInfo(&str, "assign \"%s\" value to \"%s\" variable",
+								format_type_be(inputexprtyp),
+								format_type_be(targettyp));
+	if (can_coerce_type(1, &inputexprtyp, &targettyp, COERCION_IMPLICIT))
+	{
+		put_error(cstate,
+					  ERRCODE_DATATYPE_MISMATCH, 0,
+					  "target variable has a different type than expression result",
+					  str.data,
+					  "Hidden casting can be a performance issue.",
+					  PLPGSQL_CHECK_WARNING_PERFORMANCE,
+					  0, NULL, NULL);
+	}
+	else
+	{
+		put_error(cstate,
+					  ERRCODE_DATATYPE_MISMATCH, 0,
+					  "target variable has a different type than expression result",
+					  str.data,
+					  "The input expression type does not have an implicit cast to the target type.",
+					  PLPGSQL_CHECK_WARNING_OTHERS,
+					  0, NULL, NULL);
+
+	}
+	pfree(str.data);
+}
+
+/*
+ * Either directly assigns tupdesc to a target record, or if the target is a
+ * scalar, checks that the nth attribute of tupdesc can be assigned to it.
+ */
+static void
+assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, int n)
 {
 	PLpgSQL_datum *target = cstate->estate->datums[varno];
 
@@ -2232,7 +2284,8 @@ assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc)
 	{
 		PLpgSQL_var *var = (PLpgSQL_var *) target;
 
-		if (type_is_rowtype(tupdesc->attrs[0]->atttypid))
+		if (type_is_rowtype(tupdesc->attrs[n]->atttypid))
+		{
 			put_error(cstate,
 						  ERRCODE_DATATYPE_MISMATCH, 0,
 						  "cannot assign composite value to a scalar variable",
@@ -2240,25 +2293,11 @@ assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc)
 						  NULL,
 						  PLPGSQL_CHECK_ERROR,
 						  0, NULL, NULL);
-
-		else if (var->datatype->typoid != tupdesc->attrs[0]->atttypid)
+		}
+		else
 		{
-			StringInfoData	str;
-
-			initStringInfo(&str);
-			appendStringInfo(&str, "assign \"%s\" value to \"%s\" variable",
-										format_type_be(tupdesc->attrs[0]->atttypid),
-										format_type_be(var->datatype->typoid));
-
-			put_error(cstate,
-						  ERRCODE_DATATYPE_MISMATCH, 0,
-						  "target variable has different type then expression result",
-						  str.data,
-						  "Hidden casting can be a performance issue.",
-						  PLPGSQL_CHECK_WARNING_PERFORMANCE,
-						  0, NULL, NULL);
-
-			pfree(str.data);
+			check_assignment_target_type(cstate, tupdesc->attrs[n]->atttypid,
+										 var->datatype->typoid);
 		}
 	}
 	else if (target->dtype == PLPGSQL_DTYPE_REC)
