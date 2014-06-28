@@ -1,15 +1,15 @@
 plpgsql_check
 =============
 
-I founded this project, because I would to publish a code, that I wrote last two years,
+I founded this project, because I wanted to publish the code I wrote in the last two years,
 when I tried to write enhanced checking for PostgreSQL upstream. It was not fully
 successful - integration into upstream requires some larger plpgsql refactoring - probably
 it will not be done in next two years (now is Dec 2013). But written code is fully functional
-and can be used in production. So I created this extension to be available for all
+and can be used in production. So, I created this extension to be available for all
 plpgsql developers.
 
 If you like it and if you would to join to development of this extension, register
-self to [postgresql extension hacking](https://groups.google.com/forum/#!forum/postgresql-extensions-hacking)
+yourself to [postgresql extension hacking](https://groups.google.com/forum/#!forum/postgresql-extensions-hacking)
 google group.
 
 I invite any ideas, patches, bugreports
@@ -47,7 +47,7 @@ can be found by plpgsql_check_function:
 
     CREATE FUNCTION
 
-    postgres=# select f1(); -- execution doesn't find a bug due empty table t1
+    postgres=# select f1(); -- execution doesn't find a bug due to empty table t1
       f1 
      ────
        
@@ -124,7 +124,7 @@ Functions should be checked on start - plpgsql_check module must be loaded.
     plpgsql_check.show_nonperformance_warnings = false
     plpgsql_check.show_performance_warnings = false
 
-Default mode is <i>by_function</i>, that means so enhanced check is done only in
+Default mode is <i>by_function</i>, that means that the enhanced check is done only in
 active mode - by <i>plpgsql_check_function</i>.
 
 You can enable passive mode by
@@ -137,7 +137,7 @@ You can enable passive mode by
 
 # Limits
 
-<i>plpgsql_check</i> should find almost all errors on really static code. When developer uses some
+<i>plpgsql_check</i> should find almost all errors on really static code. When developer use some
 PLpgSQL's dynamic features like dynamic SQL or record data type, then false positives are
 possible. These should be rare - in well written code - and then the affected function
 should be redesigned or plpgsql_check should be disabled for this function.
@@ -160,15 +160,15 @@ it only in develop or preprod environments.</i>
 ## Dynamic SQL
 
 This module doesn't check queries that are assembled in runtime. It is not possible
-to identify result of dynamic queries - so <i>plpgsql_check</i> cannot to set correct type to record
+to identify results of dynamic queries - so <i>plpgsql_check</i> cannot to set correct type to record
 variables and cannot to check a dependent SQLs and expressions. Don't use record variable
-as target for dynamic queries or disable <i>plpgsql_check</i> for functions that use a dynamic
+as target for dynamic queries or disable <i>plpgsql_check</i> for functions that use dynamic
 queries.
 
 ## Temporary tables
 
-<i>plpgsql_check</i> cannot to verify queries over temporary tables that are created in plpgsql's function
-runtime. For this use case is necessary to create a fake temp table or disable <i>plpgsql_check</i> for this
+<i>plpgsql_check</i> cannot verify queries over temporary tables that are created in plpgsql's function
+runtime. For this use case it is necessary to create a fake temp table or disable <i>plpgsql_check</i> for this
 function.
 
 # Licence
