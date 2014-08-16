@@ -218,5 +218,43 @@ PL/pgSQL function f1() line 4 at SQL statement
 (1 row)
 
 drop function f1();
+create function f1()
+returns setof t1 as $$
+begin
+  if false then
+    return query select a,a,a from t1;
+    return;
+  end if;
+end;
+$$ language plpgsql;
+select * from f1();
+WARNING:  structure of query does not match function result type
+DETAIL:  Number of returned columns (3) does not match expected column count (2).
+CONTEXT:  PL/pgSQL function f1() line 4 at RETURN QUERY
+PL/pgSQL function f1() line 4 at RETURN QUERY
+ a | b 
+---+---
+(0 rows)
+
+drop function f1();
+create function f1()
+returns setof t1 as $$
+begin
+  if false then
+    return query select a, b::numeric from t1;
+    return;
+  end if;
+end;
+$$ language plpgsql;
+select * from f1();
+WARNING:  structure of query does not match function result type
+DETAIL:  Returned type numeric does not match expected type integer in column 2.
+CONTEXT:  PL/pgSQL function f1() line 4 at RETURN QUERY
+PL/pgSQL function f1() line 4 at RETURN QUERY
+ a | b 
+---+---
+(0 rows)
+
+drop function f1();
 drop table t1;
 drop type _exception_type;

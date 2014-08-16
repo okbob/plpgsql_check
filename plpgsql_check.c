@@ -45,6 +45,8 @@ typedef enum PLpgSQL_trigtype
 
 #endif
 
+#include "access/tupconvert.h"
+#include "access/tupdesc.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -146,6 +148,7 @@ static void check_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 static void check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 					  PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
 				   int targetdno, bool use_element_type, bool is_expression);
+static void check_expr_as_return_query(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 static void check_function_epilog(PLpgSQL_checkstate *cstate);
 static void check_function_prolog(PLpgSQL_checkstate *cstate);
 static void check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func);
@@ -196,8 +199,10 @@ static void setup_cstate(PLpgSQL_checkstate *cstate,
 							 bool fatal_errors, bool other_warnings, bool perform_warnings,
 												    int format,
 												    bool is_active_mode);
-static void setup_fake_fcinfo(FmgrInfo *flinfo,
+static void setup_fake_fcinfo(HeapTuple procTuple,
+						 FmgrInfo *flinfo,
 						 FunctionCallInfoData *fcinfo,
+						 ReturnSetInfo *rsinfo,
 										 TriggerData *trigdata,
 										 EventTriggerData *etrigdata,
 										 Oid funcoid,
@@ -731,6 +736,7 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 	PLpgSQL_execstate *cur_estate = NULL;
 	MemoryContext old_cxt;
 	PLpgSQL_execstate estate;
+	ReturnSetInfo rsinfo;
 
 	funcoid = HeapTupleGetOid(procTuple);
 
@@ -740,8 +746,8 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 	if ((rc = SPI_connect()) != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed: %s", SPI_result_code_string(rc));
 
-	setup_fake_fcinfo(&flinfo, &fake_fcinfo, &trigdata, &etrigdata,
-									  funcoid, trigtype);
+	setup_fake_fcinfo(procTuple, &flinfo, &fake_fcinfo, &rsinfo, &trigdata, &etrigdata,
+										  funcoid, trigtype);
 
 	setup_cstate(&cstate, funcoid, tupdesc, tupstore,
 							    fatal_errors, other_warnings, performance_warnings,
@@ -1078,6 +1084,30 @@ release_exprs(List *exprs)
  *
  */
 
+
+static bool
+is_polymorphic_tupdesc(TupleDesc tupdesc)
+{
+	int	i;
+
+	for (i = 0; i < tupdesc->natts; i++)
+	{
+		switch (tupdesc->attrs[i]->atttypid)
+		{
+			case ANYELEMENTOID:
+			case ANYARRAYOID:
+			case ANYNONARRAYOID:
+			case ANYENUMOID:
+			case ANYRANGEOID:
+				return true;
+			default:
+				break;
+		}
+	}
+
+	return false;
+}
+
 /*
  * Set up a fake fcinfo with just enough info to satisfy plpgsql_compile().
  *
@@ -1085,16 +1115,25 @@ release_exprs(List *exprs)
  *
  */
 static void
-setup_fake_fcinfo(FmgrInfo *flinfo,
+setup_fake_fcinfo(HeapTuple procTuple,
+						  FmgrInfo *flinfo,
 						  FunctionCallInfoData *fcinfo,
+						  ReturnSetInfo *rsinfo,
 						  TriggerData *trigdata,
 						  EventTriggerData *etrigdata,
 						  Oid funcoid,
 						  PLpgSQL_trigtype trigtype)
 {
+	Form_pg_proc procform;
+	Oid		rettype;
+
+	procform = (Form_pg_proc) GETSTRUCT(procTuple);
+	rettype = procform->prorettype;
+
 	/* clean structures */
 	MemSet(fcinfo, 0, sizeof(FunctionCallInfoData));
 	MemSet(flinfo, 0, sizeof(FmgrInfo));
+	MemSet(rsinfo, 0, sizeof(ReturnSetInfo));
 
 	fcinfo->flinfo = flinfo;
 	flinfo->fn_oid = funcoid;
@@ -1120,6 +1159,57 @@ setup_fake_fcinfo(FmgrInfo *flinfo,
 
 #endif
 
+	/* 
+	 * prepare ReturnSetInfo
+	 *
+	 * necessary for RETURN NEXT and RETURN QUERY
+	 *
+	 */
+	if (procform->proretset)
+	{
+		TupleDesc resultTupleDesc;
+
+		resultTupleDesc = build_function_result_tupdesc_t(procTuple);
+		if (resultTupleDesc)
+		{
+			/* we cannot to solve polymorphic params now */
+			if (is_polymorphic_tupdesc(resultTupleDesc))
+			{
+				FreeTupleDesc(resultTupleDesc);
+				resultTupleDesc = NULL;
+			}
+		}
+		else if (!IsPolymorphicType(rettype))
+		{
+			if (get_typtype(rettype) == TYPTYPE_COMPOSITE)
+				resultTupleDesc = lookup_rowtype_tupdesc_copy(rettype, -1);
+			else
+			{
+				resultTupleDesc = CreateTemplateTupleDesc(1, false);
+				TupleDescInitEntry(resultTupleDesc,
+								    (AttrNumber) 1, "__result__",
+								    rettype, -1, 0);
+				resultTupleDesc = BlessTupleDesc(resultTupleDesc);
+			}
+		}
+
+		if (resultTupleDesc)
+		{
+			fcinfo->resultinfo = (Node *) rsinfo;
+
+			rsinfo->type = T_ReturnSetInfo;
+			rsinfo->expectedDesc = resultTupleDesc;
+			rsinfo->allowedModes = (int) (SFRM_ValuePerCall | SFRM_Materialize);
+			rsinfo->returnMode = SFRM_ValuePerCall;
+
+			/*
+			 * ExprContext is created inside CurrentMemoryContext,
+			 * without any additional source allocation. It is released
+			 * on end of transaction.
+			 */
+			rsinfo->econtext = CreateStandaloneExprContext();
+		}
+	}
 }
 
 /*
@@ -1613,6 +1703,11 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 				break;
 
 			case PLPGSQL_STMT_RETURN_NEXT:
+				if (!cstate->estate->retisset)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+						errmsg("cannot use RETURN NEXT in non-SETOF function")));
+
 				check_expr(cstate, ((PLpgSQL_stmt_return_next *) stmt)->expr);
 				break;
 
@@ -1620,9 +1715,15 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 				{
 					PLpgSQL_stmt_return_query *stmt_rq = (PLpgSQL_stmt_return_query *) stmt;
 
+					if (!cstate->estate->retisset)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+							errmsg("cannot use RETURN QUERY in non-SETOF function")));
+
 					check_expr(cstate, stmt_rq->dynquery);
 
-					check_expr(cstate, stmt_rq->query);
+					if (stmt_rq->query)
+						check_expr_as_return_query(cstate, stmt_rq->query);
 
 					foreach(l, stmt_rq->params)
 					{
@@ -1926,6 +2027,85 @@ check_element_assignment(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 
 	check_expr_as_rvalue(cstate, expr, targetrec, targetrow, targetdno, true,
 						  is_expression);
+}
+
+/*
+ * Checks used for RETURN QUERY
+ *
+ */
+static void
+check_expr_as_return_query(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+{
+	PLpgSQL_execstate *estate = cstate->estate;
+
+	ResourceOwner oldowner;
+	MemoryContext oldCxt = CurrentMemoryContext;
+
+	oldowner = CurrentResourceOwner;
+	BeginInternalSubTransaction(NULL);
+	MemoryContextSwitchTo(oldCxt);
+
+	PG_TRY();
+	{
+		TupleDesc	tupdesc;
+
+		prepare_expr(cstate, expr, 0);
+		/* record all variables used by the query */
+		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
+
+		tupdesc = expr_get_desc(cstate, expr, false, true, false);
+		if (tupdesc)
+		{
+
+			/* check requires known rettupdesc */
+			if (estate->retisset && estate->rsi && IsA(estate->rsi, ReturnSetInfo))
+			{
+				TupleDesc	rettupdesc = estate->rsi->expectedDesc;
+				TupleConversionMap *tupmap ;
+
+				tupmap = convert_tuples_by_position(tupdesc, rettupdesc,
+						    gettext_noop("structure of query does not match function result type"));
+
+				if (tupmap)
+					free_conversion_map(tupmap);
+			}
+
+			ReleaseTupleDesc(tupdesc);
+		}
+
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldCxt);
+		CurrentResourceOwner = oldowner;
+
+		SPI_restore_connection();
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		MemoryContextSwitchTo(oldCxt);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldCxt);
+		CurrentResourceOwner = oldowner;
+
+		/*
+		 * If fatal_errors is true, we just propagate the error up to the
+		 * highest level. Otherwise the error is appended to our current list
+		 * of errors, and we continue checking.
+		 */
+		if (cstate->fatal_errors)
+			ReThrowError(edata);
+		else
+			put_error_edata(cstate, edata);
+		MemoryContextSwitchTo(oldCxt);
+
+		/* reconnect spi */
+		SPI_restore_connection();
+	}
+	PG_END_TRY();
 }
 
 /*

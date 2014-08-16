@@ -203,6 +203,34 @@ select f1();
 
 drop function f1();
 
+create function f1()
+returns setof t1 as $$
+begin
+  if false then
+    return query select a,a,a from t1;
+    return;
+  end if;
+end;
+$$ language plpgsql;
+
+select * from f1();
+
+drop function f1();
+
+create function f1()
+returns setof t1 as $$
+begin
+  if false then
+    return query select a, b::numeric from t1;
+    return;
+  end if;
+end;
+$$ language plpgsql;
+
+select * from f1();
+
+drop function f1();
+
 drop table t1;
 drop type _exception_type;
 

@@ -767,3 +767,101 @@ select * from plpgsql_check_function('f1()', 'f1tbl');
 drop function f1();
 drop table f1tbl;
 
+create table tabret(a int, b int);
+
+insert into tabret values(10,10);
+
+create or replace function f1()
+returns int as $$
+begin
+  return (select a from tabret);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+create or replace function f1()
+returns int as $$
+begin
+  return (select a::numeric from tabret);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+create or replace function f1()
+returns int as $$
+begin
+  return (select a, b from tabret);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+drop function f1();
+
+create or replace function f1()
+returns table(ax int, bx int) as $$
+begin
+  return query select * from tabret;
+  return;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+drop function f1();
+
+create or replace function f1()
+returns table(ax numeric, bx numeric) as $$
+begin
+  return query select * from tabret;
+  return;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+drop function f1();
+
+create or replace function f1()
+returns setof tabret as $$
+begin
+  return query select * from tabret;
+  return;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+create or replace function f1()
+returns setof tabret as $$
+begin
+  return query select a from tabret;
+  return;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+create or replace function f1()
+returns setof tabret as $$
+begin
+  return query select a::numeric,b::numeric from tabret;
+  return;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+drop function f1();
+
+create or replace function f1(a int)
+returns setof numeric as $$
+begin return query select a;
+end $$ language plpgsql;
+
+select * from plpgsql_check_function('f1(int)', performance_warnings := true);
+
+drop function f1(int);
+drop table tabret;
