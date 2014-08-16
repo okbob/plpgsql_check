@@ -51,6 +51,7 @@ typedef enum PLpgSQL_trigtype
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "executor/spi_priv.h"
+#include "parser/parse_coerce.h"
 #include "tsearch/ts_locale.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
@@ -2400,36 +2401,61 @@ prepare_expr(PLpgSQL_checkstate *cstate,
 }
 
 /*
- * Assign a tuple descriptor to variable specified by dno
+ * Check so target can accept typoid value
+ *
  */
 static void
-assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc)
+check_assign_to_target_type(PLpgSQL_checkstate *cstate,
+							 Oid target_typoid, int32 target_typmod,
+												 Oid value_typoid)
 {
-	PLpgSQL_datum *target = cstate->estate->datums[varno];
+	/* any used typmod enforces IO cast - performance warning */
+	if (target_typmod != -1)
+		put_error(cstate,
+					  ERRCODE_DATATYPE_MISMATCH, 0,
+					  "target variable has type modificator",
+					  NULL,
+					  "Usage of type modificator enforces slower IO casting.",
+					  PLPGSQL_CHECK_WARNING_PERFORMANCE,
+					  0, NULL, NULL);
 
-	/* check assign without IO casts */
-	if (target->dtype == PLPGSQL_DTYPE_VAR)
+	if (type_is_rowtype(value_typoid))
+		put_error(cstate,
+					  ERRCODE_DATATYPE_MISMATCH, 0,
+					  "cannot assign composite value to a scalar variable",
+					  NULL,
+					  NULL,
+					  PLPGSQL_CHECK_ERROR,
+					  0, NULL, NULL);
+
+	else if (target_typoid != value_typoid)
 	{
-		PLpgSQL_var *var = (PLpgSQL_var *) target;
+		StringInfoData	str;
 
-		if (type_is_rowtype(tupdesc->attrs[0]->atttypid))
+		initStringInfo(&str);
+		appendStringInfo(&str, "assign \"%s\" value to \"%s\" variable",
+									format_type_be(value_typoid),
+									format_type_be(target_typoid));
+
+		/* accent warning when cast is without supported explicit casting */
+		if (!can_coerce_type(1, &value_typoid, &target_typoid, COERCION_EXPLICIT))
 			put_error(cstate,
 						  ERRCODE_DATATYPE_MISMATCH, 0,
-						  "cannot assign composite value to a scalar variable",
-						  NULL,
-						  NULL,
-						  PLPGSQL_CHECK_ERROR,
+						  "target variable has different type then expression result",
+						  str.data,
+						  "There are no possible explicit coercion between those types, possibly bug!",
+						  PLPGSQL_CHECK_WARNING_OTHERS,
 						  0, NULL, NULL);
-
-		else if (var->datatype->typoid != tupdesc->attrs[0]->atttypid)
-		{
-			StringInfoData	str;
-
-			initStringInfo(&str);
-			appendStringInfo(&str, "assign \"%s\" value to \"%s\" variable",
-										format_type_be(tupdesc->attrs[0]->atttypid),
-										format_type_be(var->datatype->typoid));
-
+		else if (!can_coerce_type(1, &value_typoid, &target_typoid, COERCION_ASSIGNMENT))
+			put_error(cstate,
+						  ERRCODE_DATATYPE_MISMATCH, 0,
+						  "target variable has different type then expression result",
+						  str.data,
+						  "The input expression type does not have an assignment cast to the target type.",
+						  PLPGSQL_CHECK_WARNING_OTHERS,
+						  0, NULL, NULL);
+		else
+			/* highly probably only performance issue */
 			put_error(cstate,
 						  ERRCODE_DATATYPE_MISMATCH, 0,
 						  "target variable has different type then expression result",
@@ -2438,11 +2464,38 @@ assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc)
 						  PLPGSQL_CHECK_WARNING_PERFORMANCE,
 						  0, NULL, NULL);
 
-			pfree(str.data);
-		}
+		pfree(str.data);
 	}
-	else if (target->dtype == PLPGSQL_DTYPE_REC)
-		assign_tupdesc_row_or_rec(cstate, NULL, (PLpgSQL_rec *) target, tupdesc);
+}
+
+/*
+ * Assign a tuple descriptor to variable specified by dno
+ */
+static void
+assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc)
+{
+	PLpgSQL_datum *target = cstate->estate->datums[varno];
+
+	switch (target->dtype)
+	{
+		case PLPGSQL_DTYPE_VAR:
+			{
+				PLpgSQL_var *var = (PLpgSQL_var *) target;
+
+				check_assign_to_target_type(cstate,
+									 var->datatype->typoid, var->datatype->atttypmod,
+									 tupdesc->attrs[0]->atttypid);
+			}
+			break;
+
+		case PLPGSQL_DTYPE_ROW:
+			assign_tupdesc_row_or_rec(cstate, (PLpgSQL_row *) target, NULL, tupdesc);
+			break;
+
+		case PLPGSQL_DTYPE_REC:
+			assign_tupdesc_row_or_rec(cstate, NULL, (PLpgSQL_rec *) target, tupdesc);
+			break;
+	}
 }
 
 /*
@@ -2496,6 +2549,38 @@ assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 		}
 		else
 			elog(ERROR, "cannot to build valid composite value");
+	}
+
+	else if (row != NULL && tupdesc != NULL)
+	{
+		int			td_natts = tupdesc->natts;
+		int			fnum;
+		int			anum;
+
+		anum = 0;
+		for (fnum = 0; fnum < row->nfields; fnum++)
+		{
+			if (row->varnos[fnum] < 0)
+				continue;		/* skip dropped column in row struct */
+
+			while (anum < td_natts && tupdesc->attrs[anum]->attisdropped)
+				anum++;			/* skip dropped column in tuple */
+
+			if (anum < td_natts)
+			{
+				Oid	valtype;
+				PLpgSQL_var *var;
+
+				var = (PLpgSQL_var *) (cstate->estate->datums[row->varnos[fnum]]);
+
+				valtype = SPI_gettypeid(tupdesc, anum + 1);
+				check_assign_to_target_type(cstate,
+									 var->datatype->typoid, var->datatype->atttypmod,
+									 valtype);
+
+				anum++;
+			}
+		}
 	}
 }
 

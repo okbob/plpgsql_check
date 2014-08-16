@@ -865,3 +865,22 @@ select * from plpgsql_check_function('f1(int)', performance_warnings := true);
 
 drop function f1(int);
 drop table tabret;
+
+create or replace function f1() returns void as $$
+declare
+intval integer;
+begin
+ intval := 1; -- OK
+ intval := '1'; -- OK
+ intval := text '1'; -- not OK
+ intval := current_date; -- not OK
+
+ select 1 into intval; -- OK
+ select '1' into intval; -- OK
+ select text '1' into intval; -- not OK
+end
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+drop function f1();
