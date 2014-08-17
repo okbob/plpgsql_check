@@ -374,6 +374,75 @@ select * from plpgsql_check_function_tb('f1_trg()', 't1');
 
 -- ok
 insert into t1 values(6,30);
+create or replace function f1_trg()
+returns trigger as $$
+begin
+  new.a := new.a + 10;
+  new.b := new.b + 10;
+  return null;
+end;
+$$ language plpgsql;
+-- ok
+select * from plpgsql_check_function_tb('f1_trg()', 't1');
+ functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
+(0 rows)
+
+insert into t1 values(60,300);
+select * from t1;
+ a  | b  
+----+----
+  6 | 30
+  6 | 30
+ 16 | 40
+(3 rows)
+
+create or replace function f1_trg()
+returns trigger as $$
+begin
+  new.a := new.a + 10;
+  new.b := new.b + 10;
+  return 10;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function_tb('f1_trg()', 't1');
+ functionid | lineno | statement | sqlstate |                                  message                                  | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+---------------------------------------------------------------------------+--------+------+-------+----------+-------+---------
+ f1_trg     |      5 | RETURN    | 42804    | cannot return 1non-composite value from function returning composite type |        |      | error |        0 |       | 
+(1 row)
+
+create or replace function f1_trg()
+returns trigger as $$
+declare a int;
+begin
+  new.a := new.a + 10;
+  new.b := new.b + 10;
+  return a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function_tb('f1_trg()', 't1');
+ functionid | lineno | statement | sqlstate |                                  message                                  | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+---------------------------------------------------------------------------+--------+------+-------+----------+-------+---------
+ f1_trg     |      6 | RETURN    | 42804    | cannot return 1non-composite value from function returning composite type |        |      | error |        0 |       | 
+(1 row)
+
+create or replace function f1_trg()
+returns trigger as $$
+begin
+  new.a := new.a + 10;
+  new.b := new.b + 10;
+  return 'AHoj';
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function_tb('f1_trg()', 't1');
+ functionid | lineno | statement | sqlstate |                                  message                                  | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+---------------------------------------------------------------------------+--------+------+-------+----------+-------+---------
+ f1_trg     |      5 | RETURN    | 42804    | cannot return 1non-composite value from function returning composite type |        |      | error |        0 |       | 
+(1 row)
+
+insert into t1 values(600,30);
+ERROR:  cannot return non-composite value from function returning composite type
+CONTEXT:  PL/pgSQL function f1_trg() line 5 at RETURN
 select * from t1;
  a  | b  
 ----+----
@@ -1090,9 +1159,12 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                                plpgsql_check_function                                
+--------------------------------------------------------------------------------------
+ performance:42804:3:RETURN:target variable has different type then expression result
+ Detail: assign "numeric" value to "integer" variable
+ Hint: Hidden casting can be a performance issue.
+(3 rows)
 
 create or replace function f1()
 returns int as $$
@@ -1195,34 +1267,252 @@ create or replace function f1() returns void as $$
 declare
 intval integer;
 begin
- intval := 1; -- OK
- intval := '1'; -- OK
- intval := text '1'; -- not OK
- intval := current_date; -- not OK
+  intval := null; -- ok
+  intval := 1; -- OK
+  intval := '1'; -- OK
+  intval := text '1'; -- not OK
+  intval := current_date; -- not OK
 
- select 1 into intval; -- OK
- select '1' into intval; -- OK
- select text '1' into intval; -- not OK
+  select 1 into intval; -- OK
+  select '1' into intval; -- OK
+  select text '1' into intval; -- not OK
 end
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
                                     plpgsql_check_function                                    
 ----------------------------------------------------------------------------------------------
- performance:42804:6:assignment:target variable has different type then expression result
+ performance:42804:7:assignment:target variable has different type then expression result
  Detail: assign "unknown" value to "integer" variable
  Hint: Hidden casting can be a performance issue.
- warning:42804:7:assignment:target variable has different type then expression result
+ warning:42804:8:assignment:target variable has different type then expression result
  Detail: assign "text" value to "integer" variable
  Hint: The input expression type does not have an assignment cast to the target type.
- warning:42804:8:assignment:target variable has different type then expression result
+ warning:42804:9:assignment:target variable has different type then expression result
  Detail: assign "date" value to "integer" variable
  Hint: There are no possible explicit coercion between those types, possibly bug!
- performance:42804:11:SQL statement:target variable has different type then expression result
+ performance:42804:12:SQL statement:target variable has different type then expression result
  Detail: assign "unknown" value to "integer" variable
  Hint: Hidden casting can be a performance issue.
- warning:42804:12:SQL statement:target variable has different type then expression result
+ warning:42804:13:SQL statement:target variable has different type then expression result
  Detail: assign "text" value to "integer" variable
  Hint: The input expression type does not have an assignment cast to the target type.
 (15 rows)
 
 drop function f1();
+create or replace function f1()
+returns int as $$
+begin
+  return 1;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function f1()
+returns int as $$
+begin
+  return 1::numeric;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+                                plpgsql_check_function                                
+--------------------------------------------------------------------------------------
+ performance:42804:3:RETURN:target variable has different type then expression result
+ Detail: assign "numeric" value to "integer" variable
+ Hint: Hidden casting can be a performance issue.
+(3 rows)
+
+create or replace function f1()
+returns int as $$
+begin
+  return null;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function f1()
+returns int as $$
+begin
+  return current_date;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+                              plpgsql_check_function                              
+----------------------------------------------------------------------------------
+ warning:42804:3:RETURN:target variable has different type then expression result
+ Detail: assign "date" value to "integer" variable
+ Hint: There are no possible explicit coercion between those types, possibly bug!
+(3 rows)
+
+create or replace function f1()
+returns int as $$
+declare a int;
+begin
+  return a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function f1()
+returns int as $$
+declare a numeric;
+begin
+  return a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+                                plpgsql_check_function                                
+--------------------------------------------------------------------------------------
+ performance:42804:4:RETURN:target variable has different type then expression result
+ Detail: assign "numeric" value to "integer" variable
+ Hint: Hidden casting can be a performance issue.
+(3 rows)
+
+drop function f1();
+create or replace function f1()
+returns setof int as $$
+begin
+  return next 1;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function f1()
+returns setof int as $$
+begin
+  return next 1::numeric; -- tolerant, doesn't use tupmap
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+                                  plpgsql_check_function                                   
+-------------------------------------------------------------------------------------------
+ performance:42804:3:RETURN NEXT:target variable has different type then expression result
+ Detail: assign "numeric" value to "integer" variable
+ Hint: Hidden casting can be a performance issue.
+(3 rows)
+
+drop function f1();
+create table t1tab(a int, b int);
+create or replace function f1()
+returns setof t1tab as $$
+begin
+  return next (10,20);
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function f1()
+returns setof t1tab as $$
+begin
+  return next (10::numeric,20);
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+                               plpgsql_check_function                               
+------------------------------------------------------------------------------------
+ error:42804:3:RETURN NEXT:returned record type does not match expected record type
+ Detail: Returned type numeric does not match expected type integer in column 1.
+(2 rows)
+
+create or replace function f1()
+returns setof t1tab as $$
+declare a int; b int;
+begin
+  return next (a,b);
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function f1()
+returns setof t1tab as $$
+declare a numeric; b int;
+begin
+  return next (a,b::numeric);
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+                               plpgsql_check_function                               
+------------------------------------------------------------------------------------
+ error:42804:4:RETURN NEXT:returned record type does not match expected record type
+ Detail: Returned type numeric does not match expected type integer in column 1.
+(2 rows)
+
+drop function f1();
+drop table t1tab;
+create type t1 as (a int, b int, c int);
+create type t2 as (a int, b numeric);
+create or replace function fx()
+returns t2 as $$
+declare x t1;
+begin
+  return x;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx()', performance_warnings := true);
+                             plpgsql_check_function                              
+---------------------------------------------------------------------------------
+ error:42804:4:RETURN:returned record type does not match expected record type
+ Detail: Returned type integer does not match expected type numeric in column 2.
+(2 rows)
+
+create or replace function fx()
+returns t2 as $$
+declare x t2;
+begin
+  return x;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx()', performance_warnings := true);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function fx();
+create or replace function fx()
+returns setof t2 as $$
+declare x t1;
+begin
+  return next x;
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx()', performance_warnings := true);
+                       plpgsql_check_function                        
+---------------------------------------------------------------------
+ error:42804:4:RETURN NEXT:wrong record type supplied in RETURN NEXT
+(1 row)
+
+create or replace function fx()
+returns setof t2 as $$
+declare x t2;
+begin
+  return next x;
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx()', performance_warnings := true);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+

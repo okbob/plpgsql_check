@@ -51,6 +51,7 @@ typedef enum PLpgSQL_trigtype
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "executor/spi_priv.h"
+#include "nodes/nodeFuncs.h"
 #include "parser/parse_coerce.h"
 #include "tsearch/ts_locale.h"
 #include "utils/builtins.h"
@@ -135,10 +136,10 @@ typedef struct PLpgSQL_checkstate
 }	PLpgSQL_checkstate;
 
 
-static void assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc);
+static void assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, bool isnull);
 static void assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 						  PLpgSQL_row *row, PLpgSQL_rec *rec,
-						  TupleDesc tupdesc);
+						  TupleDesc tupdesc, bool isnull);
 static void check_assignment(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 				 PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
 				 int targetdno);
@@ -149,7 +150,11 @@ static void check_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 static void check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 					  PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
 				   int targetdno, bool use_element_type, bool is_expression);
-static void check_expr_as_return_query(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
+static void check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expression);
+static void check_assign_to_target_type(PLpgSQL_checkstate *cstate,
+							 Oid target_typoid, int32 target_typmod,
+							 Oid value_typoid,
+									    bool isnull);
 static void check_function_epilog(PLpgSQL_checkstate *cstate);
 static void check_function_prolog(PLpgSQL_checkstate *cstate);
 static void check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func);
@@ -205,6 +210,7 @@ static void setup_fake_fcinfo(HeapTuple procTuple,
 						 FunctionCallInfoData *fcinfo,
 						 ReturnSetInfo *rsinfo,
 										 TriggerData *trigdata,
+										 Oid relid,
 										 EventTriggerData *etrigdata,
 										 Oid funcoid,
 										 PLpgSQL_trigtype trigtype);
@@ -229,6 +235,7 @@ static void tuplestore_put_text_line(Tuplestorestate *tuple_store, TupleDesc tup
 								    const char *message, int len);
 static void report_unused_variables(PLpgSQL_checkstate *cstate);
 static void record_variable_usage(PLpgSQL_checkstate *cstate, int dno);
+static bool is_const_null_expr(PLpgSQL_expr *query);
 
 
 static bool plpgsql_check_other_warnings = false;
@@ -747,7 +754,7 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 	if ((rc = SPI_connect()) != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed: %s", SPI_result_code_string(rc));
 
-	setup_fake_fcinfo(procTuple, &flinfo, &fake_fcinfo, &rsinfo, &trigdata, &etrigdata,
+	setup_fake_fcinfo(procTuple, &flinfo, &fake_fcinfo, &rsinfo, &trigdata, relid, &etrigdata,
 										  funcoid, trigtype);
 
 	setup_cstate(&cstate, funcoid, tupdesc, tupstore,
@@ -758,9 +765,6 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 	old_cxt = MemoryContextSwitchTo(cstate.check_cxt);
 
 	check_function_prolog(&cstate);
-
-	if (OidIsValid(relid))
-		trigdata.tg_relation = relation_open(relid, AccessShareLock);
 
 	/*
 	 * Copy argument names for later check, only when other warnings are required.
@@ -981,12 +985,12 @@ trigger_check(PLpgSQL_function *func, Node *tdata,
 		rec_new = (PLpgSQL_rec *) (cstate->estate->datums[func->new_varno]);
 		rec_new->freetup = false;
 		rec_new->freetupdesc = false;
-		assign_tupdesc_row_or_rec(cstate, NULL, rec_new, trigdata->tg_relation->rd_att);
+		assign_tupdesc_row_or_rec(cstate, NULL, rec_new, trigdata->tg_relation->rd_att, false);
 
 		rec_old = (PLpgSQL_rec *) (cstate->estate->datums[func->old_varno]);
 		rec_old->freetup = false;
 		rec_old->freetupdesc = false;
-		assign_tupdesc_row_or_rec(cstate, NULL, rec_old, trigdata->tg_relation->rd_att);
+		assign_tupdesc_row_or_rec(cstate, NULL, rec_old, trigdata->tg_relation->rd_att, false);
 
 		/*
 		 * Assign the special tg_ variables
@@ -1085,26 +1089,14 @@ release_exprs(List *exprs)
  *
  */
 
-
 static bool
 is_polymorphic_tupdesc(TupleDesc tupdesc)
 {
 	int	i;
 
 	for (i = 0; i < tupdesc->natts; i++)
-	{
-		switch (tupdesc->attrs[i]->atttypid)
-		{
-			case ANYELEMENTOID:
-			case ANYARRAYOID:
-			case ANYNONARRAYOID:
-			case ANYENUMOID:
-			case ANYRANGEOID:
-				return true;
-			default:
-				break;
-		}
-	}
+		if (IsPolymorphicType(tupdesc->attrs[i]->atttypid))
+			return true;
 
 	return false;
 }
@@ -1121,12 +1113,14 @@ setup_fake_fcinfo(HeapTuple procTuple,
 						  FunctionCallInfoData *fcinfo,
 						  ReturnSetInfo *rsinfo,
 						  TriggerData *trigdata,
+						  Oid relid,
 						  EventTriggerData *etrigdata,
 						  Oid funcoid,
 						  PLpgSQL_trigtype trigtype)
 {
 	Form_pg_proc procform;
 	Oid		rettype;
+	TupleDesc resultTupleDesc;
 
 	procform = (Form_pg_proc) GETSTRUCT(procTuple);
 	rettype = procform->prorettype;
@@ -1147,6 +1141,9 @@ setup_fake_fcinfo(HeapTuple procTuple,
 		MemSet(trigdata, 0, sizeof(trigdata));
 		trigdata->type = T_TriggerData;
 		fcinfo->context = (Node *) trigdata;
+
+		if (OidIsValid(relid))
+			trigdata->tg_relation = relation_open(relid, AccessShareLock);
 	}
 
 #if PG_VERSION_NUM >= 90300
@@ -1166,50 +1163,51 @@ setup_fake_fcinfo(HeapTuple procTuple,
 	 * necessary for RETURN NEXT and RETURN QUERY
 	 *
 	 */
-	if (procform->proretset)
+	resultTupleDesc = build_function_result_tupdesc_t(procTuple);
+	if (resultTupleDesc)
 	{
-		TupleDesc resultTupleDesc;
-
-		resultTupleDesc = build_function_result_tupdesc_t(procTuple);
-		if (resultTupleDesc)
+		/* we cannot to solve polymorphic params now */
+		if (is_polymorphic_tupdesc(resultTupleDesc))
 		{
-			/* we cannot to solve polymorphic params now */
-			if (is_polymorphic_tupdesc(resultTupleDesc))
-			{
-				FreeTupleDesc(resultTupleDesc);
-				resultTupleDesc = NULL;
-			}
+			FreeTupleDesc(resultTupleDesc);
+			resultTupleDesc = NULL;
 		}
-		else if (!IsPolymorphicType(rettype))
+	}
+	else if (rettype == TRIGGEROID || rettype == OPAQUEOID)
+	{
+		/* trigger - return value should be ROW or RECORD based on relid */
+		if (trigdata->tg_relation)
+			resultTupleDesc = CreateTupleDescCopy(trigdata->tg_relation->rd_att);
+	}
+	else if (!IsPolymorphicType(rettype))
+	{
+		if (get_typtype(rettype) == TYPTYPE_COMPOSITE)
+			resultTupleDesc = lookup_rowtype_tupdesc_copy(rettype, -1);
+		else
 		{
-			if (get_typtype(rettype) == TYPTYPE_COMPOSITE)
-				resultTupleDesc = lookup_rowtype_tupdesc_copy(rettype, -1);
-			else
-			{
-				resultTupleDesc = CreateTemplateTupleDesc(1, false);
-				TupleDescInitEntry(resultTupleDesc,
-								    (AttrNumber) 1, "__result__",
-								    rettype, -1, 0);
-				resultTupleDesc = BlessTupleDesc(resultTupleDesc);
-			}
+			resultTupleDesc = CreateTemplateTupleDesc(1, false);
+			TupleDescInitEntry(resultTupleDesc,
+							    (AttrNumber) 1, "__result__",
+							    rettype, -1, 0);
+			resultTupleDesc = BlessTupleDesc(resultTupleDesc);
 		}
+	}
 
-		if (resultTupleDesc)
-		{
-			fcinfo->resultinfo = (Node *) rsinfo;
+	if (resultTupleDesc)
+	{
+		fcinfo->resultinfo = (Node *) rsinfo;
 
-			rsinfo->type = T_ReturnSetInfo;
-			rsinfo->expectedDesc = resultTupleDesc;
-			rsinfo->allowedModes = (int) (SFRM_ValuePerCall | SFRM_Materialize);
-			rsinfo->returnMode = SFRM_ValuePerCall;
+		rsinfo->type = T_ReturnSetInfo;
+		rsinfo->expectedDesc = resultTupleDesc;
+		rsinfo->allowedModes = (int) (SFRM_ValuePerCall | SFRM_Materialize);
+		rsinfo->returnMode = SFRM_ValuePerCall;
 
-			/*
-			 * ExprContext is created inside CurrentMemoryContext,
-			 * without any additional source allocation. It is released
-			 * on end of transaction.
-			 */
-			rsinfo->econtext = CreateStandaloneExprContext();
-		}
+		/*
+		 * ExprContext is created inside CurrentMemoryContext,
+		 * without any additional source allocation. It is released
+		 * on end of transaction.
+		 */
+		rsinfo->econtext = CreateStandaloneExprContext();
 	}
 }
 
@@ -1284,6 +1282,9 @@ setup_plpgsql_estate(PLpgSQL_execstate *estate,
 	{
 		estate->tuple_store_cxt = rsi->econtext->ecxt_per_query_memory;
 		estate->tuple_store_owner = CurrentResourceOwner;
+
+		if (estate->retisset)
+			estate->rettupdesc = rsi->expectedDesc;
 	}
 	else
 	{
@@ -1700,31 +1701,189 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 				break;
 
 			case PLPGSQL_STMT_RETURN:
-				check_expr(cstate, ((PLpgSQL_stmt_return *) stmt)->expr);
+				{
+					PLpgSQL_stmt_return *stmt_rt = (PLpgSQL_stmt_return *) stmt;
+
+					if (stmt_rt->retvarno >= 0)
+					{
+						PLpgSQL_datum *retvar = cstate->estate->datums[stmt_rt->retvarno];
+						PLpgSQL_execstate *estate = cstate->estate;
+
+						cstate->used_variables = bms_add_member(cstate->used_variables, stmt_rt->retvarno);
+
+						switch (retvar->dtype)
+						{
+							case PLPGSQL_DTYPE_VAR:
+								{
+									PLpgSQL_var *var = (PLpgSQL_var *) retvar;
+
+									check_assign_to_target_type(cstate,
+										 var->datatype->typoid, -1,
+										 cstate->estate->func->fn_rettype, false);
+								}
+								break;
+
+							case PLPGSQL_DTYPE_REC:
+								{
+									PLpgSQL_rec *rec = (PLpgSQL_rec *) retvar;
+
+									if (rec->tupdesc && estate->rsi && IsA(estate->rsi, ReturnSetInfo))
+									{
+										TupleDesc	rettupdesc = estate->rsi->expectedDesc;
+										TupleConversionMap *tupmap ;
+
+										tupmap = convert_tuples_by_position(rec->tupdesc, rettupdesc,
+											 gettext_noop("returned record type does not match expected record type"));
+
+										if (tupmap)
+											free_conversion_map(tupmap);
+									}
+								}
+								break;
+
+							case PLPGSQL_DTYPE_ROW:
+								{
+									PLpgSQL_row *row = (PLpgSQL_row *) retvar;
+
+									if (row->rowtupdesc && estate->rsi && IsA(estate->rsi, ReturnSetInfo))
+									{
+										TupleDesc	rettupdesc = estate->rsi->expectedDesc;
+										TupleConversionMap *tupmap ;
+
+										tupmap = convert_tuples_by_position(row->rowtupdesc, rettupdesc,
+											 gettext_noop("returned record type does not match expected record type"));
+
+										if (tupmap)
+											free_conversion_map(tupmap);
+									}
+								}
+								break;
+						}
+					}
+
+					if (stmt_rt->expr)
+						check_returned_expr(cstate, stmt_rt->expr, true);
+				}
 				break;
 
 			case PLPGSQL_STMT_RETURN_NEXT:
-				if (!cstate->estate->retisset)
-					ereport(ERROR,
-							(errcode(ERRCODE_SYNTAX_ERROR),
-						errmsg("cannot use RETURN NEXT in non-SETOF function")));
+				{
+					PLpgSQL_stmt_return_next *stmt_rn = (PLpgSQL_stmt_return_next *) stmt;
 
-				check_expr(cstate, ((PLpgSQL_stmt_return_next *) stmt)->expr);
+					if (stmt_rn->retvarno >= 0)
+					{
+						PLpgSQL_datum *retvar = cstate->estate->datums[stmt_rn->retvarno];
+						PLpgSQL_execstate *estate = cstate->estate;
+						TupleDesc	tupdesc;
+						int		natts;
+
+						cstate->used_variables = bms_add_member(cstate->used_variables, stmt_rn->retvarno);
+
+						if (!estate->retisset)
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("cannot use RETURN NEXT in a non-SETOF function")));
+
+						tupdesc = estate->rettupdesc;
+						natts = tupdesc ? tupdesc->natts : 0;
+	
+						switch (retvar->dtype)
+						{
+							case PLPGSQL_DTYPE_VAR:
+								{
+									PLpgSQL_var *var = (PLpgSQL_var *) retvar;
+
+									if (natts > 1)
+										ereport(ERROR,
+												(errcode(ERRCODE_DATATYPE_MISMATCH),
+												 errmsg("wrong result type supplied in RETURN NEXT")));
+
+									check_assign_to_target_type(cstate,
+										 var->datatype->typoid, -1,
+										 cstate->estate->func->fn_rettype, false);
+								}
+								break;
+
+							case PLPGSQL_DTYPE_REC:
+								{
+									PLpgSQL_rec *rec = (PLpgSQL_rec *) retvar;
+									TupleConversionMap *tupmap;
+
+									if (!HeapTupleIsValid(rec->tup))
+										ereport(ERROR,
+												  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						    						   errmsg("record \"%s\" is not assigned yet",
+												   rec->refname),
+										errdetail("The tuple structure of a not-yet-assigned"
+															  " record is indeterminate.")));
+
+									if (tupdesc)
+									{
+										tupmap = convert_tuples_by_position(rec->tupdesc,
+																tupdesc,
+											gettext_noop("wrong record type supplied in RETURN NEXT"));
+										if (tupmap)
+											free_conversion_map(tupmap);
+									}
+								}
+								break;
+
+							case PLPGSQL_DTYPE_ROW:
+								{
+									PLpgSQL_row *row = (PLpgSQL_row *) retvar;
+									bool	row_is_valid_result;
+
+									row_is_valid_result = true;
+
+									if (tupdesc)
+									{
+										if (row->nfields == natts)
+										{
+											int		i;
+
+											for (i = 0; i < natts; i++)
+											{
+												PLpgSQL_var *var;
+
+												if (tupdesc->attrs[i]->attisdropped)
+													continue;
+												if (row->varnos[i] < 0)
+													elog(ERROR, "dropped rowtype entry for non-dropped column");
+
+												var = (PLpgSQL_var *) (cstate->estate->datums[row->varnos[i]]);
+												if (var->datatype->typoid != tupdesc->attrs[i]->atttypid)
+												{
+													row_is_valid_result = false;
+													break;
+												}
+											}
+										}
+										else
+											row_is_valid_result = false;
+
+										if (!row_is_valid_result)
+											ereport(ERROR,
+													(errcode(ERRCODE_DATATYPE_MISMATCH),
+											errmsg("wrong record type supplied in RETURN NEXT")));
+									}
+								}
+								break;
+						}
+					}
+
+					if (stmt_rn->expr)
+						check_returned_expr(cstate, stmt_rn->expr, true);
+				}
 				break;
 
 			case PLPGSQL_STMT_RETURN_QUERY:
 				{
 					PLpgSQL_stmt_return_query *stmt_rq = (PLpgSQL_stmt_return_query *) stmt;
 
-					if (!cstate->estate->retisset)
-						ereport(ERROR,
-								(errcode(ERRCODE_SYNTAX_ERROR),
-							errmsg("cannot use RETURN QUERY in non-SETOF function")));
-
 					check_expr(cstate, stmt_rq->dynquery);
 
 					if (stmt_rq->query)
-						check_expr_as_return_query(cstate, stmt_rq->query);
+						check_returned_expr(cstate, stmt_rq->query, false);
 
 					foreach(l, stmt_rq->params)
 					{
@@ -2035,9 +2194,10 @@ check_element_assignment(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
  *
  */
 static void
-check_expr_as_return_query(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expression)
 {
 	PLpgSQL_execstate *estate = cstate->estate;
+	PLpgSQL_function *func = estate->func;
 
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
@@ -2049,26 +2209,66 @@ check_expr_as_return_query(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 	PG_TRY();
 	{
 		TupleDesc	tupdesc;
+		bool		is_immutable_null;
 
 		prepare_expr(cstate, expr, 0);
 		/* record all variables used by the query */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
-		tupdesc = expr_get_desc(cstate, expr, false, true, false);
+		tupdesc = expr_get_desc(cstate, expr, false, true, is_expression);
+		is_immutable_null = is_const_null_expr(expr);
+
 		if (tupdesc)
 		{
-
-			/* check requires known rettupdesc */
-			if (estate->retisset && estate->rsi && IsA(estate->rsi, ReturnSetInfo))
+			/* enforce check for trigger function - result must be composit */
+			if (func->fn_retistuple && is_expression 
+				    && !(type_is_rowtype(tupdesc->attrs[0]->atttypid) || tupdesc->natts > 1))
 			{
-				TupleDesc	rettupdesc = estate->rsi->expectedDesc;
-				TupleConversionMap *tupmap ;
+				/* but we should to allow NULL */
+				if (!is_immutable_null)
+					put_error(cstate,
+								ERRCODE_DATATYPE_MISMATCH, 0,
+					"cannot return 1non-composite value from function returning composite type",
+												NULL,
+												NULL,
+												PLPGSQL_CHECK_ERROR,
+												0, NULL, NULL);
+			}
+			/* tupmap is used when function returns tuple
+			 * or RETURN QUERY was used
+			 */
+			if (func->fn_retistuple || !is_expression)
+			{
+				if (is_expression)
+				{
+					/* should be RETURN NEXT - have to unpack tuple */
+				}
+			
+			
+				/* should to know expected result */
+				if (estate->retisset && estate->rsi && IsA(estate->rsi, ReturnSetInfo))
+				{
+					TupleDesc	rettupdesc = estate->rsi->expectedDesc;
+					TupleConversionMap *tupmap ;
 
-				tupmap = convert_tuples_by_position(tupdesc, rettupdesc,
-						    gettext_noop("structure of query does not match function result type"));
+					tupmap = convert_tuples_by_position(tupdesc, rettupdesc,
+							    !is_expression ? gettext_noop("structure of query does not match function result type")
+							                  : gettext_noop("returned record type does not match expected record type"));
 
-				if (tupmap)
-					free_conversion_map(tupmap);
+					if (tupmap)
+						free_conversion_map(tupmap);
+				}
+			}
+			else
+			{
+				/* returns scalar */
+				if (!IsPolymorphicType(func->fn_rettype))
+				{
+					check_assign_to_target_type(cstate,
+									    func->fn_rettype, -1,
+									    tupdesc->attrs[0]->atttypid,
+									    is_immutable_null);
+				}
 			}
 
 			ReleaseTupleDesc(tupdesc);
@@ -2122,6 +2322,7 @@ check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
 	TupleDesc	tupdesc;
+	bool is_immutable_null;
 
 	oldowner = CurrentResourceOwner;
 	BeginInternalSubTransaction(NULL);
@@ -2134,12 +2335,14 @@ check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
 		tupdesc = expr_get_desc(cstate, expr, use_element_type, true, is_expression);
+		is_immutable_null = is_const_null_expr(expr);
+
 		if (tupdesc)
 		{
 			if (targetrow != NULL || targetrec != NULL)
-				assign_tupdesc_row_or_rec(cstate, targetrow, targetrec, tupdesc);
+				assign_tupdesc_row_or_rec(cstate, targetrow, targetrec, tupdesc, is_immutable_null);
 			if (targetdno != -1)
-				assign_tupdesc_dno(cstate, targetdno, tupdesc);
+				assign_tupdesc_dno(cstate, targetdno, tupdesc, is_immutable_null);
 
 			if (targetrow)
 			{
@@ -2407,7 +2610,8 @@ prepare_expr(PLpgSQL_checkstate *cstate,
 static void
 check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 							 Oid target_typoid, int32 target_typmod,
-												 Oid value_typoid)
+												 Oid value_typoid,
+												 bool isnull)
 {
 	/* any used typmod enforces IO cast - performance warning */
 	if (target_typmod != -1)
@@ -2455,14 +2659,17 @@ check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 						  PLPGSQL_CHECK_WARNING_OTHERS,
 						  0, NULL, NULL);
 		else
+		{
 			/* highly probably only performance issue */
-			put_error(cstate,
-						  ERRCODE_DATATYPE_MISMATCH, 0,
-						  "target variable has different type then expression result",
-						  str.data,
-						  "Hidden casting can be a performance issue.",
-						  PLPGSQL_CHECK_WARNING_PERFORMANCE,
-						  0, NULL, NULL);
+			if (!isnull)
+				put_error(cstate,
+							  ERRCODE_DATATYPE_MISMATCH, 0,
+							  "target variable has different type then expression result",
+							  str.data,
+							  "Hidden casting can be a performance issue.",
+							  PLPGSQL_CHECK_WARNING_PERFORMANCE,
+							  0, NULL, NULL);
+		}
 
 		pfree(str.data);
 	}
@@ -2472,7 +2679,7 @@ check_assign_to_target_type(PLpgSQL_checkstate *cstate,
  * Assign a tuple descriptor to variable specified by dno
  */
 static void
-assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc)
+assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, bool isnull)
 {
 	PLpgSQL_datum *target = cstate->estate->datums[varno];
 
@@ -2484,16 +2691,17 @@ assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc)
 
 				check_assign_to_target_type(cstate,
 									 var->datatype->typoid, var->datatype->atttypmod,
-									 tupdesc->attrs[0]->atttypid);
+									 tupdesc->attrs[0]->atttypid,
+									 isnull);
 			}
 			break;
 
 		case PLPGSQL_DTYPE_ROW:
-			assign_tupdesc_row_or_rec(cstate, (PLpgSQL_row *) target, NULL, tupdesc);
+			assign_tupdesc_row_or_rec(cstate, (PLpgSQL_row *) target, NULL, tupdesc, isnull);
 			break;
 
 		case PLPGSQL_DTYPE_REC:
-			assign_tupdesc_row_or_rec(cstate, NULL, (PLpgSQL_rec *) target, tupdesc);
+			assign_tupdesc_row_or_rec(cstate, NULL, (PLpgSQL_rec *) target, tupdesc, isnull);
 			break;
 	}
 }
@@ -2506,7 +2714,7 @@ assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc)
 static void
 assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 						  PLpgSQL_row *row, PLpgSQL_rec *rec,
-						  TupleDesc tupdesc)
+						  TupleDesc tupdesc, bool isnull)
 {
 	bool	   *nulls;
 	HeapTuple	tup;
@@ -2576,12 +2784,70 @@ assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 				valtype = SPI_gettypeid(tupdesc, anum + 1);
 				check_assign_to_target_type(cstate,
 									 var->datatype->typoid, var->datatype->atttypmod,
-									 valtype);
+									 valtype,
+									 isnull);
 
 				anum++;
 			}
 		}
 	}
+}
+
+/*
+ * Returns true for entered NULL constant
+ *
+ */
+static bool
+is_const_null_expr(PLpgSQL_expr *query)
+{
+	CachedPlanSource *plansource = NULL;
+	PlannedStmt *_stmt;
+	Plan	   *_plan;
+	TargetEntry *tle;
+	CachedPlan *cplan;
+	bool	result = false;
+
+	if (query->plan != NULL)
+	{
+		SPIPlanPtr	plan = query->plan;
+
+		if (plan == NULL || plan->magic != _SPI_PLAN_MAGIC)
+			elog(ERROR, "cached plan is not valid plan");
+
+		if (list_length(plan->plancache_list) != 1)
+			elog(ERROR, "plan is not single execution plan");
+
+		plansource = (CachedPlanSource *) linitial(plan->plancache_list);
+
+		if (!plansource->resultDesc)
+			elog(ERROR, "query returns no result");
+	}
+	else
+		elog(ERROR, "there are no plan for query: \"%s\"",
+			 query->query);
+
+	/*
+	 * When tupdesc is related to unpined record, we will try to check
+	 * plan if it is just function call and if it is then we can try to
+	 * derive a tupledes from function's description.
+	 */
+	cplan = GetCachedPlan(plansource, NULL, true);
+	_stmt = (PlannedStmt *) linitial(cplan->stmt_list);
+
+	if (IsA(_stmt, PlannedStmt) &&_stmt->commandType == CMD_SELECT)
+	{
+		_plan = _stmt->planTree;
+		if (IsA(_plan, Result) &&list_length(_plan->targetlist) == 1)
+		{
+			tle = (TargetEntry *) linitial(_plan->targetlist);
+			if (((Node *) tle->expr)->type == T_Const)
+				result = ((Const *) tle->expr)->constisnull;
+		}
+	}
+
+	ReleaseCachedPlan(cplan, true);
+
+	return result;
 }
 
 /*
@@ -2727,28 +2993,67 @@ expr_get_desc(PLpgSQL_checkstate *cstate,
 			if (IsA(_plan, Result) &&list_length(_plan->targetlist) == 1)
 			{
 				tle = (TargetEntry *) linitial(_plan->targetlist);
-				if (((Node *) tle->expr)->type == T_FuncExpr)
+
+				switch (((Node *) tle->expr)->type)
 				{
-					FuncExpr   *fn = (FuncExpr *) tle->expr;
-					FmgrInfo	flinfo;
-					FunctionCallInfoData fcinfo;
-					TupleDesc	rd;
-					Oid			rt;
+					case T_FuncExpr:
+						{
+							FuncExpr   *fn = (FuncExpr *) tle->expr;
+							FmgrInfo	flinfo;
+							FunctionCallInfoData fcinfo;
+							TupleDesc	rd;
+							Oid			rt;
 
-					fmgr_info(fn->funcid, &flinfo);
-					flinfo.fn_expr = (Node *) fn;
-					fcinfo.flinfo = &flinfo;
+							fmgr_info(fn->funcid, &flinfo);
+							flinfo.fn_expr = (Node *) fn;
+							fcinfo.flinfo = &flinfo;
 
-					get_call_result_type(&fcinfo, &rt, &rd);
-					if (rd == NULL)
-						ereport(ERROR,
-								(errcode(ERRCODE_DATATYPE_MISMATCH),
+							get_call_result_type(&fcinfo, &rt, &rd);
+							if (rd == NULL)
+								ereport(ERROR,
+										(errcode(ERRCODE_DATATYPE_MISMATCH),
 								 errmsg("function does not return composite type, is not possible to identify composite type")));
 
-					FreeTupleDesc(tupdesc);
-					BlessTupleDesc(rd);
+							FreeTupleDesc(tupdesc);
+							BlessTupleDesc(rd);
 
-					tupdesc = rd;
+							tupdesc = rd;
+						}
+						break;
+
+					case T_RowExpr:
+						{
+							RowExpr		*row = (RowExpr *) tle->expr;
+							ListCell *lc_colname;
+							ListCell *lc_arg;
+							TupleDesc rettupdesc;
+							int			i = 1;
+
+							rettupdesc = CreateTemplateTupleDesc(list_length(row->args), false);
+
+							forboth (lc_colname, row->colnames, lc_arg, row->args)
+							{
+								Node	*arg = lfirst(lc_arg);
+								char	*name = strVal(lfirst(lc_colname));
+
+								TupleDescInitEntry(rettupdesc, i,
+												    name,
+												    exprType(arg),
+												    exprTypmod(arg),
+												    0);
+								i++;
+							}
+
+							FreeTupleDesc(tupdesc);
+							BlessTupleDesc(rettupdesc);
+
+							tupdesc = rettupdesc;
+						}
+						break;
+
+					default:
+							/* cannot to take tupdesc */
+							tupdesc = NULL;
 				}
 			}
 		}

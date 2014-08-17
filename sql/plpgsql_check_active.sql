@@ -266,6 +266,58 @@ select * from plpgsql_check_function_tb('f1_trg()', 't1');
 -- ok
 insert into t1 values(6,30);
 
+create or replace function f1_trg()
+returns trigger as $$
+begin
+  new.a := new.a + 10;
+  new.b := new.b + 10;
+  return null;
+end;
+$$ language plpgsql;
+
+-- ok
+select * from plpgsql_check_function_tb('f1_trg()', 't1');
+
+insert into t1 values(60,300);
+
+select * from t1;
+
+create or replace function f1_trg()
+returns trigger as $$
+begin
+  new.a := new.a + 10;
+  new.b := new.b + 10;
+  return 10;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('f1_trg()', 't1');
+
+create or replace function f1_trg()
+returns trigger as $$
+declare a int;
+begin
+  new.a := new.a + 10;
+  new.b := new.b + 10;
+  return a;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('f1_trg()', 't1');
+
+create or replace function f1_trg()
+returns trigger as $$
+begin
+  new.a := new.a + 10;
+  new.b := new.b + 10;
+  return 'AHoj';
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('f1_trg()', 't1');
+
+insert into t1 values(600,30);
+
 select * from t1;
 
 drop trigger t1_f1 on t1;
@@ -870,17 +922,190 @@ create or replace function f1() returns void as $$
 declare
 intval integer;
 begin
- intval := 1; -- OK
- intval := '1'; -- OK
- intval := text '1'; -- not OK
- intval := current_date; -- not OK
+  intval := null; -- ok
+  intval := 1; -- OK
+  intval := '1'; -- OK
+  intval := text '1'; -- not OK
+  intval := current_date; -- not OK
 
- select 1 into intval; -- OK
- select '1' into intval; -- OK
- select text '1' into intval; -- not OK
+  select 1 into intval; -- OK
+  select '1' into intval; -- OK
+  select text '1' into intval; -- not OK
 end
 $$ language plpgsql;
 
 select * from plpgsql_check_function('f1()', performance_warnings := true);
 
 drop function f1();
+
+create or replace function f1()
+returns int as $$
+begin
+  return 1;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+create or replace function f1()
+returns int as $$
+begin
+  return 1::numeric;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+create or replace function f1()
+returns int as $$
+begin
+  return null;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+create or replace function f1()
+returns int as $$
+begin
+  return current_date;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+create or replace function f1()
+returns int as $$
+declare a int;
+begin
+  return a;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+create or replace function f1()
+returns int as $$
+declare a numeric;
+begin
+  return a;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+drop function f1();
+
+create or replace function f1()
+returns setof int as $$
+begin
+  return next 1;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+create or replace function f1()
+returns setof int as $$
+begin
+  return next 1::numeric; -- tolerant, doesn't use tupmap
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+drop function f1();
+
+create table t1tab(a int, b int);
+
+create or replace function f1()
+returns setof t1tab as $$
+begin
+  return next (10,20);
+  return;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+create or replace function f1()
+returns setof t1tab as $$
+begin
+  return next (10::numeric,20);
+  return;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+create or replace function f1()
+returns setof t1tab as $$
+declare a int; b int;
+begin
+  return next (a,b);
+  return;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+create or replace function f1()
+returns setof t1tab as $$
+declare a numeric; b int;
+begin
+  return next (a,b::numeric);
+  return;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+
+drop function f1();
+drop table t1tab;
+
+create type t1 as (a int, b int, c int);
+create type t2 as (a int, b numeric);
+
+create or replace function fx()
+returns t2 as $$
+declare x t1;
+begin
+  return x;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx()', performance_warnings := true);
+
+create or replace function fx()
+returns t2 as $$
+declare x t2;
+begin
+  return x;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx()', performance_warnings := true);
+
+drop function fx();
+
+create or replace function fx()
+returns setof t2 as $$
+declare x t1;
+begin
+  return next x;
+  return;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx()', performance_warnings := true);
+
+create or replace function fx()
+returns setof t2 as $$
+declare x t2;
+begin
+  return next x;
+  return;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx()', performance_warnings := true);
