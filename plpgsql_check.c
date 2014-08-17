@@ -2198,6 +2198,7 @@ check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expr
 {
 	PLpgSQL_execstate *estate = cstate->estate;
 	PLpgSQL_function *func = estate->func;
+	bool		is_return_query = !is_expression;
 
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
@@ -2234,26 +2235,18 @@ check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expr
 												PLPGSQL_CHECK_ERROR,
 												0, NULL, NULL);
 			}
-			/* tupmap is used when function returns tuple
-			 * or RETURN QUERY was used
-			 */
-			if (func->fn_retistuple || !is_expression)
+			/* tupmap is used when function returns tuple or RETURN QUERY was used */
+			else if (func->fn_retistuple || is_return_query)
 			{
-				if (is_expression)
-				{
-					/* should be RETURN NEXT - have to unpack tuple */
-				}
-			
-			
 				/* should to know expected result */
-				if (estate->retisset && estate->rsi && IsA(estate->rsi, ReturnSetInfo))
+				if (estate->rsi && IsA(estate->rsi, ReturnSetInfo))
 				{
 					TupleDesc	rettupdesc = estate->rsi->expectedDesc;
 					TupleConversionMap *tupmap ;
 
 					tupmap = convert_tuples_by_position(tupdesc, rettupdesc,
-							    !is_expression ? gettext_noop("structure of query does not match function result type")
-							                  : gettext_noop("returned record type does not match expected record type"));
+			    !is_expression ? gettext_noop("structure of query does not match function result type")
+			                   : gettext_noop("returned record type does not match expected record type"));
 
 					if (tupmap)
 						free_conversion_map(tupmap);

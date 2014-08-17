@@ -1109,3 +1109,14 @@ end;
 $$ language plpgsql;
 
 select * from plpgsql_check_function('fx()', performance_warnings := true);
+
+drop function fx();
+
+create or replace function fx()
+returns t2 as $$
+begin
+  return (10,20,30)::t1;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx()', performance_warnings := true);

@@ -1516,3 +1516,17 @@ select * from plpgsql_check_function('fx()', performance_warnings := true);
 ------------------------
 (0 rows)
 
+drop function fx();
+create or replace function fx()
+returns t2 as $$
+begin
+  return (10,20,30)::t1;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx()', performance_warnings := true);
+                             plpgsql_check_function                              
+---------------------------------------------------------------------------------
+ error:42804:3:RETURN:returned record type does not match expected record type
+ Detail: Returned type integer does not match expected type numeric in column 2.
+(2 rows)
+
