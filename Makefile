@@ -1,8 +1,8 @@
-# $PostgreSQL: pgsql/contrib/plpgsql_check/Makefile,v 1.1 2008/07/29 18:31:20 tgl Exp $
+# $PostgreSQL: pgsql/contrib/plpgsql_check/Makefile
 
 MODULE_big = plpgsql_check
 OBJS = plpgsql_check.o
-DATA = plpgsql_check--0.8.sql
+DATA = plpgsql_check--0.9.sql
 EXTENSION = plpgsql_check
 
 ifndef MAJORVERSION
