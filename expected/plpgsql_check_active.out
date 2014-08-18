@@ -1161,7 +1161,7 @@ $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
                                 plpgsql_check_function                                
 --------------------------------------------------------------------------------------
- performance:42804:3:RETURN:target variable has different type then expression result
+ performance:42804:3:RETURN:target variable has different type than expression result
  Detail: assign "numeric" value to "integer" variable
  Hint: Hidden casting can be a performance issue.
 (3 rows)
@@ -1281,19 +1281,19 @@ $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
                                     plpgsql_check_function                                    
 ----------------------------------------------------------------------------------------------
- performance:42804:7:assignment:target variable has different type then expression result
+ performance:42804:7:assignment:target variable has different type than expression result
  Detail: assign "unknown" value to "integer" variable
  Hint: Hidden casting can be a performance issue.
- warning:42804:8:assignment:target variable has different type then expression result
+ warning:42804:8:assignment:target variable has different type than expression result
  Detail: assign "text" value to "integer" variable
  Hint: The input expression type does not have an assignment cast to the target type.
- warning:42804:9:assignment:target variable has different type then expression result
+ warning:42804:9:assignment:target variable has different type than expression result
  Detail: assign "date" value to "integer" variable
  Hint: There are no possible explicit coercion between those types, possibly bug!
- performance:42804:12:SQL statement:target variable has different type then expression result
+ performance:42804:12:SQL statement:target variable has different type than expression result
  Detail: assign "unknown" value to "integer" variable
  Hint: Hidden casting can be a performance issue.
- warning:42804:13:SQL statement:target variable has different type then expression result
+ warning:42804:13:SQL statement:target variable has different type than expression result
  Detail: assign "text" value to "integer" variable
  Hint: The input expression type does not have an assignment cast to the target type.
 (15 rows)
@@ -1319,7 +1319,7 @@ $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
                                 plpgsql_check_function                                
 --------------------------------------------------------------------------------------
- performance:42804:3:RETURN:target variable has different type then expression result
+ performance:42804:3:RETURN:target variable has different type than expression result
  Detail: assign "numeric" value to "integer" variable
  Hint: Hidden casting can be a performance issue.
 (3 rows)
@@ -1344,7 +1344,7 @@ $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
                               plpgsql_check_function                              
 ----------------------------------------------------------------------------------
- warning:42804:3:RETURN:target variable has different type then expression result
+ warning:42804:3:RETURN:target variable has different type than expression result
  Detail: assign "date" value to "integer" variable
  Hint: There are no possible explicit coercion between those types, possibly bug!
 (3 rows)
@@ -1371,7 +1371,7 @@ $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
                                 plpgsql_check_function                                
 --------------------------------------------------------------------------------------
- performance:42804:4:RETURN:target variable has different type then expression result
+ performance:42804:4:RETURN:target variable has different type than expression result
  Detail: assign "numeric" value to "integer" variable
  Hint: Hidden casting can be a performance issue.
 (3 rows)
@@ -1397,7 +1397,7 @@ $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
                                   plpgsql_check_function                                   
 -------------------------------------------------------------------------------------------
- performance:42804:3:RETURN NEXT:target variable has different type then expression result
+ performance:42804:3:RETURN NEXT:target variable has different type than expression result
  Detail: assign "numeric" value to "integer" variable
  Hint: Hidden casting can be a performance issue.
 (3 rows)
