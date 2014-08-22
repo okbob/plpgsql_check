@@ -3597,13 +3597,17 @@ mark_as_checked(PLpgSQL_function *func)
 	plpgsql_check_HashEnt *hentry;
 	bool		found;
 
-	hentry = (plpgsql_check_HashEnt *) hash_search(plpgsql_check_HashTable,
-											 (void *) func->fn_hashkey,
-											 HASH_ENTER,
-											 &found);
+	/* don't try to mark anonymous code blocks */
+	if (func->fn_oid != InvalidOid)
+	{
+		hentry = (plpgsql_check_HashEnt *) hash_search(plpgsql_check_HashTable,
+												 (void *) func->fn_hashkey,
+												 HASH_ENTER,
+												 &found);
 
-	hentry->fn_xmin = func->fn_xmin;
-	hentry->fn_tid = func->fn_tid;
+		hentry->fn_xmin = func->fn_xmin;
+		hentry->fn_tid = func->fn_tid;
 
-	hentry->is_checked = true;
+		hentry->is_checked = true;
+	}
 }
