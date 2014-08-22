@@ -112,6 +112,74 @@ Function plpgsql_check_function() has two possible formats: text or xml
      (1 row)
 
 
+## Triggers
+
+When you would to check any trigger, you have to enter a relation that will be
+used together with trigger function
+
+    CREATE TABLE bar(a int, b int);
+
+    postgres=# \sf+ foo_trg
+        CREATE OR REPLACE FUNCTION public.foo_trg()
+             RETURNS trigger
+             LANGUAGE plpgsql
+    1       AS $function$
+    2       BEGIN
+    3         NEW.c := NEW.a + NEW.b;
+    4         RETURN NEW;
+    5       END;
+    6       $function$
+
+Missing relation specification
+
+    postgres=# select * from plpgsql_check_function('foo_trg()');
+    ERROR:  missing trigger relation
+    HINT:  Trigger relation oid must be valid
+
+Correct trigger checking (with specified relation)
+
+    postgres=# select * from plpgsql_check_function('foo_trg()', 'bar');
+                     plpgsql_check_function                 
+    --------------------------------------------------------
+     error:42703:3:assignment:record "new" has no field "c"
+    (1 row)
+
+## Mass check
+
+You can use the plpgsql_check_function for mass check functions and mass check
+triggers. Please, test following queries:
+
+    -- check all nontrigger plpgsql functions
+    SELECT p.oid, p.proname, plpgsql_check_function(p.oid)
+       FROM pg_catalog.pg_namespace n
+       JOIN pg_catalog.pg_proc p ON pronamespace = n.oid
+       JOIN pg_catalog.pg_language l ON p.prolang = l.oid
+      WHERE l.lanname = 'plpgsql' AND p.prorettype <> 2279;
+
+or
+
+    -- check all plpgsql functions (functions or trigger functions with defined triggers)
+    SELECT
+        (pcf).functionid::regprocedure, (pcf).lineno, (pcf).statement,
+        (pcf).sqlstate, (pcf).message, (pcf).detail, (pcf).hint, (pcf).level,
+        (pcf)."position", (pcf).query, (pcf).context
+    FROM
+    (
+        SELECT
+            plpgsql_check_function_tb(pg_proc.oid, COALESCE(pg_trigger.tgrelid, 0)) AS pcf
+        FROM pg_proc
+        LEFT JOIN pg_trigger
+            ON (pg_trigger.tgfoid = pg_proc.oid)
+        WHERE
+            prolang = (SELECT lang.oid FROM pg_language lang WHERE lang.lanname = 'plpgsql') AND
+            pronamespace <> (SELECT nsp.oid FROM pg_namespace nsp WHERE nsp.nspname = 'pg_catalog') AND
+            -- ignore unused triggers
+            (pg_proc.prorettype <> (SELECT typ.oid FROM pg_type typ WHERE typ.typname = 'trigger') OR
+             pg_trigger.tgfoid IS NOT NULL)
+        OFFSET 0
+    ) ss
+    ORDER BY (pcf).functionid::regprocedure::text, (pcf).lineno
+
 # Passive mode
 
 Functions should be checked on start - plpgsql_check module must be loaded.
