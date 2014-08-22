@@ -147,6 +147,10 @@ static void check_element_assignment(PLpgSQL_checkstate *cstate, PLpgSQL_expr *e
 						 PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
 						 int targetdno);
 static void check_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
+static void check_expr_with_expected_scalar_type(PLpgSQL_checkstate *cstate,
+								 PLpgSQL_expr *expr,
+								 Oid expected_typoid,
+								 bool required);
 static void check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 					  PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
 				   int targetdno, bool use_element_type, bool is_expression);
@@ -1536,13 +1540,16 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 					PLpgSQL_stmt_if *stmt_if = (PLpgSQL_stmt_if *) stmt;
 					ListCell   *l;
 
-					check_expr(cstate, stmt_if->cond);
+					check_expr_with_expected_scalar_type(cstate,
+									     stmt_if->cond, BOOLOID, true);
 					check_stmts(cstate, stmt_if->then_body);
+
 					foreach(l, stmt_if->elsif_list)
 					{
 						PLpgSQL_if_elsif *elif = (PLpgSQL_if_elsif *) lfirst(l);
 
-						check_expr(cstate, elif->cond);
+						check_expr_with_expected_scalar_type(cstate,
+										     elif->cond, BOOLOID, true);
 						check_stmts(cstate, elif->stmts);
 					}
 
@@ -1602,6 +1609,11 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 				{
 					PLpgSQL_stmt_while *stmt_while = (PLpgSQL_stmt_while *) stmt;
 
+					check_expr_with_expected_scalar_type(cstate,
+										     stmt_while->cond,
+										     BOOLOID,
+										     true);
+
 					check_expr(cstate, stmt_while->cond);
 					check_stmts(cstate, stmt_while->body);
 				}
@@ -1610,10 +1622,15 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 			case PLPGSQL_STMT_FORI:
 				{
 					PLpgSQL_stmt_fori *stmt_fori = (PLpgSQL_stmt_fori *) stmt;
+					int	dno = stmt_fori->var->dno;
 
-					check_expr(cstate, stmt_fori->lower);
-					check_expr(cstate, stmt_fori->upper);
-					check_expr(cstate, stmt_fori->step);
+					/* prepare plan if desn't exist yet */
+					check_assignment(cstate, stmt_fori->lower, NULL, NULL, dno);
+					check_assignment(cstate, stmt_fori->upper, NULL, NULL, dno);
+
+					if (stmt_fori->step)
+						check_assignment(cstate, stmt_fori->step, NULL, NULL, dno);
+
 					check_stmts(cstate, stmt_fori->body);
 				}
 				break;
@@ -2158,7 +2175,6 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 	}
 }
 
-
 /*
  * Verify an assignment of 'expr' to 'target'
  *
@@ -2187,6 +2203,92 @@ check_element_assignment(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 
 	check_expr_as_rvalue(cstate, expr, targetrec, targetrow, targetdno, true,
 						  is_expression);
+}
+
+/*
+ * Verify to possible cast to bool, integer, ..
+ *
+ */
+static void
+check_expr_with_expected_scalar_type(PLpgSQL_checkstate *cstate,
+								 PLpgSQL_expr *expr,
+								 Oid expected_typoid,
+								 bool required)
+{
+	ResourceOwner oldowner;
+	MemoryContext oldCxt = CurrentMemoryContext;
+
+	oldowner = CurrentResourceOwner;
+	BeginInternalSubTransaction(NULL);
+	MemoryContextSwitchTo(oldCxt);
+
+	if (!expr)
+	{
+		if (required)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("required expression is empty")));
+	}
+	else
+	{
+		PG_TRY();
+		{
+			TupleDesc	tupdesc;
+			bool		is_immutable_null;
+
+			prepare_expr(cstate, expr, 0);
+			/* record all variables used by the query */
+			cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
+
+			tupdesc = expr_get_desc(cstate, expr, false, true, true);
+			is_immutable_null = is_const_null_expr(expr);
+
+			if (tupdesc)
+			{
+				/* when we know value or type */
+				if (!is_immutable_null)
+					check_assign_to_target_type(cstate,
+									    expected_typoid, -1,
+									    tupdesc->attrs[0]->atttypid,
+									    is_immutable_null);
+			}
+
+			ReleaseTupleDesc(tupdesc);
+
+			RollbackAndReleaseCurrentSubTransaction();
+			MemoryContextSwitchTo(oldCxt);
+			CurrentResourceOwner = oldowner;
+
+			SPI_restore_connection();
+		}
+		PG_CATCH();
+		{
+			ErrorData  *edata;
+
+			MemoryContextSwitchTo(oldCxt);
+			edata = CopyErrorData();
+			FlushErrorState();
+
+			RollbackAndReleaseCurrentSubTransaction();
+			MemoryContextSwitchTo(oldCxt);
+			CurrentResourceOwner = oldowner;
+
+			/*
+			 * If fatal_errors is true, we just propagate the error up to the
+			 * highest level. Otherwise the error is appended to our current list
+			 * of errors, and we continue checking.
+			 */
+			if (cstate->fatal_errors)
+				ReThrowError(edata);
+			else
+				put_error_edata(cstate, edata);
+			MemoryContextSwitchTo(oldCxt);
+
+			/* reconnect spi */
+			SPI_restore_connection();
+		}
+		PG_END_TRY();
+	}
 }
 
 /*
@@ -2229,7 +2331,7 @@ check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expr
 				if (!is_immutable_null)
 					put_error(cstate,
 								ERRCODE_DATATYPE_MISMATCH, 0,
-					"cannot return 1non-composite value from function returning composite type",
+					"cannot return non-composite value from function returning composite type",
 												NULL,
 												NULL,
 												PLPGSQL_CHECK_ERROR,
@@ -3209,7 +3311,8 @@ tuplestore_put_error_tabular(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 
 	SET_RESULT_OID(Anum_result_functionid, fn_oid);
 
-	if (estate != NULL && estate->err_stmt != NULL)
+	/* lineno should be valid */
+	if (estate != NULL && estate->err_stmt != NULL && estate->err_stmt->lineno > 0)
 	{
 		/* use lineno based on err_stmt */
 		SET_RESULT_INT32(Anum_result_lineno, estate->err_stmt->lineno);
@@ -3287,7 +3390,8 @@ tuplestore_put_error_text(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 			break;
 	}
 
-	if (estate != NULL && estate->err_stmt != NULL)
+	/* lineno should be valid for actual statements */
+	if (estate != NULL && estate->err_stmt != NULL && estate->err_stmt->lineno > 0)
 		appendStringInfo(&sinfo, "%s:%s:%d:%s:%s",
 				 level_str,
 				 unpack_sql_state(sqlerrcode),

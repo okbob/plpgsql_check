@@ -258,3 +258,16 @@ PL/pgSQL function f1() line 4 at RETURN QUERY
 drop function f1();
 drop table t1;
 drop type _exception_type;
+do $$
+declare
+begin
+  if false then
+    for i in 1,3..(2) loop
+      raise notice 'foo %', i;
+    end loop;
+  end if;
+end;
+$$;
+WARNING:  query "SELECT 1,3" returned 2 columns
+CONTEXT:  PL/pgSQL function inline_code_block line 5 at FOR with integer loop variable
+PL/pgSQL function inline_code_block line 5 at FOR with integer loop variable

@@ -234,3 +234,13 @@ drop function f1();
 drop table t1;
 drop type _exception_type;
 
+do $$
+declare
+begin
+  if false then
+    for i in 1,3..(2) loop
+      raise notice 'foo %', i;
+    end loop;
+  end if;
+end;
+$$;

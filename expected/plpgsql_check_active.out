@@ -406,9 +406,9 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('f1_trg()', 't1');
- functionid | lineno | statement | sqlstate |                                  message                                  | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+---------------------------------------------------------------------------+--------+------+-------+----------+-------+---------
- f1_trg     |      5 | RETURN    | 42804    | cannot return 1non-composite value from function returning composite type |        |      | error |        0 |       | 
+ functionid | lineno | statement | sqlstate |                                 message                                  | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+--------------------------------------------------------------------------+--------+------+-------+----------+-------+---------
+ f1_trg     |      5 | RETURN    | 42804    | cannot return non-composite value from function returning composite type |        |      | error |        0 |       | 
 (1 row)
 
 create or replace function f1_trg()
@@ -421,9 +421,9 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('f1_trg()', 't1');
- functionid | lineno | statement | sqlstate |                                  message                                  | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+---------------------------------------------------------------------------+--------+------+-------+----------+-------+---------
- f1_trg     |      6 | RETURN    | 42804    | cannot return 1non-composite value from function returning composite type |        |      | error |        0 |       | 
+ functionid | lineno | statement | sqlstate |                                 message                                  | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+--------------------------------------------------------------------------+--------+------+-------+----------+-------+---------
+ f1_trg     |      6 | RETURN    | 42804    | cannot return non-composite value from function returning composite type |        |      | error |        0 |       | 
 (1 row)
 
 create or replace function f1_trg()
@@ -435,9 +435,9 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('f1_trg()', 't1');
- functionid | lineno | statement | sqlstate |                                  message                                  | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+---------------------------------------------------------------------------+--------+------+-------+----------+-------+---------
- f1_trg     |      5 | RETURN    | 42804    | cannot return 1non-composite value from function returning composite type |        |      | error |        0 |       | 
+ functionid | lineno | statement | sqlstate |                                 message                                  | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+--------------------------------------------------------------------------+--------+------+-------+----------+-------+---------
+ f1_trg     |      5 | RETURN    | 42804    | cannot return non-composite value from function returning composite type |        |      | error |        0 |       | 
 (1 row)
 
 insert into t1 values(600,30);
@@ -1115,9 +1115,9 @@ end;
 end
 $$ language plpgsql;
 select * from plpgsql_check_function('f1(int)');
-             plpgsql_check_function              
--------------------------------------------------
- warning:00000:0:RETURN:unused declared variable
+         plpgsql_check_function          
+-----------------------------------------
+ warning:00000:unused declared variable
  Detail: variable _f2 declared on line 4
 (2 rows)
 
