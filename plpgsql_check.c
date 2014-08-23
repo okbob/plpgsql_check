@@ -155,6 +155,7 @@ static void check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 					  PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
 				   int targetdno, bool use_element_type, bool is_expression);
 static void check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expression);
+static void check_expr_as_sqlstmt_nodata(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 static void check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 							 Oid target_typoid, int32 target_typmod,
 							 Oid value_typoid,
@@ -1968,10 +1969,8 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 								   stmt_execsql->rec, stmt_execsql->row, -1);
 					}
 					else
-					{
 						/* only statement */
-						check_expr(cstate, stmt_execsql->sqlstmt);
-					}
+						check_expr_as_sqlstmt_nodata(cstate, stmt_execsql->sqlstmt);
 				}
 				break;
 
@@ -2562,6 +2561,66 @@ check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 }
 
 /*
+ * Check a SQL statement, should not to return data
+ *
+ */
+static void
+check_expr_as_sqlstmt_nodata(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+{
+	ResourceOwner oldowner;
+	MemoryContext oldCxt = CurrentMemoryContext;
+
+	oldowner = CurrentResourceOwner;
+	BeginInternalSubTransaction(NULL);
+	MemoryContextSwitchTo(oldCxt);
+
+	PG_TRY();
+	{
+		prepare_expr(cstate, expr, 0);
+		/* record all variables used by the query */
+		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
+
+		if (expr_get_desc(cstate, expr, false, false, false))
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("query has no destination for result data")));
+
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldCxt);
+		CurrentResourceOwner = oldowner;
+
+		SPI_restore_connection();
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		MemoryContextSwitchTo(oldCxt);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldCxt);
+		CurrentResourceOwner = oldowner;
+
+		/*
+		 * If fatal_errors is true, we just propagate the error up to the
+		 * highest level. Otherwise the error is appended to our current list
+		 * of errors, and we continue checking.
+		 */
+		if (cstate->fatal_errors)
+			ReThrowError(edata);
+		else
+			put_error_edata(cstate, edata);
+		MemoryContextSwitchTo(oldCxt);
+
+		/* reconnect spi */
+		SPI_restore_connection();
+	}
+	PG_END_TRY();
+}
+
+/*
  * Check composed lvalue There is nothing to check on rec variables
  */
 static void
@@ -2704,7 +2763,6 @@ check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *e
 			break;
 	}
 }
-
 
 /*
  * Generate a prepared plan - this is simplified copy from pl_exec.c Is not
@@ -3250,7 +3308,6 @@ expr_get_desc(PLpgSQL_checkstate *cstate,
 	}
 	return tupdesc;
 }
-
 
 /*
  * returns refname of PLpgSQL_datum

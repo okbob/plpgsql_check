@@ -1183,4 +1183,47 @@ select * from plpgsql_check_function('fx2()', performance_warnings := true);
 
 drop function fx2();
 
+create or replace function fx2(_id int, _pa_id varchar(32), _status varchar(60))
+returns void as $$
+declare
+begin
+  insert into pa values(_id, _pa_id, _status);
+exception
+  when OTHERS then
+    raise notice '%', 'some message';
+    raise exception '%', sqlerrm;
+end
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx2(int, varchar, varchar)', performance_warnings := true);
+
+create or replace function fx2(_id int, _pa_id varchar(32), _status varchar(60))
+returns void as $$
+declare
+begin
+  insert into pa values(_id, _pa_id, _status) returning *;
+exception
+  when OTHERS then
+    raise notice '%', 'some message';
+    raise exception '%', sqlerrm;
+end
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx2(int, varchar, varchar)', performance_warnings := true);
+
+create or replace function fx2(_id int, _pa_id varchar(32), _status varchar(60))
+returns void as $$
+declare
+begin
+  SELECT * FROM pa LIMIT 1;
+exception
+  when OTHERS then
+    raise notice '%', 'some message';
+    raise exception '%', sqlerrm;
+end
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx2(int, varchar, varchar)', performance_warnings := true);
+
+drop function fx2(int, varchar, varchar);
 
