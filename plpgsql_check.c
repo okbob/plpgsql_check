@@ -172,7 +172,7 @@ static void check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigt
 static void check_row_or_rec(PLpgSQL_checkstate *cstate, PLpgSQL_row *row, PLpgSQL_rec *rec);
 static void check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt);
 static void check_stmts(PLpgSQL_checkstate *cstate, List *stmts);
-static void check_target(PLpgSQL_checkstate *cstate, int varno);
+static void check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *expected_typmod);
 static PLpgSQL_datum *copy_plpgsql_datum(PLpgSQL_datum *datum);
 static char *datum_get_refname(PLpgSQL_datum *d);
 static TupleDesc expr_get_desc(PLpgSQL_checkstate *cstate,
@@ -1523,7 +1523,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 				{
 					PLpgSQL_stmt_assign *stmt_assign = (PLpgSQL_stmt_assign *) stmt;
 
-					check_target(cstate, stmt_assign->varno);
+					check_target(cstate, stmt_assign->varno, NULL, NULL);
 
 					/* prepare plan if desn't exist yet */
 					check_assignment(cstate, stmt_assign->expr, NULL, NULL,
@@ -1701,7 +1701,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 				{
 					PLpgSQL_stmt_foreach_a *stmt_foreach_a = (PLpgSQL_stmt_foreach_a *) stmt;
 
-					check_target(cstate, stmt_foreach_a->varno);
+					check_target(cstate, stmt_foreach_a->varno, NULL, NULL);
 
 					check_element_assignment(cstate, stmt_foreach_a->expr, NULL, NULL, stmt_foreach_a->varno);
 
@@ -2037,7 +2037,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 					{
 						PLpgSQL_diag_item *diag_item = (PLpgSQL_diag_item *) lfirst(lc);
 
-						check_target(cstate, diag_item->target);
+						check_target(cstate, diag_item->target, NULL, NULL);
 					}
 				}
 				break;
@@ -2131,6 +2131,89 @@ record_variable_usage(PLpgSQL_checkstate *cstate, int dno)
 }
 
 /*
+ * returns true, when datum or some child is used */
+static bool
+datum_is_used(PLpgSQL_checkstate *cstate, int dno)
+{
+	PLpgSQL_execstate *estate = cstate->estate;
+
+	switch (estate->datums[dno]->dtype)
+	{
+		case PLPGSQL_DTYPE_VAR:
+			{
+				PLpgSQL_var *var = (PLpgSQL_var *) estate->datums[dno];
+
+				/* don't check internal variables */
+				if (var->lineno < 1)
+					return true;
+
+				return bms_is_member(dno, cstate->used_variables);
+			}
+			break;
+
+		case PLPGSQL_DTYPE_ROW:
+			{
+				PLpgSQL_row *row = (PLpgSQL_row *) estate->datums[dno];
+				int	     i;
+
+				if (row->lineno < 1)
+					return true;
+
+				/* skip internal vars created for INTO lists  */
+				if (row->rowtupdesc == NULL)
+					return true;
+
+				if (bms_is_member(dno, cstate->used_variables))
+					return true;
+
+				for (i = 0; i < row->nfields; i++)
+				{
+					if (row->varnos[i] < 0)
+						continue;
+
+					if (datum_is_used(cstate, row->varnos[i]))
+						return true;
+				}
+			}
+			break;
+
+		case PLPGSQL_DTYPE_REC:
+			{
+				PLpgSQL_rec *rec = (PLpgSQL_rec *) estate->datums[dno];
+				int	     i;
+
+				if (rec->lineno < 1)
+					return true;
+
+				if (bms_is_member(dno, cstate->used_variables))
+					return true;
+
+				/* search any used recfield with related recparentno */
+				for (i = 0; i < estate->ndatums; i++)
+				{
+					if (estate->datums[i]->dtype == PLPGSQL_DTYPE_RECFIELD)
+					{
+						PLpgSQL_recfield *recfield = (PLpgSQL_recfield *) estate->datums[i];
+
+						if (recfield->recparentno == rec->dno
+								    && bms_is_member(i, cstate->used_variables))
+							return true;
+					}
+				}
+			}
+			break;
+
+		/* these types are not individual variables, should not be unused variable */
+		case PLPGSQL_DTYPE_RECFIELD:
+		case PLPGSQL_DTYPE_ARRAYELEM:
+		case PLPGSQL_DTYPE_EXPR:
+			return true;
+	}
+
+	return false;
+}
+
+/*
  * Reports all unused variables explicitly DECLAREd by the user.  Ignores IN
  * and OUT variables and special variables created by PL/PgSQL.
  */
@@ -2141,27 +2224,11 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 	PLpgSQL_execstate *estate = cstate->estate;
 
 	for (i = 0; i < estate->ndatums; i++)
-	{
-		int dtype = estate->datums[i]->dtype;
-		PLpgSQL_variable *var;
-
-		if (dtype != PLPGSQL_DTYPE_VAR &&
-			dtype != PLPGSQL_DTYPE_ROW &&
-			dtype != PLPGSQL_DTYPE_REC)
-			continue;
-
-		/* skip special internal variables */
-		var = (PLpgSQL_variable *) estate->datums[i];
-		if (var->lineno < 1)
-			continue;
-		/* skip internal vars created for INTO lists  */
-		if (dtype == PLPGSQL_DTYPE_ROW &&
-			((PLpgSQL_row *) var)->rowtupdesc == NULL)
-			continue;
-
-		if (!bms_is_member(i, cstate->used_variables))
+		if (!datum_is_used(cstate, i))
 		{
+			PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[i];
 			StringInfoData detail;
+
 			initStringInfo(&detail);
 			appendStringInfo(&detail, "variable %s declared on line %d", var->refname, var->lineno);
 			put_error(cstate,
@@ -2172,7 +2239,6 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 					  PLPGSQL_CHECK_WARNING_OTHERS,
 					  0, NULL, NULL);
 		}
-	}
 }
 
 /*
@@ -2505,13 +2571,14 @@ check_row_or_rec(PLpgSQL_checkstate *cstate, PLpgSQL_row *row, PLpgSQL_rec *rec)
 
 	if (row != NULL)
 	{
+
 		for (fnum = 0; fnum < row->nfields; fnum++)
 		{
 			/* skip dropped columns */
 			if (row->varnos[fnum] < 0)
 				continue;
 
-			check_target(cstate, row->varnos[fnum]);
+			check_target(cstate, row->varnos[fnum], NULL, NULL);
 		}
 		record_variable_usage(cstate, row->dno);
 	}
@@ -2530,7 +2597,7 @@ check_row_or_rec(PLpgSQL_checkstate *cstate, PLpgSQL_row *row, PLpgSQL_rec *rec)
  * expressions, verify a validity of record's fields.
  */
 static void
-check_target(PLpgSQL_checkstate *cstate, int varno)
+check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *expected_typmod)
 {
 	PLpgSQL_datum *target = cstate->estate->datums[varno];
 
@@ -2577,6 +2644,12 @@ check_target(PLpgSQL_checkstate *cstate, int varno)
 							(errcode(ERRCODE_UNDEFINED_COLUMN),
 							 errmsg("record \"%s\" has no field \"%s\"",
 									rec->refname, recfield->fieldname)));
+
+				if (expected_typoid)
+					*expected_typoid = SPI_gettypeid(rec->tupdesc, fno + 1);
+
+				if (expected_typmod)
+					*expected_typmod = rec->tupdesc->attrs[fno]->atttypmod;
 			}
 			break;
 
@@ -2871,16 +2944,37 @@ assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 
 			if (anum < td_natts)
 			{
-				Oid	valtype;
-				PLpgSQL_var *var;
+				Oid	valtype = SPI_gettypeid(tupdesc, anum + 1);
+				PLpgSQL_datum *target = cstate->estate->datums[row->varnos[fnum]];
 
-				var = (PLpgSQL_var *) (cstate->estate->datums[row->varnos[fnum]]);
+				switch (target->dtype)
+				{
+					case PLPGSQL_DTYPE_VAR:
+						{
+							PLpgSQL_var *var = (PLpgSQL_var *) target;
 
-				valtype = SPI_gettypeid(tupdesc, anum + 1);
-				check_assign_to_target_type(cstate,
-									 var->datatype->typoid, var->datatype->atttypmod,
-									 valtype,
-									 isnull);
+							check_assign_to_target_type(cstate,
+												 var->datatype->typoid,
+												 var->datatype->atttypmod,
+														 valtype,
+														 isnull);
+						}
+						break;
+
+					case PLPGSQL_DTYPE_RECFIELD:
+						{
+							Oid	expected_typoid;
+							int	expected_typmod;
+
+							check_target(cstate, target->dno, &expected_typoid, &expected_typmod);
+							check_assign_to_target_type(cstate,
+												 expected_typoid,
+												 expected_typmod,
+														valtype,
+														isnull);
+						}
+						break;
+				}
 
 				anum++;
 			}
