@@ -239,6 +239,61 @@ queries.
 runtime. For this use case it is necessary to create a fake temp table or disable <i>plpgsql_check</i> for this
 function.
 
+# Compilation
+
+You need a development environment for PostgreSQL extensions:
+
+    make USE_PGXS=1 clean
+    make USE_PGXS=1 install
+
+result:
+
+    [pavel@localhost plpgsql_check]$ make USE_PGXS=1 clean
+    rm -f plpgsql_check.so   libplpgsql_check.a  libplpgsql_check.pc
+    rm -f plpgsql_check.o
+    rm -rf results/ regression.diffs regression.out tmp_check/ log/
+    [pavel@localhost plpgsql_check]$ make USE_PGXS=1 clean
+    rm -f plpgsql_check.so   libplpgsql_check.a  libplpgsql_check.pc
+    rm -f plpgsql_check.o
+    rm -rf results/ regression.diffs regression.out tmp_check/ log/
+    [pavel@localhost plpgsql_check]$ make USE_PGXS=1 all
+    clang -O2 -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Wendif-labels -Wmissing-format-attribute -Wformat-security -fno-strict-aliasing -fwrapv -fpic -I/usr/local/pgsql/lib/pgxs/src/makefiles/../../src/pl/plpgsql/src -I. -I./ -I/usr/local/pgsql/include/server -I/usr/local/pgsql/include/internal -D_GNU_SOURCE   -c -o plpgsql_check.o plpgsql_check.c
+    clang -O2 -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Wendif-labels -Wmissing-format-attribute -Wformat-security -fno-strict-aliasing -fwrapv -fpic -I/usr/local/pgsql/lib/pgxs/src/makefiles/../../src/pl/plpgsql/src -shared -o plpgsql_check.so plpgsql_check.o -L/usr/local/pgsql/lib -Wl,--as-needed -Wl,-rpath,'/usr/local/pgsql/lib',--enable-new-dtags  
+    [pavel@localhost plpgsql_check]$ su root
+    Password: *******
+    [root@localhost plpgsql_check]# make USE_PGXS=1 install
+    /usr/bin/mkdir -p '/usr/local/pgsql/lib'
+    /usr/bin/mkdir -p '/usr/local/pgsql/share/extension'
+    /usr/bin/mkdir -p '/usr/local/pgsql/share/extension'
+    /usr/bin/install -c -m 755  plpgsql_check.so '/usr/local/pgsql/lib/plpgsql_check.so'
+    /usr/bin/install -c -m 644 plpgsql_check.control '/usr/local/pgsql/share/extension/'
+    /usr/bin/install -c -m 644 plpgsql_check--0.9.sql '/usr/local/pgsql/share/extension/'
+    [root@localhost plpgsql_check]# exit
+    [pavel@localhost plpgsql_check]$ make USE_PGXS=1 installcheck
+    /usr/local/pgsql/lib/pgxs/src/makefiles/../../src/test/regress/pg_regress --inputdir=./ --psqldir='/usr/local/pgsql/bin'    --dbname=pl_regression --load-language=plpgsql --dbname=contrib_regression plpgsql_check_passive plpgsql_check_active plpgsql_check_active-9.5
+    (using postmaster on Unix socket, default port)
+    ============== dropping database "contrib_regression" ==============
+    DROP DATABASE
+    ============== creating database "contrib_regression" ==============
+    CREATE DATABASE
+    ALTER DATABASE
+    ============== installing plpgsql                     ==============
+    CREATE LANGUAGE
+    ============== running regression test queries        ==============
+    test plpgsql_check_passive    ... ok
+    test plpgsql_check_active     ... ok
+    test plpgsql_check_active-9.5 ... ok
+    
+    =====================
+     All 3 tests passed. 
+    =====================
+
+Checked on
+
+* gcc on Linux (against all supported PostgreSQL)
+* clang 3.4 on Linux (against PostgreSQL 9.5)
+
+
 # Licence
 
 Copyright (c) Pavel Stehule (pavel.stehule@gmail.com)
