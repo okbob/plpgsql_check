@@ -143,6 +143,9 @@ static void assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 static void check_assignment(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 				 PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
 				 int targetdno);
+static void check_assignment_with_possible_slices(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
+						 PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
+						 int targetdno, bool use_element_type);
 static void check_element_assignment(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 						 PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
 						 int targetdno);
@@ -1701,10 +1704,21 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 			case PLPGSQL_STMT_FOREACH_A:
 				{
 					PLpgSQL_stmt_foreach_a *stmt_foreach_a = (PLpgSQL_stmt_foreach_a *) stmt;
+					bool use_element_type;
 
 					check_target(cstate, stmt_foreach_a->varno, NULL, NULL);
 
-					check_element_assignment(cstate, stmt_foreach_a->expr, NULL, NULL, stmt_foreach_a->varno);
+					/*
+					 * When slice > 0, then result and target are a array.
+					 * We shoudl to disable a array element refencing.
+					 */
+					use_element_type = stmt_foreach_a->slice == 0;
+
+					check_assignment_with_possible_slices(cstate,
+											 stmt_foreach_a->expr, 
+											 NULL, NULL,
+											 stmt_foreach_a->varno,
+											 use_element_type);
 
 					check_stmts(cstate, stmt_foreach_a->body);
 				}
@@ -2252,6 +2266,23 @@ check_assignment(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 	bool		is_expression = (targetrec == NULL && targetrow == NULL);
 
 	check_expr_as_rvalue(cstate, expr, targetrec, targetrow, targetdno, false,
+						  is_expression);
+}
+
+/*
+ * Verify an assignment of 'expr' to 'target' with possible slices
+ *
+ * it is used in FOREACH ARRAY where SLICE change a target type
+ *
+ */
+static void
+check_assignment_with_possible_slices(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
+				 PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
+				 int targetdno, bool use_element_type)
+{
+	bool		is_expression = (targetrec == NULL && targetrow == NULL);
+
+	check_expr_as_rvalue(cstate, expr, targetrec, targetrow, targetdno, use_element_type,
 						  is_expression);
 }
 
@@ -3136,6 +3167,14 @@ expr_get_desc(PLpgSQL_checkstate *cstate,
 		elog(ERROR, "there are no plan for query: \"%s\"",
 			 query->query);
 
+
+	if (is_expression && tupdesc->natts != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("query \"%s\" returned %d columns",
+						query->query,
+						tupdesc->natts)));
+
 	/*
 	 * try to get a element type, when result is a array (used with FOREACH
 	 * ARRAY stmt)
@@ -3163,25 +3202,32 @@ expr_get_desc(PLpgSQL_checkstate *cstate,
 					   format_type_be(tupdesc->attrs[0]->atttypid))));
 			FreeTupleDesc(tupdesc);
 		}
-		/* we can't know typmod now */
-		elemtupdesc = lookup_rowtype_tupdesc_noerror(elemtype, -1, true);
-		if (elemtupdesc != NULL)
+
+		/* when elemtype is not composity, prepare single field tupdesc */
+		if (!type_is_rowtype(elemtype))
 		{
+			TupleDesc rettupdesc;
+
+			rettupdesc = CreateTemplateTupleDesc(1, false);
+
+			TupleDescInitEntry(rettupdesc, 1, "__array_element__", elemtype, -1, 0);
+
 			FreeTupleDesc(tupdesc);
-			tupdesc = CreateTupleDescCopy(elemtupdesc);
-			ReleaseTupleDesc(elemtupdesc);
+			BlessTupleDesc(rettupdesc);
+
+			tupdesc = rettupdesc;
 		}
 		else
-			/* XXX: should be a warning? */
-			ereport(ERROR,
-					(errmsg("cannot to identify real type for record type variable")));
+		{
+			elemtupdesc = lookup_rowtype_tupdesc_noerror(elemtype, -1, true);
+			if (elemtupdesc != NULL)
+			{
+				FreeTupleDesc(tupdesc);
+				tupdesc = CreateTupleDescCopy(elemtupdesc);
+				ReleaseTupleDesc(elemtupdesc);
+			}
+		}
 	}
-	if (is_expression && tupdesc->natts != 1)
-		ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("query \"%s\" returned %d columns",
-						query->query,
-						tupdesc->natts)));
 
 	/*
 	 * One spacial case is when record is assigned to composite type, then we

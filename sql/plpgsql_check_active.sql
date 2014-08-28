@@ -1,5 +1,5 @@
-LOAD 'plpgsql';
-CREATE EXTENSION plpgsql_check;
+load 'plpgsql';
+create extension plpgsql_check;
 
 --
 -- check function statement tests
@@ -1227,3 +1227,298 @@ select * from plpgsql_check_function('fx2(int, varchar, varchar)', performance_w
 
 drop function fx2(int, varchar, varchar);
 
+create or replace function foreach_array_loop()
+returns void as
+$body$
+declare
+  arr text[];
+  el text;
+begin
+  arr := array['1111','2222','3333'];
+  foreach el in array arr loop
+    raise notice '%', el;
+  end loop;
+end;
+$body$
+language 'plpgsql' stable;
+
+select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
+
+create or replace function foreach_array_loop()
+returns void as
+$body$
+declare
+  arr text[];
+  el int;
+begin
+  arr := array['1111','2222','3333'];
+  foreach el in array arr loop
+    raise notice '%', el;
+  end loop;
+end;
+$body$
+language 'plpgsql' stable;
+
+select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
+
+create or replace function foreach_array_loop()
+returns void as
+$body$
+declare
+  arr date[];
+  el int;
+begin
+  arr := array['2014-01-01','2015-01-01','2016-01-01']::date[];
+  foreach el in array arr loop
+    raise notice '%', el;
+  end loop;
+end;
+$body$
+language 'plpgsql' stable;
+
+select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
+
+create or replace function foreach_array_loop()
+returns void as
+$body$
+declare
+  el text;
+begin
+  foreach el in array array['1111','2222','3333'] loop
+    raise notice '%', el;
+  end loop;
+end;
+$body$
+language 'plpgsql' stable;
+
+select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
+
+create or replace function foreach_array_loop()
+returns void as
+$body$
+declare
+  el int;
+begin
+  foreach el in array array['1111','2222','3333'] loop
+    raise notice '%', el;
+  end loop;
+end;
+$body$
+language 'plpgsql' stable;
+
+select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
+
+create or replace function foreach_array_loop()
+returns void as
+$body$
+declare
+  el int;
+begin
+  foreach el in array array['2014-01-01','2015-01-01','2016-01-01']::date[] loop
+    raise notice '%', el;
+  end loop;
+end;
+$body$
+language 'plpgsql' stable;
+
+select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
+
+drop function foreach_array_loop();
+
+create or replace function scan_rows(int[]) returns void AS $$
+declare
+  x int[];
+begin
+  foreach x slice 1 in array $1
+  loop
+    raise notice 'row = %', x;
+  end loop;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('scan_rows(int[])', performance_warnings := true);
+
+create or replace function scan_rows(int[]) returns void AS $$
+declare
+  x int[];
+begin
+  foreach x in array $1
+  loop
+    raise notice 'row = %', x;
+  end loop;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('scan_rows(int[])', performance_warnings := true);
+
+drop function scan_rows(int[]);
+
+drop function fx();
+drop type t1;
+drop type t2;
+
+create table t1(a int, b int);
+create table t2(a int, b int, c int);
+create table t3(a numeric, b int);
+
+insert into t1 values(10,20),(30,40);
+
+create or replace function fx()
+returns int as $$
+declare
+  s int default 0;
+  r t1;
+begin
+  foreach r in array (select array_agg(t1) from t1)
+  loop
+    s := r.a + r.b;
+  end loop;
+  return s;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
+
+create or replace function fx()
+returns int as $$
+declare
+  s int default 0;
+  r t1;
+  c t1[];
+begin
+  c := (select array_agg(t1) from t1);
+  foreach r in array c
+  loop
+    s := r.a + r.b;
+  end loop;
+  return s;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
+
+create or replace function fx()
+returns int as $$
+declare
+  s int default 0;
+  r t1;
+  c t1[];
+begin
+  select array_agg(t1) into c from t1;
+  foreach r in array c
+  loop
+    s := r.a + r.b;
+  end loop;
+  return s;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
+
+create or replace function fx()
+returns int as $$
+declare
+  s int default 0;
+  r t1;
+  c t1[];
+begin
+  select array_agg(t1) into c from t1;
+  for i in array_lower(c, 1) .. array_upper(c, 1)
+  loop
+    r := c[i];
+    s := r.a + r.b;
+  end loop;
+  return s;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
+
+create or replace function fx()
+returns int as $$
+declare
+  s int default 0;
+  c t1[];
+begin
+  select array_agg(t1) into c from t1;
+  for i in array_lower(c, 1) .. array_upper(c, 1)
+  loop
+    s := (c[i]).a + (c[i]).b;
+  end loop;
+  return s;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
+
+create or replace function fx()
+returns int as $$
+declare
+  s int default 0;
+  r record;
+  c t1[];
+begin
+  select array_agg(t1) into c from t1;
+  for i in array_lower(c, 1) .. array_upper(c, 1)
+  loop
+    r := c[i];
+    s := r.a + r.b;
+  end loop;
+  return s;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
+
+create or replace function fx()
+returns int as $$
+declare
+  s int default 0;
+  r record;
+  c t1[];
+begin
+  select array_agg(t1) into c from t1;
+  for i in array_lower(c, 1) .. array_upper(c, 1)
+  loop
+    r := c[i];
+    s := r.a + r.b + r.c;
+  end loop;
+  return s;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
+
+create or replace function fx()
+returns int as $$
+declare
+  s int default 0;
+  r t2;
+begin
+  foreach r in array (select array_agg(t1) from t1)
+  loop
+    s := r.a + r.b;
+  end loop;
+  return s;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
+
+create or replace function fx()
+returns int as $$
+declare
+  s int default 0;
+  r t3;
+begin
+  foreach r in array (select array_agg(t1) from t1)
+  loop
+    s := r.a + r.b;
+  end loop;
+  return s;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
+
+drop function fx();
