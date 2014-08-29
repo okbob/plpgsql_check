@@ -2,8 +2,8 @@
 %global pginstdir /usr/pgsql-9.4
 %global sname plpgsql_check
 
-Name:		%{sname}%{pgmajorversion}
-Version:	0.9.1
+Name:		%{sname}_%{pgmajorversion}
+Version:	0.9.2
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -25,14 +25,16 @@ a performance issues.
 %prep
 %setup -q -n %{sname}
 
+
 %build
+PATH="%{pginstdir}/bin;$PATH" ; export PATH
 CFLAGS="${CFLAGS:-%optflags}" ; export CFLAGS
 
 USE_PGXS=1 make %{?_smp_mflags}
 
 %install
 rm -rf %{buildroot}
-make USE_PGXS=1 install DESTDIR=%{buildroot}
+make USE_PGXS=1 DESTDIR=%{buildroot} install
 
 %clean
 rm -rf %{buildroot}
