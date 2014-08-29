@@ -9,8 +9,8 @@ Summary:	Additional tools for plpgsql functions validation
 
 Group:		Applications/Databases
 License:	BSD
-URL:		https://github.com/okbob/plpgsql_check
-Source0:	https://github.com/okbob/plpgsql_check/archive/plpgsql_check-0.9.tgz
+URL:		https://github.com/okbob/plpgsql_check/archive/v0.9.2.zip
+Source0:	plpgsql_check-0.9.2.zip
 BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 BuildRequires:	postgresql%{pgmajorversion}-devel
@@ -23,7 +23,7 @@ a validity of SQL identifiers used in plpgsql code. It try to identify
 a performance issues.
 
 %prep
-%setup -q -n %{sname}
+%setup -q -n %{sname}-0.9.2
 
 
 %build
