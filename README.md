@@ -288,7 +288,40 @@ result:
      All 3 tests passed. 
     =====================
 
-Checked on
+## Compilation plpgsql_check on Windows 7
+
+1. Download and install PostgreSQL 9.3.4 for Win32 from http://www.enterprisedb.com
+2. Download and install Microsoft Visual C++ 2010 Express
+3. Lern tutorial http://blog.2ndquadrant.com/compiling-postgresql-extensions-visual-studio-windows
+4. The plpgsql_check depends on plpgsql and we need to add plpgsql.lib to the library list. Unfortunately PostgreSQL 9.4.3 does not contain this library.
+5. Create a plpgsql.lib from plpgsql.dll as described in http://adrianhenke.wordpress.com/2008/12/05/create-lib-file-from-dll
+6. Change `plpgsql_check.c` file, add `PGDLLEXPORT` line before evry extension function, as described in http://blog.2ndquadrant.com/compiling-postgresql-extensions-visual-studio-windows
+   <pre>
+    ...PGDLLEXPORT
+    Datum plpgsql_check_function_tb(PG_FUNCTION_ARGS);
+    PGDLLEXPORT
+    Datum plpgsql_check_function(PG_FUNCTION_ARGS);
+    ...
+    PGDLLEXPORT
+    Datum
+    plpgsql_check_function(PG_FUNCTION_ARGS)
+    {
+    Oid            funcoid = PG_GETARG_OID(0);
+    ...
+    PGDLLEXPORT
+    Datum
+    plpgsql_check_function_tb(PG_FUNCTION_ARGS)
+    {
+    Oid            funcoid = PG_GETARG_OID(0);
+    ...
+   </pre>
+7. Build plpgsql_check.dll
+8. Install plugin
+  1. copy `plpgsql_check.dll` to `PostgreSQL\9.3\lib`
+  2. copy `plpgsql_check.control` and `plpgsql_check--0.8.sql` to `PostgreSQL\9.3\share\extension`
+
+
+## Checked on
 
 * gcc on Linux (against all supported PostgreSQL)
 * clang 3.4 on Linux (against PostgreSQL 9.5)
