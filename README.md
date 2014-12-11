@@ -288,6 +288,10 @@ result:
      All 3 tests passed. 
     =====================
 
+## Compilation plpgsql_check on OS X
+
+use `-undefined dynamic_lookup` to the last line of the `Makefile ("override CFLAGS += ...")` allowed it to build.
+
 ## Compilation plpgsql_check on Windows 7
 
 1. Download and install PostgreSQL 9.3.4 for Win32 from http://www.enterprisedb.com
