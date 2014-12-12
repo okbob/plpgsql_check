@@ -1,0 +1,102 @@
+LOAD 'plpgsql';
+CREATE EXTENSION IF NOT EXISTS plpgsql_check;
+NOTICE:  extension "plpgsql_check" already exists, skipping
+create table t1(a int, b int);
+create function f1()
+returns void as $$
+begin
+  if false then
+    update t1 set c = 30;
+  end if;
+  if false then
+    raise notice '% %', r.c;
+  end if;
+end;
+$$ language plpgsql;
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select * from plpgsql_check_function_tb('f1()', fatal_errors := true);
+ functionid | lineno |   statement   | sqlstate |                  message                   | detail | hint | level | position |        query         | context 
+------------+--------+---------------+----------+--------------------------------------------+--------+------+-------+----------+----------------------+---------
+ f1         |      4 | SQL statement | 42703    | column "c" of relation "t1" does not exist |        |      | error |       15 | update t1 set c = 30 | 
+(1 row)
+
+select * from plpgsql_check_function_tb('f1()', fatal_errors := false);
+ functionid | lineno |   statement   | sqlstate |                  message                   | detail | hint | level | position |        query         | context 
+------------+--------+---------------+----------+--------------------------------------------+--------+------+-------+----------+----------------------+---------
+ f1         |      4 | SQL statement | 42703    | column "c" of relation "t1" does not exist |        |      | error |       15 | update t1 set c = 30 | 
+ f1         |      7 | RAISE         | 42P01    | missing FROM-clause entry for table "r"    |        |      | error |        8 | SELECT r.c           | 
+ f1         |      7 | RAISE         | 42601    | too few parameters specified for RAISE     |        |      | error |        0 |                      | 
+(3 rows)
+
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno |   statement   | sqlstate |                  message                   | detail | hint | level | position |        query         | context 
+------------+--------+---------------+----------+--------------------------------------------+--------+------+-------+----------+----------------------+---------
+ f1         |      4 | SQL statement | 42703    | column "c" of relation "t1" does not exist |        |      | error |       15 | update t1 set c = 30 | 
+(1 row)
+
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+drop function f1();
+create or replace function f1()
+returns void as $$
+begin
+  if false then
+    raise notice '%', 1, 2;
+  end if;
+end;
+$$ language plpgsql;
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement | sqlstate |                 message                 | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+-----------------------------------------+--------+------+-------+----------+-------+---------
+ f1         |      4 | RAISE     | 42601    | too many parameters specified for RAISE |        |      | error |        0 |       | 
+(1 row)
+
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+drop function f1();
+create or replace function f1()
+returns void as $$
+begin
+  if false then
+    raise notice '% %';
+  end if;
+end;
+$$ language plpgsql;
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement | sqlstate |                message                 | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+----------------------------------------+--------+------+-------+----------+-------+---------
+ f1         |      4 | RAISE     | 42601    | too few parameters specified for RAISE |        |      | error |        0 |       | 
+(1 row)
+
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+drop function f1();

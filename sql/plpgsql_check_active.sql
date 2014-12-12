@@ -1,5 +1,5 @@
 load 'plpgsql';
-create extension plpgsql_check;
+create extension if not exists plpgsql_check;
 
 --
 -- check function statement tests
@@ -17,7 +17,7 @@ begin
     update t1 set c = 30;
   end if;
   if false then
-    raise notice '% %', r.c;
+     raise notice '%', r.c;
   end if;
 end;
 $$ language plpgsql;
@@ -25,10 +25,7 @@ $$ language plpgsql;
 select f1();
 select * from plpgsql_check_function_tb('f1()', fatal_errors := true);
 select * from plpgsql_check_function_tb('f1()', fatal_errors := false);
-
 select * from plpgsql_check_function_tb('f1()');
-
-select f1();
 
 drop function f1();
 
@@ -106,40 +103,6 @@ begin
     r := a + b;
   end if;
   return r;
-end;
-$$ language plpgsql;
-
-select f1();
-
-select * from plpgsql_check_function_tb('f1()');
-
-select f1();
-
-drop function f1();
-
-create or replace function f1()
-returns void as $$
-begin
-  if false then
-    raise notice '%', 1, 2;
-  end if;
-end;
-$$ language plpgsql;
-
-select f1();
-
-select * from plpgsql_check_function_tb('f1()');
-
-select f1();
-
-drop function f1();
-
-create or replace function f1()
-returns void as $$
-begin
-  if false then
-    raise notice '% %';
-  end if;
 end;
 $$ language plpgsql;
 
@@ -282,40 +245,6 @@ insert into t1 values(60,300);
 
 select * from t1;
 
-create or replace function f1_trg()
-returns trigger as $$
-begin
-  new.a := new.a + 10;
-  new.b := new.b + 10;
-  return 10;
-end;
-$$ language plpgsql;
-
-select * from plpgsql_check_function_tb('f1_trg()', 't1');
-
-create or replace function f1_trg()
-returns trigger as $$
-declare a int;
-begin
-  new.a := new.a + 10;
-  new.b := new.b + 10;
-  return a;
-end;
-$$ language plpgsql;
-
-select * from plpgsql_check_function_tb('f1_trg()', 't1');
-
-create or replace function f1_trg()
-returns trigger as $$
-begin
-  new.a := new.a + 10;
-  new.b := new.b + 10;
-  return 'AHoj';
-end;
-$$ language plpgsql;
-
-select * from plpgsql_check_function_tb('f1_trg()', 't1');
-
 insert into t1 values(600,30);
 
 select * from t1;
@@ -416,28 +345,6 @@ drop function f1();
 
 create table t1(a int, b int);
 
-create function f1()
-returns void as $$
-begin
-  if false then
-    update t1 set c = 30;
-  end if;
-  if false then
-    raise notice '% %', r.c;
-  end if;
-end;
-$$ language plpgsql;
-
-select f1();
-select * from plpgsql_check_function('f1()', fatal_errors := true);
-select * from plpgsql_check_function('f1()', fatal_errors := false);
-
-select * from plpgsql_check_function('f1()');
-
-select f1();
-
-drop function f1();
-
 create function g1(out a int, out b int)
 as $$
   select 10,20;
@@ -512,40 +419,6 @@ begin
     r := a + b;
   end if;
   return r;
-end;
-$$ language plpgsql;
-
-select f1();
-
-select * from plpgsql_check_function('f1()');
-
-select f1();
-
-drop function f1();
-
-create or replace function f1()
-returns void as $$
-begin
-  if false then
-    raise notice '%', 1, 2;
-  end if;
-end;
-$$ language plpgsql;
-
-select f1();
-
-select * from plpgsql_check_function('f1()');
-
-select f1();
-
-drop function f1();
-
-create or replace function f1()
-returns void as $$
-begin
-  if false then
-    raise notice '% %';
-  end if;
 end;
 $$ language plpgsql;
 
@@ -1016,53 +889,6 @@ select * from plpgsql_check_function('f1()', performance_warnings := true);
 
 drop function f1();
 
-create table t1tab(a int, b int);
-
-create or replace function f1()
-returns setof t1tab as $$
-begin
-  return next (10,20);
-  return;
-end;
-$$ language plpgsql;
-
-select * from plpgsql_check_function('f1()', performance_warnings := true);
-
-create or replace function f1()
-returns setof t1tab as $$
-begin
-  return next (10::numeric,20);
-  return;
-end;
-$$ language plpgsql;
-
-select * from plpgsql_check_function('f1()', performance_warnings := true);
-
-create or replace function f1()
-returns setof t1tab as $$
-declare a int; b int;
-begin
-  return next (a,b);
-  return;
-end;
-$$ language plpgsql;
-
-select * from plpgsql_check_function('f1()', performance_warnings := true);
-
-create or replace function f1()
-returns setof t1tab as $$
-declare a numeric; b int;
-begin
-  return next (a,b::numeric);
-  return;
-end;
-$$ language plpgsql;
-
-select * from plpgsql_check_function('f1()', performance_warnings := true);
-
-drop function f1();
-drop table t1tab;
-
 create type t1 as (a int, b int, c int);
 create type t2 as (a int, b numeric);
 
@@ -1111,16 +937,6 @@ $$ language plpgsql;
 select * from plpgsql_check_function('fx()', performance_warnings := true);
 
 drop function fx();
-
-create or replace function fx()
-returns t2 as $$
-begin
-  return (10,20,30)::t1;
-end;
-$$ language plpgsql;
-
-select * from plpgsql_check_function('fx()', performance_warnings := true);
-
 
 create table pa (id int, pa_id character varying(32), status character varying(60));
 create table  ml(ml_id character varying(32), status_from character varying(60), pa_id character varying(32), xyz int);
@@ -1522,3 +1338,4 @@ $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
 
 drop function fx();
+drop table t1;

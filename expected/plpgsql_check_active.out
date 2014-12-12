@@ -1,5 +1,5 @@
 load 'plpgsql';
-create extension plpgsql_check;
+create extension if not exists plpgsql_check;
 --
 -- check function statement tests
 --
@@ -14,7 +14,7 @@ begin
     update t1 set c = 30;
   end if;
   if false then
-    raise notice '% %', r.c;
+     raise notice '%', r.c;
   end if;
 end;
 $$ language plpgsql;
@@ -35,19 +35,12 @@ select * from plpgsql_check_function_tb('f1()', fatal_errors := false);
 ------------+--------+---------------+----------+--------------------------------------------+--------+------+-------+----------+----------------------+---------
  f1         |      4 | SQL statement | 42703    | column "c" of relation "t1" does not exist |        |      | error |       15 | update t1 set c = 30 | 
  f1         |      7 | RAISE         | 42P01    | missing FROM-clause entry for table "r"    |        |      | error |        8 | SELECT r.c           | 
- f1         |      7 | RAISE         | 42601    | too few parameters specified for RAISE     |        |      | error |        0 |                      | 
-(3 rows)
+(2 rows)
 
 select * from plpgsql_check_function_tb('f1()');
  functionid | lineno |   statement   | sqlstate |                  message                   | detail | hint | level | position |        query         | context 
 ------------+--------+---------------+----------+--------------------------------------------+--------+------+-------+----------+----------------------+---------
  f1         |      4 | SQL statement | 42703    | column "c" of relation "t1" does not exist |        |      | error |       15 | update t1 set c = 30 | 
-(1 row)
-
-select f1();
- f1 
-----
- 
 (1 row)
 
 drop function f1();
@@ -173,60 +166,6 @@ select f1();
  f1 
 ----
    
-(1 row)
-
-drop function f1();
-create or replace function f1()
-returns void as $$
-begin
-  if false then
-    raise notice '%', 1, 2;
-  end if;
-end;
-$$ language plpgsql;
-select f1();
- f1 
-----
- 
-(1 row)
-
-select * from plpgsql_check_function_tb('f1()');
- functionid | lineno | statement | sqlstate |                 message                 | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+-----------------------------------------+--------+------+-------+----------+-------+---------
- f1         |      4 | RAISE     | 42601    | too many parameters specified for RAISE |        |      | error |        0 |       | 
-(1 row)
-
-select f1();
- f1 
-----
- 
-(1 row)
-
-drop function f1();
-create or replace function f1()
-returns void as $$
-begin
-  if false then
-    raise notice '% %';
-  end if;
-end;
-$$ language plpgsql;
-select f1();
- f1 
-----
- 
-(1 row)
-
-select * from plpgsql_check_function_tb('f1()');
- functionid | lineno | statement | sqlstate |                message                 | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+----------------------------------------+--------+------+-------+----------+-------+---------
- f1         |      4 | RAISE     | 42601    | too few parameters specified for RAISE |        |      | error |        0 |       | 
-(1 row)
-
-select f1();
- f1 
-----
- 
 (1 row)
 
 drop function f1();
@@ -397,52 +336,7 @@ select * from t1;
  16 | 40
 (3 rows)
 
-create or replace function f1_trg()
-returns trigger as $$
-begin
-  new.a := new.a + 10;
-  new.b := new.b + 10;
-  return 10;
-end;
-$$ language plpgsql;
-select * from plpgsql_check_function_tb('f1_trg()', 't1');
- functionid | lineno | statement | sqlstate |                                 message                                  | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+--------------------------------------------------------------------------+--------+------+-------+----------+-------+---------
- f1_trg     |      5 | RETURN    | 42804    | cannot return non-composite value from function returning composite type |        |      | error |        0 |       | 
-(1 row)
-
-create or replace function f1_trg()
-returns trigger as $$
-declare a int;
-begin
-  new.a := new.a + 10;
-  new.b := new.b + 10;
-  return a;
-end;
-$$ language plpgsql;
-select * from plpgsql_check_function_tb('f1_trg()', 't1');
- functionid | lineno | statement | sqlstate |                                 message                                  | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+--------------------------------------------------------------------------+--------+------+-------+----------+-------+---------
- f1_trg     |      6 | RETURN    | 42804    | cannot return non-composite value from function returning composite type |        |      | error |        0 |       | 
-(1 row)
-
-create or replace function f1_trg()
-returns trigger as $$
-begin
-  new.a := new.a + 10;
-  new.b := new.b + 10;
-  return 'AHoj';
-end;
-$$ language plpgsql;
-select * from plpgsql_check_function_tb('f1_trg()', 't1');
- functionid | lineno | statement | sqlstate |                                 message                                  | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+--------------------------------------------------------------------------+--------+------+-------+----------+-------+---------
- f1_trg     |      5 | RETURN    | 42804    | cannot return non-composite value from function returning composite type |        |      | error |        0 |       | 
-(1 row)
-
 insert into t1 values(600,30);
-ERROR:  cannot return non-composite value from function returning composite type
-CONTEXT:  PL/pgSQL function f1_trg() line 5 at RETURN
 select * from t1;
  a  | b  
 ----+----
@@ -567,58 +461,6 @@ select * from plpgsql_check_function_tb('f1()');
 
 drop function f1();
 create table t1(a int, b int);
-create function f1()
-returns void as $$
-begin
-  if false then
-    update t1 set c = 30;
-  end if;
-  if false then
-    raise notice '% %', r.c;
-  end if;
-end;
-$$ language plpgsql;
-select f1();
- f1 
-----
- 
-(1 row)
-
-select * from plpgsql_check_function('f1()', fatal_errors := true);
-                         plpgsql_check_function                         
-------------------------------------------------------------------------
- error:42703:4:SQL statement:column "c" of relation "t1" does not exist
- Query: update t1 set c = 30
- --                   ^
-(3 rows)
-
-select * from plpgsql_check_function('f1()', fatal_errors := false);
-                         plpgsql_check_function                         
-------------------------------------------------------------------------
- error:42703:4:SQL statement:column "c" of relation "t1" does not exist
- Query: update t1 set c = 30
- --                   ^
- error:42P01:7:RAISE:missing FROM-clause entry for table "r"
- Query: SELECT r.c
- --            ^
- error:42601:7:RAISE:too few parameters specified for RAISE
-(7 rows)
-
-select * from plpgsql_check_function('f1()');
-                         plpgsql_check_function                         
-------------------------------------------------------------------------
- error:42703:4:SQL statement:column "c" of relation "t1" does not exist
- Query: update t1 set c = 30
- --                   ^
-(3 rows)
-
-select f1();
- f1 
-----
- 
-(1 row)
-
-drop function f1();
 create function g1(out a int, out b int)
 as $$
   select 10,20;
@@ -745,60 +587,6 @@ select f1();
  f1 
 ----
    
-(1 row)
-
-drop function f1();
-create or replace function f1()
-returns void as $$
-begin
-  if false then
-    raise notice '%', 1, 2;
-  end if;
-end;
-$$ language plpgsql;
-select f1();
- f1 
-----
- 
-(1 row)
-
-select * from plpgsql_check_function('f1()');
-                   plpgsql_check_function                    
--------------------------------------------------------------
- error:42601:4:RAISE:too many parameters specified for RAISE
-(1 row)
-
-select f1();
- f1 
-----
- 
-(1 row)
-
-drop function f1();
-create or replace function f1()
-returns void as $$
-begin
-  if false then
-    raise notice '% %';
-  end if;
-end;
-$$ language plpgsql;
-select f1();
- f1 
-----
- 
-(1 row)
-
-select * from plpgsql_check_function('f1()');
-                   plpgsql_check_function                   
-------------------------------------------------------------
- error:42601:4:RAISE:too few parameters specified for RAISE
-(1 row)
-
-select f1();
- f1 
-----
- 
 (1 row)
 
 drop function f1();
@@ -1403,63 +1191,6 @@ select * from plpgsql_check_function('f1()', performance_warnings := true);
 (3 rows)
 
 drop function f1();
-create table t1tab(a int, b int);
-create or replace function f1()
-returns setof t1tab as $$
-begin
-  return next (10,20);
-  return;
-end;
-$$ language plpgsql;
-select * from plpgsql_check_function('f1()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
-
-create or replace function f1()
-returns setof t1tab as $$
-begin
-  return next (10::numeric,20);
-  return;
-end;
-$$ language plpgsql;
-select * from plpgsql_check_function('f1()', performance_warnings := true);
-                               plpgsql_check_function                               
-------------------------------------------------------------------------------------
- error:42804:3:RETURN NEXT:returned record type does not match expected record type
- Detail: Returned type numeric does not match expected type integer in column 1.
-(2 rows)
-
-create or replace function f1()
-returns setof t1tab as $$
-declare a int; b int;
-begin
-  return next (a,b);
-  return;
-end;
-$$ language plpgsql;
-select * from plpgsql_check_function('f1()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
-
-create or replace function f1()
-returns setof t1tab as $$
-declare a numeric; b int;
-begin
-  return next (a,b::numeric);
-  return;
-end;
-$$ language plpgsql;
-select * from plpgsql_check_function('f1()', performance_warnings := true);
-                               plpgsql_check_function                               
-------------------------------------------------------------------------------------
- error:42804:4:RETURN NEXT:returned record type does not match expected record type
- Detail: Returned type numeric does not match expected type integer in column 1.
-(2 rows)
-
-drop function f1();
-drop table t1tab;
 create type t1 as (a int, b int, c int);
 create type t2 as (a int, b numeric);
 create or replace function fx()
@@ -1517,19 +1248,6 @@ select * from plpgsql_check_function('fx()', performance_warnings := true);
 (0 rows)
 
 drop function fx();
-create or replace function fx()
-returns t2 as $$
-begin
-  return (10,20,30)::t1;
-end;
-$$ language plpgsql;
-select * from plpgsql_check_function('fx()', performance_warnings := true);
-                             plpgsql_check_function                              
----------------------------------------------------------------------------------
- error:42804:3:RETURN:returned record type does not match expected record type
- Detail: Returned type integer does not match expected type numeric in column 2.
-(2 rows)
-
 create table pa (id int, pa_id character varying(32), status character varying(60));
 create table  ml(ml_id character varying(32), status_from character varying(60), pa_id character varying(32), xyz int);
 create or replace function ml_trg()
@@ -1798,6 +1516,7 @@ select * from plpgsql_check_function_tb('scan_rows(int[])', performance_warnings
 
 drop function scan_rows(int[]);
 drop function fx();
+ERROR:  function fx() does not exist
 drop type t1;
 drop type t2;
 create table t1(a int, b int);
@@ -1984,3 +1703,4 @@ select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
 (2 rows)
 
 drop function fx();
+drop table t1;

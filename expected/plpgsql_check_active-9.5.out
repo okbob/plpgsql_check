@@ -1,6 +1,6 @@
 LOAD 'plpgsql';
-CREATE EXTENSION plpgsql_check;
-ERROR:  extension "plpgsql_check" already exists
+CREATE EXTENSION  IF NOT EXISTS plpgsql_check;
+NOTICE:  extension "plpgsql_check" already exists, skipping
 -- check event trigger function 
 create or replace function f1() returns event_trigger as $$
 BEGIN
@@ -51,5 +51,77 @@ select * from plpgsql_check_function('f1()');
 (3 rows)
 
 drop function f1();
+create table t1tab(a int, b int);
+create or replace function f1()
+returns setof t1tab as $$
+begin
+  return next (10,20);
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function f1()
+returns setof t1tab as $$
+begin
+  return next (10::numeric,20);
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+                               plpgsql_check_function                               
+------------------------------------------------------------------------------------
+ error:42804:3:RETURN NEXT:returned record type does not match expected record type
+ Detail: Returned type numeric does not match expected type integer in column 1.
+(2 rows)
+
+create or replace function f1()
+returns setof t1tab as $$
+declare a int; b int;
+begin
+  return next (a,b);
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function f1()
+returns setof t1tab as $$
+declare a numeric; b int;
+begin
+  return next (a,b::numeric);
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings := true);
+                               plpgsql_check_function                               
+------------------------------------------------------------------------------------
+ error:42804:4:RETURN NEXT:returned record type does not match expected record type
+ Detail: Returned type numeric does not match expected type integer in column 1.
+(2 rows)
+
 drop function f1();
-ERROR:  function f1() does not exist
+create table t1(a int, b int);
+create or replace function fx()
+returns t2 as $$
+begin
+  return (10,20,30)::t1;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx()', performance_warnings := true);
+               plpgsql_check_function               
+----------------------------------------------------
+ error:42846:3:RETURN:cannot cast type record to t1
+ Query: SELECT (10,20,30)::t1
+ --                      ^
+ Detail: Input has too many columns.
+(4 rows)
+
+drop table t1tab;
+drop table t1;
