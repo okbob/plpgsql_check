@@ -23,4 +23,8 @@ include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
 
+ifeq ($(PORTNAME), darwin)
+override CFLAGS += -undefined dynamic_lookup
+endif
+
 override CFLAGS += -I$(top_builddir)/src/pl/plpgsql/src
