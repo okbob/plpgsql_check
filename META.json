@@ -9,7 +9,7 @@
       "plpgsql_check": {
          "abstract": "Additional tools for plpgsql functions validation",
          "file": "sql/plpgsql_check_active.sql",
-         "docfile": "doc/semver.mmd",
+         "docfile": "README.md",
          "version": "0.9.2"
       }
    },
