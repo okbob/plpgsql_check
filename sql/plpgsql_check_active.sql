@@ -1413,3 +1413,20 @@ drop function fx();
 
 drop table test;
 
+create or replace function fx()
+returns void as $$
+declare
+  s int;
+  sa int[];
+  sd date;
+  bs int[];
+begin
+  sa[10] := s;
+  sa[10] := sd;
+  s := bs[10];
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('fx()', performance_warnings := true, fatal_errors := false);
+
+drop function fx();

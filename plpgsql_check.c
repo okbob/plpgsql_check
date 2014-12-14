@@ -146,9 +146,6 @@ static void check_assignment(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 static void check_assignment_with_possible_slices(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 						 PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
 						 int targetdno, bool use_element_type);
-static void check_element_assignment(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
-						 PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
-						 int targetdno);
 static void check_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 static void check_expr_with_expected_scalar_type(PLpgSQL_checkstate *cstate,
 								 PLpgSQL_expr *expr,
@@ -1529,13 +1526,8 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 
 					check_target(cstate, stmt_assign->varno, NULL, NULL);
 
-					/* prepare plan if desn't exist yet */
 					check_assignment(cstate, stmt_assign->expr, NULL, NULL,
 									 stmt_assign->varno);
-
-					/*
-					 * XXX: i thínk I lost some args to prepare_expr here
-					 */
 				}
 				break;
 
@@ -2287,21 +2279,6 @@ check_assignment_with_possible_slices(PLpgSQL_checkstate *cstate, PLpgSQL_expr *
 }
 
 /*
- * Verify a element
- *
- */
-static void
-check_element_assignment(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
-						 PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
-						 int targetdno)
-{
-	bool		is_expression = (targetrec == NULL && targetrow == NULL);
-
-	check_expr_as_rvalue(cstate, expr, targetrec, targetrow, targetdno, true,
-						  is_expression);
-}
-
-/*
  * Verify to possible cast to bool, integer, ..
  *
  */
@@ -2790,6 +2767,14 @@ check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *e
 					ereport(ERROR,
 							(errcode(ERRCODE_DATATYPE_MISMATCH),
 							 errmsg("subscripted object is not an array")));
+
+				if (expected_typoid)
+					*expected_typoid = arrayelemtypeid;
+
+				if (expected_typmod)
+					*expected_typmod = ((PLpgSQL_var *) target)->datatype->atttypmod;
+
+				record_variable_usage(cstate, target->dno);
 			}
 			break;
 	}
@@ -2959,6 +2944,20 @@ assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, boo
 
 		case PLPGSQL_DTYPE_REC:
 			assign_tupdesc_row_or_rec(cstate, NULL, (PLpgSQL_rec *) target, tupdesc, isnull);
+			break;
+
+		case PLPGSQL_DTYPE_ARRAYELEM:
+			{
+				Oid expected_typoid;
+				int expected_typmod;
+
+				check_target(cstate, varno, &expected_typoid, &expected_typmod);
+
+				check_assign_to_target_type(cstate,
+								    expected_typoid, expected_typmod,
+								    tupdesc->attrs[0]->atttypid,
+								    isnull);
+			}
 			break;
 	}
 }
