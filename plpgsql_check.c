@@ -2736,10 +2736,10 @@ check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *e
 									rec->refname, recfield->fieldname)));
 
 				if (expected_typoid)
-					*expected_typoid = SPI_gettypeid(rec->tupdesc, fno + 1);
+					*expected_typoid = SPI_gettypeid(rec->tupdesc, fno);
 
 				if (expected_typmod)
-					*expected_typmod = rec->tupdesc->attrs[fno]->atttypmod;
+					*expected_typmod = rec->tupdesc->attrs[fno - 1]->atttypmod;
 			}
 			break;
 

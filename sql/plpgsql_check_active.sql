@@ -1339,3 +1339,77 @@ select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
 
 drop function fx();
 drop table t1;
+
+-- mscottie issue #13
+create table test (
+  a text,
+  b integer,
+  c uuid
+);
+
+create function before_insert_test()
+returns trigger language plpgsql as $$
+begin
+  select a into NEW.a from test where b = 1;
+  select b into NEW.b from test where b = 1;
+  select null::uuid into NEW.c from test where b = 1;
+  return new;
+end;
+$$;
+
+select * from plpgsql_check_function_tb('before_insert_test()','test');
+
+create or replace function before_insert_test()
+returns trigger language plpgsql as $$
+begin
+  NEW.a := (select a from test where b = 1);
+  NEW.b := (select b from test where b = 1);
+  NEW.c := (select c from test where b = 1);
+  return new;
+end;
+$$;
+
+select * from plpgsql_check_function_tb('before_insert_test()','test', fatal_errors := false);
+
+create or replace function before_insert_test()
+returns trigger language plpgsql as $$
+begin
+  NEW.a := 'Hello'::text;
+  NEW.b := 10;
+  NEW.c := null::uuid;
+  return new;
+end;
+$$;
+
+select * from plpgsql_check_function_tb('before_insert_test()','test', fatal_errors := false);
+
+drop function before_insert_test();
+
+create or replace function fx()
+returns void as $$
+declare NEW test; OLD test;
+begin
+  select null::uuid into NEW.c from test where b = 1;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('fx()', performance_warnings := true, fatal_errors := false);
+
+drop function fx();
+
+create or replace function fx()
+returns void as $$
+declare NEW test;
+begin
+  NEW.a := 'Hello'::text;
+  NEW.b := 10;
+  NEW.c := null::uuid;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('fx()', performance_warnings := true, fatal_errors := false);
+
+drop function fx();
+
+drop table test;
+
