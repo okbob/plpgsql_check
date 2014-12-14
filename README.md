@@ -5,8 +5,8 @@ I founded this project, because I wanted to publish the code I wrote in the last
 when I tried to write enhanced checking for PostgreSQL upstream. It was not fully
 successful - integration into upstream requires some larger plpgsql refactoring - probably
 it will not be done in next two years (now is Dec 2013). But written code is fully functional
-and can be used in production. So, I created this extension to be available for all
-plpgsql developers.
+and can be used in production (and it is used in production). So, I created this extension to
+be available for all plpgsql developers.
 
 If you like it and if you would to join to development of this extension, register
 yourself to [postgresql extension hacking](https://groups.google.com/forum/#!forum/postgresql-extensions-hacking)
@@ -243,8 +243,8 @@ function.
 
 You need a development environment for PostgreSQL extensions:
 
-    make USE_PGXS=1 clean
-    make USE_PGXS=1 install
+    make clean
+    make install
 
 result:
 
