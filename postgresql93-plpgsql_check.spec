@@ -3,14 +3,14 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	0.9.2
+Version:	0.9.3
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
 Group:		Applications/Databases
 License:	BSD
-URL:		https://github.com/okbob/plpgsql_check/archive/v0.9.2.zip
-Source0:	plpgsql_check-0.9.2.zip
+URL:		https://github.com/okbob/plpgsql_check/archive/v0.9.3.zip
+Source0:	plpgsql_check-0.9.3.zip
 BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 BuildRequires:	postgresql%{pgmajorversion}-devel
@@ -23,7 +23,7 @@ a validity of SQL identifiers used in plpgsql code. It try to identify
 a performance issues.
 
 %prep
-%setup -q -n %{sname}-0.9.2
+%setup -q -n %{sname}-0.9.3
 
 
 %build
@@ -48,5 +48,9 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Fri Dec 19 2014 - Pavel STEHULE <pavel.stehule@gmail.com> 0.9.3-1
+- fix a broken record field type checking
+- add check for assign to array field
+
 * Mon Aug 25 2014 - Pavel STEHULE <pavel.stehule@gmail.com> 0.9.1-1
 - Initial packaging
