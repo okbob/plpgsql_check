@@ -180,7 +180,8 @@ static TupleDesc expr_get_desc(PLpgSQL_checkstate *cstate,
 							  PLpgSQL_expr *query,
 										  bool use_element_type,
 										  bool expand_record,
-										  bool is_expression);
+										  bool is_expression,
+										  Oid *first_level_typoid);
 static void format_error_xml(StringInfo str,
 						  PLpgSQL_execstate *estate,
 								 int sqlerrcode, int lineno,
@@ -1524,8 +1525,6 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 				{
 					PLpgSQL_stmt_assign *stmt_assign = (PLpgSQL_stmt_assign *) stmt;
 
-					check_target(cstate, stmt_assign->varno, NULL, NULL);
-
 					check_assignment(cstate, stmt_assign->expr, NULL, NULL,
 									 stmt_assign->varno);
 				}
@@ -1570,7 +1569,8 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 												stmt_case->t_expr,
 												false,	/* no element type */
 												true,	/* expand record */
-												true);	/* is expression */
+												true,	/* is expression */
+												NULL);
 						result_oid = tupdesc->attrs[0]->atttypid;
 
 						/*
@@ -2313,7 +2313,7 @@ check_expr_with_expected_scalar_type(PLpgSQL_checkstate *cstate,
 			/* record all variables used by the query */
 			cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
-			tupdesc = expr_get_desc(cstate, expr, false, true, true);
+			tupdesc = expr_get_desc(cstate, expr, false, true, true, NULL);
 			is_immutable_null = is_const_null_expr(expr);
 
 			if (tupdesc)
@@ -2391,7 +2391,7 @@ check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expr
 		/* record all variables used by the query */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
-		tupdesc = expr_get_desc(cstate, expr, false, true, is_expression);
+		tupdesc = expr_get_desc(cstate, expr, false, true, is_expression, NULL);
 		is_immutable_null = is_const_null_expr(expr);
 
 		if (tupdesc)
@@ -2491,6 +2491,22 @@ check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 	MemoryContext oldCxt = CurrentMemoryContext;
 	TupleDesc	tupdesc;
 	bool is_immutable_null;
+	bool			expand = true;
+	Oid			first_level_typoid;
+	Oid expected_typoid = InvalidOid;
+	int expected_typmod = InvalidOid;
+
+	if (targetdno != -1)
+	{
+		check_target(cstate, targetdno, &expected_typoid, &expected_typmod);
+
+		/*
+		 * When target variable is not compossite, then we should not
+		 * to expand result tupdesc.
+		 */
+		if (!type_is_rowtype(expected_typoid))
+			expand = false;
+	}
 
 	oldowner = CurrentResourceOwner;
 	BeginInternalSubTransaction(NULL);
@@ -2502,8 +2518,30 @@ check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 		/* record all variables used by the query */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
-		tupdesc = expr_get_desc(cstate, expr, use_element_type, true, is_expression);
+		tupdesc = expr_get_desc(cstate, expr, use_element_type, expand, is_expression, &first_level_typoid);
 		is_immutable_null = is_const_null_expr(expr);
+
+		if (expected_typoid != InvalidOid && type_is_rowtype(expected_typoid) && first_level_typoid != InvalidOid)
+		{
+			/* simple error, scalar source to composite target */
+			if (!type_is_rowtype(first_level_typoid))
+			{
+				put_error(cstate,
+						  ERRCODE_DATATYPE_MISMATCH, 0,
+							  "cannot assign scalar variable to composite target",
+							  NULL,
+							  NULL,
+							  PLPGSQL_CHECK_ERROR,
+							  0, NULL, NULL);
+
+				goto no_other_check;
+			}
+
+			/* simple ok, target and source composite types are same */
+			if (type_is_rowtype(first_level_typoid)
+				    && first_level_typoid != RECORDOID && first_level_typoid == expected_typoid)
+				goto no_other_check;
+		}
 
 		if (tupdesc)
 		{
@@ -2531,8 +2569,12 @@ check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 								  PLPGSQL_CHECK_WARNING_OTHERS,
 								  0, NULL, NULL);
 			}
-			ReleaseTupleDesc(tupdesc);
 		}
+
+no_other_check:
+		if (tupdesc)
+			ReleaseTupleDesc(tupdesc);
+
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
@@ -2588,7 +2630,7 @@ check_expr_as_sqlstmt_nodata(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 		/* record all variables used by the query */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
-		if (expr_get_desc(cstate, expr, false, false, false))
+		if (expr_get_desc(cstate, expr, false, false, false, NULL))
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("query has no destination for result data")));
@@ -2673,12 +2715,60 @@ check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *e
 	switch (target->dtype)
 	{
 		case PLPGSQL_DTYPE_VAR:
+			{
+				PLpgSQL_var *var = (PLpgSQL_var *) target;
+				PLpgSQL_type *tp = var->datatype;
+
+				if (expected_typoid != NULL)
+					*expected_typoid = tp->typoid;
+				if (expected_typmod != NULL)
+					*expected_typmod = tp->atttypmod;
+			}
+			break;
+
 		case PLPGSQL_DTYPE_REC:
-			/* nothing to check */
+			{
+				PLpgSQL_rec *rec = (PLpgSQL_rec *) target;
+
+				if (rec->tupdesc != NULL)
+				{
+					if (expected_typoid != NULL)
+						*expected_typoid = rec->tupdesc->tdtypeid;
+					if (expected_typmod != NULL)
+						*expected_typmod = rec->tupdesc->tdtypmod;
+				}
+				else
+				{
+					if (expected_typoid != NULL)
+						*expected_typoid = RECORDOID;
+					if (expected_typmod != NULL)
+						*expected_typmod = -1;
+				}
+			}
 			break;
 
 		case PLPGSQL_DTYPE_ROW:
-			check_row_or_rec(cstate, (PLpgSQL_row *) target, NULL);
+			{
+				PLpgSQL_row *row = (PLpgSQL_row *) target;
+
+				if (row->rowtupdesc != NULL)
+				{
+					if (expected_typoid != NULL)
+						*expected_typoid = row->rowtupdesc->tdtypeid;
+					if (expected_typmod != NULL)
+						*expected_typmod = row->rowtupdesc->tdtypmod;
+				}
+				else
+				{
+					if (expected_typoid != NULL)
+						*expected_typoid = RECORDOID;
+					if (expected_typmod != NULL)
+						*expected_typmod = -1;
+				}
+
+				check_row_or_rec(cstate, row, NULL);
+
+			}
 			break;
 
 		case PLPGSQL_DTYPE_RECFIELD:
@@ -2953,10 +3043,37 @@ assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, boo
 
 				check_target(cstate, varno, &expected_typoid, &expected_typmod);
 
-				check_assign_to_target_type(cstate,
-								    expected_typoid, expected_typmod,
-								    tupdesc->attrs[0]->atttypid,
-								    isnull);
+				/* When target is composite type, then source is expanded already */
+				if (type_is_rowtype(expected_typoid))
+				{
+					PLpgSQL_rec rec;
+
+					rec.tup = NULL;
+					rec.freetup = false;
+					rec.freetupdesc = false;
+
+					PG_TRY();
+					{
+						rec.tupdesc = lookup_rowtype_tupdesc_noerror(expected_typoid, expected_typmod, true);
+						assign_tupdesc_row_or_rec(cstate, NULL, &rec, tupdesc, isnull);
+
+						if (rec.tupdesc)
+							ReleaseTupleDesc(rec.tupdesc);
+					}
+					PG_CATCH();
+					{
+						if (rec.tupdesc)
+							ReleaseTupleDesc(rec.tupdesc);
+
+						PG_RE_THROW();
+					}
+					PG_END_TRY();
+				}
+				else
+					check_assign_to_target_type(cstate,
+									    expected_typoid, expected_typmod,
+									    tupdesc->attrs[0]->atttypid,
+									    isnull);
 			}
 			break;
 	}
@@ -3136,7 +3253,8 @@ expr_get_desc(PLpgSQL_checkstate *cstate,
 			  PLpgSQL_expr *query,
 			  bool use_element_type,
 			  bool expand_record,
-			  bool is_expression)
+			  bool is_expression,
+			  Oid *first_level_typoid)
 {
 	TupleDesc	tupdesc = NULL;
 	CachedPlanSource *plansource = NULL;
@@ -3165,7 +3283,6 @@ expr_get_desc(PLpgSQL_checkstate *cstate,
 	else
 		elog(ERROR, "there are no plan for query: \"%s\"",
 			 query->query);
-
 
 	if (is_expression && tupdesc->natts != 1)
 		ereport(ERROR,
@@ -3202,6 +3319,9 @@ expr_get_desc(PLpgSQL_checkstate *cstate,
 			FreeTupleDesc(tupdesc);
 		}
 
+		if (is_expression && first_level_typoid != NULL)
+			*first_level_typoid = elemtype;
+
 		/* when elemtype is not composity, prepare single field tupdesc */
 		if (!type_is_rowtype(elemtype))
 		{
@@ -3226,6 +3346,11 @@ expr_get_desc(PLpgSQL_checkstate *cstate,
 				ReleaseTupleDesc(elemtupdesc);
 			}
 		}
+	}
+	else
+	{
+		if (is_expression && first_level_typoid != NULL)
+			*first_level_typoid = tupdesc->attrs[0]->atttypid;
 	}
 
 	/*

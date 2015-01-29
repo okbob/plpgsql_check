@@ -255,6 +255,30 @@ select * from plpgsql_check_function_tb('f1()');
  f1         |      7 | GET DIAGNOSTICS | 42703    | record "_exception" has no field "hint" |        |      | error |        0 |       | 
 (1 row)
 
+create or replace function f1()
+returns void as $$
+declare
+  _exception _exception_type;
+begin
+  _exception := NULL::_exception_type;
+exception when others then
+  get stacked diagnostics
+        _exception.state = RETURNED_SQLSTATE,
+        _exception.message = MESSAGE_TEXT,
+        _exception.detail = PG_EXCEPTION_DETAIL;
+end;
+$$ language plpgsql;
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
+(0 rows)
+
 drop function f1();
 create or replace function f1_trg()
 returns trigger as $$
@@ -1802,3 +1826,53 @@ select * from plpgsql_check_function_tb('fx()', performance_warnings := true, fa
 (1 row)
 
 drop function fx();
+create type t as (t text);
+create or replace function fx()
+returns void as $$
+declare _t t; _tt t[];
+  _txt text;
+begin
+  _t.t := 'ABC'; -- correct warning "unknown"
+  _tt[1] := _t;
+  _txt := _t;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx()', performance_warnings := true);
+                                  plpgsql_check_function                                  
+------------------------------------------------------------------------------------------
+ performance:42804:5:assignment:target variable has different type than expression result
+ Detail: assign "unknown" value to "text" variable
+ Hint: Hidden casting can be a performance issue.
+ error:42804:7:assignment:cannot assign composite value to a scalar variable
+(4 rows)
+
+drop function fx();
+create or replace function fx()
+returns void as $$
+declare _t1 t; _t2 t;
+begin
+  _t1.t := 'ABC'::text;
+  _t2 := _t1;
+  raise notice '% %', _t2, _t2.t;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx()', performance_warnings := true);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function fx();
+create or replace function fx(out _tt t[]) as $$
+declare _t t;
+begin
+  _t.t := 'ABC'::text;
+  _tt[1] := _t;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx()', performance_warnings := true);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function fx();
+drop type t;

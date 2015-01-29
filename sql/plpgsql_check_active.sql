@@ -174,6 +174,24 @@ select f1();
 
 select * from plpgsql_check_function_tb('f1()');
 
+create or replace function f1()
+returns void as $$
+declare
+  _exception _exception_type;
+begin
+  _exception := NULL::_exception_type;
+exception when others then
+  get stacked diagnostics
+        _exception.state = RETURNED_SQLSTATE,
+        _exception.message = MESSAGE_TEXT,
+        _exception.detail = PG_EXCEPTION_DETAIL;
+end;
+$$ language plpgsql;
+
+select f1();
+
+select * from plpgsql_check_function_tb('f1()');
+
 drop function f1();
 
 create or replace function f1_trg()
@@ -1430,3 +1448,48 @@ $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true, fatal_errors := false);
 
 drop function fx();
+
+create type t as (t text);
+
+create or replace function fx()
+returns void as $$
+declare _t t; _tt t[];
+  _txt text;
+begin
+  _t.t := 'ABC'; -- correct warning "unknown"
+  _tt[1] := _t;
+  _txt := _t;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx()', performance_warnings := true);
+
+drop function fx();
+
+create or replace function fx()
+returns void as $$
+declare _t1 t; _t2 t;
+begin
+  _t1.t := 'ABC'::text;
+  _t2 := _t1;
+  raise notice '% %', _t2, _t2.t;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx()', performance_warnings := true);
+
+drop function fx();
+
+create or replace function fx(out _tt t[]) as $$
+declare _t t;
+begin
+  _t.t := 'ABC'::text;
+  _tt[1] := _t;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx()', performance_warnings := true);
+
+drop function fx();
+drop type t;
+
