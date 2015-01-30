@@ -2,9 +2,9 @@
  *
  * plpgsql_check.c
  *
- *			  extended checks for plpgsql functions
+ *			  enhanced checks for plpgsql functions
  *
- * by Pavel Stehule 2013, 2014
+ * by Pavel Stehule 2013, 2014, 2015
  *
  *-------------------------------------------------------------------------
  *
@@ -22,11 +22,14 @@
  * 3) We need a own edition of signatures and oids as protection agains repeated check.
  *
  */
+#include "postgres.h"
 
 #include "plpgsql.h"
 
 #include "funcapi.h"
 #include "miscadmin.h"
+
+#include "plpgsql_check_builtins.h"
 
 #if PG_VERSION_NUM >= 90300
 #include "access/htup_details.h"
@@ -66,15 +69,6 @@ typedef enum PLpgSQL_trigtype
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
 #endif
-
-/*
- * Interface
- *
- */
-void _PG_init(void);
-
-Datum plpgsql_check_function_tb(PG_FUNCTION_ARGS);
-Datum plpgsql_check_function(PG_FUNCTION_ARGS);
 
 /*
  * columns of plpgsql_check_function_table result
@@ -274,6 +268,9 @@ typedef struct plpgsql_hashent
 } plpgsql_check_HashEnt;
 
 #define FUNCS_PER_USER		128 /* initial table size */
+
+extern PGDLLEXPORT PG_FUNCTION_INFO_V1(plpgsql_check_function);
+extern PGDLLEXPORT PG_FUNCTION_INFO_V1(plpgsql_check_function_tb);
 
 /*
  * Module initialization
@@ -488,8 +485,6 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
  * Extended check with formatted text output
  *
  */
-PG_FUNCTION_INFO_V1(plpgsql_check_function);
-
 Datum
 plpgsql_check_function(PG_FUNCTION_ARGS)
 {
@@ -570,8 +565,6 @@ plpgsql_check_function(PG_FUNCTION_ARGS)
  * It ensure a detailed validation and returns result as multicolumn table
  *
  */
-PG_FUNCTION_INFO_V1(plpgsql_check_function_tb);
-
 Datum
 plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 {
