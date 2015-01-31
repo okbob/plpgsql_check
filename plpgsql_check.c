@@ -269,8 +269,8 @@ typedef struct plpgsql_hashent
 
 #define FUNCS_PER_USER		128 /* initial table size */
 
-extern PGDLLEXPORT PG_FUNCTION_INFO_V1(plpgsql_check_function);
-extern PGDLLEXPORT PG_FUNCTION_INFO_V1(plpgsql_check_function_tb);
+PG_FUNCTION_INFO_V1(plpgsql_check_function);
+PG_FUNCTION_INFO_V1(plpgsql_check_function_tb);
 
 /*
  * Module initialization
