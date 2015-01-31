@@ -2211,6 +2211,9 @@ datum_is_used(PLpgSQL_checkstate *cstate, int dno)
 	return false;
 }
 
+#define UNUSED_VARIABLE_TEXT			"unused variable \"%s\""
+#define UNUSED_VARIABLE_TEXT_CHECK_LENGTH	15
+
 /*
  * Reports all unused variables explicitly DECLAREd by the user.  Ignores IN
  * and OUT variables and special variables created by PL/PgSQL.
@@ -2228,17 +2231,20 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 		if (!datum_is_used(cstate, i))
 		{
 			PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[i];
-			StringInfoData detail;
+			StringInfoData message;
 
-			initStringInfo(&detail);
-			appendStringInfo(&detail, "variable %s declared on line %d", var->refname, var->lineno);
+			initStringInfo(&message);
+
+			appendStringInfo(&message, UNUSED_VARIABLE_TEXT, var->refname);
 			put_error(cstate,
 					  0, var->lineno,
-					  "unused declared variable",
-					  detail.data,
+					  message.data,
+					  NULL,
 					  NULL,
 					  PLPGSQL_CHECK_WARNING_OTHERS,
 					  0, NULL, NULL);
+
+			pfree(message.data); message.data = NULL;
 		}
 }
 
@@ -3635,7 +3641,7 @@ tuplestore_put_error_tabular(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 		SET_RESULT_INT32(Anum_result_lineno, estate->err_stmt->lineno);
 		SET_RESULT_TEXT(Anum_result_statement, plpgsql_stmt_typename(estate->err_stmt));
 	}
-	else if (strcmp(message, "unused declared variable") == 0)
+	else if (strncmp(message, UNUSED_VARIABLE_TEXT, UNUSED_VARIABLE_TEXT_CHECK_LENGTH) == 0)
 	{
 		SET_RESULT_INT32(Anum_result_lineno, lineno);
 		SET_RESULT_TEXT(Anum_result_statement, "DECLARE");
@@ -3664,7 +3670,11 @@ tuplestore_put_error_tabular(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 			break;
 	}
 
-	SET_RESULT_INT32(Anum_result_position, position);
+	if (position != 0)
+		SET_RESULT_INT32(Anum_result_position, position);
+	else
+		SET_RESULT_NULL(Anum_result_position);
+
 	SET_RESULT_TEXT(Anum_result_query, query);
 	SET_RESULT_TEXT(Anum_result_context, context);
 
@@ -3719,7 +3729,7 @@ tuplestore_put_error_text(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 				 estate->err_stmt->lineno,
 			    plpgsql_stmt_typename(estate->err_stmt),
 				 message);
-	else if (strcmp(message, "unused declared variable") == 0)
+	else if (strncmp(message, UNUSED_VARIABLE_TEXT, UNUSED_VARIABLE_TEXT_CHECK_LENGTH) == 0)
 	{
 		appendStringInfo(&sinfo, "%s:%s:%d:%s:%s",
 				 level_str,
