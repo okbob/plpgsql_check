@@ -3642,7 +3642,6 @@ tuplestore_put_error_tabular(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 	}
 	else
 	{
-		/* lineno is based on edata */
 		SET_RESULT_NULL(Anum_result_lineno);
 		SET_RESULT_NULL(Anum_result_statement);
 	} 
