@@ -2221,6 +2221,9 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 	int i;
 	PLpgSQL_execstate *estate = cstate->estate;
 
+	/* now, there are no active plpgsql statement */
+	estate->err_stmt = NULL;
+
 	for (i = 0; i < estate->ndatums; i++)
 		if (!datum_is_used(cstate, i))
 		{
@@ -2230,7 +2233,7 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 			initStringInfo(&detail);
 			appendStringInfo(&detail, "variable %s declared on line %d", var->refname, var->lineno);
 			put_error(cstate,
-					  0, 0,
+					  0, var->lineno,
 					  "unused declared variable",
 					  detail.data,
 					  NULL,
@@ -3632,6 +3635,11 @@ tuplestore_put_error_tabular(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 		SET_RESULT_INT32(Anum_result_lineno, estate->err_stmt->lineno);
 		SET_RESULT_TEXT(Anum_result_statement, plpgsql_stmt_typename(estate->err_stmt));
 	}
+	else if (strcmp(message, "unused declared variable") == 0)
+	{
+		SET_RESULT_INT32(Anum_result_lineno, lineno);
+		SET_RESULT_TEXT(Anum_result_statement, "DECLARE");
+	}
 	else
 	{
 		/* lineno is based on edata */
@@ -3712,6 +3720,15 @@ tuplestore_put_error_text(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 				 estate->err_stmt->lineno,
 			    plpgsql_stmt_typename(estate->err_stmt),
 				 message);
+	else if (strcmp(message, "unused declared variable") == 0)
+	{
+		appendStringInfo(&sinfo, "%s:%s:%d:%s:%s",
+				 level_str,
+				 unpack_sql_state(sqlerrcode),
+				 lineno,
+				 "DECLARE",
+				 message);
+	}
 	else
 	{
 		appendStringInfo(&sinfo, "%s:%s:%s",
@@ -3870,6 +3887,11 @@ format_error_xml(StringInfo str,
 		appendStringInfo(str, "    <Stmt lineno=\"%d\">%s</Stmt>\n",
 				 estate->err_stmt->lineno,
 			   plpgsql_stmt_typename(estate->err_stmt));
+
+	else if (strcmp(message, "unused declared variable") == 0)
+		appendStringInfo(str, "    <Stmt lineno=\"%d\">DECLARE</Stmt>\n",
+				 lineno);
+
 	if (hint != NULL)
 		appendStringInfo(str, "    <Hint>%s</Hint>\n",
 								 escape_xml(hint));

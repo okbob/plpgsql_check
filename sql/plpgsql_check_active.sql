@@ -1493,3 +1493,15 @@ select * from plpgsql_check_function('fx()', performance_warnings := true);
 drop function fx();
 drop type t;
 
+create or replace function fx()
+returns int as $$
+declare x int;
+begin
+  perform 1;
+  return 10;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx()', performance_warnings := true);
+
+drop function fx();

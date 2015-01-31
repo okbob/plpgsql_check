@@ -927,9 +927,9 @@ end;
 end
 $$ language plpgsql;
 select * from plpgsql_check_function('f1(int)');
-         plpgsql_check_function          
------------------------------------------
- warning:00000:unused declared variable
+              plpgsql_check_function              
+--------------------------------------------------
+ warning:00000:4:DECLARE:unused declared variable
  Detail: variable _f2 declared on line 4
 (2 rows)
 
@@ -1876,3 +1876,19 @@ select * from plpgsql_check_function('fx()', performance_warnings := true);
 
 drop function fx();
 drop type t;
+create or replace function fx()
+returns int as $$
+declare x int;
+begin
+  perform 1;
+  return 10;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx()', performance_warnings := true);
+              plpgsql_check_function              
+--------------------------------------------------
+ warning:00000:2:DECLARE:unused declared variable
+ Detail: variable x declared on line 2
+(2 rows)
+
+drop function fx();
