@@ -269,7 +269,7 @@ tables. So you can do (with following trick safetly):
     INSERT 0 1
 
 This trick emulates GLOBAL TEMP tables partially and it allows a statical validation.
-Other possibility is using a invalid foreign server, and invalid table 
+Other possibility is using a [template foreign data wrapper] (https://github.com/okbob/template_fdw)
 
 # Compilation
 
