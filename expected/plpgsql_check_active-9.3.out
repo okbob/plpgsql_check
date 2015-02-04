@@ -30,7 +30,7 @@ select * from plpgsql_check_function_tb('f1()', fatal_errors := false);
 ------------+--------+---------------+----------+--------------------------------------------+--------+------+-------+----------+----------------------+---------
  f1         |      4 | SQL statement | 42703    | column "c" of relation "t1" does not exist |        |      | error |       15 | update t1 set c = 30 | 
  f1         |      7 | RAISE         | 42P01    | missing FROM-clause entry for table "r"    |        |      | error |        8 | SELECT r.c           | 
- f1         |      7 | RAISE         | 42601    | too few parameters specified for RAISE     |        |      | error |        0 |                      | 
+ f1         |      7 | RAISE         | 42601    | too few parameters specified for RAISE     |        |      | error |          |                      | 
 (3 rows)
 
 select * from plpgsql_check_function_tb('f1()');
@@ -63,7 +63,7 @@ select f1();
 select * from plpgsql_check_function_tb('f1()');
  functionid | lineno | statement | sqlstate |                 message                 | detail | hint | level | position | query | context 
 ------------+--------+-----------+----------+-----------------------------------------+--------+------+-------+----------+-------+---------
- f1         |      4 | RAISE     | 42601    | too many parameters specified for RAISE |        |      | error |        0 |       | 
+ f1         |      4 | RAISE     | 42601    | too many parameters specified for RAISE |        |      | error |          |       | 
 (1 row)
 
 select f1();
@@ -90,7 +90,7 @@ select f1();
 select * from plpgsql_check_function_tb('f1()');
  functionid | lineno | statement | sqlstate |                message                 | detail | hint | level | position | query | context 
 ------------+--------+-----------+----------+----------------------------------------+--------+------+-------+----------+-------+---------
- f1         |      4 | RAISE     | 42601    | too few parameters specified for RAISE |        |      | error |        0 |       | 
+ f1         |      4 | RAISE     | 42601    | too few parameters specified for RAISE |        |      | error |          |       | 
 (1 row)
 
 select f1();

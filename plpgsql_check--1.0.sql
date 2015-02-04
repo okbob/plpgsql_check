@@ -1,3 +1,5 @@
+LOAD 'plpgsql';
+
 CREATE FUNCTION plpgsql_check_function_tb(funcoid regprocedure,
                                        relid regclass DEFAULT 0,
                                        fatal_errors boolean DEFAULT true,
