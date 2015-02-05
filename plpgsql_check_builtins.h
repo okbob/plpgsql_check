@@ -2,6 +2,14 @@
 #ifndef PLPGSQL_CHECK_BUILTINS
 #define PLPGSQL_CHECK_BUILTINS
 
+#ifdef _MSC_VER
+/*
+ * _PG_init should be exported, but PGDLLEXPORT cannot be used due
+ * collision with _PG_init from plpgsql.h
+ */
+#pragma comment( linker, "/export:_PG_init" )
+#endif
+
 #ifndef PGDLLEXPORT
 #ifdef _MSC_VER
 #define PGDLLEXPORT	__declspec(dllexport)
