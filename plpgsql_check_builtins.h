@@ -50,7 +50,7 @@ extern int no_such_variable
  * Interface
  *
  */
-extern PGDLLEXPORT void _PG_init(void);
+extern void _PG_init(void);
 
 extern PGDLLEXPORT Datum plpgsql_check_function_tb(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plpgsql_check_function(PG_FUNCTION_ARGS);
