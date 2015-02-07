@@ -7,7 +7,11 @@
  * _PG_init should be exported, but PGDLLEXPORT cannot be used due
  * collision with _PG_init from plpgsql.h
  */
+#ifdef _M_X64
 #pragma comment( linker, "/export:_PG_init" )
+#else
+#pragma comment( linker, "/export:_PG_init=__PG_init" )
+#endif
 #endif
 
 #ifndef PGDLLEXPORT

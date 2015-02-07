@@ -37,7 +37,12 @@
 #else
 
 /* Older version doesn't support event triggers */
+
+#ifdef _MSC_VER
+typedef struct {char nothing[0];}  EventTriggerData;
+#else
 typedef struct {}  EventTriggerData;
+#endif
 
 typedef enum PLpgSQL_trigtype
 {
