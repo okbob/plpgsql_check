@@ -1,0 +1,42 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual C++ Express 2010
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "plpgsql_check", "plpgsql_check\plpgsql_check.vcxproj", "{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		9.2|Win32 = 9.2|Win32
+		9.2|x64 = 9.2|x64
+		9.3|Win32 = 9.3|Win32
+		9.3|x64 = 9.3|x64
+		9.4|Win32 = 9.4|Win32
+		9.4|x64 = 9.4|x64
+		Debug|Win32 = Debug|Win32
+		Debug|x64 = Debug|x64
+		Release|Win32 = Release|Win32
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}.9.2|Win32.ActiveCfg = 9.2|Win32
+		{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}.9.2|Win32.Build.0 = 9.2|Win32
+		{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}.9.2|x64.ActiveCfg = 9.2|x64
+		{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}.9.2|x64.Build.0 = 9.2|x64
+		{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}.9.3|Win32.ActiveCfg = 9.3|Win32
+		{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}.9.3|Win32.Build.0 = 9.3|Win32
+		{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}.9.3|x64.ActiveCfg = 9.3|x64
+		{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}.9.3|x64.Build.0 = 9.3|x64
+		{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}.9.4|Win32.ActiveCfg = 9.4|Win32
+		{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}.9.4|Win32.Build.0 = 9.4|Win32
+		{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}.9.4|x64.ActiveCfg = 9.4|x64
+		{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}.9.4|x64.Build.0 = 9.4|x64
+		{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}.Debug|Win32.ActiveCfg = 9.4|x64
+		{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}.Debug|x64.ActiveCfg = 9.4|x64
+		{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}.Debug|x64.Build.0 = 9.4|x64
+		{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}.Release|Win32.ActiveCfg = 9.4|x64
+		{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}.Release|x64.ActiveCfg = 9.4|x64
+		{7ED1E443-C8B4-4CF1-93AE-580AE10F5F95}.Release|x64.Build.0 = 9.4|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
