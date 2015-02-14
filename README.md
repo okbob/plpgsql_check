@@ -210,7 +210,6 @@ PLpgSQL's dynamic features like dynamic SQL or record data type, then false posi
 possible. These should be rare - in well written code - and then the affected function
 should be redesigned or plpgsql_check should be disabled for this function.
 
-
     CREATE OR REPLACE FUNCTION f1()
     RETURNS void AS $$
     DECLARE r record;
@@ -325,6 +324,10 @@ result:
 use `-undefined dynamic_lookup` to the last line of the `Makefile ("override CFLAGS += ...")` allowed it to build.
 
 ## Compilation plpgsql_check on Windows 7
+
+You can check precompiled dll libraries http://okbob.blogspot.cz/2015/02/plpgsqlcheck-is-available-for-microsoft.html
+
+or compile by self:
 
 1. Download and install PostgreSQL 9.3.4 for Win32 from http://www.enterprisedb.com
 2. Download and install Microsoft Visual C++ 2010 Express
