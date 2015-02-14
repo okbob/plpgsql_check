@@ -335,7 +335,7 @@ or compile by self:
 4. The plpgsql_check depends on plpgsql and we need to add plpgsql.lib to the library list. Unfortunately PostgreSQL 9.4.3 does not contain this library.
 5. Create a plpgsql.lib from plpgsql.dll as described in http://adrianhenke.wordpress.com/2008/12/05/create-lib-file-from-dll
 6. Change `plpgsql_check.c` file, add `PGDLLEXPORT` line before evry extension function, as described in http://blog.2ndquadrant.com/compiling-postgresql-extensions-visual-studio-windows 
-   Skip this step if you have a version with "plpgsql_check_builtins.h" header file.
+   (Skip this step if you have a version with "plpgsql_check_builtins.h" header file).
    <pre>
     ...PGDLLEXPORT
     Datum plpgsql_check_function_tb(PG_FUNCTION_ARGS);
