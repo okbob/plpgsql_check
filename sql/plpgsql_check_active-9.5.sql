@@ -52,7 +52,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_function('f1()', performance_warnings := true);
+select * from plpgsql_check_function('f1()', performance_warnings => true);
 
 create or replace function f1()
 returns setof t1tab as $$
@@ -62,7 +62,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_function('f1()', performance_warnings := true);
+select * from plpgsql_check_function('f1()', performance_warnings => true);
 
 create or replace function f1()
 returns setof t1tab as $$
@@ -73,7 +73,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_function('f1()', performance_warnings := true);
+select * from plpgsql_check_function('f1()', performance_warnings => true);
 
 create or replace function f1()
 returns setof t1tab as $$
@@ -84,7 +84,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_function('f1()', performance_warnings := true);
+select * from plpgsql_check_function('f1()', performance_warnings => true);
 
 drop function f1();
 
@@ -97,7 +97,77 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_function('fx()', performance_warnings := true);
+select * from plpgsql_check_function('fx()', performance_warnings => true);
+
+drop function fx();
 
 drop table t1tab;
 drop table t1;
+
+create or replace function fx()
+returns void as $$
+begin
+  assert exists(select * from foo);
+  assert false, (select boo from boo limit 1);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx()', fatal_errors => false);
+
+create or replace function ml_trg()
+returns trigger as $$
+#option dump
+declare
+begin
+  if TG_OP = 'INSERT' then
+    if NEW.status_from IS NULL then
+      begin
+        -- performance issue only
+        select status into NEW.status_from
+           from pa
+          where pa_id = NEW.pa_id;
+        -- nonexist target value
+        select status into NEW.status_from_xxx
+           from pa
+          where pa_id = NEW.pa_id;
+      exception
+        when DATA_EXCEPTION then
+          new.status_from := 'DE';
+      end;
+    end if;
+  end if;
+  if TG_OP = 'DELETE' then return OLD; else return NEW; end if;
+exception
+  when OTHERS then
+    NULL;
+    if TG_OP = 'DELETE' then return OLD; else return NEW; end if;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('ml_trg()', 'ml', performance_warnings := true);
+
+create or replace function fx2()
+returns void as $$
+declare _pa pa;
+begin
+  select pa.id into _pa.id from pa limit 1;
+  select pa.pa_id into _pa.pa_id from pa limit 1;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx2()', performance_warnings := true);
+
+drop function fx2();
+
+create or replace function fx2()
+returns void as $$
+declare _pa pa;
+begin
+  _pa.id := (select pa.id from pa limit 1);
+  _pa.pa_id := (select pa.pa_id from pa limit 1);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx2()', performance_warnings := true);
+
+drop function fx2();

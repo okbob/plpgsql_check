@@ -7,6 +7,8 @@ create extension if not exists plpgsql_check;
 select * from plpgsql_check_function_tb('session_user()');
 ERROR:  "session_user"() is not a plpgsql function
 create table t1(a int, b int);
+create table pa (id int, pa_id character varying(32), status character varying(60));
+create table  ml(ml_id character varying(32), status_from character varying(60), pa_id character varying(32), xyz int);
 create function f1()
 returns void as $$
 begin
@@ -970,10 +972,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
-                                plpgsql_check_function                                
---------------------------------------------------------------------------------------
- performance:42804:3:RETURN:target variable has different type than expression result
- Detail: assign "numeric" value to "integer" variable
+                          plpgsql_check_function                           
+---------------------------------------------------------------------------
+ performance:42804:3:RETURN:target type is different type than source type
+ Detail: cast "numeric" value to "integer" type
  Hint: Hidden casting can be a performance issue.
 (3 rows)
 
@@ -1090,22 +1092,22 @@ begin
 end
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
-                                    plpgsql_check_function                                    
-----------------------------------------------------------------------------------------------
- performance:42804:7:assignment:target variable has different type than expression result
- Detail: assign "unknown" value to "integer" variable
+                                plpgsql_check_function                                
+--------------------------------------------------------------------------------------
+ performance:42804:7:assignment:target type is different type than source type
+ Detail: cast "unknown" value to "integer" type
  Hint: Hidden casting can be a performance issue.
- warning:42804:8:assignment:target variable has different type than expression result
- Detail: assign "text" value to "integer" variable
+ warning:42804:8:assignment:target type is different type than source type
+ Detail: cast "text" value to "integer" type
  Hint: The input expression type does not have an assignment cast to the target type.
- warning:42804:9:assignment:target variable has different type than expression result
- Detail: assign "date" value to "integer" variable
+ warning:42804:9:assignment:target type is different type than source type
+ Detail: cast "date" value to "integer" type
  Hint: There are no possible explicit coercion between those types, possibly bug!
- performance:42804:12:SQL statement:target variable has different type than expression result
- Detail: assign "unknown" value to "integer" variable
+ performance:42804:12:SQL statement:target type is different type than source type
+ Detail: cast "unknown" value to "integer" type
  Hint: Hidden casting can be a performance issue.
- warning:42804:13:SQL statement:target variable has different type than expression result
- Detail: assign "text" value to "integer" variable
+ warning:42804:13:SQL statement:target type is different type than source type
+ Detail: cast "text" value to "integer" type
  Hint: The input expression type does not have an assignment cast to the target type.
 (15 rows)
 
@@ -1128,10 +1130,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
-                                plpgsql_check_function                                
---------------------------------------------------------------------------------------
- performance:42804:3:RETURN:target variable has different type than expression result
- Detail: assign "numeric" value to "integer" variable
+                          plpgsql_check_function                           
+---------------------------------------------------------------------------
+ performance:42804:3:RETURN:target type is different type than source type
+ Detail: cast "numeric" value to "integer" type
  Hint: Hidden casting can be a performance issue.
 (3 rows)
 
@@ -1155,8 +1157,8 @@ $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
                               plpgsql_check_function                              
 ----------------------------------------------------------------------------------
- warning:42804:3:RETURN:target variable has different type than expression result
- Detail: assign "date" value to "integer" variable
+ warning:42804:3:RETURN:target type is different type than source type
+ Detail: cast "date" value to "integer" type
  Hint: There are no possible explicit coercion between those types, possibly bug!
 (3 rows)
 
@@ -1180,10 +1182,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
-                                plpgsql_check_function                                
---------------------------------------------------------------------------------------
- performance:42804:4:RETURN:target variable has different type than expression result
- Detail: assign "numeric" value to "integer" variable
+                          plpgsql_check_function                           
+---------------------------------------------------------------------------
+ performance:42804:4:RETURN:target type is different type than source type
+ Detail: cast "numeric" value to "integer" type
  Hint: Hidden casting can be a performance issue.
 (3 rows)
 
@@ -1206,10 +1208,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
-                                  plpgsql_check_function                                   
--------------------------------------------------------------------------------------------
- performance:42804:3:RETURN NEXT:target variable has different type than expression result
- Detail: assign "numeric" value to "integer" variable
+                             plpgsql_check_function                             
+--------------------------------------------------------------------------------
+ performance:42804:3:RETURN NEXT:target type is different type than source type
+ Detail: cast "numeric" value to "integer" type
  Hint: Hidden casting can be a performance issue.
 (3 rows)
 
@@ -1271,77 +1273,6 @@ select * from plpgsql_check_function('fx()', performance_warnings := true);
 (0 rows)
 
 drop function fx();
-create table pa (id int, pa_id character varying(32), status character varying(60));
-create table  ml(ml_id character varying(32), status_from character varying(60), pa_id character varying(32), xyz int);
-create or replace function ml_trg()
-returns trigger as $$
-#option dump
-declare
-begin
-  if TG_OP = 'INSERT' then
-    if NEW.status_from IS NULL then
-      begin
-        -- performance issue only
-        select status into NEW.status_from
-           from pa
-          where pa_id = NEW.pa_id;
-        -- nonexist target value
-        select status into NEW.status_from_xxx
-           from pa
-          where pa_id = NEW.pa_id;
-      exception
-        when DATA_EXCEPTION then
-          new.status_from := 'DE';
-      end;
-    end if;
-  end if;
-  if TG_OP = 'DELETE' then return OLD; else return NEW; end if;
-exception
-  when OTHERS then
-    NULL;
-    if TG_OP = 'DELETE' then return OLD; else return NEW; end if;
-end;
-$$ language plpgsql;
-select * from plpgsql_check_function('ml_trg()', 'ml', performance_warnings := true);
-                          plpgsql_check_function                          
---------------------------------------------------------------------------
- performance:42804:9:SQL statement:target variable has type modificator
- Hint: Usage of type modificator enforces slower IO casting.
- error:42703:13:SQL statement:record "new" has no field "status_from_xxx"
-(3 rows)
-
-create or replace function fx2()
-returns void as $$
-declare _pa pa;
-begin
-  select pa.id into _pa.id from pa limit 1;
-  select pa.pa_id into _pa.pa_id from pa limit 1;
-end;
-$$ language plpgsql;
-select * from plpgsql_check_function('fx2()', performance_warnings := true);
-                         plpgsql_check_function                         
-------------------------------------------------------------------------
- performance:42804:5:SQL statement:target variable has type modificator
- Hint: Usage of type modificator enforces slower IO casting.
-(2 rows)
-
-drop function fx2();
-create or replace function fx2()
-returns void as $$
-declare _pa pa;
-begin
-  _pa.id := (select pa.id from pa limit 1);
-  _pa.pa_id := (select pa.pa_id from pa limit 1);
-end;
-$$ language plpgsql;
-select * from plpgsql_check_function('fx2()', performance_warnings := true);
-                       plpgsql_check_function                        
----------------------------------------------------------------------
- performance:42804:5:assignment:target variable has type modificator
- Hint: Usage of type modificator enforces slower IO casting.
-(2 rows)
-
-drop function fx2();
 create or replace function fx2(_id int, _pa_id varchar(32), _status varchar(60))
 returns void as $$
 declare
@@ -1427,9 +1358,9 @@ end;
 $body$
 language 'plpgsql' stable;
 select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
-     functionid     | lineno |     statement      | sqlstate |                          message                          |                  detail                   |                                      hint                                      |  level  | position | query | context 
---------------------+--------+--------------------+----------+-----------------------------------------------------------+-------------------------------------------+--------------------------------------------------------------------------------+---------+----------+-------+---------
- foreach_array_loop |      7 | FOREACH over array | 42804    | target variable has different type than expression result | assign "text" value to "integer" variable | The input expression type does not have an assignment cast to the target type. | warning |          |       | 
+     functionid     | lineno |     statement      | sqlstate |                    message                     |               detail                |                                      hint                                      |  level  | position | query | context 
+--------------------+--------+--------------------+----------+------------------------------------------------+-------------------------------------+--------------------------------------------------------------------------------+---------+----------+-------+---------
+ foreach_array_loop |      7 | FOREACH over array | 42804    | target type is different type than source type | cast "text" value to "integer" type | The input expression type does not have an assignment cast to the target type. | warning |          |       | 
 (1 row)
 
 create or replace function foreach_array_loop()
@@ -1447,9 +1378,9 @@ end;
 $body$
 language 'plpgsql' stable;
 select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
-     functionid     | lineno |     statement      | sqlstate |                          message                          |                  detail                   |                                    hint                                    |  level  | position | query | context 
---------------------+--------+--------------------+----------+-----------------------------------------------------------+-------------------------------------------+----------------------------------------------------------------------------+---------+----------+-------+---------
- foreach_array_loop |      7 | FOREACH over array | 42804    | target variable has different type than expression result | assign "date" value to "integer" variable | There are no possible explicit coercion between those types, possibly bug! | warning |          |       | 
+     functionid     | lineno |     statement      | sqlstate |                    message                     |               detail                |                                    hint                                    |  level  | position | query | context 
+--------------------+--------+--------------------+----------+------------------------------------------------+-------------------------------------+----------------------------------------------------------------------------+---------+----------+-------+---------
+ foreach_array_loop |      7 | FOREACH over array | 42804    | target type is different type than source type | cast "date" value to "integer" type | There are no possible explicit coercion between those types, possibly bug! | warning |          |       | 
 (1 row)
 
 create or replace function foreach_array_loop()
@@ -1482,9 +1413,9 @@ end;
 $body$
 language 'plpgsql' stable;
 select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
-     functionid     | lineno |     statement      | sqlstate |                          message                          |                  detail                   |                                      hint                                      |  level  | position | query | context 
---------------------+--------+--------------------+----------+-----------------------------------------------------------+-------------------------------------------+--------------------------------------------------------------------------------+---------+----------+-------+---------
- foreach_array_loop |      5 | FOREACH over array | 42804    | target variable has different type than expression result | assign "text" value to "integer" variable | The input expression type does not have an assignment cast to the target type. | warning |          |       | 
+     functionid     | lineno |     statement      | sqlstate |                    message                     |               detail                |                                      hint                                      |  level  | position | query | context 
+--------------------+--------+--------------------+----------+------------------------------------------------+-------------------------------------+--------------------------------------------------------------------------------+---------+----------+-------+---------
+ foreach_array_loop |      5 | FOREACH over array | 42804    | target type is different type than source type | cast "text" value to "integer" type | The input expression type does not have an assignment cast to the target type. | warning |          |       | 
 (1 row)
 
 create or replace function foreach_array_loop()
@@ -1500,9 +1431,9 @@ end;
 $body$
 language 'plpgsql' stable;
 select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
-     functionid     | lineno |     statement      | sqlstate |                          message                          |                  detail                   |                                    hint                                    |  level  | position | query | context 
---------------------+--------+--------------------+----------+-----------------------------------------------------------+-------------------------------------------+----------------------------------------------------------------------------+---------+----------+-------+---------
- foreach_array_loop |      5 | FOREACH over array | 42804    | target variable has different type than expression result | assign "date" value to "integer" variable | There are no possible explicit coercion between those types, possibly bug! | warning |          |       | 
+     functionid     | lineno |     statement      | sqlstate |                    message                     |               detail                |                                    hint                                    |  level  | position | query | context 
+--------------------+--------+--------------------+----------+------------------------------------------------+-------------------------------------+----------------------------------------------------------------------------+---------+----------+-------+---------
+ foreach_array_loop |      5 | FOREACH over array | 42804    | target type is different type than source type | cast "date" value to "integer" type | There are no possible explicit coercion between those types, possibly bug! | warning |          |       | 
 (1 row)
 
 drop function foreach_array_loop();
@@ -1532,9 +1463,9 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('scan_rows(int[])', performance_warnings := true);
- functionid | lineno |     statement      | sqlstate |                          message                          |                     detail                     |                                    hint                                    |  level  | position | query | context 
-------------+--------+--------------------+----------+-----------------------------------------------------------+------------------------------------------------+----------------------------------------------------------------------------+---------+----------+-------+---------
- scan_rows  |      5 | FOREACH over array | 42804    | target variable has different type than expression result | assign "integer" value to "integer[]" variable | There are no possible explicit coercion between those types, possibly bug! | warning |          |       | 
+ functionid | lineno |     statement      | sqlstate |                    message                     |                  detail                  |                                    hint                                    |  level  | position | query | context 
+------------+--------+--------------------+----------+------------------------------------------------+------------------------------------------+----------------------------------------------------------------------------+---------+----------+-------+---------
+ scan_rows  |      5 | FOREACH over array | 42804    | target type is different type than source type | cast "integer" value to "integer[]" type | There are no possible explicit coercion between those types, possibly bug! | warning |          |       | 
 (1 row)
 
 drop function scan_rows(int[]);
@@ -1719,10 +1650,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
- functionid | lineno |     statement      | sqlstate |                          message                          |                    detail                    |                    hint                    |    level    | position | query | context 
-------------+--------+--------------------+----------+-----------------------------------------------------------+----------------------------------------------+--------------------------------------------+-------------+----------+-------+---------
- fx         |      6 | FOREACH over array | 42804    | target variable has different type than expression result | assign "integer" value to "numeric" variable | Hidden casting can be a performance issue. | performance |          |       | 
- fx         |      8 | assignment         | 42804    | target variable has different type than expression result | assign "numeric" value to "integer" variable | Hidden casting can be a performance issue. | performance |          |       | 
+ functionid | lineno |     statement      | sqlstate |                    message                     |                 detail                 |                    hint                    |    level    | position | query | context 
+------------+--------+--------------------+----------+------------------------------------------------+----------------------------------------+--------------------------------------------+-------------+----------+-------+---------
+ fx         |      6 | FOREACH over array | 42804    | target type is different type than source type | cast "integer" value to "numeric" type | Hidden casting can be a performance issue. | performance |          |       | 
+ fx         |      8 | assignment         | 42804    | target type is different type than source type | cast "numeric" value to "integer" type | Hidden casting can be a performance issue. | performance |          |       | 
 (2 rows)
 
 drop function fx();
@@ -1819,9 +1750,9 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true, fatal_errors := false);
- functionid | lineno | statement  | sqlstate |                          message                          |                  detail                   |                                    hint                                    |  level  | position | query | context 
-------------+--------+------------+----------+-----------------------------------------------------------+-------------------------------------------+----------------------------------------------------------------------------+---------+----------+-------+---------
- fx         |      9 | assignment | 42804    | target variable has different type than expression result | assign "date" value to "integer" variable | There are no possible explicit coercion between those types, possibly bug! | warning |          |       | 
+ functionid | lineno | statement  | sqlstate |                    message                     |               detail                |                                    hint                                    |  level  | position | query | context 
+------------+--------+------------+----------+------------------------------------------------+-------------------------------------+----------------------------------------------------------------------------+---------+----------+-------+---------
+ fx         |      9 | assignment | 42804    | target type is different type than source type | cast "date" value to "integer" type | There are no possible explicit coercion between those types, possibly bug! | warning |          |       | 
 (1 row)
 
 drop function fx();
@@ -1837,12 +1768,12 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx()', performance_warnings := true);
-                                  plpgsql_check_function                                  
-------------------------------------------------------------------------------------------
- performance:42804:5:assignment:target variable has different type than expression result
- Detail: assign "unknown" value to "text" variable
+                            plpgsql_check_function                             
+-------------------------------------------------------------------------------
+ performance:42804:5:assignment:target type is different type than source type
+ Detail: cast "unknown" value to "text" type
  Hint: Hidden casting can be a performance issue.
- error:42804:7:assignment:cannot assign composite value to a scalar variable
+ error:42804:7:assignment:cannot cast composite value to a scalar type
 (4 rows)
 
 drop function fx();

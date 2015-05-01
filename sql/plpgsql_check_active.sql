@@ -10,6 +10,9 @@ select * from plpgsql_check_function_tb('session_user()');
 
 create table t1(a int, b int);
 
+create table pa (id int, pa_id character varying(32), status character varying(60));
+create table  ml(ml_id character varying(32), status_from character varying(60), pa_id character varying(32), xyz int);
+
 create function f1()
 returns void as $$
 begin
@@ -955,67 +958,6 @@ $$ language plpgsql;
 select * from plpgsql_check_function('fx()', performance_warnings := true);
 
 drop function fx();
-
-create table pa (id int, pa_id character varying(32), status character varying(60));
-create table  ml(ml_id character varying(32), status_from character varying(60), pa_id character varying(32), xyz int);
-
-create or replace function ml_trg()
-returns trigger as $$
-#option dump
-declare
-begin
-  if TG_OP = 'INSERT' then
-    if NEW.status_from IS NULL then
-      begin
-        -- performance issue only
-        select status into NEW.status_from
-           from pa
-          where pa_id = NEW.pa_id;
-        -- nonexist target value
-        select status into NEW.status_from_xxx
-           from pa
-          where pa_id = NEW.pa_id;
-      exception
-        when DATA_EXCEPTION then
-          new.status_from := 'DE';
-      end;
-    end if;
-  end if;
-  if TG_OP = 'DELETE' then return OLD; else return NEW; end if;
-exception
-  when OTHERS then
-    NULL;
-    if TG_OP = 'DELETE' then return OLD; else return NEW; end if;
-end;
-$$ language plpgsql;
-
-select * from plpgsql_check_function('ml_trg()', 'ml', performance_warnings := true);
-
-create or replace function fx2()
-returns void as $$
-declare _pa pa;
-begin
-  select pa.id into _pa.id from pa limit 1;
-  select pa.pa_id into _pa.pa_id from pa limit 1;
-end;
-$$ language plpgsql;
-
-select * from plpgsql_check_function('fx2()', performance_warnings := true);
-
-drop function fx2();
-
-create or replace function fx2()
-returns void as $$
-declare _pa pa;
-begin
-  _pa.id := (select pa.id from pa limit 1);
-  _pa.pa_id := (select pa.pa_id from pa limit 1);
-end;
-$$ language plpgsql;
-
-select * from plpgsql_check_function('fx2()', performance_warnings := true);
-
-drop function fx2();
 
 create or replace function fx2(_id int, _pa_id varchar(32), _status varchar(60))
 returns void as $$

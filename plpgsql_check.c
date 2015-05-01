@@ -1306,7 +1306,12 @@ setup_plpgsql_estate(PLpgSQL_execstate *estate,
 	estate->eval_processed = 0;
 	estate->eval_lastoid = InvalidOid;
 	estate->eval_econtext = NULL;
+
+#if PG_VERSION_NUM < 90500
+
 	estate->cur_expr = NULL;
+
+#endif
 
 	estate->err_stmt = NULL;
 	estate->err_text = NULL;
@@ -1518,6 +1523,26 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 					}
 				}
 				break;
+
+#if PG_VERSION_NUM >= 90500
+
+			case PLPGSQL_STMT_ASSERT:
+				{
+					PLpgSQL_stmt_assert *stmt_assert = (PLpgSQL_stmt_assert *) stmt;
+
+					/*
+					 * Should or should not to depends on plpgsql_check_asserts?
+					 * I am thinking, so any code (active or inactive) should be valid,
+					 * so I ignore plpgsql_check_asserts option.
+					 */
+					check_expr_with_expected_scalar_type(cstate,
+									 stmt_assert->cond, BOOLOID, true);
+					if (stmt_assert->message != NULL)
+						check_expr(cstate, stmt_assert->message);
+				}
+				break;
+
+#endif
 
 			case PLPGSQL_STMT_ASSIGN:
 				{
@@ -1740,8 +1765,8 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 									PLpgSQL_var *var = (PLpgSQL_var *) retvar;
 
 									check_assign_to_target_type(cstate,
-										 var->datatype->typoid, -1,
-										 cstate->estate->func->fn_rettype, false);
+										 cstate->estate->func->fn_rettype, -1,
+										 var->datatype->typoid, false);
 								}
 								break;
 
@@ -1821,8 +1846,8 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 												 errmsg("wrong result type supplied in RETURN NEXT")));
 
 									check_assign_to_target_type(cstate,
-										 var->datatype->typoid, -1,
-										 cstate->estate->func->fn_rettype, false);
+										 cstate->estate->func->fn_rettype, -1,
+										 var->datatype->typoid, false);
 								}
 								break;
 
@@ -2952,20 +2977,25 @@ check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 												 Oid value_typoid,
 												 bool isnull)
 {
-	/* any used typmod enforces IO cast - performance warning */
+
+#if PG_VERSION_NUM < 90500
+
+	/* any used typmod enforces IO cast - performance warning for older than 9.5*/
 	if (target_typmod != -1)
 		put_error(cstate,
 					  ERRCODE_DATATYPE_MISMATCH, 0,
-					  "target variable has type modificator",
+					  "target type has type modificator",
 					  NULL,
 					  "Usage of type modificator enforces slower IO casting.",
 					  PLPGSQL_CHECK_WARNING_PERFORMANCE,
 					  0, NULL, NULL);
 
+#endif
+
 	if (type_is_rowtype(value_typoid))
 		put_error(cstate,
 					  ERRCODE_DATATYPE_MISMATCH, 0,
-					  "cannot assign composite value to a scalar variable",
+					  "cannot cast composite value to a scalar type",
 					  NULL,
 					  NULL,
 					  PLPGSQL_CHECK_ERROR,
@@ -2976,7 +3006,7 @@ check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 		StringInfoData	str;
 
 		initStringInfo(&str);
-		appendStringInfo(&str, "assign \"%s\" value to \"%s\" variable",
+		appendStringInfo(&str, "cast \"%s\" value to \"%s\" type",
 									format_type_be(value_typoid),
 									format_type_be(target_typoid));
 
@@ -2984,7 +3014,7 @@ check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 		if (!can_coerce_type(1, &value_typoid, &target_typoid, COERCION_EXPLICIT))
 			put_error(cstate,
 						  ERRCODE_DATATYPE_MISMATCH, 0,
-						  "target variable has different type than expression result",
+						  "target type is different type than source type",
 						  str.data,
 						  "There are no possible explicit coercion between those types, possibly bug!",
 						  PLPGSQL_CHECK_WARNING_OTHERS,
@@ -2992,7 +3022,7 @@ check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 		else if (!can_coerce_type(1, &value_typoid, &target_typoid, COERCION_ASSIGNMENT))
 			put_error(cstate,
 						  ERRCODE_DATATYPE_MISMATCH, 0,
-						  "target variable has different type than expression result",
+						  "target type is different type than source type",
 						  str.data,
 						  "The input expression type does not have an assignment cast to the target type.",
 						  PLPGSQL_CHECK_WARNING_OTHERS,
@@ -3003,7 +3033,7 @@ check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 			if (!isnull)
 				put_error(cstate,
 							  ERRCODE_DATATYPE_MISMATCH, 0,
-							  "target variable has different type than expression result",
+							  "target type is different type than source type",
 							  str.data,
 							  "Hidden casting can be a performance issue.",
 							  PLPGSQL_CHECK_WARNING_PERFORMANCE,

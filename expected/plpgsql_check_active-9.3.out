@@ -223,3 +223,72 @@ select * from plpgsql_check_function('fx()', performance_warnings := true);
 (4 rows)
 
 drop table t1;
+create or replace function ml_trg()
+returns trigger as $$
+#option dump
+declare
+begin
+  if TG_OP = 'INSERT' then
+    if NEW.status_from IS NULL then
+      begin
+        -- performance issue only
+        select status into NEW.status_from
+           from pa
+          where pa_id = NEW.pa_id;
+        -- nonexist target value
+        select status into NEW.status_from_xxx
+           from pa
+          where pa_id = NEW.pa_id;
+      exception
+        when DATA_EXCEPTION then
+          new.status_from := 'DE';
+      end;
+    end if;
+  end if;
+  if TG_OP = 'DELETE' then return OLD; else return NEW; end if;
+exception
+  when OTHERS then
+    NULL;
+    if TG_OP = 'DELETE' then return OLD; else return NEW; end if;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('ml_trg()', 'ml', performance_warnings := true);
+                          plpgsql_check_function                          
+--------------------------------------------------------------------------
+ performance:42804:9:SQL statement:target type has type modificator
+ Hint: Usage of type modificator enforces slower IO casting.
+ error:42703:13:SQL statement:record "new" has no field "status_from_xxx"
+(3 rows)
+
+create or replace function fx2()
+returns void as $$
+declare _pa pa;
+begin
+  select pa.id into _pa.id from pa limit 1;
+  select pa.pa_id into _pa.pa_id from pa limit 1;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx2()', performance_warnings := true);
+                       plpgsql_check_function                       
+--------------------------------------------------------------------
+ performance:42804:5:SQL statement:target type has type modificator
+ Hint: Usage of type modificator enforces slower IO casting.
+(2 rows)
+
+drop function fx2();
+create or replace function fx2()
+returns void as $$
+declare _pa pa;
+begin
+  _pa.id := (select pa.id from pa limit 1);
+  _pa.pa_id := (select pa.pa_id from pa limit 1);
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx2()', performance_warnings := true);
+                     plpgsql_check_function                      
+-----------------------------------------------------------------
+ performance:42804:5:assignment:target type has type modificator
+ Hint: Usage of type modificator enforces slower IO casting.
+(2 rows)
+
+drop function fx2();
