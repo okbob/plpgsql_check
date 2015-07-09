@@ -1821,3 +1821,26 @@ select * from plpgsql_check_function('fx()', performance_warnings := true);
 (1 row)
 
 drop function fx();
+create table t(i int);
+create function test_t(OUT t) returns t AS $$
+begin
+    $1 := null;
+end;
+$$ language plpgsql;
+select test_t();
+ test_t 
+--------
+ ()
+(1 row)
+
+select * from test_t();
+ i 
+---
+  
+(1 row)
+
+select * from plpgsql_check_function('test_t()', performance_warnings := true);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+

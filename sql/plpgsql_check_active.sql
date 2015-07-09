@@ -1447,3 +1447,16 @@ $$ language plpgsql;
 select * from plpgsql_check_function('fx()', performance_warnings := true);
 
 drop function fx();
+
+create table t(i int);
+
+create function test_t(OUT t) returns t AS $$
+begin
+    $1 := null;
+end;
+$$ language plpgsql;
+
+select test_t();
+select * from test_t();
+
+select * from plpgsql_check_function('test_t()', performance_warnings := true);

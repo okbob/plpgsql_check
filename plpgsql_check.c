@@ -2556,7 +2556,7 @@ check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 		if (expected_typoid != InvalidOid && type_is_rowtype(expected_typoid) && first_level_typoid != InvalidOid)
 		{
 			/* simple error, scalar source to composite target */
-			if (!type_is_rowtype(first_level_typoid))
+			if (!type_is_rowtype(first_level_typoid) && !is_immutable_null)
 			{
 				put_error(cstate,
 						  ERRCODE_DATATYPE_MISMATCH, 0,
