@@ -4,7 +4,7 @@ plpgsql_check
 I founded this project, because I wanted to publish the code I wrote in the last two years,
 when I tried to write enhanced checking for PostgreSQL upstream. It was not fully
 successful - integration into upstream requires some larger plpgsql refactoring - probably
-it will not be done in next two years (now is Dec 2013). But written code is fully functional
+it will not be done in next years (now is Dec 2013). But written code is fully functional
 and can be used in production (and it is used in production). So, I created this extension to
 be available for all plpgsql developers.
 
@@ -17,7 +17,7 @@ I invite any ideas, patches, bugreports
 plpgsql_check is next generation of plpgsql_lint. It allows to check source code by explicit call
 <i>plpgsql_check_function</i>.
 
-PostgreSQL 9.2 is required, PostgreSQL 9.3 and 9.4 are supported
+PostgreSQL 9.2 is required, PostgreSQL 9.3, 9.4 and 9.5 are supported
 
 The SQL statements inside PL/pgSQL functions are checked by validator for semantic errors. These errors
 can be found by plpgsql_check_function:

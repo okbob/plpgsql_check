@@ -1,5 +1,5 @@
-%global pgmajorversion 92
-%global pginstdir /usr/pgsql-9.2
+%global pgmajorversion 95
+%global pginstdir /usr/pgsql-9.5
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
