@@ -232,6 +232,33 @@ variables and cannot to check a dependent SQLs and expressions. Don't use record
 as target for dynamic queries or disable <i>plpgsql_check</i> for functions that use dynamic
 queries.
 
+## Refcursors
+
+<i>plpgsql_check</i> should not to detect structure of referenced cursors. A reference on cursor
+in PLpgSQL is implemented as name of global cursor. In check time, the name is not known (not in
+all possibilities), and global cursor doesn't exist. It is significant break for any static analyse.
+PLpgSQL cannot to set correct type for record variables and cannot to check a dependent SQLs and
+expressions. A solution is same like dynamic SQL. Don't use record variable
+as target when you use <i>refcursor</i> type or disable <i>plpgsql_check</i> for these functions.
+
+    CREATE OR REPLACE FUNCTION foo(refcur_var refcursor)
+    RETURNS void AS $$
+    DECLARE
+      rec_var record;
+    BEGIN
+      FETCH refcur_var INTO rec_var; -- this is STOP for plpgsql_check
+      RAISE NOTICE '%', rec_var;     -- record rec_var is not assigned yet error
+
+In this case a record type should not be used (use known rowtype instead):
+
+    CREATE OR REPLACE FUNCTION foo(refcur_var refcursor)
+    RETURNS void AS $$
+    DECLARE
+      rec_var some_rowtype;
+    BEGIN
+      FETCH refcur_var INTO rec_var;
+      RAISE NOTICE '%', rec_var;
+
 ## Temporary tables
 
 <i>plpgsql_check</i> cannot verify queries over temporary tables that are created in plpgsql's function
