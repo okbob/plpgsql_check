@@ -116,6 +116,13 @@ enum
 	PLPGSQL_CHECK_MODE_EVERY_START	/* check on every start */
 };
 
+typedef struct PLpgSQL_stmt_stack_item
+{
+	PLpgSQL_stmt			*stmt;
+	char				*label;
+	struct PLpgSQL_stmt_stack_item	*outer;
+} PLpgSQL_stmt_stack_item;
+
 typedef struct PLpgSQL_checkstate
 {
 	Oid		fn_oid;		/* oid of checked function */
@@ -131,7 +138,8 @@ typedef struct PLpgSQL_checkstate
 	MemoryContext		   check_cxt;
 	List			   *exprs;	/* list of all expression created by checker */
 	bool		is_active_mode;	/* true, when checking is started by plpgsql_check_function */
-	Bitmapset *used_variables; /* track which variables have been used; bit per varno */
+	Bitmapset *used_variables;	/* track which variables have been used; bit per varno */
+	PLpgSQL_stmt_stack_item *top_stmt_stack;	/* list of known labels + related command */
 }	PLpgSQL_checkstate;
 
 
@@ -627,6 +635,126 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	rsinfo->setDesc = tupdesc;
 
 	return (Datum) 0;
+}
+
+/*
+ * Add label to stack of labels
+ */
+static PLpgSQL_stmt_stack_item *
+push_stmt_to_stmt_stack(PLpgSQL_checkstate *cstate)
+{
+	PLpgSQL_stmt *stmt = cstate->estate->err_stmt;
+	PLpgSQL_stmt_stack_item *stmt_stack_item;
+	PLpgSQL_stmt_stack_item *current = cstate->top_stmt_stack;
+
+	stmt_stack_item = (PLpgSQL_stmt_stack_item *) palloc(sizeof(PLpgSQL_stmt_stack_item));
+	stmt_stack_item->stmt = stmt;
+
+	switch ((enum PLpgSQL_stmt_types) stmt->cmd_type)
+	{
+		case PLPGSQL_STMT_BLOCK:
+			stmt_stack_item->label = ((PLpgSQL_stmt_block *) stmt)->label;
+			break;
+
+		case PLPGSQL_STMT_EXIT:
+			stmt_stack_item->label = ((PLpgSQL_stmt_exit *) stmt)->label;
+			break;
+
+		case PLPGSQL_STMT_LOOP:
+			stmt_stack_item->label = ((PLpgSQL_stmt_loop *) stmt)->label;
+			break;
+
+		case PLPGSQL_STMT_WHILE:
+			stmt_stack_item->label = ((PLpgSQL_stmt_while *) stmt)->label;
+			break;
+
+		case PLPGSQL_STMT_FORI:
+			stmt_stack_item->label = ((PLpgSQL_stmt_fori *) stmt)->label;
+			break;
+
+		case PLPGSQL_STMT_FORS:
+			stmt_stack_item->label = ((PLpgSQL_stmt_fors *) stmt)->label;
+			break;
+
+		case PLPGSQL_STMT_FORC:
+			stmt_stack_item->label = ((PLpgSQL_stmt_forc *) stmt)->label;
+			break;
+
+		case PLPGSQL_STMT_DYNFORS:
+			stmt_stack_item->label = ((PLpgSQL_stmt_dynfors *) stmt)->label;
+			break;
+
+		case PLPGSQL_STMT_FOREACH_A:
+			stmt_stack_item->label = ((PLpgSQL_stmt_foreach_a *) stmt)->label;
+			break;
+
+		default:
+			stmt_stack_item->label = NULL;
+	}
+
+	stmt_stack_item->outer = current;
+	cstate->top_stmt_stack = stmt_stack_item;
+
+	return current;
+}
+
+static void
+pop_stmt_from_stmt_stack(PLpgSQL_checkstate *cstate)
+{
+	PLpgSQL_stmt_stack_item *current = cstate->top_stmt_stack;
+
+	Assert(cstate->top_stmt_stack != NULL);
+
+	cstate->top_stmt_stack = current->outer;
+	pfree(current);
+}
+
+/*
+ * Returns true, when stmt is any loop statement
+ */
+static bool
+is_any_loop_stmt(PLpgSQL_stmt *stmt)
+{
+	switch ((enum PLpgSQL_stmt_types) stmt->cmd_type)
+	{
+		case PLPGSQL_STMT_LOOP:
+		case PLPGSQL_STMT_WHILE:
+		case PLPGSQL_STMT_FORI:
+		case PLPGSQL_STMT_FORS:
+		case PLPGSQL_STMT_FORC:
+		case PLPGSQL_STMT_DYNFORS:
+		case PLPGSQL_STMT_FOREACH_A:
+			return true;
+		default:
+			return false;
+	}
+}
+
+/*
+ * Searching a any loop statement related to CONTINUE statement.
+ * label can be NULL.
+ */
+static PLpgSQL_stmt *
+find_loop_stmt_with_label(char *label, PLpgSQL_stmt_stack_item *current)
+{
+	while (current != NULL)
+	{
+		if (label != NULL && current->label != NULL
+			&& strcmp(current->label, label) == 0)
+		{
+			if (is_any_loop_stmt(current->stmt))
+				return current->stmt;
+			else
+				return NULL;
+		}
+
+		if (label == NULL && is_any_loop_stmt(current->stmt))
+			return current->stmt;
+
+		current = current->outer;
+	}
+
+	return NULL;
 }
 
 /*
@@ -1240,6 +1368,7 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->argnames = NIL;
 	cstate->exprs = NIL;
 	cstate->used_variables = NULL;
+	cstate->top_stmt_stack = NULL;
 
 	cstate->format = format;
 	cstate->is_active_mode = is_active_mode;
@@ -1440,12 +1569,15 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 	ListCell   *l;
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
+	PLpgSQL_stmt_stack_item *stmt_stack_current;
 
 	if (stmt == NULL)
 		return;
 
 	cstate->estate->err_stmt = stmt;
 	func = cstate->estate->func;
+
+	stmt_stack_current = push_stmt_to_stmt_stack(cstate);
 
 	oldowner = CurrentResourceOwner;
 	BeginInternalSubTransaction(NULL);
@@ -1740,7 +1872,23 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 				break;
 
 			case PLPGSQL_STMT_EXIT:
-				check_expr(cstate, ((PLpgSQL_stmt_exit *) stmt)->cond);
+				{
+					PLpgSQL_stmt_exit *stmt_exit = (PLpgSQL_stmt_exit *) stmt;
+
+					check_expr(cstate, stmt_exit->cond);
+
+					/* the stmt CONTINE should be joined with loop statement only */
+					if (!stmt_exit->is_exit)
+					{
+						PLpgSQL_stmt *loop_stmt = find_loop_stmt_with_label(stmt_exit->label,
+												    stmt_stack_current);
+
+						if (loop_stmt == NULL)
+							ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("CONTINUE cannot be used outside a loop")));
+					}
+				}
 				break;
 
 			case PLPGSQL_STMT_PERFORM:
@@ -2090,6 +2238,8 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 				elog(ERROR, "unrecognized cmd_type: %d", stmt->cmd_type);
 		}
 
+		pop_stmt_from_stmt_stack(cstate);
+
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
@@ -2107,6 +2257,8 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
+
+		pop_stmt_from_stmt_stack(cstate);
 
 		/*
 		 * If fatal_errors is true, we just propagate the error up to the

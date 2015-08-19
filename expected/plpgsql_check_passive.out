@@ -116,27 +116,6 @@ select f1();
 ERROR:  subscripted object is not an array
 CONTEXT:  PL/pgSQL function f1() line 5 at assignment
 drop function f1();
-create type _exception_type as (
-  state text,
-  message text,
-  detail text);
-create or replace function f1()
-returns void as $$
-declare
-  _exception record;
-begin
-  _exception := NULL::_exception_type;
-exception when others then
-  get stacked diagnostics
-        _exception.state = RETURNED_SQLSTATE,
-        _exception.message = MESSAGE_TEXT,
-        _exception.detail = PG_EXCEPTION_DETAIL,
-        _exception.hint = PG_EXCEPTION_HINT;
-end;
-$$ language plpgsql;
-select f1();
-ERROR:  record "_exception" has no field "hint"
-CONTEXT:  PL/pgSQL function f1() line 7 at GET DIAGNOSTICS
 create or replace function f1()
 returns void as $$
 begin
@@ -233,7 +212,6 @@ PL/pgSQL function f1() line 4 at RETURN QUERY
 
 drop function f1();
 drop table t1;
-drop type _exception_type;
 do $$
 declare
 begin

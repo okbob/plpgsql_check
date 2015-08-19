@@ -153,50 +153,6 @@ select f1();
 
 drop function f1();
 
-create type _exception_type as (
-  state text,
-  message text,
-  detail text);
-
-create or replace function f1()
-returns void as $$
-declare
-  _exception record;
-begin
-  _exception := NULL::_exception_type;
-exception when others then
-  get stacked diagnostics
-        _exception.state = RETURNED_SQLSTATE,
-        _exception.message = MESSAGE_TEXT,
-        _exception.detail = PG_EXCEPTION_DETAIL,
-        _exception.hint = PG_EXCEPTION_HINT;
-end;
-$$ language plpgsql;
-
-select f1();
-
-select * from plpgsql_check_function_tb('f1()');
-
-create or replace function f1()
-returns void as $$
-declare
-  _exception _exception_type;
-begin
-  _exception := NULL::_exception_type;
-exception when others then
-  get stacked diagnostics
-        _exception.state = RETURNED_SQLSTATE,
-        _exception.message = MESSAGE_TEXT,
-        _exception.detail = PG_EXCEPTION_DETAIL;
-end;
-$$ language plpgsql;
-
-select f1();
-
-select * from plpgsql_check_function_tb('f1()');
-
-drop function f1();
-
 create or replace function f1_trg()
 returns trigger as $$
 begin
@@ -314,7 +270,6 @@ select * from plpgsql_check_function_tb('f1()');
 drop function f1();
 
 drop table t1;
-drop type _exception_type;
 
 -- raise warnings when target row has different number of attributies in
 -- SELECT INTO statement
@@ -612,7 +567,6 @@ select * from plpgsql_check_function('f1()');
 drop function f1();
 
 drop table t1;
-drop type _exception_type;
 
 -- raise warnings when target row has different number of attributies in
 -- SELECT INTO statement
@@ -1460,3 +1414,35 @@ select test_t();
 select * from test_t();
 
 select * from plpgsql_check_function('test_t()', performance_warnings := true);
+
+create or replace function test_lab()
+returns void as $$
+begin
+    <<outer>>
+    for a in 1..3 loop
+    <<sub>>
+    BEGIN
+        <<inner>>
+        for b in 8..9 loop
+            if a=2 then
+                continue sub;
+            end if;
+            raise notice '% %', a, b;
+        end loop inner;
+    END sub;
+    end loop outer;
+end;
+$$ language plpgsql;
+
+select test_lab();
+select * from plpgsql_check_function('test_lab()', performance_warnings := true);
+
+create or replace function test_lab()
+returns void as $$
+begin
+  continue;
+end;
+$$ language plpgsql;
+
+select test_lab();
+select * from plpgsql_check_function('test_lab()', performance_warnings := true);
