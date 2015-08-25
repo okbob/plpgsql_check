@@ -1414,35 +1414,3 @@ select test_t();
 select * from test_t();
 
 select * from plpgsql_check_function('test_t()', performance_warnings := true);
-
-create or replace function test_lab()
-returns void as $$
-begin
-    <<outer>>
-    for a in 1..3 loop
-    <<sub>>
-    BEGIN
-        <<inner>>
-        for b in 8..9 loop
-            if a=2 then
-                continue sub;
-            end if;
-            raise notice '% %', a, b;
-        end loop inner;
-    END sub;
-    end loop outer;
-end;
-$$ language plpgsql;
-
-select test_lab();
-select * from plpgsql_check_function('test_lab()', performance_warnings := true);
-
-create or replace function test_lab()
-returns void as $$
-begin
-  continue;
-end;
-$$ language plpgsql;
-
-select test_lab();
-select * from plpgsql_check_function('test_lab()', performance_warnings := true);

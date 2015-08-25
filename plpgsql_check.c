@@ -731,24 +731,30 @@ is_any_loop_stmt(PLpgSQL_stmt *stmt)
 }
 
 /*
- * Searching a any loop statement related to CONTINUE statement.
- * label can be NULL.
+ * Searching a any statement related to CONTINUE/EXIT statement.
+ * label cannot be NULL.
  */
 static PLpgSQL_stmt *
-find_loop_stmt_with_label(char *label, PLpgSQL_stmt_stack_item *current)
+find_stmt_with_label(char *label, PLpgSQL_stmt_stack_item *current)
 {
 	while (current != NULL)
 	{
-		if (label != NULL && current->label != NULL
-			&& strcmp(current->label, label) == 0)
-		{
-			if (is_any_loop_stmt(current->stmt))
-				return current->stmt;
-			else
-				return NULL;
-		}
+		if (current->label != NULL
+				&& strcmp(current->label, label) == 0)
+			return current->stmt;
 
-		if (label == NULL && is_any_loop_stmt(current->stmt))
+		current = current->outer;
+	}
+
+	return NULL;
+}
+
+static PLpgSQL_stmt *
+find_nearest_loop(PLpgSQL_stmt_stack_item *current)
+{
+	while (current != NULL)
+	{
+		if (is_any_loop_stmt(current->stmt))
 			return current->stmt;
 
 		current = current->outer;
@@ -1877,16 +1883,29 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 
 					check_expr(cstate, stmt_exit->cond);
 
-					/* the stmt CONTINE should be joined with loop statement only */
-					if (!stmt_exit->is_exit)
+					if (stmt_exit->label != NULL)
 					{
-						PLpgSQL_stmt *loop_stmt = find_loop_stmt_with_label(stmt_exit->label,
+						PLpgSQL_stmt *labeled_stmt = find_stmt_with_label(stmt_exit->label,
 												    stmt_stack_current);
-
-						if (loop_stmt == NULL)
+						if (labeled_stmt == NULL)
 							ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("CONTINUE cannot be used outside a loop")));
+								 errmsg("label \"%s\" does not exist", stmt_exit->label)));
+
+						/* CONTINUE only allows loop labels */
+						if (!is_any_loop_stmt(labeled_stmt) && !stmt_exit->is_exit)
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("block label \"%s\" cannot be used in CONTINUE",
+									 stmt_exit->label)));
+					}
+					else
+					{
+						if (find_nearest_loop(stmt_stack_current) == NULL)
+							ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("%s cannot be used outside a loop",
+								 plpgsql_stmt_typename((PLpgSQL_stmt *) stmt_exit))));
 					}
 				}
 				break;
