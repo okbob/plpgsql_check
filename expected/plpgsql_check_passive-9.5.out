@@ -22,4 +22,5 @@ $$ language plpgsql;
 select f1();
 ERROR:  record "_exception" has no field "hint"
 CONTEXT:  PL/pgSQL function f1() line 7 at GET STACKED DIAGNOSTICS
+drop function f1();
 drop type _exception_type;
