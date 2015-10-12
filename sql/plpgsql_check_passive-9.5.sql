@@ -25,4 +25,5 @@ $$ language plpgsql;
 
 select f1();
 
+drop function f1();
 drop type _exception_type;
