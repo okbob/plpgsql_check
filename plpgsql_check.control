@@ -3,3 +3,4 @@ comment = 'extended check for plpgsql functions'
 default_version = '1.0'
 module_pathname = '$libdir/plpgsql_check'
 relocatable = true
+requires = 'plpgsql'
