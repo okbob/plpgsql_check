@@ -392,7 +392,7 @@ or compile by self:
 
 * gcc on Linux (against all supported PostgreSQL)
 * clang 3.4 on Linux (against PostgreSQL 9.5)
-
+* for success regress tests the PostgreSQL 9.2.14, 9.3.10, 9.4.5, 9.5beta1 is required.
 
 # Licence
 
