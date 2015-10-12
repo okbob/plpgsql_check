@@ -1820,6 +1820,9 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 										 stmt_forc->rec, stmt_forc->row, -1);
 
 					check_stmts(cstate, stmt_forc->body);
+
+					cstate->used_variables = bms_add_member(cstate->used_variables,
+										 stmt_forc->curvar);
 				}
 				break;
 
@@ -2220,6 +2223,10 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 					{
 						check_expr(cstate, (PLpgSQL_expr *) lfirst(l));
 					}
+
+					cstate->used_variables = bms_add_member(cstate->used_variables,
+									 stmt_open->curvar);
+
 				}
 				break;
 
@@ -2247,10 +2254,15 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 					if (var != NULL && var->cursor_explicit_expr != NULL)
 						check_assignment(cstate, var->cursor_explicit_expr,
 									   stmt_fetch->rec, stmt_fetch->row, -1);
+
+					cstate->used_variables = bms_add_member(cstate->used_variables, stmt_fetch->curvar);
 				}
 				break;
 
 			case PLPGSQL_STMT_CLOSE:
+				cstate->used_variables = bms_add_member(cstate->used_variables,
+								 ((PLpgSQL_stmt_close *) stmt)->curvar);
+
 				break;
 
 			default:

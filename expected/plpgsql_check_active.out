@@ -1787,3 +1787,122 @@ select * from plpgsql_check_function('test_t()', performance_warnings := true);
 ------------------------
 (0 rows)
 
+create or replace function fx()
+returns void as $$
+declare
+  c cursor for select * from t;
+  x varchar;
+begin
+  open c;
+  fetch c into x;
+  close c;
+end;
+$$ language plpgsql;
+select test_t();
+ test_t 
+--------
+ ()
+(1 row)
+
+select * from test_t();
+ i 
+---
+  
+(1 row)
+
+select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
+                          plpgsql_check_function                          
+--------------------------------------------------------------------------
+ performance:42804:7:FETCH:target type is different type than source type
+ Detail: cast "integer" value to "character varying" type
+ Hint: Hidden casting can be a performance issue.
+(3 rows)
+
+drop function fx();
+create or replace function fx()
+returns void as $$
+declare
+  c cursor for select * from t;
+  x int;
+begin
+  open c;
+  fetch c into x;
+  close c;
+end;
+$$ language plpgsql;
+select test_t();
+ test_t 
+--------
+ ()
+(1 row)
+
+select * from test_t();
+ i 
+---
+  
+(1 row)
+
+select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function fx();
+create or replace function fx()
+returns void as $$
+declare
+  c cursor for select * from t;
+begin
+  for r in c loop
+    raise notice '%', r.a;
+  end loop;
+end;
+$$ language plpgsql;
+select test_t();
+ test_t 
+--------
+ ()
+(1 row)
+
+select * from test_t();
+ i 
+---
+  
+(1 row)
+
+select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
+             plpgsql_check_function              
+-------------------------------------------------
+ error:42703:6:RAISE:record "r" has no field "a"
+ Context: SQL statement "SELECT r.a"
+(2 rows)
+
+drop function fx();
+create or replace function fx()
+returns void as $$
+declare
+  c cursor for select * from t;
+begin
+  for r in c loop
+    raise notice '%', r.i;
+  end loop;
+end;
+$$ language plpgsql;
+select test_t();
+ test_t 
+--------
+ ()
+(1 row)
+
+select * from test_t();
+ i 
+---
+  
+(1 row)
+
+select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function fx();

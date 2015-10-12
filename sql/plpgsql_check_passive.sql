@@ -1,6 +1,11 @@
 load 'plpgsql';
 load 'plpgsql_check';
 
+-- enforce context's displaying
+-- emulate pre 9.6 behave
+
+\set SHOW_CONTEXT always
+
 set plpgsql_check.mode = 'every_start';
 
 create table t1(a int, b int);

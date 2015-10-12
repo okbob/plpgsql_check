@@ -1414,3 +1414,77 @@ select test_t();
 select * from test_t();
 
 select * from plpgsql_check_function('test_t()', performance_warnings := true);
+
+create or replace function fx()
+returns void as $$
+declare
+  c cursor for select * from t;
+  x varchar;
+begin
+  open c;
+  fetch c into x;
+  close c;
+end;
+$$ language plpgsql;
+
+select test_t();
+select * from test_t();
+
+select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
+
+drop function fx();
+
+create or replace function fx()
+returns void as $$
+declare
+  c cursor for select * from t;
+  x int;
+begin
+  open c;
+  fetch c into x;
+  close c;
+end;
+$$ language plpgsql;
+
+select test_t();
+select * from test_t();
+
+select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
+
+drop function fx();
+
+create or replace function fx()
+returns void as $$
+declare
+  c cursor for select * from t;
+begin
+  for r in c loop
+    raise notice '%', r.a;
+  end loop;
+end;
+$$ language plpgsql;
+
+select test_t();
+select * from test_t();
+
+select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
+
+drop function fx();
+
+create or replace function fx()
+returns void as $$
+declare
+  c cursor for select * from t;
+begin
+  for r in c loop
+    raise notice '%', r.i;
+  end loop;
+end;
+$$ language plpgsql;
+
+select test_t();
+select * from test_t();
+
+select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
+
+drop function fx();
