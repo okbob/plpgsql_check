@@ -3063,7 +3063,16 @@ check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *e
 				/*
 				 * If target is domain over array, reduce to base type
 				 */
+
+#if PG_VERSION_NUM >= 90600
+
+				arraytypeid = plpgsql_exec_get_datum_type(cstate->estate, target);
+
+#else
+
 				arraytypeid = exec_get_datum_type(cstate->estate, target);
+
+#endif
 				arraytypeid = getBaseType(arraytypeid);
 
 				arrayelemtypeid = get_element_type(arraytypeid);
