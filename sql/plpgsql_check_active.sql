@@ -1462,3 +1462,37 @@ select * from test_t();
 select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
 
 drop function fx();
+
+create table foo(a int, b int);
+
+create or replace function fx()
+returns void as $$
+declare f1 int; f2 int;
+begin
+  select 1, 2 into f1;
+  select 1 into f1, f2;
+  select a b into f1, f2 from foo;
+end;
+$$ language plpgsql;
+
+select fx();
+
+select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
+
+drop function fx();
+drop table foo;
+
+create or replace function fx()
+returns void as $$
+declare d date;
+begin
+  d := (select 1 from pg_class limit 1);
+  raise notice '%', d;
+end;
+$$ language plpgsql;
+
+select fx();
+
+select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
+
+drop function fx();

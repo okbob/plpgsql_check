@@ -1875,3 +1875,55 @@ select * from plpgsql_check_function('fx()', performance_warnings := true, fatal
 (0 rows)
 
 drop function fx();
+create table foo(a int, b int);
+create or replace function fx()
+returns void as $$
+declare f1 int; f2 int;
+begin
+  select 1, 2 into f1;
+  select 1 into f1, f2;
+  select a b into f1, f2 from foo;
+end;
+$$ language plpgsql;
+select fx();
+ fx 
+----
+ 
+(1 row)
+
+select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
+                         plpgsql_check_function                          
+-------------------------------------------------------------------------
+ warning:00000:4:SQL statement:too many attributies for target variables
+ Detail: There are less target variables than output columns in query.
+ Hint: Check target variables in SELECT INTO statement
+ warning:00000:5:SQL statement:too few attributies for target variables
+ Detail: There are more target variables than output columns in query.
+ Hint: Check target variables in SELECT INTO statement.
+ warning:00000:6:SQL statement:too few attributies for target variables
+ Detail: There are more target variables than output columns in query.
+ Hint: Check target variables in SELECT INTO statement.
+(9 rows)
+
+drop function fx();
+drop table foo;
+create or replace function fx()
+returns void as $$
+declare d date;
+begin
+  d := (select 1 from pg_class limit 1);
+  raise notice '%', d;
+end;
+$$ language plpgsql;
+select fx();
+ERROR:  invalid input syntax for type date: "1"
+CONTEXT:  PL/pgSQL function fx() line 4 at assignment
+select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
+                              plpgsql_check_function                              
+----------------------------------------------------------------------------------
+ warning:42804:4:assignment:target type is different type than source type
+ Detail: cast "integer" value to "date" type
+ Hint: There are no possible explicit coercion between those types, possibly bug!
+(3 rows)
+
+drop function fx();
