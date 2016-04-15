@@ -17,7 +17,7 @@ I invite any ideas, patches, bugreports
 plpgsql_check is next generation of plpgsql_lint. It allows to check source code by explicit call
 <i>plpgsql_check_function</i>.
 
-PostgreSQL 9.2 is required, PostgreSQL 9.3, 9.4 and 9.5 are supported
+PostgreSQL 9.2 is required, PostgreSQL 9.3, 9.4, 9.5 and 9.6 are supported
 
 The SQL statements inside PL/pgSQL functions are checked by validator for semantic errors. These errors
 can be found by plpgsql_check_function:
@@ -392,7 +392,7 @@ or compile by self:
 
 * gcc on Linux (against all supported PostgreSQL)
 * clang 3.4 on Linux (against PostgreSQL 9.5)
-* for success regress tests the PostgreSQL 9.2.14, 9.3.10, 9.4.5, 9.5beta1 is required.
+* for success regress tests the PostgreSQL 9.2.14, 9.3.10, 9.4.5, 9.5 or 9.6 is required.
 
 # Licence
 
