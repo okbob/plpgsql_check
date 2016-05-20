@@ -1496,3 +1496,46 @@ select fx();
 select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
 
 drop function fx();
+
+create table tab_1(i int);
+
+create or replace function fx(a int)
+returns setof int as $$
+declare
+  c refcursor;
+  r record;
+begin
+  open c for select i from tab_1 where i = a;
+  loop
+    fetch c into r;
+    if not found then
+      exit;
+    end if;
+    return next r.i;
+  end loop;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx(int)', performance_warnings := true, fatal_errors := false);
+
+create or replace function fx(a int)
+returns setof int as $$
+declare
+  c refcursor;
+  r record;
+begin
+  open c for select i from tab_1 where i = a;
+  loop
+    fetch c into r;
+    if not found then
+      exit;
+    end if;
+    return next r.x;
+  end loop;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx(int)', performance_warnings := true, fatal_errors := false);
+
+drop function fx(int);
+drop table tab_1;

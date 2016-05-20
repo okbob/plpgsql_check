@@ -1927,3 +1927,50 @@ select * from plpgsql_check_function('fx()', performance_warnings := true, fatal
 (3 rows)
 
 drop function fx();
+create table tab_1(i int);
+create or replace function fx(a int)
+returns setof int as $$
+declare
+  c refcursor;
+  r record;
+begin
+  open c for select i from tab_1 where i = a;
+  loop
+    fetch c into r;
+    if not found then
+      exit;
+    end if;
+    return next r.i;
+  end loop;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx(int)', performance_warnings := true, fatal_errors := false);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function fx(a int)
+returns setof int as $$
+declare
+  c refcursor;
+  r record;
+begin
+  open c for select i from tab_1 where i = a;
+  loop
+    fetch c into r;
+    if not found then
+      exit;
+    end if;
+    return next r.x;
+  end loop;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx(int)', performance_warnings := true, fatal_errors := false);
+                 plpgsql_check_function                 
+--------------------------------------------------------
+ error:42703:12:RETURN NEXT:record "r" has no field "x"
+ Context: SQL statement "SELECT r.x"
+(2 rows)
+
+drop function fx(int);
+drop table tab_1;

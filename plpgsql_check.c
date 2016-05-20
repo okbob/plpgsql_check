@@ -2211,12 +2211,15 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 			case PLPGSQL_STMT_OPEN:
 				{
 					PLpgSQL_stmt_open *stmt_open = (PLpgSQL_stmt_open *) stmt;
-					PLpgSQL_var *var = (PLpgSQL_var *) func->datums[stmt_open->curvar];
+					PLpgSQL_var *var = (PLpgSQL_var *) (cstate->estate->datums[stmt_open->curvar]);
 
 					if (var->cursor_explicit_expr)
 						check_expr(cstate, var->cursor_explicit_expr);
 
 					check_expr(cstate, stmt_open->query);
+					if (var != NULL && stmt_open->query != NULL)
+						var->cursor_explicit_expr = stmt_open->query;
+
 					check_expr(cstate, stmt_open->argquery);
 					check_expr(cstate, stmt_open->dynquery);
 					foreach(l, stmt_open->params)
