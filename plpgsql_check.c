@@ -4,22 +4,22 @@
  *
  *			  enhanced checks for plpgsql functions
  *
- * by Pavel Stehule 2013, 2014, 2015
+ * by Pavel Stehule 2013-2016
  *
  *-------------------------------------------------------------------------
  *
  * Notes:
  *
- * 1) We have to clean all plans inside expressions created in checking time, because we
- *    use a fake expression context (?? and fake fcinfo ??), and we don't try to use a fast
- *    query plans - so we don't wont to use plans from check time in productyion - We 
- *    cannot remove compiled function due missing access to function cache hash. 
- *    Possible robust solution is a copying every expression before check and using a copy. 
- *    All copies will be destroyed by dropping related memory context.
+ * 1) Secondary hash table for function signature is necessary due holding is_checked
+ *    attribute - this protection against unwanted repeated check.
  *
- * 2) We have to have workable environment for plpgsql_parser_setup function
+ * 2) Reusing some plpgsql_xxx functions requires full run-time environment. It is
+ *    emulated by fake expression context and fake fceinfo (these are created when
+ *    active checking is used) - see: setup_fake_fcinfo, setup_cstate.
  *
- * 3) We need a own edition of signatures and oids as protection agains repeated check.
+ * 3) The environment is referenced by stored execution plans. The actual plan should
+ *    not be linked with fake environment. All expressions created in checking time
+ *    should be relased by release_exprs(cstate.exprs) function.
  *
  */
 #include "postgres.h"
