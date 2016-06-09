@@ -32,6 +32,58 @@ select * from plpgsql_check_function_tb('f1()');
 
 drop function f1();
 
+create function f1()
+returns void as $$
+begin
+  if false then
+    insert into t1 values(10,20);
+    update t1 set a = 10;
+    delete from t1;
+  end if;
+end;
+$$ language plpgsql stable;
+
+select f1();
+select * from plpgsql_check_function_tb('f1()', fatal_errors := false);
+
+drop function f1();
+
+create function f1()
+returns void as $$
+declare r record;
+begin
+  if false then
+    for r in update t1 set a = a + 1 returning *
+    loop
+      raise notice '%', r.a;
+    end loop;
+  end if;
+end;
+$$ language plpgsql;
+
+select f1();
+select * from plpgsql_check_function_tb('f1()', fatal_errors := false);
+
+drop function f1();
+
+create function f1()
+returns void as $$
+declare r record;
+begin
+  if false then
+    for r in update t1 set a = a + 1 returning *
+    loop
+      raise notice '%', r.a;
+    end loop;
+  end if;
+end;
+$$ language plpgsql stable;
+
+select f1();
+select * from plpgsql_check_function_tb('f1()', fatal_errors := false);
+
+drop function f1();
+
 create function g1(out a int, out b int)
 as $$
   select 10,20;

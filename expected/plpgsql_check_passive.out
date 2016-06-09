@@ -20,6 +20,21 @@ LINE 1: update t1 set c = 30
 QUERY:  update t1 set c = 30
 CONTEXT:  PL/pgSQL function f1() line 4 at SQL statement
 drop function f1();
+create function f1()
+returns void as $$
+begin
+  if false then
+    insert into t1 values(10,20);
+    update t1 set a = 10;
+    delete from t1;
+  end if;
+end;
+$$ language plpgsql stable;
+select f1();
+ERROR:  INSERT is not allowed in a non volatile function
+QUERY:  insert into t1 values(10,20)
+CONTEXT:  PL/pgSQL function f1() line 4 at SQL statement
+drop function f1();
 create function g1(out a int, out b int)
 as $$
   select 10,20;

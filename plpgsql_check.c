@@ -61,6 +61,7 @@ typedef enum PLpgSQL_trigtype
 #include "executor/spi_priv.h"
 #include "nodes/nodeFuncs.h"
 #include "parser/parse_coerce.h"
+#include "tcop/utility.h"
 #include "tsearch/ts_locale.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
@@ -204,6 +205,7 @@ static bool is_checked(PLpgSQL_function *func);
 static int load_configuration(HeapTuple procTuple, bool *reload_config);
 static void mark_as_checked(PLpgSQL_function *func);
 static void plpgsql_check_HashTableInit(void);
+static void prohibit_write_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
 static void put_error(PLpgSQL_checkstate *cstate,
 					  int sqlerrcode, int lineno,
 					  const char *message, const char *detail, const char *hint,
@@ -2029,7 +2031,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 									if (!HeapTupleIsValid(rec->tup))
 										ereport(ERROR,
 												  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-						    						   errmsg("record \"%s\" is not assigned yet",
+												   errmsg("record \"%s\" is not assigned yet",
 												   rec->refname),
 										errdetail("The tuple structure of a not-yet-assigned"
 															  " record is indeterminate.")));
@@ -3160,6 +3162,10 @@ prepare_expr(PLpgSQL_checkstate *cstate,
 	}
 
 	SPI_freeplan(plan);
+
+	/* Don't allow write plan when function is read only */
+	if (cstate->estate->readonly_func)
+		prohibit_write_plan(cstate, expr);
 }
 
 /*
@@ -3709,6 +3715,57 @@ expr_get_desc(PLpgSQL_checkstate *cstate,
 		ReleaseCachedPlan(cplan, true);
 	}
 	return tupdesc;
+}
+
+/*
+ * Raise a error when plan is not read only
+ */
+static void
+prohibit_write_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query)
+{
+	CachedPlanSource *plansource = NULL;
+	SPIPlanPtr	 plan = query->plan;
+	CachedPlan	*cplan;
+	List		*stmt_list;
+	ListCell	*lc;
+
+	if (plan == NULL || plan->magic != _SPI_PLAN_MAGIC)
+		elog(ERROR, "cached plan is not valid plan");
+
+	if (list_length(plan->plancache_list) != 1)
+		elog(ERROR, "plan is not single execution plan");
+
+	plansource = (CachedPlanSource *) linitial(plan->plancache_list);
+	cplan = GetCachedPlan(plansource, NULL, true);
+	stmt_list = cplan->stmt_list;
+
+	foreach(lc, stmt_list)
+	{
+		Node *pstmt = (Node *) lfirst(lc);
+
+		if (!CommandIsReadOnly(pstmt))
+		{
+			StringInfoData message;
+
+			initStringInfo(&message);
+			appendStringInfo(&message,
+					"%s is not allowed in a non volatile function",
+							CreateCommandTag(pstmt));
+
+			put_error(cstate,
+					  ERRCODE_FEATURE_NOT_SUPPORTED, 0,
+					  message.data,
+					  NULL,
+					  NULL,
+					  PLPGSQL_CHECK_ERROR,
+					  0, query->query, NULL);
+
+			pfree(message.data);
+			message.data = NULL;
+		}
+	}
+
+	ReleaseCachedPlan(cplan, true);
 }
 
 /*

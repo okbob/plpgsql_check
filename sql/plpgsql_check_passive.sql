@@ -23,6 +23,21 @@ select f1();
 
 drop function f1();
 
+create function f1()
+returns void as $$
+begin
+  if false then
+    insert into t1 values(10,20);
+    update t1 set a = 10;
+    delete from t1;
+  end if;
+end;
+$$ language plpgsql stable;
+
+select f1();
+
+drop function f1();
+
 create function g1(out a int, out b int)
 as $$
   select 10,20;
