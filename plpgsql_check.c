@@ -4281,7 +4281,7 @@ check_function_epilog(PLpgSQL_checkstate *cstate)
 }
 
 /****************************************************************************************
- * A maintaining of hash table of checked funtcions
+ * A maintaining of hash table of checked functions
  *
  ****************************************************************************************
  *
