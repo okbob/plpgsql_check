@@ -3,14 +3,14 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	1.0.4
+Version:	1.0.5
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
 Group:		Applications/Databases
 License:	BSD
-URL:		https://github.com/okbob/plpgsql_check/archive/v1.0.4.zip
-Source0:	plpgsql_check-1.0.4.zip
+URL:		https://github.com/okbob/plpgsql_check/archive/v1.0.5.zip
+Source0:	plpgsql_check-1.0.5.zip
 BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 BuildRequires:	postgresql%{pgmajorversion}-devel
@@ -23,7 +23,7 @@ a validity of SQL identifiers used in plpgsql code. It try to identify
 a performance issues.
 
 %prep
-%setup -q -n %{sname}-1.0.4
+%setup -q -n %{sname}-1.0.5
 
 
 %build
@@ -48,6 +48,9 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Thu Aug 25 2016 - Pavel STEHULE <pavel.stehule@gmail.com> 1.0.5-1
+- minor fixes, support for PostgreSQL 10
+
 * Fri Apr 15 2016 - Pavel STEHULE <pavel.stehule@gmail.com> 1.0.4-1
 - support for PostgreSQL 9.6
 
