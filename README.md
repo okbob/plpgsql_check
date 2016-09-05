@@ -24,7 +24,7 @@ can be found by plpgsql_check_function:
 
 # Active mode
 
-    postgres=# load 'plpgsql';
+    postgres=# load 'plpgsql'; -- 1.1 and higher doesn't need it
     LOAD
     postgres=# CREATE EXTENSION plpgsql_check;
     LOAD
@@ -197,7 +197,7 @@ active mode - by <i>plpgsql_check_function</i>.
 
 You can enable passive mode by
 
-    load 'plpgsql';
+    load 'plpgsql'; -- 1.1 and higher doesn't need it
     load 'plpgsql_check';
     set plpgsql_check.mode = 'every_start';
 

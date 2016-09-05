@@ -6,6 +6,7 @@ create extension if not exists plpgsql_check;
 --should fail - is not plpgsql
 select * from plpgsql_check_function_tb('session_user()');
 ERROR:  "session_user"() is not a plpgsql function
+CONTEXT:  PL/pgSQL function plpgsql_check_function_tb(regprocedure,regclass,boolean,boolean,boolean) line 3 at RETURN QUERY
 create table t1(a int, b int);
 create table pa (id int, pa_id character varying(32), status character varying(60));
 create table  ml(ml_id character varying(32), status_from character varying(60), pa_id character varying(32), xyz int);

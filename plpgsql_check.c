@@ -518,6 +518,7 @@ plpgsql_check_function(PG_FUNCTION_ARGS)
 	PLpgSQL_trigtype trigtype;
 	char *format_lower_str;
 	int format = PLPGSQL_CHECK_FORMAT_TEXT;
+	ErrorContextCallback *prev_errorcontext;
 
 	format_lower_str = lowerstr(format_str);
 	if (strcmp(format_lower_str, "text") == 0)
@@ -557,10 +558,14 @@ plpgsql_check_function(PG_FUNCTION_ARGS)
 	tupstore = tuplestore_begin_heap(false, false, work_mem);
 	MemoryContextSwitchTo(oldcontext);
 
+	prev_errorcontext = error_context_stack;
+	error_context_stack = NULL;
+
 	check_plpgsql_function(procTuple, relid, trigtype,
 							   tupdesc, tupstore,
 							   format,
 								   fatal_errors, other_warnings, performance_warnings);
+	error_context_stack = prev_errorcontext;
 
 	ReleaseSysCache(procTuple);
 
@@ -595,6 +600,7 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	MemoryContext oldcontext;
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	PLpgSQL_trigtype trigtype;
+	ErrorContextCallback *prev_errorcontext;
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -622,10 +628,16 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	tupstore = tuplestore_begin_heap(false, false, work_mem);
 	MemoryContextSwitchTo(oldcontext);
 
+	prev_errorcontext = error_context_stack;
+
+	/* Envelope outer plpgsql function is not interesting */
+	error_context_stack = NULL;
+
 	check_plpgsql_function(procTuple, relid, trigtype,
 							   tupdesc, tupstore,
 							   PLPGSQL_CHECK_FORMAT_TABULAR,
 								   fatal_errors, other_warnings, performance_warnings);
+	error_context_stack = prev_errorcontext;
 
 	ReleaseSysCache(procTuple);
 

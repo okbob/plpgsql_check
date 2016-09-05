@@ -2,14 +2,14 @@
 
 MODULE_big = plpgsql_check
 OBJS = plpgsql_check.o
-DATA = plpgsql_check--1.1.sql
+DATA =   plpgsql_check--1.0.sql plpgsql_check--1.1.sql plpgsql_check--1.0--1.1.sql
 EXTENSION = plpgsql_check
 
 ifndef MAJORVERSION
 MAJORVERSION := $(basename $(VERSION))
 endif
 
-REGRESS_OPTS = --dbname=$(PL_TESTDB) --load-language=plpgsql
+REGRESS_OPTS = --dbname=$(PL_TESTDB)
 REGRESS = plpgsql_check_passive plpgsql_check_active plpgsql_check_active-$(MAJORVERSION) plpgsql_check_passive-$(MAJORVERSION)
 
 ifdef NO_PGXS
