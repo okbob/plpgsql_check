@@ -31,6 +31,17 @@
 
 #include "plpgsql_check_builtins.h"
 
+#if PG_VERSION_NUM >= 100000
+
+#define PLPGSQL_STMT_TYPES
+
+#else
+
+#define PLPGSQL_STMT_TYPES		(enum PLpgSQL_stmt_types)
+
+#endif
+
+
 #if PG_VERSION_NUM >= 90300
 #include "access/htup_details.h"
 
@@ -664,7 +675,7 @@ push_stmt_to_stmt_stack(PLpgSQL_checkstate *cstate)
 	stmt_stack_item = (PLpgSQL_stmt_stack_item *) palloc(sizeof(PLpgSQL_stmt_stack_item));
 	stmt_stack_item->stmt = stmt;
 
-	switch ((enum PLpgSQL_stmt_types) stmt->cmd_type)
+	switch (PLPGSQL_STMT_TYPES stmt->cmd_type)
 	{
 		case PLPGSQL_STMT_BLOCK:
 			stmt_stack_item->label = ((PLpgSQL_stmt_block *) stmt)->label;
@@ -729,7 +740,7 @@ pop_stmt_from_stmt_stack(PLpgSQL_checkstate *cstate)
 static bool
 is_any_loop_stmt(PLpgSQL_stmt *stmt)
 {
-	switch ((enum PLpgSQL_stmt_types) stmt->cmd_type)
+	switch (PLPGSQL_STMT_TYPES stmt->cmd_type)
 	{
 		case PLPGSQL_STMT_LOOP:
 		case PLPGSQL_STMT_WHILE:
@@ -1605,7 +1616,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 
 	PG_TRY();
 	{
-		switch ((enum PLpgSQL_stmt_types) stmt->cmd_type)
+		switch (PLPGSQL_STMT_TYPES stmt->cmd_type)
 		{
 			case PLPGSQL_STMT_BLOCK:
 				{
@@ -1989,6 +2000,9 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 									}
 								}
 								break;
+
+							default:
+								;		/* nope */
 						}
 					}
 
@@ -2099,6 +2113,9 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 									}
 								}
 								break;
+
+							default:
+								;		/* nope */
 						}
 					}
 
@@ -3108,6 +3125,9 @@ check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *e
 				record_variable_usage(cstate, target->dno);
 			}
 			break;
+
+		default:
+			;		/* nope */
 	}
 }
 
@@ -3326,6 +3346,9 @@ assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, boo
 									    isnull);
 			}
 			break;
+
+		default:
+			;		/* nope */
 	}
 }
 
@@ -3429,6 +3452,8 @@ assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 														isnull);
 						}
 						break;
+					default:
+						;		/* nope */
 				}
 
 				anum++;
