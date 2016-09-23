@@ -81,6 +81,7 @@ typedef enum PLpgSQL_trigtype
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 #include "utils/rel.h"
+#include "utils/json.h"
 #include "utils/xml.h"
 
 #ifdef PG_MODULE_MAGIC
@@ -117,7 +118,8 @@ enum
 	PLPGSQL_CHECK_FORMAT_ELOG,
 	PLPGSQL_CHECK_FORMAT_TEXT,
 	PLPGSQL_CHECK_FORMAT_TABULAR,
-	PLPGSQL_CHECK_FORMAT_XML
+	PLPGSQL_CHECK_FORMAT_XML,
+	PLPGSQL_CHECK_FORMAT_JSON
 };
 
 enum
@@ -208,6 +210,13 @@ static void format_error_xml(StringInfo str,
 								 int level, int position,
 								 const char *query,
 								 const char *context);
+static void format_error_json(StringInfo str,
+	PLpgSQL_execstate *estate,
+	int sqlerrcode, int lineno,
+	const char *message, const char *detail, const char *hint,
+	int level, int position,
+	const char *query,
+	const char *context);
 static void function_check(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 								   PLpgSQL_execstate *estate, PLpgSQL_checkstate *cstate);
 static PLpgSQL_trigtype get_trigtype(HeapTuple procTuple);
@@ -536,12 +545,14 @@ plpgsql_check_function(PG_FUNCTION_ARGS)
 		format = PLPGSQL_CHECK_FORMAT_TEXT;
 	else if (strcmp(format_lower_str, "xml") == 0)
 		format = PLPGSQL_CHECK_FORMAT_XML;
+	else if (strcmp(format_lower_str, "json") == 0)
+		format = PLPGSQL_CHECK_FORMAT_JSON;
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("unrecognize format: \"%s\"",
 									 format_lower_str),
-				 errhint("Only \"text\" and \"xml\" formats are supported.")));
+			errhint("Only \"text\", \"xml\" and \"json\" formats are supported.")));
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -3906,6 +3917,12 @@ put_error(PLpgSQL_checkstate *cstate,
 								 sqlerrcode, lineno, message, detail,
 								 hint, level, position, query, context);
 				break;
+
+		case PLPGSQL_CHECK_FORMAT_JSON:
+			format_error_json(cstate->sinfo, cstate->estate,
+				sqlerrcode, lineno, message, detail,
+				hint, level, position, query, context);
+			break;
 		}
 	}
 	else
@@ -4211,7 +4228,7 @@ format_error_xml(StringInfo str,
 	/* flush tag */
 	appendStringInfoString(str, "  <Issue>\n");
 
-	appendStringInfo(str, "    <Level>%s</level>\n", level_str);
+	appendStringInfo(str, "    <Level>%s</Level>\n", level_str);
 	appendStringInfo(str, "    <Sqlstate>%s</Sqlstate>\n",
 						 unpack_sql_state(sqlerrcode));
 	appendStringInfo(str, "    <Message>%s</Message>\n",
@@ -4241,6 +4258,89 @@ format_error_xml(StringInfo str,
 
 	/* flush closing tag */
 	appendStringInfoString(str, "  </Issue>\n");
+}
+
+/*
+* format_error_json formats and collects a identifided issues
+*/
+static void
+format_error_json(StringInfo str,
+	PLpgSQL_execstate *estate,
+	int sqlerrcode,
+	int lineno,
+	const char *message,
+	const char *detail,
+	const char *hint,
+	int level,
+	int position,
+	const char *query,
+	const char *context)
+{
+	const char *level_str;
+	StringInfoData sinfo; /*Holds escaped json*/
+
+	Assert(message != NULL);
+
+	switch (level)
+	{
+	case PLPGSQL_CHECK_ERROR:
+		level_str = "error";
+		break;
+	case PLPGSQL_CHECK_WARNING_OTHERS:
+		level_str = "warning";
+		break;
+	case PLPGSQL_CHECK_WARNING_PERFORMANCE:
+		level_str = "performance";
+		break;
+	default:
+		level_str = "???";
+		break;
+	}
+
+	initStringInfo(&sinfo);
+
+	/* flush tag */
+	appendStringInfoString(str, "  {\n");
+	appendStringInfo(str, "    \"level\":\"%s\",\n", level_str);
+		
+	escape_json(&sinfo, message);
+	appendStringInfo(str, "    \"message\":%s,\n", sinfo.data);
+	if (estate->err_stmt != NULL)
+		appendStringInfo(str, "    \"statement\":{\n\"lineNumber\":\"%d\",\n\"text\":\"%s\"\n},\n",
+			estate->err_stmt->lineno,
+			plpgsql_stmt_typename(estate->err_stmt));
+
+	else if (strcmp(message, "unused declared variable") == 0)
+		appendStringInfo(str, "    \"statement\":{\n\"lineNumber\":\"%d\",\n\"text\":\"DECLARE\"\n},",
+			lineno);
+
+	if (hint != NULL) {
+		resetStringInfo(&sinfo);
+		escape_json(&sinfo, hint);
+		appendStringInfo(str, "    \"hint\":%s,\n", sinfo.data);
+	}
+	if (detail != NULL) {
+		resetStringInfo(&sinfo);
+		escape_json(&sinfo, detail);
+		appendStringInfo(str, "    \"detail\":%s,\n", sinfo.data);
+	}
+	if (query != NULL) {
+		resetStringInfo(&sinfo);
+		escape_json(&sinfo, query);
+		appendStringInfo(str, "    \"query\":{\n\"position\":\"%d\",\n\"text\":%s\n},\n", position, sinfo.data);
+	}
+
+	if (context != NULL) {
+		resetStringInfo(&sinfo);
+		escape_json(&sinfo, context);
+		appendStringInfo(str, "    \"context\":%s,\n", sinfo.data);
+	}
+
+	/* placing this property last as to avoid a trailing comma*/
+	appendStringInfo(str, "    \"sqlState\":\"%s\"\n",	unpack_sql_state(sqlerrcode));
+
+	/* flush closing tag. Needs comman jus in case there is more than one issue. Comma removed in epilog */
+	appendStringInfoString(str, "  },");
 }
 
 /*
@@ -4286,7 +4386,7 @@ tuplestore_put_text_line(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 /*
  * routines for beginning and finishing function checking
  *
- * it is used primary for XML format - create almost left and almost right tag per function
+* it is used primary for XML & JSON format - create almost left and almost right tag per function
  *
  */
 static void
@@ -4303,6 +4403,15 @@ check_function_prolog(PLpgSQL_checkstate *cstate)
 		/* create a initial tag */
 		appendStringInfo(cstate->sinfo, "<Function oid=\"%d\">\n", cstate->fn_oid);
 	}
+	else if (cstate->format == PLPGSQL_CHECK_FORMAT_JSON) {
+		if (cstate->sinfo != NULL)
+			resetStringInfo(cstate->sinfo);
+		else
+			cstate->sinfo = makeStringInfo();
+
+		/* create a initial tag */
+		appendStringInfo(cstate->sinfo, "{ \"function\":\"%d\",\n\"issues\":[\n", cstate->fn_oid);
+	}
 }
 
 static void
@@ -4314,6 +4423,16 @@ check_function_epilog(PLpgSQL_checkstate *cstate)
 
 		tuplestore_put_text_line(cstate->tuple_store, cstate->tupdesc,
 					    cstate->sinfo->data, cstate->sinfo->len);
+	}
+	else if (cstate->format == PLPGSQL_CHECK_FORMAT_JSON)
+	{
+		if (cstate->sinfo->len > 1 && cstate->sinfo->data[cstate->sinfo->len -1] == ',') {
+			cstate->sinfo->data[cstate->sinfo->len - 1] = '\n';
+		}
+		appendStringInfoString(cstate->sinfo, "\n]\n}");
+
+		tuplestore_put_text_line(cstate->tuple_store, cstate->tupdesc,
+			cstate->sinfo->data, cstate->sinfo->len);
 	}
 }
 
