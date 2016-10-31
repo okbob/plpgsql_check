@@ -114,7 +114,7 @@ Function plpgsql_check_function() has two possible formats: text or xml
 
 ## Triggers
 
-When you would to check any trigger, you have to enter a relation that will be
+When you want to check any trigger, you have to enter a relation that will be
 used together with trigger function
 
     CREATE TABLE bar(a int, b int);
