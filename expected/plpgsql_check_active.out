@@ -2049,3 +2049,22 @@ select * from plpgsql_check_function('fx(int)', performance_warnings := true, fa
 
 drop function fx(int);
 drop table tab_1;
+create or replace function fxx()
+returns void as $$
+begin
+  rollback;
+end;
+$$ language plpgsql;
+select fxx();
+ERROR:  cannot begin/end transactions in PL/pgSQL
+HINT:  Use a BEGIN block with an EXCEPTION clause instead.
+CONTEXT:  PL/pgSQL function fxx() line 3 at SQL statement
+select * from plpgsql_check_function('fxx()');
+                        plpgsql_check_function                         
+-----------------------------------------------------------------------
+ error:0A000:3:SQL statement:cannot begin/end transactions in PL/pgSQL
+ Query: rollback
+ Hint: Use a BEGIN block with an EXCEPTION clause instead.
+(3 rows)
+
+drop function fxx();

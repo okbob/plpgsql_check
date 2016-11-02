@@ -271,6 +271,7 @@ static void tuplestore_put_text_line(Tuplestorestate *tuple_store, TupleDesc tup
 static void report_unused_variables(PLpgSQL_checkstate *cstate);
 static void record_variable_usage(PLpgSQL_checkstate *cstate, int dno);
 static bool is_const_null_expr(PLpgSQL_expr *query);
+static void prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
 
 
 static bool plpgsql_check_other_warnings = false;
@@ -3153,62 +3154,64 @@ prepare_expr(PLpgSQL_checkstate *cstate,
 {
 	SPIPlanPtr	plan;
 
-	if (expr->plan != NULL)
-		return;					/* already checked */
-
-	/*
-	 * The grammar can't conveniently set expr->func while building the parse
-	 * tree, so make sure it's set before parser hooks need it.
-	 */
-	expr->func = cstate->estate->func;
-
-	/*
-	 * Generate and save the plan
-	 */
-	plan = SPI_prepare_params(expr->query,
-							  (ParserSetupHook) plpgsql_parser_setup,
-							  (void *) expr,
-							  cursorOptions);
-
-	if (plan == NULL)
-	{
-		/* Some SPI errors deserve specific error messages */
-		switch (SPI_result)
-		{
-			case SPI_ERROR_COPY:
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot COPY to/from client in PL/pgSQL")));
-				break;
-
-			case SPI_ERROR_TRANSACTION:
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot begin/end transactions in PL/pgSQL"),
-						 errhint("Use a BEGIN block with an EXCEPTION clause instead.")));
-				break;
-
-			default:
-				elog(ERROR, "SPI_prepare_params failed for \"%s\": %s",
-					 expr->query, SPI_result_code_string(SPI_result));
-		}
-	}
-
-	/*
-	 * We would to check all plans, but when plan exists, then don't 
-	 * overwrite existing plan.
-	 */
 	if (expr->plan == NULL)
 	{
-		expr->plan = SPI_saveplan(plan);
-		cstate->exprs = lappend(cstate->exprs, expr);
-	}
+		/*
+		 * The grammar can't conveniently set expr->func while building the parse
+		 * tree, so make sure it's set before parser hooks need it.
+		 */
+		expr->func = cstate->estate->func;
 
-	SPI_freeplan(plan);
+		/*
+		 * Generate and save the plan
+		 */
+		plan = SPI_prepare_params(expr->query,
+								  (ParserSetupHook) plpgsql_parser_setup,
+								  (void *) expr,
+								  cursorOptions);
+
+		if (plan == NULL)
+		{
+			/* Some SPI errors deserve specific error messages */
+			switch (SPI_result)
+			{
+				case SPI_ERROR_COPY:
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot COPY to/from client in PL/pgSQL")));
+					break;
+
+				case SPI_ERROR_TRANSACTION:
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot begin/end transactions in PL/pgSQL"),
+							 errhint("Use a BEGIN block with an EXCEPTION clause instead.")));
+					break;
+
+				default:
+					elog(ERROR, "SPI_prepare_params failed for \"%s\": %s",
+						 expr->query, SPI_result_code_string(SPI_result));
+			}
+		}
+
+		/*
+		 * We would to check all plans, but when plan exists, then don't 
+		 * overwrite existing plan.
+		 */
+		if (expr->plan == NULL)
+		{
+			expr->plan = SPI_saveplan(plan);
+			cstate->exprs = lappend(cstate->exprs, expr);
+		}
+
+		SPI_freeplan(plan);
+	}
 
 	/* Don't allow write plan when function is read only */
 	if (cstate->estate->readonly_func)
 		prohibit_write_plan(cstate, expr);
+
+	prohibit_transaction_stmt(cstate, expr);
 }
 
 /*
@@ -3810,6 +3813,47 @@ prohibit_write_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query)
 
 			pfree(message.data);
 			message.data = NULL;
+		}
+	}
+
+	ReleaseCachedPlan(cplan, true);
+}
+
+/*
+ * Raise a error when plan is a transactional statement
+ */
+static void
+prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query)
+{
+	CachedPlanSource *plansource = NULL;
+	SPIPlanPtr	 plan = query->plan;
+	CachedPlan	*cplan;
+	List		*stmt_list;
+	ListCell	*lc;
+
+	if (plan == NULL || plan->magic != _SPI_PLAN_MAGIC)
+		elog(ERROR, "cached plan is not valid plan");
+
+	if (list_length(plan->plancache_list) != 1)
+		elog(ERROR, "plan is not single execution plan");
+
+	plansource = (CachedPlanSource *) linitial(plan->plancache_list);
+	cplan = GetCachedPlan(plansource, NULL, true);
+	stmt_list = cplan->stmt_list;
+
+	foreach(lc, stmt_list)
+	{
+		Node *pstmt = (Node *) lfirst(lc);
+
+		if (IsA(pstmt, TransactionStmt))
+		{
+			put_error(cstate,
+					  ERRCODE_FEATURE_NOT_SUPPORTED, 0,
+					  "cannot begin/end transactions in PL/pgSQL",
+					  NULL,
+					  "Use a BEGIN block with an EXCEPTION clause instead.",
+					  PLPGSQL_CHECK_ERROR,
+					  0, query->query, NULL);
 		}
 	}
 

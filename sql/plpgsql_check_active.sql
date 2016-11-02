@@ -1591,3 +1591,16 @@ select * from plpgsql_check_function('fx(int)', performance_warnings := true, fa
 
 drop function fx(int);
 drop table tab_1;
+
+create or replace function fxx()
+returns void as $$
+begin
+  rollback;
+end;
+$$ language plpgsql;
+
+select fxx();
+
+select * from plpgsql_check_function('fxx()');
+
+drop function fxx();
