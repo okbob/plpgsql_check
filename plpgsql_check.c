@@ -110,6 +110,7 @@ enum
 {
 	PLPGSQL_CHECK_ERROR,
 	PLPGSQL_CHECK_WARNING_OTHERS,
+	PLPGSQL_CHECK_WARNING_EXTRA,					/* check shadowed variables */
 	PLPGSQL_CHECK_WARNING_PERFORMANCE
 };
 
@@ -139,23 +140,23 @@ typedef struct PLpgSQL_stmt_stack_item
 
 typedef struct PLpgSQL_checkstate
 {
-	Oid		fn_oid;		/* oid of checked function */
-	List	 	*argnames;	/* function arg names */
-	PLpgSQL_execstate *estate;	/* check state is estate extension */
-	Tuplestorestate *tuple_store;	/* result target */
-	TupleDesc	tupdesc;	/* result description */
-	bool	    fatal_errors;	/* stop on first error */
-	bool	    performance_warnings;	/* show performace warnings */
-	bool	    other_warnings;	/* show other warnings */
-	int	 	   format;	/* output format */
-	StringInfo	   sinfo;	/* aux. stringInfo used for result string concat */
-	MemoryContext		   check_cxt;
-	List			   *exprs;	/* list of all expression created by checker */
-	bool		is_active_mode;	/* true, when checking is started by plpgsql_check_function */
-	Bitmapset *used_variables;	/* track which variables have been used; bit per varno */
+	Oid			fn_oid;						/* oid of checked function */
+	List	    *argnames;					/* function arg names */
+	PLpgSQL_execstate	   *estate;			/* check state is estate extension */
+	Tuplestorestate		   *tuple_store;	/* result target */
+	TupleDesc	tupdesc;					/* result description */
+	bool		fatal_errors;				/* stop on first error */
+	bool		performance_warnings;		/* show performace warnings */
+	bool		other_warnings;				/* show other warnings */
+	bool		extra_warnings;				/* show extra warnings */
+	int			format;						/* output format */
+	StringInfo	sinfo;						/* aux. stringInfo used for result string concat */
+	MemoryContext			check_cxt;
+	List	   *exprs;						/* list of all expression created by checker */
+	bool		is_active_mode;				/* true, when checking is started by plpgsql_check_function */
+	Bitmapset  *used_variables;				/* track which variables have been used; bit per varno */
 	PLpgSQL_stmt_stack_item *top_stmt_stack;	/* list of known labels + related command */
-}	PLpgSQL_checkstate;
-
+} PLpgSQL_checkstate;
 
 static void assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, bool isnull);
 static void assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
@@ -190,7 +191,8 @@ static void check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigt
 							    int format,
 									  bool fatal_errors,
 									  bool other_warnings,
-									  bool performance_warnings);
+									  bool performance_warnings,
+									  bool extra_warnings);
 static void check_row_or_rec(PLpgSQL_checkstate *cstate, PLpgSQL_row *row, PLpgSQL_rec *rec);
 static void check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt);
 static void check_stmts(PLpgSQL_checkstate *cstate, List *stmts);
@@ -237,7 +239,8 @@ static void prepare_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, int cur
 static void release_exprs(List *exprs);
 static void setup_cstate(PLpgSQL_checkstate *cstate,
 							 Oid fn_oid, TupleDesc tupdesc, Tuplestorestate *tupstore,
-							 bool fatal_errors, bool other_warnings, bool perform_warnings,
+							 bool fatal_errors,
+								 bool other_warnings, bool perform_warnings, bool extra_warnings,
 												    int format,
 												    bool is_active_mode);
 static void setup_fake_fcinfo(HeapTuple procTuple,
@@ -273,8 +276,8 @@ static void record_variable_usage(PLpgSQL_checkstate *cstate, int dno);
 static bool is_const_null_expr(PLpgSQL_expr *query);
 static void prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
 
-
 static bool plpgsql_check_other_warnings = false;
+static bool plpgsql_check_extra_warnings = false;
 static bool plpgsql_check_performance_warnings = false;
 static bool plpgsql_check_fatal_errors = true;
 static int plpgsql_check_mode = PLPGSQL_CHECK_MODE_BY_FUNCTION;
@@ -333,6 +336,14 @@ _PG_init(void)
 					    &plpgsql_check_mode,
 					    PLPGSQL_CHECK_MODE_BY_FUNCTION,
 					    plpgsql_check_mode_options,
+					    PGC_SUSET, 0,
+					    NULL, NULL, NULL);
+
+	DefineCustomBoolVariable("plpgsql_check.show_nonperformance_extra_warnings",
+					    "when is true, then extra warning (except performance warnings) are showed",
+					    NULL,
+					    &plpgsql_check_extra_warnings,
+					    false,
 					    PGC_SUSET, 0,
 					    NULL, NULL, NULL);
 
@@ -406,6 +417,7 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 							    plpgsql_check_fatal_errors,
 							    plpgsql_check_other_warnings,
 							    plpgsql_check_performance_warnings,
+							    plpgsql_check_extra_warnings,
 							    PLPGSQL_CHECK_FORMAT_ELOG,
 							    false);
 
@@ -530,6 +542,7 @@ plpgsql_check_function(PG_FUNCTION_ARGS)
 	bool			fatal_errors = PG_GETARG_BOOL(3);
 	bool			other_warnings = PG_GETARG_BOOL(4);
 	bool			performance_warnings = PG_GETARG_BOOL(5);
+	bool			extra_warnings;
 	TupleDesc	tupdesc;
 	HeapTuple	procTuple;
 	Tuplestorestate *tupstore;
@@ -540,6 +553,11 @@ plpgsql_check_function(PG_FUNCTION_ARGS)
 	char *format_lower_str;
 	int format = PLPGSQL_CHECK_FORMAT_TEXT;
 	ErrorContextCallback *prev_errorcontext;
+
+	if (PG_NARGS() != 7)
+		elog(ERROR, "unexpected number of parameters, you should to update extension");
+
+	extra_warnings = PG_GETARG_BOOL(6);
 
 	format_lower_str = lowerstr(format_str);
 	if (strcmp(format_lower_str, "text") == 0)
@@ -587,7 +605,8 @@ plpgsql_check_function(PG_FUNCTION_ARGS)
 	check_plpgsql_function(procTuple, relid, trigtype,
 							   tupdesc, tupstore,
 							   format,
-								   fatal_errors, other_warnings, performance_warnings);
+								   fatal_errors,
+								   other_warnings, performance_warnings, extra_warnings);
 	error_context_stack = prev_errorcontext;
 
 	ReleaseSysCache(procTuple);
@@ -616,6 +635,7 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	bool			fatal_errors = PG_GETARG_BOOL(2);
 	bool			other_warnings = PG_GETARG_BOOL(3);
 	bool			performance_warnings = PG_GETARG_BOOL(4);
+	bool			extra_warnings;
 	TupleDesc	tupdesc;
 	HeapTuple	procTuple;
 	Tuplestorestate *tupstore;
@@ -624,6 +644,11 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	PLpgSQL_trigtype trigtype;
 	ErrorContextCallback *prev_errorcontext;
+
+	if (PG_NARGS() != 6)
+		elog(ERROR, "unexpected number of parameters, you should to update extension");
+
+	extra_warnings = PG_GETARG_BOOL(5);
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -659,7 +684,8 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	check_plpgsql_function(procTuple, relid, trigtype,
 							   tupdesc, tupstore,
 							   PLPGSQL_CHECK_FORMAT_TABULAR,
-								   fatal_errors, other_warnings, performance_warnings);
+								   fatal_errors,
+								   other_warnings, performance_warnings, extra_warnings);
 	error_context_stack = prev_errorcontext;
 
 	ReleaseSysCache(procTuple);
@@ -801,6 +827,38 @@ find_nearest_loop(PLpgSQL_stmt_stack_item *current)
 }
 
 /*
+ * returns false, when a variable doesn't shadows any other variable
+ */
+static bool
+found_shadowed_variable(char *varname, PLpgSQL_stmt_stack_item *current, PLpgSQL_checkstate *cstate)
+{
+	while (current != NULL)
+	{
+		if (current->stmt->cmd_type == PLPGSQL_STMT_BLOCK)
+		{
+			PLpgSQL_stmt_block *stmt_block = (PLpgSQL_stmt_block *) current->stmt;
+			int			i;
+			PLpgSQL_datum *d;
+
+			for (i = 0; i < stmt_block->n_initvars; i++)
+			{
+				char	   *refname;
+
+				d = cstate->estate->func->datums[stmt_block->initvarnos[i]];
+				refname = datum_get_refname(d);
+
+				if (refname != NULL && strcmp(refname, varname) == 0)
+					return true;
+			}
+		}
+
+		current = current->outer;
+	}
+
+	return false;
+}
+
+/*
  * Returns PLpgSQL_trigtype based on prorettype
  */
 static PLpgSQL_trigtype
@@ -903,7 +961,8 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 							    int format,
 									  bool fatal_errors,
 									  bool other_warnings, 
-									  bool performance_warnings)
+									  bool performance_warnings,
+									  bool extra_warnings)
 {
 	PLpgSQL_checkstate cstate;
 	PLpgSQL_function *volatile function = NULL;
@@ -933,7 +992,8 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 										  funcoid, trigtype);
 
 	setup_cstate(&cstate, funcoid, tupdesc, tupstore,
-							    fatal_errors, other_warnings, performance_warnings,
+							    fatal_errors,
+							    other_warnings, performance_warnings, extra_warnings,
 										    format,
 										    true);
 
@@ -1398,6 +1458,7 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 			 bool fatal_errors,
 			 bool other_warnings,
 			 bool performance_warnings,
+			 bool extra_warnings,
 			 int format,
 			 bool is_active_mode)
 {
@@ -1408,6 +1469,7 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->fatal_errors = fatal_errors;
 	cstate->other_warnings = other_warnings;
 	cstate->performance_warnings = performance_warnings;
+	cstate->extra_warnings = extra_warnings;
 	cstate->argnames = NIL;
 	cstate->exprs = NIL;
 	cstate->used_variables = NULL;
@@ -1612,7 +1674,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 	ListCell   *l;
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
-	PLpgSQL_stmt_stack_item *stmt_stack_current;
+	PLpgSQL_stmt_stack_item *outer_stmt;
 
 	if (stmt == NULL)
 		return;
@@ -1620,7 +1682,10 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 	cstate->estate->err_stmt = stmt;
 	func = cstate->estate->func;
 
-	stmt_stack_current = push_stmt_to_stmt_stack(cstate);
+	/*
+	 * Attention - returns NULL, when there are not any outer level
+	 */
+	outer_stmt = push_stmt_to_stmt_stack(cstate);
 
 	oldowner = CurrentResourceOwner;
 	BeginInternalSubTransaction(NULL);
@@ -1674,6 +1739,24 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 												  0, NULL, NULL);
 									pfree(str.data);
 								}
+							}
+
+							if (found_shadowed_variable(refname, outer_stmt, cstate))
+							{
+								StringInfoData str;
+
+								initStringInfo(&str);
+								appendStringInfo(&str, "variable \"%s\" shadows a previously defined variable",
+													 refname);
+
+								put_error(cstate,
+												  0, 0,
+												  str.data,
+												  NULL,
+												  "SET plpgsql.extra_warnings TO 'shadowed_variables'",
+												  PLPGSQL_CHECK_WARNING_EXTRA,
+												  0, NULL, NULL);
+								pfree(str.data);
 							}
 						}
 					}
@@ -1926,7 +2009,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 					if (stmt_exit->label != NULL)
 					{
 						PLpgSQL_stmt *labeled_stmt = find_stmt_with_label(stmt_exit->label,
-												    stmt_stack_current);
+												    outer_stmt);
 						if (labeled_stmt == NULL)
 							ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
@@ -1941,7 +2024,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 					}
 					else
 					{
-						if (find_nearest_loop(stmt_stack_current) == NULL)
+						if (find_nearest_loop(outer_stmt) == NULL)
 							ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("%s cannot be used outside a loop",
@@ -3935,7 +4018,8 @@ put_error(PLpgSQL_checkstate *cstate,
 {
 	/* ignore warnings when is not requested */
 	if ((level == PLPGSQL_CHECK_WARNING_PERFORMANCE && !cstate->performance_warnings) ||
-			    (level == PLPGSQL_CHECK_WARNING_OTHERS && !cstate->other_warnings))
+			    (level == PLPGSQL_CHECK_WARNING_OTHERS && !cstate->other_warnings) ||
+			    (level == PLPGSQL_CHECK_WARNING_EXTRA && !cstate->extra_warnings))
 		return;
 
 	if (cstate->tuple_store != NULL)
@@ -3994,6 +4078,24 @@ put_error(PLpgSQL_checkstate *cstate,
 	}
 }
 
+static const char *
+error_level_str(int level)
+{
+	switch (level)
+	{
+		case PLPGSQL_CHECK_ERROR:
+			return "error";
+		case PLPGSQL_CHECK_WARNING_OTHERS:
+			return "warning";
+		case PLPGSQL_CHECK_WARNING_EXTRA:
+			return "warning extra";
+		case PLPGSQL_CHECK_WARNING_PERFORMANCE:
+			return "performance";
+		default:
+			return "???";
+	}
+}
+
 /*
  * store error fields to result tuplestore
  *
@@ -4041,19 +4143,7 @@ tuplestore_put_error_tabular(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 	SET_RESULT_TEXT(Anum_result_message, message);
 	SET_RESULT_TEXT(Anum_result_detail, detail);
 	SET_RESULT_TEXT(Anum_result_hint, hint);
-
-	switch (level)
-	{
-		case PLPGSQL_CHECK_ERROR:
-			SET_RESULT_TEXT(Anum_result_level, "error");
-			break;
-		case PLPGSQL_CHECK_WARNING_OTHERS:
-			SET_RESULT_TEXT(Anum_result_level, "warning");
-			break;
-		case PLPGSQL_CHECK_WARNING_PERFORMANCE:
-			SET_RESULT_TEXT(Anum_result_level, "performance");
-			break;
-	}
+	SET_RESULT_TEXT(Anum_result_level, error_level_str(level));
 
 	if (position != 0)
 		SET_RESULT_INT32(Anum_result_position, position);
@@ -4084,27 +4174,11 @@ tuplestore_put_error_text(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 								 const char *context)
 {
 	StringInfoData  sinfo;
-	const char *level_str;
+	const char *level_str = error_level_str(level);
 
 	Assert(message != NULL);
 
 	initStringInfo(&sinfo);
-
-	switch (level)
-	{
-		case PLPGSQL_CHECK_ERROR:
-			level_str = "error";
-			break;
-		case PLPGSQL_CHECK_WARNING_OTHERS:
-			level_str = "warning";
-			break;
-		case PLPGSQL_CHECK_WARNING_PERFORMANCE:
-			level_str = "performance";
-			break;
-		default:
-			level_str = "???";
-			break;
-	}
 
 	/* lineno should be valid for actual statements */
 	if (estate != NULL && estate->err_stmt != NULL && estate->err_stmt->lineno > 0)
@@ -4249,25 +4323,9 @@ format_error_xml(StringInfo str,
 								 const char *query,
 								 const char *context)
 {
-	const char *level_str;
+	const char *level_str = error_level_str(level);
 
 	Assert(message != NULL);
-
-	switch (level)
-	{
-		case PLPGSQL_CHECK_ERROR:
-			level_str = "error";
-			break;
-		case PLPGSQL_CHECK_WARNING_OTHERS:
-			level_str = "warning";
-			break;
-		case PLPGSQL_CHECK_WARNING_PERFORMANCE:
-			level_str = "performance";
-			break;
-		default:
-			level_str = "???";
-			break;
-	}
 
 	/* flush tag */
 	appendStringInfoString(str, "  <Issue>\n");
@@ -4320,26 +4378,10 @@ format_error_json(StringInfo str,
 	const char *query,
 	const char *context)
 {
-	const char *level_str;
+	const char *level_str = error_level_str(level);
 	StringInfoData sinfo; /*Holds escaped json*/
 
 	Assert(message != NULL);
-
-	switch (level)
-	{
-	case PLPGSQL_CHECK_ERROR:
-		level_str = "error";
-		break;
-	case PLPGSQL_CHECK_WARNING_OTHERS:
-		level_str = "warning";
-		break;
-	case PLPGSQL_CHECK_WARNING_PERFORMANCE:
-		level_str = "performance";
-		break;
-	default:
-		level_str = "???";
-		break;
-	}
 
 	initStringInfo(&sinfo);
 

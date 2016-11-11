@@ -13,11 +13,25 @@ DROP FUNCTION plpgsql_check_function(funcoid regprocedure,
                                        others_warnings boolean,
                                        performance_warnings boolean);
 
+DROP FUNCTION __plpgsql_check_function_tb(funcoid regprocedure,
+                                       relid regclass,
+                                       fatal_errors boolean,
+                                       others_warnings boolean,
+                                       performance_warnings boolean);
+
+DROP FUNCTION __plpgsql_check_function(funcoid regprocedure,
+                                       relid regclass,
+                                       format text,
+                                       fatal_errors boolean,
+                                       others_warnings boolean,
+                                       performance_warnings boolean);
+
 CREATE FUNCTION __plpgsql_check_function_tb(funcoid regprocedure,
                                        relid regclass,
                                        fatal_errors boolean,
                                        others_warnings boolean,
-                                       performance_warnings boolean)
+                                       performance_warnings boolean,
+                                       extra_warnings boolean)
 RETURNS TABLE(functionid regproc,
               lineno int,
               statement text,
@@ -37,7 +51,8 @@ CREATE FUNCTION __plpgsql_check_function(funcoid regprocedure,
                                        format text,
                                        fatal_errors boolean,
                                        others_warnings boolean,
-                                       performance_warnings boolean)
+                                       performance_warnings boolean,
+                                       extra_warnings boolean)
 RETURNS SETOF text
 AS 'MODULE_PATHNAME','plpgsql_check_function'
 LANGUAGE C STRICT;
@@ -46,7 +61,8 @@ CREATE FUNCTION plpgsql_check_function_tb(funcoid regprocedure,
                                        relid regclass DEFAULT 0,
                                        fatal_errors boolean DEFAULT true,
                                        others_warnings boolean DEFAULT true,
-                                       performance_warnings boolean DEFAULT false)
+                                       performance_warnings boolean DEFAULT false,
+                                       extra_warnings boolean DEFAULT true)
 RETURNS TABLE(functionid regproc,
               lineno int,
               statement text,
@@ -61,7 +77,7 @@ RETURNS TABLE(functionid regproc,
 AS $$
 BEGIN
   RETURN QUERY SELECT * FROM @extschema@.__plpgsql_check_function_tb(funcoid, relid,
-                                      fatal_errors, others_warnings, performance_warnings);
+                                      fatal_errors, others_warnings, performance_warnings, extra_warnings);
   RETURN;
 END;
 $$ LANGUAGE plpgsql STRICT;
@@ -71,13 +87,14 @@ CREATE FUNCTION plpgsql_check_function(funcoid regprocedure,
                                        format text DEFAULT 'text',
                                        fatal_errors boolean DEFAULT true,
                                        others_warnings boolean DEFAULT true,
-                                       performance_warnings boolean DEFAULT false)
+                                       performance_warnings boolean DEFAULT false,
+                                       extra_warnings boolean DEFAULT true)
 RETURNS SETOF text
 AS $$
 BEGIN
   RETURN QUERY SELECT s FROM @extschema@.__plpgsql_check_function(funcoid, relid,
                                   format, fatal_errors, others_warnings,
-                                  performance_warnings) g(s);
+                                  performance_warnings, extra_warnings) g(s);
   RETURN;
 END;
 $$ LANGUAGE plpgsql STRICT;

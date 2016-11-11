@@ -68,5 +68,3 @@ BEGIN
   RETURN;
 END;
 $$ LANGUAGE plpgsql STRICT;
-
-

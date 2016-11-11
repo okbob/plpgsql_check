@@ -1604,3 +1604,18 @@ select fxx();
 select * from plpgsql_check_function('fxx()');
 
 drop function fxx();
+
+create or replace function fxx()
+returns void as $$
+declare x int;
+begin
+  declare x int;
+  begin
+  end;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fxx()');
+select * from plpgsql_check_function('fxx()', extra_warnings := false);
+
+drop function fxx();

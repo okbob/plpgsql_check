@@ -6,7 +6,7 @@ create extension if not exists plpgsql_check;
 --should fail - is not plpgsql
 select * from plpgsql_check_function_tb('session_user()');
 ERROR:  "session_user"() is not a plpgsql function
-CONTEXT:  PL/pgSQL function plpgsql_check_function_tb(regprocedure,regclass,boolean,boolean,boolean) line 3 at RETURN QUERY
+CONTEXT:  PL/pgSQL function plpgsql_check_function_tb(regprocedure,regclass,boolean,boolean,boolean,boolean) line 3 at RETURN QUERY
 create table t1(a int, b int);
 create table pa (id int, pa_id character varying(32), status character varying(60));
 create table  ml(ml_id character varying(32), status_from character varying(60), pa_id character varying(32), xyz int);
@@ -2066,5 +2066,31 @@ select * from plpgsql_check_function('fxx()');
  Query: rollback
  Hint: Use a BEGIN block with an EXCEPTION clause instead.
 (3 rows)
+
+drop function fxx();
+create or replace function fxx()
+returns void as $$
+declare x int;
+begin
+  declare x int;
+  begin
+  end;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fxx()');
+                                  plpgsql_check_function                                  
+------------------------------------------------------------------------------------------
+ warning extra:00000:5:statement block:variable "x" shadows a previously defined variable
+ Hint: SET plpgsql.extra_warnings TO 'shadowed_variables'
+ warning:00000:2:DECLARE:unused variable "x"
+ warning:00000:4:DECLARE:unused variable "x"
+(4 rows)
+
+select * from plpgsql_check_function('fxx()', extra_warnings := false);
+           plpgsql_check_function            
+---------------------------------------------
+ warning:00000:2:DECLARE:unused variable "x"
+ warning:00000:4:DECLARE:unused variable "x"
+(2 rows)
 
 drop function fxx();
