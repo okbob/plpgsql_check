@@ -41,8 +41,15 @@
 
 #endif
 
+#if PG_VERSION_NUM >= 100000
+
+#include "utils/regproc.h"
+
+#endif
+
 
 #if PG_VERSION_NUM >= 90300
+
 #include "access/htup_details.h"
 
 #else
@@ -3875,7 +3882,18 @@ prohibit_write_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query)
 
 	foreach(lc, stmt_list)
 	{
+
+#if PG_VERSION_NUM >= 100000
+
+		PlannedStmt *pstmt = (PlannedStmt *) lfirst(lc);
+
+		Assert(IsA(pstmt, PlannedStmt));
+
+#else
+
 		Node *pstmt = (Node *) lfirst(lc);
+
+#endif
 
 		if (!CommandIsReadOnly(pstmt))
 		{
@@ -3884,7 +3902,7 @@ prohibit_write_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query)
 			initStringInfo(&message);
 			appendStringInfo(&message,
 					"%s is not allowed in a non volatile function",
-							CreateCommandTag(pstmt));
+							CreateCommandTag((Node *) pstmt));
 
 			put_error(cstate,
 					  ERRCODE_FEATURE_NOT_SUPPORTED, 0,
