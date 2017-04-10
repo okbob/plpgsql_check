@@ -89,6 +89,7 @@ typedef enum PLpgSQL_trigtype
 #include "utils/typcache.h"
 #include "utils/rel.h"
 #include "utils/json.h"
+#include "utils/reltrigger.h"
 #include "utils/xml.h"
 
 #ifdef PG_MODULE_MAGIC
@@ -258,7 +259,8 @@ static void setup_fake_fcinfo(HeapTuple procTuple,
 										 Oid relid,
 										 EventTriggerData *etrigdata,
 										 Oid funcoid,
-										 PLpgSQL_trigtype trigtype);
+										 PLpgSQL_trigtype trigtype,
+										 Trigger *tg_trigger);
 static void setup_plpgsql_estate(PLpgSQL_execstate *estate,
 								 PLpgSQL_function *func, ReturnSetInfo *rsi);
 static void trigger_check(PLpgSQL_function *func,
@@ -980,6 +982,7 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 	FmgrInfo	flinfo;
 	TriggerData trigdata;
 	EventTriggerData etrigdata;
+	Trigger tg_trigger;
 	int			rc;
 	ResourceOwner oldowner;
 	PLpgSQL_execstate *cur_estate = NULL;
@@ -996,7 +999,7 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 		elog(ERROR, "SPI_connect failed: %s", SPI_result_code_string(rc));
 
 	setup_fake_fcinfo(procTuple, &flinfo, &fake_fcinfo, &rsinfo, &trigdata, relid, &etrigdata,
-										  funcoid, trigtype);
+										  funcoid, trigtype, &tg_trigger);
 
 	setup_cstate(&cstate, funcoid, tupdesc, tupstore,
 							    fatal_errors,
@@ -1358,7 +1361,8 @@ setup_fake_fcinfo(HeapTuple procTuple,
 						  Oid relid,
 						  EventTriggerData *etrigdata,
 						  Oid funcoid,
-						  PLpgSQL_trigtype trigtype)
+						  PLpgSQL_trigtype trigtype,
+						  Trigger *tg_trigger)
 {
 	Form_pg_proc procform;
 	Oid		rettype;
@@ -1380,8 +1384,12 @@ setup_fake_fcinfo(HeapTuple procTuple,
 	{
 		Assert(trigdata != NULL);
 
-		MemSet(trigdata, 0, sizeof(trigdata));
+		MemSet(trigdata, 0, sizeof(TriggerData));
+		MemSet(tg_trigger, 0, sizeof(Trigger));
+
 		trigdata->type = T_TriggerData;
+		trigdata->tg_trigger = tg_trigger;
+
 		fcinfo->context = (Node *) trigdata;
 
 		if (OidIsValid(relid))
@@ -3604,7 +3612,16 @@ is_const_null_expr(PLpgSQL_expr *query)
 	 * plan if it is just function call and if it is then we can try to
 	 * derive a tupledes from function's description.
 	 */
+#if PG_VERSION_NUM >= 100000
+
+	cplan = GetCachedPlan(plansource, NULL, true, NULL);
+
+#else
+
 	cplan = GetCachedPlan(plansource, NULL, true);
+
+#endif
+
 	_stmt = (PlannedStmt *) linitial(cplan->stmt_list);
 
 	if (IsA(_stmt, PlannedStmt) &&_stmt->commandType == CMD_SELECT)
@@ -3780,7 +3797,15 @@ expr_get_desc(PLpgSQL_checkstate *cstate,
 		 * plan if it is just function call and if it is then we can try to
 		 * derive a tupledes from function's description.
 		 */
-		cplan = GetCachedPlan(plansource, NULL, true);
+#if PG_VERSION_NUM >= 100000
+
+	cplan = GetCachedPlan(plansource, NULL, true, NULL);
+
+#else
+
+	cplan = GetCachedPlan(plansource, NULL, true);
+
+#endif
 		_stmt = (PlannedStmt *) linitial(cplan->stmt_list);
 
 		if (IsA(_stmt, PlannedStmt) &&_stmt->commandType == CMD_SELECT)
@@ -3877,7 +3902,17 @@ prohibit_write_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query)
 		elog(ERROR, "plan is not single execution plan");
 
 	plansource = (CachedPlanSource *) linitial(plan->plancache_list);
+
+#if PG_VERSION_NUM >= 100000
+
+	cplan = GetCachedPlan(plansource, NULL, true, NULL);
+
+#else
+
 	cplan = GetCachedPlan(plansource, NULL, true);
+
+#endif
+
 	stmt_list = cplan->stmt_list;
 
 	foreach(lc, stmt_list)
@@ -3939,7 +3974,17 @@ prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query)
 		elog(ERROR, "plan is not single execution plan");
 
 	plansource = (CachedPlanSource *) linitial(plan->plancache_list);
+
+#if PG_VERSION_NUM >= 100000
+
+	cplan = GetCachedPlan(plansource, NULL, true, NULL);
+
+#else
+
 	cplan = GetCachedPlan(plansource, NULL, true);
+
+#endif
+
 	stmt_list = cplan->stmt_list;
 
 	foreach(lc, stmt_list)
