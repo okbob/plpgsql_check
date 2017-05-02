@@ -4091,28 +4091,28 @@ put_error(PLpgSQL_checkstate *cstate,
 		{
 			case PLPGSQL_CHECK_FORMAT_TABULAR:
 				tuplestore_put_error_tabular(cstate->tuple_store, cstate->tupdesc,
-								 cstate->estate, cstate->fn_oid,
+									 cstate->estate, cstate->fn_oid,
 									 sqlerrcode, lineno, message, detail,
 									 hint, level, position, query, context);
 				break;
 
 			case PLPGSQL_CHECK_FORMAT_TEXT:
 				tuplestore_put_error_text(cstate->tuple_store, cstate->tupdesc,
-								 cstate->estate, cstate->fn_oid,
+									 cstate->estate, cstate->fn_oid,
 									 sqlerrcode, lineno, message, detail,
 									 hint, level, position, query, context);
 				break;
 
 			case PLPGSQL_CHECK_FORMAT_XML:
 				format_error_xml(cstate->sinfo, cstate->estate,
-								 sqlerrcode, lineno, message, detail,
-								 hint, level, position, query, context);
+									 sqlerrcode, lineno, message, detail,
+									 hint, level, position, query, context);
 				break;
 
-		case PLPGSQL_CHECK_FORMAT_JSON:
-			format_error_json(cstate->sinfo, cstate->estate,
-				sqlerrcode, lineno, message, detail,
-				hint, level, position, query, context);
+			case PLPGSQL_CHECK_FORMAT_JSON:
+				format_error_json(cstate->sinfo, cstate->estate,
+									 sqlerrcode, lineno, message, detail,
+									 hint, level, position, query, context);
 			break;
 		}
 	}
@@ -4398,7 +4398,7 @@ format_error_xml(StringInfo str,
 						 unpack_sql_state(sqlerrcode));
 	appendStringInfo(str, "    <Message>%s</Message>\n",
 							 escape_xml(message));
-	if (estate->err_stmt != NULL)
+	if (estate != NULL && estate->err_stmt != NULL)
 		appendStringInfo(str, "    <Stmt lineno=\"%d\">%s</Stmt>\n",
 				 estate->err_stmt->lineno,
 			   plpgsql_stmt_typename(estate->err_stmt));
@@ -4454,7 +4454,7 @@ format_error_json(StringInfo str,
 		
 	escape_json(&sinfo, message);
 	appendStringInfo(str, "    \"message\":%s,\n", sinfo.data);
-	if (estate->err_stmt != NULL)
+	if (estate != NULL && estate->err_stmt != NULL)
 		appendStringInfo(str, "    \"statement\":{\n\"lineNumber\":\"%d\",\n\"text\":\"%s\"\n},\n",
 			estate->err_stmt->lineno,
 			plpgsql_stmt_typename(estate->err_stmt));
