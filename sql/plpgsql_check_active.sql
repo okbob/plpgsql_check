@@ -1619,3 +1619,58 @@ select * from plpgsql_check_function('fxx()');
 select * from plpgsql_check_function('fxx()', extra_warnings := false);
 
 drop function fxx();
+
+create or replace function fxx(in a int, in b int, out c int, out d int)
+as $$
+begin
+  c := a;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fxx(int, int)');
+
+create or replace function fxx(in a int, in b int, out c int, out d int)
+as $$
+begin
+  c := d;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fxx(int, int)');
+
+
+create type ct as (a int, b int);
+
+create or replace function fxx(a ct, b ct, OUT c ct, OUT d ct)
+as $$
+begin
+  c.a := a.a;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fxx(ct, ct)');
+
+create or replace function fxx(a ct, b ct, OUT c ct, OUT d ct)
+as $$
+begin
+  c.a := d.a;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fxx(ct, ct)');
+
+create or replace function tx(a int)
+returns int as $$
+declare a int; ax int;
+begin
+  declare ax int;
+  begin
+    ax := 10;
+  end;
+  a := 10;
+  return 20;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('tx(int)');
+

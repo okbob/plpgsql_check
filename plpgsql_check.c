@@ -163,6 +163,7 @@ typedef struct PLpgSQL_checkstate
 	List	   *exprs;						/* list of all expression created by checker */
 	bool		is_active_mode;				/* true, when checking is started by plpgsql_check_function */
 	Bitmapset  *used_variables;				/* track which variables have been used; bit per varno */
+	Bitmapset  *modif_variables;			/* track which variables had been changed; bit per varno */
 	PLpgSQL_stmt_stack_item *top_stmt_stack;	/* list of known labels + related command */
 } PLpgSQL_checkstate;
 
@@ -281,7 +282,8 @@ static void tuplestore_put_error_tabular(Tuplestorestate *tuple_store, TupleDesc
 static void tuplestore_put_text_line(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 								    const char *message, int len);
 static void report_unused_variables(PLpgSQL_checkstate *cstate);
-static void record_variable_usage(PLpgSQL_checkstate *cstate, int dno);
+static void record_variable_usage(PLpgSQL_checkstate *cstate, int dno, bool write);
+static bool datum_is_used(PLpgSQL_checkstate *cstate, int dno, bool write, bool declared);
 static bool is_const_null_expr(PLpgSQL_expr *query);
 static void prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
 
@@ -1488,6 +1490,7 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->argnames = NIL;
 	cstate->exprs = NIL;
 	cstate->used_variables = NULL;
+	cstate->modif_variables = NULL;
 	cstate->top_stmt_stack = NULL;
 
 	cstate->format = format;
@@ -1791,8 +1794,8 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt)
 						 * should practically never be a sign of a problem, so
 						 * there's no point in annoying the user.
 						 */
-						record_variable_usage(cstate, stmt_block->exceptions->sqlstate_varno);
-						record_variable_usage(cstate, stmt_block->exceptions->sqlerrm_varno);
+						record_variable_usage(cstate, stmt_block->exceptions->sqlstate_varno, false);
+						record_variable_usage(cstate, stmt_block->exceptions->sqlerrm_varno, false);
 					}
 				}
 				break;
@@ -2479,16 +2482,20 @@ check_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 }
 
 static void
-record_variable_usage(PLpgSQL_checkstate *cstate, int dno)
+record_variable_usage(PLpgSQL_checkstate *cstate, int dno, bool write)
 {
 	if (dno >= 0)
+	{
 		cstate->used_variables = bms_add_member(cstate->used_variables, dno);
+		if (write)
+			cstate->modif_variables = bms_add_member(cstate->modif_variables, dno);
+	}
 }
 
 /*
  * returns true, when datum or some child is used */
 static bool
-datum_is_used(PLpgSQL_checkstate *cstate, int dno)
+datum_is_used(PLpgSQL_checkstate *cstate, int dno, bool write, bool declared)
 {
 	PLpgSQL_execstate *estate = cstate->estate;
 
@@ -2499,10 +2506,11 @@ datum_is_used(PLpgSQL_checkstate *cstate, int dno)
 				PLpgSQL_var *var = (PLpgSQL_var *) estate->datums[dno];
 
 				/* don't check internal variables */
-				if (var->lineno < 1)
+				if (declared && var->lineno < 1)
 					return true;
 
-				return bms_is_member(dno, cstate->used_variables);
+				return bms_is_member(dno,
+						write ? cstate->modif_variables : cstate->used_variables);
 			}
 			break;
 
@@ -2511,14 +2519,15 @@ datum_is_used(PLpgSQL_checkstate *cstate, int dno)
 				PLpgSQL_row *row = (PLpgSQL_row *) estate->datums[dno];
 				int	     i;
 
-				if (row->lineno < 1)
+				if (declared && row->lineno < 1)
 					return true;
 
 				/* skip internal vars created for INTO lists  */
 				if (row->rowtupdesc == NULL)
 					return true;
 
-				if (bms_is_member(dno, cstate->used_variables))
+				if (bms_is_member(dno,
+						  write ? cstate->modif_variables : cstate->used_variables))
 					return true;
 
 				for (i = 0; i < row->nfields; i++)
@@ -2526,7 +2535,7 @@ datum_is_used(PLpgSQL_checkstate *cstate, int dno)
 					if (row->varnos[i] < 0)
 						continue;
 
-					if (datum_is_used(cstate, row->varnos[i]))
+					if (datum_is_used(cstate, row->varnos[i], write, declared))
 						return true;
 				}
 			}
@@ -2537,10 +2546,11 @@ datum_is_used(PLpgSQL_checkstate *cstate, int dno)
 				PLpgSQL_rec *rec = (PLpgSQL_rec *) estate->datums[dno];
 				int	     i;
 
-				if (rec->lineno < 1)
+				if (declared && rec->lineno < 1)
 					return true;
 
-				if (bms_is_member(dno, cstate->used_variables))
+				if (bms_is_member(dno,
+						  write ? cstate->modif_variables : cstate->used_variables))
 					return true;
 
 				/* search any used recfield with related recparentno */
@@ -2551,7 +2561,8 @@ datum_is_used(PLpgSQL_checkstate *cstate, int dno)
 						PLpgSQL_recfield *recfield = (PLpgSQL_recfield *) estate->datums[i];
 
 						if (recfield->recparentno == rec->dno
-								    && bms_is_member(i, cstate->used_variables))
+								    && bms_is_member(i,
+								  			write ? cstate->modif_variables : cstate->used_variables))
 							return true;
 					}
 				}
@@ -2570,10 +2581,12 @@ datum_is_used(PLpgSQL_checkstate *cstate, int dno)
 
 #define UNUSED_VARIABLE_TEXT			"unused variable \"%s\""
 #define UNUSED_VARIABLE_TEXT_CHECK_LENGTH	15
+#define UNUSED_PARAMETER_TEXT			"unused parameter \"%s\""
+#define UNMODIFIED_VARIABLE_TEXT		"unmodified OUT variable \"%s\""
 
 /*
- * Reports all unused variables explicitly DECLAREd by the user.  Ignores IN
- * and OUT variables and special variables created by PL/PgSQL.
+ * Reports all unused variables explicitly DECLAREd by the user.  Ignores
+ * special variables created by PL/PgSQL.
  */
 static void
 report_unused_variables(PLpgSQL_checkstate *cstate)
@@ -2585,7 +2598,7 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 	estate->err_stmt = NULL;
 
 	for (i = 0; i < estate->ndatums; i++)
-		if (!datum_is_used(cstate, i))
+		if (!datum_is_used(cstate, i, false, true))
 		{
 			PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[i];
 			StringInfoData message;
@@ -2603,6 +2616,94 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 
 			pfree(message.data); message.data = NULL;
 		}
+
+	if (cstate->extra_warnings)
+	{
+		/* check IN parameters */
+		for (i = 0; i < estate->func->fn_nargs; i++)
+		{
+			int		varno = estate->func->fn_argvarnos[i];
+
+			if (!datum_is_used(cstate, varno, false, false))
+			{
+				PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[varno];
+				StringInfoData message;
+
+				initStringInfo(&message);
+
+				appendStringInfo(&message, UNUSED_PARAMETER_TEXT, var->refname);
+				put_error(cstate,
+						  0, 0,
+						  message.data,
+						  NULL,
+						  NULL,
+						  PLPGSQL_CHECK_WARNING_EXTRA,
+						  0, NULL, NULL);
+
+				pfree(message.data); message.data = NULL;
+			}
+		}
+
+		/* are there some OUT parameters (expect modification)? */
+		if (estate->func->out_param_varno != -1)
+		{
+			int		varno = estate->func->out_param_varno;
+			PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[varno];
+
+			if (var->dtype == PLPGSQL_DTYPE_ROW)
+			{
+				/* this function has more OUT parameters */
+				PLpgSQL_row *row = (PLpgSQL_row*) var;
+				int		fnum;
+
+				for (fnum = 0; fnum < row->nfields; fnum++)
+				{
+					int		varno2 = row->varnos[fnum];
+				
+					if (!datum_is_used(cstate, varno2, true, false))
+					{
+						PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[varno2];
+						StringInfoData message;
+
+						initStringInfo(&message);
+
+						appendStringInfo(&message, UNMODIFIED_VARIABLE_TEXT, var->refname);
+						put_error(cstate,
+								  0, 0,
+								  message.data,
+								  NULL,
+								  NULL,
+								  PLPGSQL_CHECK_WARNING_EXTRA,
+								  0, NULL, NULL);
+
+						pfree(message.data); message.data = NULL;
+					}
+				}
+			}
+			else
+			{
+				if (!datum_is_used(cstate, varno, true, false))
+				{
+					PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[varno];
+					StringInfoData message;
+
+					initStringInfo(&message);
+
+					appendStringInfo(&message, UNMODIFIED_VARIABLE_TEXT, var->refname);
+					put_error(cstate,
+							  0, 0,
+							  message.data,
+							  NULL,
+							  NULL,
+							  PLPGSQL_CHECK_WARNING_EXTRA,
+							  0, NULL, NULL);
+
+					pfree(message.data); message.data = NULL;
+				}
+			}
+
+		}
+	}
 }
 
 /*
@@ -3048,7 +3149,7 @@ check_row_or_rec(PLpgSQL_checkstate *cstate, PLpgSQL_row *row, PLpgSQL_rec *rec)
 
 			check_target(cstate, row->varnos[fnum], NULL, NULL);
 		}
-		record_variable_usage(cstate, row->dno);
+		record_variable_usage(cstate, row->dno, true);
 	}
 	else if (rec != NULL)
 	{
@@ -3056,7 +3157,7 @@ check_row_or_rec(PLpgSQL_checkstate *cstate, PLpgSQL_row *row, PLpgSQL_rec *rec)
 		 * There are no checks done on records currently; just record that the
 		 * variable is not unused.
 		 */
-		record_variable_usage(cstate, rec->dno);
+		record_variable_usage(cstate, rec->dno, true);
 	}
 }
 
@@ -3069,7 +3170,7 @@ check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *e
 {
 	PLpgSQL_datum *target = cstate->estate->datums[varno];
 
-	record_variable_usage(cstate, varno);
+	record_variable_usage(cstate, varno, true);
 
 	switch (target->dtype)
 	{
@@ -3232,7 +3333,7 @@ check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *e
 				if (expected_typmod)
 					*expected_typmod = ((PLpgSQL_var *) target)->datatype->atttypmod;
 
-				record_variable_usage(cstate, target->dno);
+				record_variable_usage(cstate, target->dno, true);
 			}
 			break;
 
