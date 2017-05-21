@@ -916,10 +916,13 @@ end;
 end
 $$ language plpgsql;
 select * from plpgsql_check_function('f1(int)');
-            plpgsql_check_function             
------------------------------------------------
+              plpgsql_check_function              
+--------------------------------------------------
  warning:00000:4:DECLARE:unused variable "_f2"
-(1 row)
+ warning extra:00000:unused parameter "$1"
+ warning extra:00000:unmodified OUT variable "$2"
+ warning extra:00000:unmodified OUT variable "$3"
+(4 rows)
 
 drop function f1(int);
 drop table f1tbl;
@@ -989,9 +992,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+              plpgsql_check_function              
+--------------------------------------------------
+ warning extra:00000:unmodified OUT variable "$1"
+ warning extra:00000:unmodified OUT variable "$2"
+(2 rows)
 
 drop function f1();
 create or replace function f1()
@@ -1081,25 +1086,22 @@ $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
                                 plpgsql_check_function                                
 --------------------------------------------------------------------------------------
- warning:42804:5:assignment:target type is different type than source type
- Detail: cast "text" value to "integer" type
- Hint: The input expression type does not have an assignment cast to the target type.
- warning:42804:7:assignment:target type is different type than source type
- Detail: cast "text" value to "integer" type
- Hint: The input expression type does not have an assignment cast to the target type.
+ performance:42804:7:assignment:target type is different type than source type
+ Detail: cast "unknown" value to "integer" type
+ Hint: Hidden casting can be a performance issue.
  warning:42804:8:assignment:target type is different type than source type
  Detail: cast "text" value to "integer" type
  Hint: The input expression type does not have an assignment cast to the target type.
  warning:42804:9:assignment:target type is different type than source type
  Detail: cast "date" value to "integer" type
  Hint: There are no possible explicit coercion between those types, possibly bug!
- warning:42804:12:SQL statement:target type is different type than source type
- Detail: cast "text" value to "integer" type
- Hint: The input expression type does not have an assignment cast to the target type.
+ performance:42804:12:SQL statement:target type is different type than source type
+ Detail: cast "unknown" value to "integer" type
+ Hint: Hidden casting can be a performance issue.
  warning:42804:13:SQL statement:target type is different type than source type
  Detail: cast "text" value to "integer" type
  Hint: The input expression type does not have an assignment cast to the target type.
-(18 rows)
+(15 rows)
 
 drop function f1();
 create or replace function f1()
@@ -1134,12 +1136,9 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
-                                plpgsql_check_function                                
---------------------------------------------------------------------------------------
- warning:42804:3:RETURN:target type is different type than source type
- Detail: cast "text" value to "integer" type
- Hint: The input expression type does not have an assignment cast to the target type.
-(3 rows)
+ plpgsql_check_function 
+------------------------
+(0 rows)
 
 create or replace function f1()
 returns int as $$
@@ -1761,10 +1760,13 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx()', performance_warnings := true);
-                        plpgsql_check_function                         
------------------------------------------------------------------------
+                            plpgsql_check_function                             
+-------------------------------------------------------------------------------
+ performance:42804:5:assignment:target type is different type than source type
+ Detail: cast "unknown" value to "text" type
+ Hint: Hidden casting can be a performance issue.
  error:42804:7:assignment:cannot cast composite value to a scalar type
-(1 row)
+(4 rows)
 
 drop function fx();
 create or replace function fx()
@@ -1830,12 +1832,9 @@ select * from test_t();
 (1 row)
 
 select * from plpgsql_check_function('test_t()', performance_warnings := true);
-                                plpgsql_check_function                                
---------------------------------------------------------------------------------------
- warning:42804:3:assignment:target type is different type than source type
- Detail: cast "text" value to "integer" type
- Hint: The input expression type does not have an assignment cast to the target type.
-(3 rows)
+ plpgsql_check_function 
+------------------------
+(0 rows)
 
 create or replace function fx()
 returns void as $$
@@ -2066,9 +2065,12 @@ ERROR:  cannot begin/end transactions in PL/pgSQL
 HINT:  Use a BEGIN block with an EXCEPTION clause instead.
 CONTEXT:  PL/pgSQL function fxx() line 3 at SQL statement
 select * from plpgsql_check_function('fxx()');
- plpgsql_check_function 
-------------------------
-(0 rows)
+                        plpgsql_check_function                         
+-----------------------------------------------------------------------
+ error:0A000:3:SQL statement:cannot begin/end transactions in PL/pgSQL
+ Query: rollback
+ Hint: Use a BEGIN block with an EXCEPTION clause instead.
+(3 rows)
 
 drop function fxx();
 create or replace function fxx()
@@ -2097,3 +2099,81 @@ select * from plpgsql_check_function('fxx()', extra_warnings := false);
 (2 rows)
 
 drop function fxx();
+create or replace function fxx(in a int, in b int, out c int, out d int)
+as $$
+begin
+  c := a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fxx(int, int)');
+              plpgsql_check_function              
+--------------------------------------------------
+ warning extra:00000:unused parameter "$2"
+ warning extra:00000:unmodified OUT variable "$4"
+(2 rows)
+
+create or replace function fxx(in a int, in b int, out c int, out d int)
+as $$
+begin
+  c := d;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fxx(int, int)');
+              plpgsql_check_function              
+--------------------------------------------------
+ warning extra:00000:unused parameter "$1"
+ warning extra:00000:unused parameter "$2"
+ warning extra:00000:unmodified OUT variable "$4"
+(3 rows)
+
+create type ct as (a int, b int);
+create or replace function fxx(a ct, b ct, OUT c ct, OUT d ct)
+as $$
+begin
+  c.a := a.a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fxx(ct, ct)');
+              plpgsql_check_function              
+--------------------------------------------------
+ warning extra:00000:unused parameter "$2"
+ warning extra:00000:unmodified OUT variable "$4"
+(2 rows)
+
+create or replace function fxx(a ct, b ct, OUT c ct, OUT d ct)
+as $$
+begin
+  c.a := d.a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fxx(ct, ct)');
+              plpgsql_check_function              
+--------------------------------------------------
+ warning extra:00000:unused parameter "$1"
+ warning extra:00000:unused parameter "$2"
+ warning extra:00000:unmodified OUT variable "$4"
+(3 rows)
+
+create or replace function tx(a int)
+returns int as $$
+declare a int; ax int;
+begin
+  declare ax int;
+  begin
+    ax := 10;
+  end;
+  a := 10;
+  return 20;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('tx(int)');
+                                  plpgsql_check_function                                   
+-------------------------------------------------------------------------------------------
+ warning:00000:3:statement block:parameter "a" is overlapped
+ Detail: Local variable overlap function parameter.
+ warning extra:00000:5:statement block:variable "ax" shadows a previously defined variable
+ Hint: SET plpgsql.extra_warnings TO 'shadowed_variables'
+ warning:00000:2:DECLARE:unused variable "ax"
+ warning extra:00000:unused parameter "$1"
+(6 rows)
+
