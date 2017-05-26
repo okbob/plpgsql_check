@@ -2583,6 +2583,7 @@ datum_is_used(PLpgSQL_checkstate *cstate, int dno, bool write, bool declared)
 #define UNUSED_VARIABLE_TEXT_CHECK_LENGTH	15
 #define UNUSED_PARAMETER_TEXT			"unused parameter \"%s\""
 #define UNMODIFIED_VARIABLE_TEXT		"unmodified OUT variable \"%s\""
+#define OUT_COMPOSITE_IS_NOT_SINGE_TEXT	"composite OUT variable \"%s\" is not single argument"
 
 /*
  * Reports all unused variables explicitly DECLAREd by the user.  Ignores
@@ -2614,7 +2615,8 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 					  PLPGSQL_CHECK_WARNING_OTHERS,
 					  0, NULL, NULL);
 
-			pfree(message.data); message.data = NULL;
+			pfree(message.data);
+			message.data = NULL;
 		}
 
 	if (cstate->extra_warnings)
@@ -2659,14 +2661,31 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 				for (fnum = 0; fnum < row->nfields; fnum++)
 				{
 					int		varno2 = row->varnos[fnum];
-				
+					PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[varno2];
+					StringInfoData message;
+
+
+					if (var->dtype == PLPGSQL_DTYPE_ROW ||
+						  var->dtype == PLPGSQL_DTYPE_REC)
+					{
+						initStringInfo(&message);
+						appendStringInfo(&message,
+									  OUT_COMPOSITE_IS_NOT_SINGE_TEXT, var->refname);
+						put_error(cstate,
+								  0, 0,
+								  message.data,
+								  NULL,
+								  NULL,
+								  PLPGSQL_CHECK_WARNING_EXTRA,
+								  0, NULL, NULL);
+
+						pfree(message.data);
+						message.data = NULL;
+					}
+
 					if (!datum_is_used(cstate, varno2, true, false))
 					{
-						PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[varno2];
-						StringInfoData message;
-
 						initStringInfo(&message);
-
 						appendStringInfo(&message, UNMODIFIED_VARIABLE_TEXT, var->refname);
 						put_error(cstate,
 								  0, 0,
@@ -2676,7 +2695,8 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 								  PLPGSQL_CHECK_WARNING_EXTRA,
 								  0, NULL, NULL);
 
-						pfree(message.data); message.data = NULL;
+						pfree(message.data);
+						message.data = NULL;
 					}
 				}
 			}
@@ -2698,7 +2718,8 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 							  PLPGSQL_CHECK_WARNING_EXTRA,
 							  0, NULL, NULL);
 
-					pfree(message.data); message.data = NULL;
+					pfree(message.data);
+					message.data = NULL;
 				}
 			}
 
