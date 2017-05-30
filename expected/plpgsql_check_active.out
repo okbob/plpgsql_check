@@ -1713,9 +1713,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true, fatal_errors := false);
- functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
-(0 rows)
+ functionid | lineno | statement | sqlstate |        message        | detail | hint |  level  | position | query | context 
+------------+--------+-----------+----------+-----------------------+--------+------+---------+----------+-------+---------
+ fx         |      2 | DECLARE   | 00000    | unused variable "old" |        |      | warning |          |       | 
+(1 row)
 
 drop function fx();
 create or replace function fx()
@@ -2184,3 +2185,92 @@ select * from plpgsql_check_function('tx(int)');
  warning extra:00000:unused parameter "$1"
 (6 rows)
 
+create type xt as (a int, b int, c int);
+create or replace function fx_xt(out x xt)
+as $$
+declare l xt;
+a int;
+begin
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx_xt()');
+              plpgsql_check_function              
+--------------------------------------------------
+ warning:00000:2:DECLARE:unused variable "l"
+ warning:00000:3:DECLARE:unused variable "a"
+ warning extra:00000:unmodified OUT variable "$1"
+(3 rows)
+
+drop function fx_xt();
+create or replace function fx_xt(out x xt)
+as $$
+declare l xt;
+a int;
+begin
+  x.c := 1000;
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx_xt()');
+           plpgsql_check_function            
+---------------------------------------------
+ warning:00000:2:DECLARE:unused variable "l"
+ warning:00000:3:DECLARE:unused variable "a"
+(2 rows)
+
+drop function fx_xt();
+create or replace function fx_xt(out x xt, out y xt)
+as $$
+declare c1 xt; c2 xt;
+begin
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx_xt()');
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ warning:00000:2:DECLARE:unused variable "c1"
+ warning:00000:2:DECLARE:unused variable "c2"
+ warning extra:00000:composite OUT variable "$1" is not single argument
+ warning extra:00000:unmodified OUT variable "$1"
+ warning extra:00000:composite OUT variable "$2" is not single argument
+ warning extra:00000:unmodified OUT variable "$2"
+(6 rows)
+
+drop function fx_xt();
+create or replace function fx_xt(out x xt, out y xt)
+as $$
+declare c1 xt; c2 xt;
+begin
+  x.a := 100;
+  y := row(10,20,30);
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx_xt()');
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ warning:00000:2:DECLARE:unused variable "c1"
+ warning:00000:2:DECLARE:unused variable "c2"
+ warning extra:00000:composite OUT variable "$1" is not single argument
+ warning extra:00000:composite OUT variable "$2" is not single argument
+(4 rows)
+
+drop function fx_xt();
+create or replace function fx_xt(out x xt, out z int)
+as $$
+begin
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx_xt()');
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ warning extra:00000:composite OUT variable "$1" is not single argument
+ warning extra:00000:unmodified OUT variable "$1"
+ warning extra:00000:unmodified OUT variable "$2"
+(3 rows)
+
+drop function fx_xt();
+drop type xt;

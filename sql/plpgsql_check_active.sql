@@ -1674,3 +1674,70 @@ $$ language plpgsql;
 
 select * from plpgsql_check_function('tx(int)');
 
+create type xt as (a int, b int, c int);
+create or replace function fx_xt(out x xt)
+as $$
+declare l xt;
+a int;
+begin
+  return;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx_xt()');
+
+drop function fx_xt();
+
+create or replace function fx_xt(out x xt)
+as $$
+declare l xt;
+a int;
+begin
+  x.c := 1000;
+  return;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx_xt()');
+
+drop function fx_xt();
+
+create or replace function fx_xt(out x xt, out y xt)
+as $$
+declare c1 xt; c2 xt;
+begin
+  return;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx_xt()');
+
+drop function fx_xt();
+
+create or replace function fx_xt(out x xt, out y xt)
+as $$
+declare c1 xt; c2 xt;
+begin
+  x.a := 100;
+  y := row(10,20,30);
+  return;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx_xt()');
+
+drop function fx_xt();
+
+create or replace function fx_xt(out x xt, out z int)
+as $$
+begin
+  return;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx_xt()');
+
+drop function fx_xt();
+
+drop type xt;
+
