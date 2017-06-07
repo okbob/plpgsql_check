@@ -2286,9 +2286,9 @@ NOTICE:  kuku
 ERROR:  control reached end of function without RETURN
 CONTEXT:  PL/pgSQL function fx_flow()
 select * from plpgsql_check_function('fx_flow()');
-                           plpgsql_check_function                           
-----------------------------------------------------------------------------
- warning extra:00000:3:RAISE:control reached end of function without RETURN
+                       plpgsql_check_function                       
+--------------------------------------------------------------------
+ error:2F005:3:RAISE:control reached end of function without RETURN
 (1 row)
 
 -- ok
@@ -2339,6 +2339,6 @@ $$ language plpgsql;
 select * from plpgsql_check_function('fx_flow()');
                            plpgsql_check_function                            
 -----------------------------------------------------------------------------
- warning extra:00000:5:RETURN:control reached end of function without RETURN
+ warning extra:2F005:5:RETURN:control reached end of function without RETURN
 (1 row)
 
