@@ -12,6 +12,15 @@ If you like it and if you would to join to development of this extension, regist
 yourself to [postgresql extension hacking](https://groups.google.com/forum/#!forum/postgresql-extensions-hacking)
 google group.
 
+# Features
+
+* check fields of referenced database objects and types inside embedded SQL
+* using correct types of function parameters
+* unused variables and function argumens, unmodified OUT argumens
+* partially detection of dead code (due RETURN command)
+* detection of missng RETURN command in function
+
+
 I invite any ideas, patches, bugreports
 
 plpgsql_check is next generation of plpgsql_lint. It allows to check source code by explicit call
