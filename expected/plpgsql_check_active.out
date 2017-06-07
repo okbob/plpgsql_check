@@ -2274,3 +2274,71 @@ select * from plpgsql_check_function('fx_xt()');
 
 drop function fx_xt();
 drop type xt;
+-- missing RETURN
+create or replace function fx_flow()
+returns int as $$
+begin
+  raise notice 'kuku';
+end;
+$$ language plpgsql;
+select fx_flow();
+NOTICE:  kuku
+ERROR:  control reached end of function without RETURN
+CONTEXT:  PL/pgSQL function fx_flow()
+select * from plpgsql_check_function('fx_flow()');
+                           plpgsql_check_function                           
+----------------------------------------------------------------------------
+ warning extra:00000:3:RAISE:control reached end of function without RETURN
+(1 row)
+
+-- ok
+create or replace function fx_flow()
+returns int as $$
+declare a int;
+begin
+  if a > 10 then
+    return a;
+  end if;
+  return 10;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx_flow()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+-- dead code
+create or replace function fx_flow()
+returns int as $$
+declare a int;
+begin
+  if a > 10 then
+    return a;
+  else
+    return a + 1;
+  end if;
+  return 10;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx_flow()');
+            plpgsql_check_function             
+-----------------------------------------------
+ warning extra:00000:9:RETURN:unreachable code
+(1 row)
+
+-- missing return
+create or replace function fx_flow()
+returns int as $$
+declare a int;
+begin
+  if a > 10 then
+    return a;
+  end if;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx_flow()');
+                           plpgsql_check_function                            
+-----------------------------------------------------------------------------
+ warning extra:00000:5:RETURN:control reached end of function without RETURN
+(1 row)
+

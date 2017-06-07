@@ -1741,3 +1741,56 @@ drop function fx_xt();
 
 drop type xt;
 
+-- missing RETURN
+create or replace function fx_flow()
+returns int as $$
+begin
+  raise notice 'kuku';
+end;
+$$ language plpgsql;
+
+select fx_flow();
+select * from plpgsql_check_function('fx_flow()');
+
+-- ok
+create or replace function fx_flow()
+returns int as $$
+declare a int;
+begin
+  if a > 10 then
+    return a;
+  end if;
+  return 10;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx_flow()');
+
+-- dead code
+create or replace function fx_flow()
+returns int as $$
+declare a int;
+begin
+  if a > 10 then
+    return a;
+  else
+    return a + 1;
+  end if;
+  return 10;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx_flow()');
+
+-- missing return
+create or replace function fx_flow()
+returns int as $$
+declare a int;
+begin
+  if a > 10 then
+    return a;
+  end if;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx_flow()');
