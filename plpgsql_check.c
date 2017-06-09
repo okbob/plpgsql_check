@@ -173,6 +173,7 @@ typedef struct PLpgSQL_checkstate
 	Bitmapset  *used_variables;				/* track which variables have been used; bit per varno */
 	Bitmapset  *modif_variables;			/* track which variables had been changed; bit per varno */
 	PLpgSQL_stmt_stack_item *top_stmt_stack;	/* list of known labels + related command */
+	bool		found_return_query;			/* true, when code contains RETURN query */
 } PLpgSQL_checkstate;
 
 static void assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, bool isnull);
@@ -1547,6 +1548,8 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 										   ALLOCSET_DEFAULT_MINSIZE,
 										   ALLOCSET_DEFAULT_INITSIZE,
 										   ALLOCSET_DEFAULT_MAXSIZE);
+
+	cstate->found_return_query = false;
 }
 
 /* ----------
@@ -1901,7 +1904,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 														  closing_local);
 					}
 
-					check_stmts(cstate, stmt_if->else_body, closing);
+					check_stmts(cstate, stmt_if->else_body, &closing_local);
 					closing_all_paths = merge_closing(closing_all_paths,
 													  closing_local);
 
@@ -2338,12 +2341,17 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 					check_expr(cstate, stmt_rq->dynquery);
 
 					if (stmt_rq->query)
+					{
 						check_returned_expr(cstate, stmt_rq->query, false);
+						cstate->found_return_query = true;
+					}
+
 
 					foreach(l, stmt_rq->params)
 					{
 						check_expr(cstate, (PLpgSQL_expr *) lfirst(l));
 					}
+
 				}
 				break;
 
@@ -2811,7 +2819,7 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 		}
 
 		/* are there some OUT parameters (expect modification)? */
-		if (func->out_param_varno != -1)
+		if (func->out_param_varno != -1 && !cstate->found_return_query)
 		{
 			int		varno = func->out_param_varno;
 			PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[varno];

@@ -992,11 +992,9 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
-              plpgsql_check_function              
---------------------------------------------------
- warning extra:00000:unmodified OUT variable "$1"
- warning extra:00000:unmodified OUT variable "$2"
-(2 rows)
+ plpgsql_check_function 
+------------------------
+(0 rows)
 
 drop function f1();
 create or replace function f1()
@@ -2342,3 +2340,65 @@ select * from plpgsql_check_function('fx_flow()');
  warning extra:2F005:5:RETURN:control reached end of function without RETURN
 (1 row)
 
+drop function fx_flow();
+create or replace function fx_flow(in p_param1 integer)
+returns text as
+$$
+declare
+  z1 text;
+begin
+  if p_param1 is not null then
+    z1 := '1111';
+    return z1;
+  else
+    z1 := '222222';
+  end if;
+  return z1;
+end;
+$$
+language plpgsql stable;
+select * from plpgsql_check_function_tb('fx_flow(integer)');
+ functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
+(0 rows)
+
+drop function fx(int);
+ERROR:  function fx(integer) does not exist
+create or replace function fx(x int)
+returns table(y int)
+as $$
+begin
+  return query select x union select x;
+end
+$$ language plpgsql;
+select * from fx(10);
+ y  
+----
+ 10
+(1 row)
+
+select * from plpgsql_check_function_tb('fx(int)');
+ functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
+(0 rows)
+
+drop function fx(int);
+create or replace function fx(x int)
+returns table(y int, z int)
+as $$
+begin
+  return query select x,x+1 union select x, x+1;
+end
+$$ language plpgsql;
+select * from fx(10);
+ y  | z  
+----+----
+ 10 | 11
+(1 row)
+
+select * from plpgsql_check_function_tb('fx(int)');
+ functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
+(0 rows)
+
+drop function fx(int);

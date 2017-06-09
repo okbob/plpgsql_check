@@ -1794,3 +1794,54 @@ end;
 $$ language plpgsql;
 
 select * from plpgsql_check_function('fx_flow()');
+
+drop function fx_flow();
+
+create or replace function fx_flow(in p_param1 integer)
+returns text as
+$$
+declare
+  z1 text;
+begin
+  if p_param1 is not null then
+    z1 := '1111';
+    return z1;
+  else
+    z1 := '222222';
+  end if;
+  return z1;
+end;
+$$
+language plpgsql stable;
+
+select * from plpgsql_check_function_tb('fx_flow(integer)');
+
+drop function fx(int);
+
+create or replace function fx(x int)
+returns table(y int)
+as $$
+begin
+  return query select x union select x;
+end
+$$ language plpgsql;
+
+select * from fx(10);
+
+select * from plpgsql_check_function_tb('fx(int)');
+
+drop function fx(int);
+
+create or replace function fx(x int)
+returns table(y int, z int)
+as $$
+begin
+  return query select x,x+1 union select x, x+1;
+end
+$$ language plpgsql;
+
+select * from fx(10);
+
+select * from plpgsql_check_function_tb('fx(int)');
+
+drop function fx(int);
