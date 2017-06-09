@@ -499,6 +499,8 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 			 */
 			check_stmt(&cstate, (PLpgSQL_stmt *) func->action, &closing);
 
+			estate->err_stmt = NULL;
+
 			if (closing != PLPGSQL_CHECK_CLOSED)
 				put_error(&cstate,
 								  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
@@ -1219,6 +1221,9 @@ function_check(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 	 */
 	check_stmt(cstate, (PLpgSQL_stmt *) func->action, &closing);
 
+	/* clean state values - next errors are not related to any command */
+	cstate->estate->err_stmt = NULL;
+
 	if (closing != PLPGSQL_CHECK_CLOSED)
 		put_error(cstate,
 						  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
@@ -1306,6 +1311,9 @@ trigger_check(PLpgSQL_function *func, Node *tdata,
 	 * Now check the toplevel block of statements
 	 */
 	check_stmt(cstate, (PLpgSQL_stmt *) func->action, &closing);
+
+	/* clean state values - next errors are not related to any command */
+	cstate->estate->err_stmt = NULL;
 
 	if (closing != PLPGSQL_CHECK_CLOSED)
 		put_error(cstate,
