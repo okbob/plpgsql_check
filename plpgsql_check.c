@@ -2410,7 +2410,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 						 errmsg("too many parameters specified for RAISE")));
 
 					if (stmt_raise->elog_level >= ERROR)
-						*closing = true;
+						*closing = PLPGSQL_CHECK_CLOSED;
 				}
 				break;
 

@@ -2359,6 +2359,31 @@ select * from plpgsql_check_function_tb('fx_flow(integer)');
 ------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
 (0 rows)
 
+create or replace function fx_flow(in p_param1 integer)
+returns text as
+$$
+declare
+  z1 text;
+begin
+  if p_param1 is not null then
+    z1 := '1111';
+    return z1;
+  else
+    z1 := '222222';
+    raise exception 'stop';
+  end if;
+  return z1;
+end;
+$$
+language plpgsql stable;
+select * from plpgsql_check_function_tb('fx_flow(integer)');
+ functionid | lineno | statement | sqlstate |     message      | detail | hint |     level     | position | query | context 
+------------+--------+-----------+----------+------------------+--------+------+---------------+----------+-------+---------
+ fx_flow    |     12 | RETURN    | 00000    | unreachable code |        |      | warning extra |          |       | 
+(1 row)
+
+drop function fx_flow();
+ERROR:  function fx_flow() does not exist
 drop function fx(int);
 ERROR:  function fx(integer) does not exist
 create or replace function fx(x int)
