@@ -2411,6 +2411,10 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 
 					if (stmt_raise->elog_level >= ERROR)
 						*closing = PLPGSQL_CHECK_CLOSED;
+					/* without any parameters it is reRAISE */
+					if (stmt_raise->condname == NULL && stmt_raise->message == NULL &&
+						stmt_raise->options == NIL)
+						*closing = PLPGSQL_CHECK_CLOSED;
 				}
 				break;
 
