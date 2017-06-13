@@ -167,6 +167,16 @@ triggers. Please, test following queries:
 
 or
 
+    SELECT p.proname, tgrelid::regclass, cf.*
+       FROM pg_proc p
+            JOIN pg_trigger t ON t.tgfoid = p.oid 
+            JOIN pg_language l ON p.prolang = l.oid
+            JOIN pg_namespace n ON p.pronamespace = n.oid,
+            LATERAL plpgsql_check_function(p.oid, t.tgrelid) cf
+      WHERE n.nspname = 'public' and l.lanname = 'plpgsql'
+
+or
+
     -- check all plpgsql functions (functions or trigger functions with defined triggers)
     SELECT
         (pcf).functionid::regprocedure, (pcf).lineno, (pcf).statement,
