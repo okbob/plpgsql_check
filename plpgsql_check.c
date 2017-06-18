@@ -134,6 +134,7 @@ enum
 enum
 {
 	PLPGSQL_CHECK_CLOSED,
+	PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS,
 	PLPGSQL_CHECK_POSSIBLY_CLOSED,
 	PLPGSQL_CHECK_UNCLOSED,
 	PLPGSQL_CHECK_UNKNOWN
@@ -212,8 +213,8 @@ static void check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigt
 									  bool performance_warnings,
 									  bool extra_warnings);
 static void check_row_or_rec(PLpgSQL_checkstate *cstate, PLpgSQL_row *row, PLpgSQL_rec *rec);
-static void check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing);
-static void check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing);
+static void check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **exceptions);
+static void check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **exceptions);
 static void check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *expected_typmod);
 static PLpgSQL_datum *copy_plpgsql_datum(PLpgSQL_datum *datum);
 static char *datum_get_refname(PLpgSQL_datum *d);
@@ -295,8 +296,10 @@ static void record_variable_usage(PLpgSQL_checkstate *cstate, int dno, bool writ
 static bool datum_is_used(PLpgSQL_checkstate *cstate, int dno, bool write);
 static bool is_const_null_expr(PLpgSQL_expr *query);
 static void prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
-static int merge_closing(int c1, int c2);
+static int merge_closing(int c, int c_local, List **exceptions, List *exceptions_local);
 static int possibly_closed(int c);
+static char *ExprGetString(PLpgSQL_expr *query, bool *IsConst);
+
 
 static bool plpgsql_check_other_warnings = false;
 static bool plpgsql_check_extra_warnings = false;
@@ -410,6 +413,7 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 {
 	const char *err_text = estate->err_text;
 	int closing;
+	List		*exceptions;
 
 	if (plpgsql_check_mode == PLPGSQL_CHECK_MODE_FRESH_START ||
 		   plpgsql_check_mode == PLPGSQL_CHECK_MODE_EVERY_START)
@@ -497,11 +501,11 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 			/*
 			 * Now check the toplevel block of statements
 			 */
-			check_stmt(&cstate, (PLpgSQL_stmt *) func->action, &closing);
+			check_stmt(&cstate, (PLpgSQL_stmt *) func->action, &closing, &exceptions);
 
 			estate->err_stmt = NULL;
 
-			if (closing != PLPGSQL_CHECK_CLOSED)
+			if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
 				put_error(&cstate,
 								  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
 								  "control reached end of function without RETURN",
@@ -1200,6 +1204,7 @@ function_check(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 {
 	int			i;
 	int closing = PLPGSQL_CHECK_UNCLOSED;
+	List	   *exceptions;
 
 	/*
 	 * Make local execution copies of all the datums
@@ -1219,12 +1224,12 @@ function_check(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 	/*
 	 * Now check the toplevel block of statements
 	 */
-	check_stmt(cstate, (PLpgSQL_stmt *) func->action, &closing);
+	check_stmt(cstate, (PLpgSQL_stmt *) func->action, &closing, &exceptions);
 
 	/* clean state values - next errors are not related to any command */
 	cstate->estate->err_stmt = NULL;
 
-	if (closing != PLPGSQL_CHECK_CLOSED)
+	if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
 		put_error(cstate,
 						  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
 						  "control reached end of function without RETURN",
@@ -1248,6 +1253,7 @@ trigger_check(PLpgSQL_function *func, Node *tdata,
 			   *rec_old;
 	int			i;
 	int closing = PLPGSQL_CHECK_UNCLOSED;
+	List	   *exceptions;
 
 	/*
 	 * Make local execution copies of all the datums
@@ -1310,12 +1316,12 @@ trigger_check(PLpgSQL_function *func, Node *tdata,
 	/*
 	 * Now check the toplevel block of statements
 	 */
-	check_stmt(cstate, (PLpgSQL_stmt *) func->action, &closing);
+	check_stmt(cstate, (PLpgSQL_stmt *) func->action, &closing, &exceptions);
 
 	/* clean state values - next errors are not related to any command */
 	cstate->estate->err_stmt = NULL;
 
-	if (closing != PLPGSQL_CHECK_CLOSED)
+	if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
 		put_error(cstate,
 						  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
 						  "control reached end of function without RETURN",
@@ -1740,7 +1746,7 @@ copy_plpgsql_datum(PLpgSQL_datum *datum)
  *
  */
 static void
-check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
+check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **exceptions)
 {
 	TupleDesc	tupdesc = NULL;
 	PLpgSQL_function *func;
@@ -1834,16 +1840,18 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 						}
 					}
 
-					check_stmts(cstate, stmt_block->body, closing);
+					check_stmts(cstate, stmt_block->body, closing, exceptions);
 
 					if (stmt_block->exceptions)
 					{
 						int closing_local;
+						List *exceptions_local = NIL;
 
 						foreach(l, stmt_block->exceptions->exc_list)
 						{
 							/* RETURN in exception handler ~ is possible closing */
-							check_stmts(cstate, ((PLpgSQL_exception *) lfirst(l))->action, &closing_local);
+							check_stmts(cstate, ((PLpgSQL_exception *) lfirst(l))->action,
+											&closing_local, &exceptions_local);
 						}
 
 						/*
@@ -1893,13 +1901,17 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 					ListCell    *l;
 					int		closing_local;
 					int		closing_all_paths = PLPGSQL_CHECK_UNKNOWN;
+					List   *exceptions_local;
 
 					check_expr_with_expected_scalar_type(cstate,
 									     stmt_if->cond, BOOLOID, true);
 
-					check_stmts(cstate, stmt_if->then_body, &closing_local);
+					check_stmts(cstate, stmt_if->then_body, &closing_local,
+								&exceptions_local);
 					closing_all_paths = merge_closing(closing_all_paths,
-													  closing_local);
+													  closing_local,
+													  exceptions,
+													  exceptions_local);
 
 					foreach(l, stmt_if->elsif_list)
 					{
@@ -1907,14 +1919,20 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 
 						check_expr_with_expected_scalar_type(cstate,
 										     elif->cond, BOOLOID, true);
-						check_stmts(cstate, elif->stmts, &closing_local);
+						check_stmts(cstate, elif->stmts, &closing_local,
+									&exceptions_local);
 						closing_all_paths = merge_closing(closing_all_paths,
-														  closing_local);
+														  closing_local,
+														  exceptions,
+														  exceptions_local);
 					}
 
-					check_stmts(cstate, stmt_if->else_body, &closing_local);
+					check_stmts(cstate, stmt_if->else_body, &closing_local,
+								&exceptions_local);
 					closing_all_paths = merge_closing(closing_all_paths,
-													  closing_local);
+													  closing_local,
+													  exceptions,
+													  exceptions_local);
 
 					if (stmt_if->else_body != NULL)
 						*closing = closing_all_paths;
@@ -1930,6 +1948,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 					PLpgSQL_stmt_case *stmt_case = (PLpgSQL_stmt_case *) stmt;
 					Oid			result_oid;
 					int		closing_local;
+					List	*exceptions_local;
 					int		closing_all_paths = PLPGSQL_CHECK_UNKNOWN;
 
 					if (stmt_case->t_expr != NULL)
@@ -1965,16 +1984,20 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 						PLpgSQL_case_when *cwt = (PLpgSQL_case_when *) lfirst(l);
 
 						check_expr(cstate, cwt->expr);
-						check_stmts(cstate, cwt->stmts, &closing_local);
+						check_stmts(cstate, cwt->stmts, &closing_local, &exceptions_local);
 						closing_all_paths = merge_closing(closing_all_paths,
-														  closing_local);
+														  closing_local,
+														  exceptions,
+														  exceptions_local);
 					}
 
 					if (stmt_case->else_stmts)
 					{
-						check_stmts(cstate, stmt_case->else_stmts, &closing_local);
+						check_stmts(cstate, stmt_case->else_stmts, &closing_local, &exceptions_local);
 						*closing = merge_closing(closing_all_paths,
-														  closing_local);
+														  closing_local,
+														  exceptions,
+														  exceptions_local);
 					}
 					else
 						/* is not ensured all path evaluation */
@@ -1983,13 +2006,14 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 				break;
 
 			case PLPGSQL_STMT_LOOP:
-				check_stmts(cstate, ((PLpgSQL_stmt_loop *) stmt)->body, closing);
+				check_stmts(cstate, ((PLpgSQL_stmt_loop *) stmt)->body, closing, exceptions);
 				break;
 
 			case PLPGSQL_STMT_WHILE:
 				{
 					PLpgSQL_stmt_while *stmt_while = (PLpgSQL_stmt_while *) stmt;
 					int		closing_local;
+					List   *exceptions_local;
 
 					check_expr_with_expected_scalar_type(cstate,
 										     stmt_while->cond,
@@ -2002,7 +2026,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 					 * When is not guaranteed execution (possible zero loops),
 					 * then ignore closing info from body.
 					 */
-					check_stmts(cstate, stmt_while->body, &closing_local);
+					check_stmts(cstate, stmt_while->body, &closing_local, &exceptions_local);
 					*closing = possibly_closed(closing_local);
 				}
 				break;
@@ -2012,6 +2036,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 					PLpgSQL_stmt_fori *stmt_fori = (PLpgSQL_stmt_fori *) stmt;
 					int			dno = stmt_fori->var->dno;
 					int		closing_local;
+					List   *exceptions_local;
 
 					/* prepare plan if desn't exist yet */
 					check_assignment(cstate, stmt_fori->lower, NULL, NULL, dno);
@@ -2020,7 +2045,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 					if (stmt_fori->step)
 						check_assignment(cstate, stmt_fori->step, NULL, NULL, dno);
 
-					check_stmts(cstate, stmt_fori->body, &closing_local);
+					check_stmts(cstate, stmt_fori->body, &closing_local, &exceptions_local);
 					*closing = possibly_closed(closing_local);
 				}
 				break;
@@ -2029,6 +2054,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 				{
 					PLpgSQL_stmt_fors *stmt_fors = (PLpgSQL_stmt_fors *) stmt;
 					int		closing_local;
+					List   *exceptions_local;
 
 					check_row_or_rec(cstate, stmt_fors->row, stmt_fors->rec);
 
@@ -2036,7 +2062,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 					check_assignment(cstate, stmt_fors->query,
 									 stmt_fors->rec, stmt_fors->row, -1);
 
-					check_stmts(cstate, stmt_fors->body, &closing_local);
+					check_stmts(cstate, stmt_fors->body, &closing_local, &exceptions_local);
 					*closing = possibly_closed(closing_local);
 				}
 				break;
@@ -2046,6 +2072,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 					PLpgSQL_stmt_forc *stmt_forc = (PLpgSQL_stmt_forc *) stmt;
 					PLpgSQL_var *var = (PLpgSQL_var *) func->datums[stmt_forc->curvar];
 					int		closing_local;
+					List   *exceptions_local;
 
 					check_row_or_rec(cstate, stmt_forc->row, stmt_forc->rec);
 
@@ -2055,7 +2082,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 						check_assignment(cstate, var->cursor_explicit_expr,
 										 stmt_forc->rec, stmt_forc->row, -1);
 
-					check_stmts(cstate, stmt_forc->body, &closing_local);
+					check_stmts(cstate, stmt_forc->body, &closing_local, &exceptions_local);
 					*closing = possibly_closed(closing_local);
 
 					cstate->used_variables = bms_add_member(cstate->used_variables,
@@ -2067,6 +2094,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 				{
 					PLpgSQL_stmt_dynfors *stmt_dynfors = (PLpgSQL_stmt_dynfors *) stmt;
 					int		closing_local;
+					List   *exceptions_local;
 
 					if (stmt_dynfors->rec != NULL)
 					{
@@ -2091,7 +2119,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 						check_expr(cstate, (PLpgSQL_expr *) lfirst(l));
 					}
 
-					check_stmts(cstate, stmt_dynfors->body, &closing_local);
+					check_stmts(cstate, stmt_dynfors->body, &closing_local, &exceptions_local);
 					*closing = possibly_closed(closing_local);
 				}
 				break;
@@ -2101,6 +2129,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 					PLpgSQL_stmt_foreach_a *stmt_foreach_a = (PLpgSQL_stmt_foreach_a *) stmt;
 					bool use_element_type;
 					int		closing_local;
+					List   *exceptions_local;
 
 					check_target(cstate, stmt_foreach_a->varno, NULL, NULL);
 
@@ -2116,7 +2145,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 											 stmt_foreach_a->varno,
 											 use_element_type);
 
-					check_stmts(cstate, stmt_foreach_a->body, &closing_local);
+					check_stmts(cstate, stmt_foreach_a->body, &closing_local, &exceptions_local);
 					*closing = possibly_closed(closing_local);
 				}
 				break;
@@ -2354,12 +2383,10 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 						cstate->found_return_query = true;
 					}
 
-
 					foreach(l, stmt_rq->params)
 					{
 						check_expr(cstate, (PLpgSQL_expr *) lfirst(l));
 					}
-
 				}
 				break;
 
@@ -2368,6 +2395,10 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 					PLpgSQL_stmt_raise *stmt_raise = (PLpgSQL_stmt_raise *) stmt;
 					ListCell   *current_param;
 					char	   *cp;
+					int			err_code = 0;
+
+					if (stmt_raise->condname != NULL)
+						err_code = plpgsql_recognize_err_condition(stmt_raise->condname, true);
 
 					foreach(l, stmt_raise->params)
 					{
@@ -2379,6 +2410,19 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 						PLpgSQL_raise_option *opt = (PLpgSQL_raise_option *) lfirst(l);
 
 						check_expr(cstate, opt->expr);
+
+						if (opt->opt_type == PLPGSQL_RAISEOPTION_ERRCODE)
+						{
+							bool		IsConst;
+							char	   *value = ExprGetString(opt->expr, &IsConst);
+
+							if (IsConst && value != NULL)
+							{
+								err_code = plpgsql_recognize_err_condition(value, true);
+							}
+							else
+								err_code = -1;		/* cannot be calculated now */
+						}
 					}
 
 					current_param = list_head(stmt_raise->params);
@@ -2410,11 +2454,22 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
 						 errmsg("too many parameters specified for RAISE")));
 
 					if (stmt_raise->elog_level >= ERROR)
-						*closing = PLPGSQL_CHECK_CLOSED;
+					{
+						*closing = PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS;
+						if (err_code == 0)
+							err_code = ERRCODE_RAISE_EXCEPTION;
+						else if (err_code == -1)
+							err_code = 0;
+						*exceptions = list_make1_int(err_code);
+					}
 					/* without any parameters it is reRAISE */
 					if (stmt_raise->condname == NULL && stmt_raise->message == NULL &&
 						stmt_raise->options == NIL)
-						*closing = PLPGSQL_CHECK_CLOSED;
+					{
+						*closing = PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS;
+						/* should be enhanced in future */
+						*exceptions = list_make1_int(0);
+					}
 				}
 				break;
 
@@ -2577,20 +2632,23 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing)
  *
  */
 static void
-check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing)
+check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **exceptions)
 {
-	ListCell	   *lc;
-	int closing_local;
-	bool			dead_code_alert = false;
+	ListCell   *lc;
+	int			closing_local;
+	List	   *exceptions_local;
+	bool		dead_code_alert = false;
 
 	*closing = PLPGSQL_CHECK_UNCLOSED;
+	*exceptions = NIL;
 
 	foreach(lc, stmts)
 	{
 		PLpgSQL_stmt	   *stmt = (PLpgSQL_stmt *) lfirst(lc);
 
 		closing_local = PLPGSQL_CHECK_UNCLOSED;
-		check_stmt(cstate, stmt, &closing_local);
+		exceptions_local = NIL;
+		check_stmt(cstate, stmt, &closing_local, &exceptions_local);
 
 		if (dead_code_alert)
 		{
@@ -2609,11 +2667,26 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing)
 		{
 			dead_code_alert = true;
 			*closing = PLPGSQL_CHECK_CLOSED;
+			*exceptions = NIL;
+		}
+		else if (closing_local == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
+		{
+			dead_code_alert = true;
+			if (*closing == PLPGSQL_CHECK_UNCLOSED ||
+				*closing == PLPGSQL_CHECK_POSSIBLY_CLOSED ||
+				*closing == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
+			{
+				*closing = PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS;
+				*exceptions = exceptions_local;
+			}
 		}
 		else if (closing_local == PLPGSQL_CHECK_POSSIBLY_CLOSED)
 		{
 			if (*closing == PLPGSQL_CHECK_UNCLOSED)
+			{
 				*closing = PLPGSQL_CHECK_POSSIBLY_CLOSED;
+				*exceptions = NIL;
+			}
 		}
 	}
 }
@@ -2624,6 +2697,7 @@ possibly_closed(int c)
 	switch (c)
 	{
 		case PLPGSQL_CHECK_CLOSED:
+		case PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS:
 		case PLPGSQL_CHECK_POSSIBLY_CLOSED:
 			return PLPGSQL_CHECK_POSSIBLY_CLOSED;
 		default:
@@ -2632,16 +2706,36 @@ possibly_closed(int c)
 }
 
 static int
-merge_closing(int c1, int c2)
+merge_closing(int c, int c_local, List **exceptions, List *exceptions_local)
 {
-	if (c1 == PLPGSQL_CHECK_UNKNOWN)
-		return c2;
-	if (c2 == PLPGSQL_CHECK_UNKNOWN)
-		return c1;
-	if (c1 == PLPGSQL_CHECK_CLOSED && c2 == PLPGSQL_CHECK_CLOSED)
+	*exceptions = NIL;
+
+	if (c == PLPGSQL_CHECK_UNKNOWN)
+	{
+		if (c_local == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
+			*exceptions = exceptions_local;
+
+		return c_local;
+	}
+
+	if (c_local == PLPGSQL_CHECK_UNKNOWN)
+		return c;
+
+	if (c == c_local)
+	{
+		if (c == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
+			*exceptions = lappend(*exceptions, exceptions_local);
+
+		return c_local;
+	}
+
+	if (c == PLPGSQL_CHECK_CLOSED || c_local == PLPGSQL_CHECK_CLOSED)
+	{
+		if (c == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS ||
+			c_local == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
 		return PLPGSQL_CHECK_CLOSED;
-	if (c1 == PLPGSQL_CHECK_UNCLOSED && c2 == PLPGSQL_CHECK_UNCLOSED)
-		return PLPGSQL_CHECK_UNCLOSED;
+	}
+
 	return PLPGSQL_CHECK_POSSIBLY_CLOSED;
 }
 
@@ -3880,18 +3974,14 @@ assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 }
 
 /*
- * Returns true for entered NULL constant
+ * Common part of some expression based analyzes.
  *
  */
-static bool
-is_const_null_expr(PLpgSQL_expr *query)
+static CachedPlan *
+ExprGetPlan(PLpgSQL_expr *query)
 {
 	CachedPlanSource *plansource = NULL;
-	PlannedStmt *_stmt;
-	Plan	   *_plan;
-	TargetEntry *tle;
 	CachedPlan *cplan;
-	bool	result = false;
 
 	if (query->plan != NULL)
 	{
@@ -3927,6 +4017,24 @@ is_const_null_expr(PLpgSQL_expr *query)
 
 #endif
 
+	return cplan;
+}
+
+
+/*
+ * Returns Const Value from expression if it is possible.
+ *
+ */
+static Const *
+ExprGetConst(PLpgSQL_expr *query, bool *IsConst)
+{
+	PlannedStmt *_stmt;
+	Plan	   *_plan;
+	TargetEntry *tle;
+	CachedPlan *cplan;
+	Const	   *result = NULL;
+
+	cplan = ExprGetPlan(query);
 	_stmt = (PlannedStmt *) linitial(cplan->stmt_list);
 
 	if (IsA(_stmt, PlannedStmt) &&_stmt->commandType == CMD_SELECT)
@@ -3936,11 +4044,53 @@ is_const_null_expr(PLpgSQL_expr *query)
 		{
 			tle = (TargetEntry *) linitial(_plan->targetlist);
 			if (((Node *) tle->expr)->type == T_Const)
-				result = ((Const *) tle->expr)->constisnull;
+				result = (Const *) tle->expr;
 		}
 	}
 
+	*IsConst = result != NULL;
+
 	ReleaseCachedPlan(cplan, true);
+
+	return result;
+}
+
+
+/*
+ * Returns true for entered NULL constant
+ *
+ */
+static bool
+is_const_null_expr(PLpgSQL_expr *query)
+{
+	Const	   *c;
+	bool		IsConst;
+
+	c = ExprGetConst(query, &IsConst);
+
+	return IsConst ? c->constisnull : false;
+}
+
+/*
+ * Returns string for any not null constant.
+ * When constant is NULL, then returns NULL.
+ *
+ */
+static char *
+ExprGetString(PLpgSQL_expr *query, bool *IsConst)
+{
+	Const	   *c;
+	char	   *result = NULL;
+
+	c = ExprGetConst(query, IsConst);
+	if (*IsConst && !c->constisnull)
+	{
+		Oid		typoutput;
+		bool	typisvarlena;
+
+		getTypeOutputInfo(c->consttype, &typoutput, &typisvarlena);
+		result = OidOutputFunctionCall(typoutput, c->constvalue);
+	}
 
 	return result;
 }
