@@ -296,9 +296,10 @@ static void record_variable_usage(PLpgSQL_checkstate *cstate, int dno, bool writ
 static bool datum_is_used(PLpgSQL_checkstate *cstate, int dno, bool write);
 static bool is_const_null_expr(PLpgSQL_expr *query);
 static void prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
-static int merge_closing(int c, int c_local, List **exceptions, List *exceptions_local);
+static int merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int err_code);
 static int possibly_closed(int c);
 static char *ExprGetString(PLpgSQL_expr *query, bool *IsConst);
+static bool exception_matches_conditions(int err_code, PLpgSQL_condition *cond);
 
 
 static bool plpgsql_check_other_warnings = false;
@@ -1741,6 +1742,7 @@ copy_plpgsql_datum(PLpgSQL_datum *datum)
  *
  */
 
+
 /*
  * walk over all plpgsql statements - search and check expressions
  *
@@ -1845,13 +1847,84 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 					if (stmt_block->exceptions)
 					{
 						int closing_local;
-						List *exceptions_local = NIL;
+						List   *exceptions_local = NIL;
+						int		closing_handlers = PLPGSQL_CHECK_UNKNOWN;
+						List   *exceptions_transformed = NIL;
 
-						foreach(l, stmt_block->exceptions->exc_list)
+						if (*closing == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
 						{
-							/* RETURN in exception handler ~ is possible closing */
-							check_stmts(cstate, ((PLpgSQL_exception *) lfirst(l))->action,
-											&closing_local, &exceptions_local);
+							ListCell   *lc;
+							int			i = 0;
+							int    *err_codes = NULL;
+							int		nerr_codes = 0;
+
+							/* copy errcodes to a array */
+							nerr_codes = list_length(*exceptions);
+							err_codes = palloc(sizeof(int) * nerr_codes);
+
+							foreach(lc, *exceptions)
+							{
+								err_codes[i++] = lfirst_int(lc);
+							}
+
+							foreach(l, stmt_block->exceptions->exc_list)
+							{
+								PLpgSQL_exception *exception = (PLpgSQL_exception *) lfirst(l);
+
+								/* RETURN in exception handler ~ is possible closing */
+								check_stmts(cstate, exception->action,
+												&closing_local, &exceptions_local);
+
+								if (*exceptions != NIL)
+								{
+									int		i;
+
+									for (i = 0; i < nerr_codes; i++)
+									{
+										int		err_code = err_codes[i];
+
+										if (err_code != -1 &&
+											exception_matches_conditions(err_code, exception->conditions))
+										{
+											closing_handlers = merge_closing(closing_handlers, closing_local,
+																			 &exceptions_transformed, exceptions_local,
+																			 err_code);
+											*exceptions = list_delete_int(*exceptions, err_code);
+											err_codes[i] = -1;
+										}
+									}
+								}
+							}
+
+							Assert(err_codes != NULL);
+							pfree(err_codes);
+
+							if (closing_handlers != PLPGSQL_CHECK_UNKNOWN)
+							{
+								*closing = closing_handlers;
+								if (closing_handlers == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
+									*exceptions = list_concat_unique_int(*exceptions, exceptions_transformed);
+								else
+									*exceptions = NIL;
+							}
+						}
+						else
+						{
+							foreach(l, stmt_block->exceptions->exc_list)
+							{
+								PLpgSQL_exception *exception = (PLpgSQL_exception *) lfirst(l);
+
+								/* RETURN in exception handler ~ is possible closing */
+								check_stmts(cstate, exception->action,
+												&closing_local, &exceptions_local);
+
+								closing_handlers = merge_closing(closing_handlers, closing_local,
+																 &exceptions_transformed, exceptions_local,
+																 -1);
+							}
+
+							if (closing_handlers != *closing)
+								*closing = PLPGSQL_CHECK_POSSIBLY_CLOSED;
 						}
 
 						/*
@@ -1911,7 +1984,8 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 					closing_all_paths = merge_closing(closing_all_paths,
 													  closing_local,
 													  exceptions,
-													  exceptions_local);
+													  exceptions_local,
+													  -1);
 
 					foreach(l, stmt_if->elsif_list)
 					{
@@ -1924,7 +1998,8 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 						closing_all_paths = merge_closing(closing_all_paths,
 														  closing_local,
 														  exceptions,
-														  exceptions_local);
+														  exceptions_local,
+														  -1);
 					}
 
 					check_stmts(cstate, stmt_if->else_body, &closing_local,
@@ -1932,7 +2007,8 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 					closing_all_paths = merge_closing(closing_all_paths,
 													  closing_local,
 													  exceptions,
-													  exceptions_local);
+													  exceptions_local,
+													  -1);
 
 					if (stmt_if->else_body != NULL)
 						*closing = closing_all_paths;
@@ -1988,7 +2064,8 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 						closing_all_paths = merge_closing(closing_all_paths,
 														  closing_local,
 														  exceptions,
-														  exceptions_local);
+														  exceptions_local,
+														  -1);
 					}
 
 					if (stmt_case->else_stmts)
@@ -1997,7 +2074,8 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 						*closing = merge_closing(closing_all_paths,
 														  closing_local,
 														  exceptions,
-														  exceptions_local);
+														  exceptions_local,
+														  -1);
 					}
 					else
 						/* is not ensured all path evaluation */
@@ -2459,7 +2537,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 						if (err_code == 0)
 							err_code = ERRCODE_RAISE_EXCEPTION;
 						else if (err_code == -1)
-							err_code = 0;
+							err_code = 0; /* cannot be calculated */
 						*exceptions = list_make1_int(err_code);
 					}
 					/* without any parameters it is reRAISE */
@@ -2468,7 +2546,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 					{
 						*closing = PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS;
 						/* should be enhanced in future */
-						*exceptions = list_make1_int(0);
+						*exceptions = list_make1_int(-2); /* reRAISE */
 					}
 				}
 				break;
@@ -2706,7 +2784,7 @@ possibly_closed(int c)
 }
 
 static int
-merge_closing(int c, int c_local, List **exceptions, List *exceptions_local)
+merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int err_code)
 {
 	*exceptions = NIL;
 
@@ -2724,7 +2802,24 @@ merge_closing(int c, int c_local, List **exceptions, List *exceptions_local)
 	if (c == c_local)
 	{
 		if (c == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
-			*exceptions = lappend(*exceptions, exceptions_local);
+		{
+
+			if (err_code != -1)
+			{
+				ListCell *lc;
+
+				/* replace reRAISE symbol (-2) by real err_code */
+				foreach(lc, exceptions_local)
+				{
+					int		t_err_code = lfirst_int(lc);
+
+					*exceptions = list_append_unique_int(*exceptions,
+														t_err_code != -2 ? t_err_code : err_code);
+				}
+			}
+			else
+				*exceptions = list_concat_unique_int(*exceptions, exceptions_local);
+		}
 
 		return c_local;
 	}
@@ -2737,6 +2832,35 @@ merge_closing(int c, int c_local, List **exceptions, List *exceptions_local)
 	}
 
 	return PLPGSQL_CHECK_POSSIBLY_CLOSED;
+}
+
+static bool
+exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond)
+{
+	for (; cond != NULL; cond = cond->next)
+	{
+		int			_sqlerrstate = cond->sqlerrstate;
+
+		/*
+		 * OTHERS matches everything *except* query-canceled and
+		 * assert-failure.  If you're foolish enough, you can match those
+		 * explicitly.
+		 */
+		if (_sqlerrstate == 0)
+		{
+			if (sqlerrstate != ERRCODE_QUERY_CANCELED &&
+				sqlerrstate != ERRCODE_ASSERT_FAILURE)
+				return true;
+		}
+		/* Exact match? */
+		else if (sqlerrstate == _sqlerrstate)
+			return true;
+		/* Category match? */
+		else if (ERRCODE_IS_CATEGORY(_sqlerrstate) &&
+				 ERRCODE_TO_CATEGORY(sqlerrstate) == _sqlerrstate)
+			return true;
+	}
+	return false;
 }
 
 /*

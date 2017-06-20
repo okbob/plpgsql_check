@@ -1867,3 +1867,78 @@ select * from fx(10);
 select * from plpgsql_check_function_tb('fx(int)');
 
 drop function fx(int);
+
+create table xx(a int);
+
+create or replace function fx(x int)
+returns int as $$
+declare _a int;
+begin
+  begin
+    select a from xx into strict _a where a = x;
+    return _a;
+  exception when others then
+    null;
+  end;
+  return -1;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('fx(int)');
+
+drop table xx;
+
+create or replace function fx(x int)
+returns int as $$
+begin
+  begin
+    if (x > 0) then
+      raise exception 'xxx' using errcode = 'XX888';
+    else
+      raise exception 'yyy' using errcode = 'YY888';
+    end if;
+    return -1; -- dead code;
+  end;
+  return -1;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('fx(int)');
+
+create or replace function fx(x int)
+returns int as $$
+begin
+  begin
+    if (x > 0) then
+      raise exception 'xxx' using errcode = 'XX888';
+    else
+      raise exception 'yyy' using errcode = 'YY888';
+    end if;
+  exception
+    when sqlstate 'XX888' then
+      null;
+    when sqlstate 'YY888' then
+      null;
+  end;
+end; -- missing return;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('fx(int)');
+
+create or replace function fx(x int)
+returns int as $$
+begin
+  begin
+    if (x > 0) then
+      raise exception 'xxx' using errcode = 'XX888';
+    else
+      raise exception 'yyy' using errcode = 'YY888';
+    end if;
+  exception
+    when others then
+      return 10;
+  end;
+end; -- ok now
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('fx(int)');
