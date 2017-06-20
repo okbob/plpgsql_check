@@ -1914,7 +1914,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 							{
 								PLpgSQL_exception *exception = (PLpgSQL_exception *) lfirst(l);
 
-								/* RETURN in exception handler ~ is possible closing */
+								/* RETURN in exception handler ~ it is possible closing only */
 								check_stmts(cstate, exception->action,
 												&closing_local, &exceptions_local);
 
@@ -2495,9 +2495,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 							char	   *value = ExprGetString(opt->expr, &IsConst);
 
 							if (IsConst && value != NULL)
-							{
 								err_code = plpgsql_recognize_err_condition(value, true);
-							}
 							else
 								err_code = -1;		/* cannot be calculated now */
 						}
