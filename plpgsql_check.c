@@ -3262,23 +3262,27 @@ check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expr
 	BeginInternalSubTransaction(NULL);
 	MemoryContextSwitchTo(oldCxt);
 
+
+
 	PG_TRY();
 	{
 		TupleDesc	tupdesc;
 		bool		is_immutable_null;
+		Oid			first_level_typ = InvalidOid;
 
 		prepare_expr(cstate, expr, 0);
 		/* record all variables used by the query */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
-		tupdesc = expr_get_desc(cstate, expr, false, true, is_expression, NULL);
+		tupdesc = expr_get_desc(cstate, expr, false, true, is_expression, &first_level_typ);
 		is_immutable_null = is_const_null_expr(expr);
 
 		if (tupdesc)
 		{
 			/* enforce check for trigger function - result must be composit */
 			if (func->fn_retistuple && is_expression 
-				    && !(type_is_rowtype(tupdesc->attrs[0]->atttypid) || tupdesc->natts > 1))
+						  && !(type_is_rowtype(tupdesc->attrs[0]->atttypid) ||
+							   type_is_rowtype(first_level_typ) || tupdesc->natts > 1))
 			{
 				/* but we should to allow NULL */
 				if (!is_immutable_null)

@@ -2508,3 +2508,29 @@ select * from plpgsql_check_function_tb('fx(int)');
 ------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
 (0 rows)
 
+--false alarm reported by Filip Zach
+create type testtype as (id integer);
+create or replace function fx()
+returns testtype as $$
+begin
+  return row(1);
+end;
+$$ language plpgsql;
+select * from fx();
+ id 
+----
+  1
+(1 row)
+
+select fx();
+ fx  
+-----
+ (1)
+(1 row)
+
+select * from plpgsql_check_function('fx()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function fx()

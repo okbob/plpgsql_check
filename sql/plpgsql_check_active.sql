@@ -1942,3 +1942,20 @@ end; -- ok now
 $$ language plpgsql;
 
 select * from plpgsql_check_function_tb('fx(int)');
+
+--false alarm reported by Filip Zach
+create type testtype as (id integer);
+
+create or replace function fx()
+returns testtype as $$
+begin
+  return row(1);
+end;
+$$ language plpgsql;
+
+select * from fx();
+select fx();
+
+select * from plpgsql_check_function('fx()');
+
+drop function fx()
