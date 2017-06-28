@@ -2846,8 +2846,15 @@ exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond)
 		 */
 		if (_sqlerrstate == 0)
 		{
-			if (sqlerrstate != ERRCODE_QUERY_CANCELED &&
-				sqlerrstate != ERRCODE_ASSERT_FAILURE)
+			if (sqlerrstate != ERRCODE_QUERY_CANCELED
+
+#if PG_VERSION_NUM >= 90500
+
+				 && sqlerrstate != ERRCODE_ASSERT_FAILURE
+
+#endif
+
+				)
 				return true;
 		}
 		/* Exact match? */
