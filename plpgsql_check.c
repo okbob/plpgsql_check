@@ -73,6 +73,11 @@ typedef enum PLpgSQL_trigtype
 
 #include "access/tupconvert.h"
 #include "access/tupdesc.h"
+
+#ifndef TupleDescAttr
+#define TupleDescAttr(tupdesc, i) ((tupdesc)->attrs[(i)])
+#endif
+
 #include "catalog/pg_language.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -1402,7 +1407,7 @@ is_polymorphic_tupdesc(TupleDesc tupdesc)
 	int	i;
 
 	for (i = 0; i < tupdesc->natts; i++)
-		if (IsPolymorphicType(tupdesc->attrs[i]->atttypid))
+		if (IsPolymorphicType(TupleDescAttr(tupdesc, i)->atttypid))
 			return true;
 
 	return false;
@@ -2041,7 +2046,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 												true,	/* expand record */
 												true,	/* is expression */
 												NULL);
-						result_oid = tupdesc->attrs[0]->atttypid;
+						result_oid = TupleDescAttr(tupdesc, 0)->atttypid;
 
 						/*
 						 * When expected datatype is different from real,
@@ -2415,13 +2420,13 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 											{
 												PLpgSQL_var *var;
 
-												if (tupdesc->attrs[i]->attisdropped)
+												if (TupleDescAttr(tupdesc, i)->attisdropped)
 													continue;
 												if (row->varnos[i] < 0)
 													elog(ERROR, "dropped rowtype entry for non-dropped column");
 
 												var = (PLpgSQL_var *) (cstate->estate->datums[row->varnos[i]]);
-												if (var->datatype->typoid != tupdesc->attrs[i]->atttypid)
+												if (var->datatype->typoid != TupleDescAttr(tupdesc, i)->atttypid)
 												{
 													row_is_valid_result = false;
 													break;
@@ -3209,7 +3214,7 @@ check_expr_with_expected_scalar_type(PLpgSQL_checkstate *cstate,
 				if (!is_immutable_null)
 					check_assign_to_target_type(cstate,
 									    expected_typoid, -1,
-									    tupdesc->attrs[0]->atttypid,
+									    TupleDescAttr(tupdesc, 0)->atttypid,
 									    is_immutable_null);
 			}
 
@@ -3288,7 +3293,7 @@ check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expr
 		{
 			/* enforce check for trigger function - result must be composit */
 			if (func->fn_retistuple && is_expression 
-						  && !(type_is_rowtype(tupdesc->attrs[0]->atttypid) ||
+						  && !(type_is_rowtype(TupleDescAttr(tupdesc, 0)->atttypid) ||
 							   type_is_rowtype(first_level_typ) || tupdesc->natts > 1))
 			{
 				/* but we should to allow NULL */
@@ -3325,7 +3330,7 @@ check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expr
 				{
 					check_assign_to_target_type(cstate,
 									    func->fn_rettype, -1,
-									    tupdesc->attrs[0]->atttypid,
+									    TupleDescAttr(tupdesc, 0)->atttypid,
 									    is_immutable_null);
 				}
 			}
@@ -3697,7 +3702,7 @@ check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *e
 					*expected_typoid = SPI_gettypeid(rec->tupdesc, fno);
 
 				if (expected_typmod)
-					*expected_typmod = rec->tupdesc->attrs[fno - 1]->atttypmod;
+					*expected_typmod = TupleDescAttr(rec->tupdesc, fno - 1)->atttypmod;
 			}
 			break;
 
@@ -3937,7 +3942,7 @@ assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, boo
 
 				check_assign_to_target_type(cstate,
 									 var->datatype->typoid, var->datatype->atttypmod,
-									 tupdesc->attrs[0]->atttypid,
+									 TupleDescAttr(tupdesc, 0)->atttypid,
 									 isnull);
 			}
 			break;
@@ -3986,7 +3991,7 @@ assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, boo
 				else
 					check_assign_to_target_type(cstate,
 									    expected_typoid, expected_typmod,
-									    tupdesc->attrs[0]->atttypid,
+									    TupleDescAttr(tupdesc, 0)->atttypid,
 									    isnull);
 			}
 			break;
@@ -4061,7 +4066,7 @@ assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 			if (row->varnos[fnum] < 0)
 				continue;		/* skip dropped column in row struct */
 
-			while (anum < td_natts && tupdesc->attrs[anum]->attisdropped)
+			while (anum < td_natts && TupleDescAttr(tupdesc, anum)->attisdropped)
 				anum++;			/* skip dropped column in tuple */
 
 			if (anum < td_natts)
@@ -4293,13 +4298,13 @@ expr_get_desc(PLpgSQL_checkstate *cstate,
 							tupdesc->natts)));
 
 		/* check the type of the expression - must be an array */
-		elemtype = get_element_type(tupdesc->attrs[0]->atttypid);
+		elemtype = get_element_type(TupleDescAttr(tupdesc, 0)->atttypid);
 		if (!OidIsValid(elemtype))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 				errmsg("FOREACH expression must yield an array, not type %s",
-					   format_type_be(tupdesc->attrs[0]->atttypid))));
+					   format_type_be(TupleDescAttr(tupdesc, 0)->atttypid))));
 			FreeTupleDesc(tupdesc);
 		}
 
@@ -4334,7 +4339,7 @@ expr_get_desc(PLpgSQL_checkstate *cstate,
 	else
 	{
 		if (is_expression && first_level_typoid != NULL)
-			*first_level_typoid = tupdesc->attrs[0]->atttypid;
+			*first_level_typoid = TupleDescAttr(tupdesc, 0)->atttypid;
 	}
 
 	/*
@@ -4347,8 +4352,8 @@ expr_get_desc(PLpgSQL_checkstate *cstate,
 	{
 		TupleDesc	unpack_tupdesc;
 
-		unpack_tupdesc = lookup_rowtype_tupdesc_noerror(tupdesc->attrs[0]->atttypid,
-												tupdesc->attrs[0]->atttypmod,
+		unpack_tupdesc = lookup_rowtype_tupdesc_noerror(TupleDescAttr(tupdesc, 0)->atttypid,
+												TupleDescAttr(tupdesc, 0)->atttypmod,
 														true);
 		if (unpack_tupdesc != NULL)
 		{
@@ -4371,8 +4376,8 @@ expr_get_desc(PLpgSQL_checkstate *cstate,
 	if (tupdesc->tdtypeid == RECORDOID &&
 		tupdesc->tdtypmod == -1 &&
 		tupdesc->natts == 1 &&
-		tupdesc->attrs[0]->atttypid == RECORDOID &&
-		tupdesc->attrs[0]->atttypmod == -1 &&
+		TupleDescAttr(tupdesc, 0)->atttypid == RECORDOID &&
+		TupleDescAttr(tupdesc, 0)->atttypmod == -1 &&
 		expand_record)
 	{
 		PlannedStmt *_stmt;
