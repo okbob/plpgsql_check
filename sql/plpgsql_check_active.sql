@@ -1958,4 +1958,34 @@ select fx();
 
 select * from plpgsql_check_function('fx()');
 
-drop function fx()
+drop function fx();
+
+create function out1(OUT f1 int, OUT f2 int)
+returns setof record as
+$$
+begin
+  for f1, f2 in
+     execute $q$ select 1, 2 $q$
+  loop
+    return next;
+  end loop;
+end $$ language plpgsql;
+
+select * from plpgsql_check_function('out1()');
+
+drop function out1();
+
+create function out1(OUT f1 int, OUT f2 int)
+returns setof record as
+$$
+begin
+  for f1, f2 in
+     select 1, 2
+  loop
+    return next;
+  end loop;
+end $$ language plpgsql;
+
+select * from plpgsql_check_function('out1()');
+
+drop function out1();

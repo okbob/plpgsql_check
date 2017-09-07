@@ -2179,6 +2179,15 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 					int		closing_local;
 					List   *exceptions_local;
 
+					check_row_or_rec(cstate, stmt_dynfors->row, stmt_dynfors->rec);
+
+					check_expr(cstate, stmt_dynfors->query);
+
+					foreach(l, stmt_dynfors->params)
+					{
+						check_expr(cstate, (PLpgSQL_expr *) lfirst(l));
+					}
+
 					if (stmt_dynfors->rec != NULL)
 					{
 						put_error(cstate,
@@ -2188,18 +2197,6 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 					  "Don't use dynamic SQL and record type together, when you would check function.",
 									  PLPGSQL_CHECK_WARNING_OTHERS,
 									  0, NULL, NULL);
-
-						/*
-						 * don't continue in checking. Behave should be
-						 * indeterministic.
-						 */
-						break;
-					}
-					check_expr(cstate, stmt_dynfors->query);
-
-					foreach(l, stmt_dynfors->params)
-					{
-						check_expr(cstate, (PLpgSQL_expr *) lfirst(l));
 					}
 
 					check_stmts(cstate, stmt_dynfors->body, &closing_local, &exceptions_local);
@@ -2594,12 +2591,6 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 						  "Don't use dynamic SQL and record type together, when you would check function.",
 										  PLPGSQL_CHECK_WARNING_OTHERS,
 										  0, NULL, NULL);
-
-							/*
-							 * don't continue in checking. Behave should be
-							 * indeterministic.
-							 */
-							break;
 						}
 					}
 				}
