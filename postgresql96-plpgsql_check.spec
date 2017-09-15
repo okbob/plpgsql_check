@@ -3,14 +3,14 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	1.2.0
+Version:	1.2.1
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
 Group:		Applications/Databases
 License:	BSD
-URL:		https://github.com/okbob/plpgsql_check/archive/v1.2.0.zip
-Source0:	plpgsql_check-1.2.0.zip
+URL:		https://github.com/okbob/plpgsql_check/archive/v%{version}.zip
+Source0:	plpgsql_check-%{version}.zip
 BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 BuildRequires:	postgresql%{pgmajorversion}-devel
@@ -23,7 +23,7 @@ a validity of SQL identifiers used in plpgsql code. It try to identify
 a performance issues.
 
 %prep
-%setup -q -n %{sname}-1.2.0
+%setup -q -n %{sname}-%{version}
 
 
 %build
@@ -43,11 +43,18 @@ rm -rf %{buildroot}
 %defattr(644,root,root,755)
 %doc README.md
 %{pginstdir}/lib/plpgsql_check.so
-%{pginstdir}/share/extension/plpgsql_check--1.0.sql
+%{pginstdir}/share/extension/plpgsql_check--1.2.sql
+%{pginstdir}/share/extension/plpgsql_check--1.0--1.1.sql
+%{pginstdir}/share/extension/plpgsql_check--1.1--1.2.sql
 %{pginstdir}/share/extension/plpgsql_check.control
 
 
 %changelog
+* Fri Sep 15 2017 - Pavel STEHULE <pavel.stehule@gmail.com> 1.2.1-1
+- missing RETURN detection
+- fix some bugs and false alarms
+- PostgreSQL 11 support
+
 * Fri Now 11 2016 - Pavel STEHULE <pavel.stehule@gmail.com> 1.2.0-1
 - support extra warnings - shadowed variables
 
