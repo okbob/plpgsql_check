@@ -926,17 +926,17 @@ end;
 end
 $$ language plpgsql;
 select * from plpgsql_check_function('f1(int)');
-               plpgsql_check_function               
-----------------------------------------------------
+                 plpgsql_check_function                 
+--------------------------------------------------------
  warning:00000:4:DECLARE:unused variable "_f2"
  warning:00000:3:DECLARE:never read variable "_f1"
  warning:00000:5:DECLARE:never read variable "_f3"
  warning:00000:6:DECLARE:never read variable "_f4"
  warning:00000:8:DECLARE:never read variable "_r"
  warning:00000:9:DECLARE:never read variable "_tbl"
- warning extra:00000:parameter "$1" is never read
- warning extra:00000:unmodified OUT variable "$2"
- warning extra:00000:unmodified OUT variable "$3"
+ warning extra:00000:parameter "_input1" is never read
+ warning extra:00000:unmodified OUT variable "_output1"
+ warning extra:00000:unmodified OUT variable "_output2"
 (9 rows)
 
 drop function f1(int);
@@ -2135,10 +2135,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fxx(int, int)');
-              plpgsql_check_function              
---------------------------------------------------
- warning extra:00000:parameter "$2" is never read
- warning extra:00000:unmodified OUT variable "$4"
+             plpgsql_check_function              
+-------------------------------------------------
+ warning extra:00000:parameter "b" is never read
+ warning extra:00000:unmodified OUT variable "d"
 (2 rows)
 
 create or replace function fxx(in a int, in b int, out c int, out d int)
@@ -2148,11 +2148,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fxx(int, int)');
-              plpgsql_check_function              
---------------------------------------------------
- warning extra:00000:parameter "$1" is never read
- warning extra:00000:parameter "$2" is never read
- warning extra:00000:unmodified OUT variable "$4"
+             plpgsql_check_function              
+-------------------------------------------------
+ warning extra:00000:parameter "a" is never read
+ warning extra:00000:parameter "b" is never read
+ warning extra:00000:unmodified OUT variable "d"
 (3 rows)
 
 create type ct as (a int, b int);
@@ -2163,12 +2163,12 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fxx(ct, ct)');
-                         plpgsql_check_function                         
-------------------------------------------------------------------------
- warning extra:00000:parameter "$2" is never read
- warning extra:00000:composite OUT variable "$3" is not single argument
- warning extra:00000:composite OUT variable "$4" is not single argument
- warning extra:00000:unmodified OUT variable "$4"
+                        plpgsql_check_function                         
+-----------------------------------------------------------------------
+ warning extra:00000:parameter "b" is never read
+ warning extra:00000:composite OUT variable "c" is not single argument
+ warning extra:00000:composite OUT variable "d" is not single argument
+ warning extra:00000:unmodified OUT variable "d"
 (4 rows)
 
 create or replace function fxx(a ct, b ct, OUT c ct, OUT d ct)
@@ -2178,13 +2178,13 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fxx(ct, ct)');
-                         plpgsql_check_function                         
-------------------------------------------------------------------------
- warning extra:00000:parameter "$1" is never read
- warning extra:00000:parameter "$2" is never read
- warning extra:00000:composite OUT variable "$3" is not single argument
- warning extra:00000:composite OUT variable "$4" is not single argument
- warning extra:00000:unmodified OUT variable "$4"
+                        plpgsql_check_function                         
+-----------------------------------------------------------------------
+ warning extra:00000:parameter "a" is never read
+ warning extra:00000:parameter "b" is never read
+ warning extra:00000:composite OUT variable "c" is not single argument
+ warning extra:00000:composite OUT variable "d" is not single argument
+ warning extra:00000:unmodified OUT variable "d"
 (5 rows)
 
 create or replace function tx(a int)
@@ -2209,7 +2209,7 @@ select * from plpgsql_check_function('tx(int)');
  warning:00000:2:DECLARE:unused variable "ax"
  warning:00000:2:DECLARE:never read variable "a"
  warning:00000:4:DECLARE:never read variable "ax"
- warning extra:00000:parameter "$1" is never read
+ warning extra:00000:parameter "a" is never read
 (8 rows)
 
 create type xt as (a int, b int, c int);
@@ -2222,11 +2222,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx_xt()');
-              plpgsql_check_function              
---------------------------------------------------
+             plpgsql_check_function              
+-------------------------------------------------
  warning:00000:2:DECLARE:unused variable "l"
  warning:00000:3:DECLARE:unused variable "a"
- warning extra:00000:unmodified OUT variable "$1"
+ warning extra:00000:unmodified OUT variable "x"
 (3 rows)
 
 drop function fx_xt();
@@ -2255,14 +2255,14 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx_xt()');
-                         plpgsql_check_function                         
-------------------------------------------------------------------------
+                        plpgsql_check_function                         
+-----------------------------------------------------------------------
  warning:00000:2:DECLARE:unused variable "c1"
  warning:00000:2:DECLARE:unused variable "c2"
- warning extra:00000:composite OUT variable "$1" is not single argument
- warning extra:00000:unmodified OUT variable "$1"
- warning extra:00000:composite OUT variable "$2" is not single argument
- warning extra:00000:unmodified OUT variable "$2"
+ warning extra:00000:composite OUT variable "x" is not single argument
+ warning extra:00000:unmodified OUT variable "x"
+ warning extra:00000:composite OUT variable "y" is not single argument
+ warning extra:00000:unmodified OUT variable "y"
 (6 rows)
 
 drop function fx_xt();
@@ -2276,12 +2276,12 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx_xt()');
-                         plpgsql_check_function                         
-------------------------------------------------------------------------
+                        plpgsql_check_function                         
+-----------------------------------------------------------------------
  warning:00000:2:DECLARE:unused variable "c1"
  warning:00000:2:DECLARE:unused variable "c2"
- warning extra:00000:composite OUT variable "$1" is not single argument
- warning extra:00000:composite OUT variable "$2" is not single argument
+ warning extra:00000:composite OUT variable "x" is not single argument
+ warning extra:00000:composite OUT variable "y" is not single argument
 (4 rows)
 
 drop function fx_xt();
@@ -2292,11 +2292,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx_xt()');
-                         plpgsql_check_function                         
-------------------------------------------------------------------------
- warning extra:00000:composite OUT variable "$1" is not single argument
- warning extra:00000:unmodified OUT variable "$1"
- warning extra:00000:unmodified OUT variable "$2"
+                        plpgsql_check_function                         
+-----------------------------------------------------------------------
+ warning extra:00000:composite OUT variable "x" is not single argument
+ warning extra:00000:unmodified OUT variable "x"
+ warning extra:00000:unmodified OUT variable "z"
 (3 rows)
 
 drop function fx_xt();

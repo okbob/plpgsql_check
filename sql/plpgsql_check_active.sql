@@ -1989,3 +1989,17 @@ end $$ language plpgsql;
 select * from plpgsql_check_function('out1()');
 
 drop function out1();
+
+-- never read variable detection
+create function a()
+returns int as $$
+declare foo int;
+begin
+  foo := 2;
+  return 1;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('a()');
+
+drop function a();

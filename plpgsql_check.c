@@ -2880,11 +2880,23 @@ record_variable_usage(PLpgSQL_checkstate *cstate, int dno, bool write)
 {
 	if (dno >= 0)
 	{
-		cstate->used_variables = bms_add_member(cstate->used_variables, dno);
-		if (write)
+		if (!write)
+			cstate->used_variables = bms_add_member(cstate->used_variables, dno);
+		else
 			cstate->modif_variables = bms_add_member(cstate->modif_variables, dno);
 	}
 }
+
+static bool
+is_internal(char *refname, int lineno)
+{
+	if (lineno <= 0)
+		return true;
+	if (strcmp(refname, "*internal*") == 0)
+		return true;
+	return false;
+}
+
 
 /*
  * Returns true if dno is explicitly declared. It should not be used
@@ -2898,9 +2910,22 @@ datum_is_explicit(PLpgSQL_checkstate *cstate, int dno)
 	switch (estate->datums[dno]->dtype)
 	{
 		case PLPGSQL_DTYPE_VAR:
+			{
+				PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[dno];
+				return !is_internal(var->refname, var->lineno);
+			}
+
 		case PLPGSQL_DTYPE_ROW:
+			{
+				PLpgSQL_row *row = (PLpgSQL_row *) estate->datums[dno];
+				return !is_internal(row->refname, row->lineno);
+			}
 		case PLPGSQL_DTYPE_REC:
-			return ((PLpgSQL_variable *) estate->datums[dno])->lineno > 0;
+			{
+				PLpgSQL_rec *rec = (PLpgSQL_rec *) estate->datums[dno];
+				return !is_internal(rec->refname, rec->lineno);
+			}
+
 		default:
 			return false;
 	}
@@ -2982,7 +3007,10 @@ datum_is_used(PLpgSQL_checkstate *cstate, int dno, bool write)
 
 #define UNUSED_VARIABLE_TEXT			"unused variable \"%s\""
 #define UNUSED_VARIABLE_TEXT_CHECK_LENGTH	15
+#define NEVER_READ_VARIABLE_TEXT		"never read variable \"%s\""
+#define NEVER_READ_VARIABLE_TEXT_CHECK_LENGTH		19
 #define UNUSED_PARAMETER_TEXT			"unused parameter \"%s\""
+#define NEVER_READ_PARAMETER_TEXT		"parameter \"%s\" is never read"
 #define UNMODIFIED_VARIABLE_TEXT		"unmodified OUT variable \"%s\""
 #define OUT_COMPOSITE_IS_NOT_SINGE_TEXT	"composite OUT variable \"%s\" is not single argument"
 
@@ -3000,7 +3028,8 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 	estate->err_stmt = NULL;
 
 	for (i = 0; i < estate->ndatums; i++)
-		if (datum_is_explicit(cstate, i) && !datum_is_used(cstate, i, false))
+		if (datum_is_explicit(cstate, i) &&
+			!(datum_is_used(cstate, i, false) || datum_is_used(cstate, i, true)))
 		{
 			PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[i];
 			StringInfoData message;
@@ -3023,13 +3052,60 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 	if (cstate->extra_warnings)
 	{
 		PLpgSQL_function *func = estate->func;
-	
+
+		/* check never read variables */
+
+		for (i = 0; i < estate->ndatums; i++)
+		{
+			if (datum_is_explicit(cstate, i)
+				 && !datum_is_used(cstate, i, false) && datum_is_used(cstate, i, true))
+			{
+				PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[i];
+				StringInfoData message;
+
+				initStringInfo(&message);
+
+				appendStringInfo(&message, NEVER_READ_VARIABLE_TEXT, var->refname);
+				put_error(cstate,
+						  0, var->lineno,
+						  message.data,
+						  NULL,
+						  NULL,
+						  PLPGSQL_CHECK_WARNING_OTHERS,
+						  0, NULL, NULL);
+
+				pfree(message.data);
+				message.data = NULL;
+			}
+		}
+
 		/* check IN parameters */
 		for (i = 0; i < func->fn_nargs; i++)
 		{
 			int		varno = func->fn_argvarnos[i];
 
-			if (!datum_is_used(cstate, varno, false))
+			bool	is_read = datum_is_used(cstate, varno, false);
+			bool	is_write = datum_is_used(cstate, varno, true);
+
+			if (!is_read)
+			{
+				PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[varno];
+				StringInfoData message;
+
+				initStringInfo(&message);
+
+				appendStringInfo(&message, NEVER_READ_PARAMETER_TEXT, var->refname);
+				put_error(cstate,
+						  0, 0,
+						  message.data,
+						  NULL,
+						  NULL,
+						  PLPGSQL_CHECK_WARNING_EXTRA,
+						  0, NULL, NULL);
+
+				pfree(message.data); message.data = NULL;
+			}
+			else if (!(is_read || is_write))
 			{
 				PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[varno];
 				StringInfoData message;
@@ -3264,8 +3340,6 @@ check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expr
 	oldowner = CurrentResourceOwner;
 	BeginInternalSubTransaction(NULL);
 	MemoryContextSwitchTo(oldCxt);
-
-
 
 	PG_TRY();
 	{
@@ -4780,6 +4854,12 @@ tuplestore_put_error_tabular(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 		SET_RESULT_INT32(Anum_result_lineno, lineno);
 		SET_RESULT_TEXT(Anum_result_statement, "DECLARE");
 	}
+	else if (strncmp(message, NEVER_READ_VARIABLE_TEXT, NEVER_READ_VARIABLE_TEXT_CHECK_LENGTH) == 0)
+	{
+		SET_RESULT_INT32(Anum_result_lineno, lineno);
+		SET_RESULT_TEXT(Anum_result_statement, "DECLARE");
+	}
+
 	else
 	{
 		SET_RESULT_NULL(Anum_result_lineno);
@@ -4836,6 +4916,15 @@ tuplestore_put_error_text(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 			    plpgsql_stmt_typename(estate->err_stmt),
 				 message);
 	else if (strncmp(message, UNUSED_VARIABLE_TEXT, UNUSED_VARIABLE_TEXT_CHECK_LENGTH) == 0)
+	{
+		appendStringInfo(&sinfo, "%s:%s:%d:%s:%s",
+				 level_str,
+				 unpack_sql_state(sqlerrcode),
+				 lineno,
+				 "DECLARE",
+				 message);
+	}
+	else if (strncmp(message, NEVER_READ_VARIABLE_TEXT, NEVER_READ_VARIABLE_TEXT_CHECK_LENGTH) == 0)
 	{
 		appendStringInfo(&sinfo, "%s:%s:%d:%s:%s",
 				 level_str,
@@ -5236,4 +5325,3 @@ mark_as_checked(PLpgSQL_function *func)
 		hentry->is_checked = true;
 	}
 }
-

@@ -188,9 +188,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx2()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+              plpgsql_check_function               
+---------------------------------------------------
+ warning:00000:2:DECLARE:never read variable "_pa"
+(1 row)
 
 drop function fx2();
 create or replace function fx2()
@@ -202,9 +203,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx2()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+              plpgsql_check_function               
+---------------------------------------------------
+ warning:00000:2:DECLARE:never read variable "_pa"
+(1 row)
 
 drop function fx2();
 create type _exception_type as (
@@ -257,9 +259,10 @@ select f1();
 (1 row)
 
 select * from plpgsql_check_function_tb('f1()');
- functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
-(0 rows)
+ functionid | lineno | statement | sqlstate |             message              | detail | hint |  level  | position | query | context 
+------------+--------+-----------+----------+----------------------------------+--------+------+---------+----------+-------+---------
+ f1         |      3 | DECLARE   | 00000    | never read variable "_exception" |        |      | warning |          |       | 
+(1 row)
 
 drop function f1();
 drop type _exception_type;
