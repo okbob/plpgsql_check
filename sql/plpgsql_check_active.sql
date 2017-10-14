@@ -2003,3 +2003,16 @@ $$ language plpgsql;
 select * from plpgsql_check_function('a()');
 
 drop function a();
+
+-- issue #29 false unused variable
+create or replace function f1(in p_cursor refcursor) returns void as
+$body$
+declare
+  z_offset integer;
+begin
+  z_offset := 10;
+  move absolute z_offset from p_cursor;
+end;
+$body$ language 'plpgsql' stable;
+
+select * from plpgsql_check_function_tb('f1(refcursor)');

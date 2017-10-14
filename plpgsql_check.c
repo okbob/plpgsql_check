@@ -2646,6 +2646,8 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 						check_assignment(cstate, var->cursor_explicit_expr,
 									   stmt_fetch->rec, stmt_fetch->row, -1);
 
+					check_expr(cstate, stmt_fetch->expr);
+
 					cstate->used_variables = bms_add_member(cstate->used_variables, stmt_fetch->curvar);
 				}
 				break;
