@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	1.2.1
+Version:	1.2.2
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -49,6 +49,10 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/plpgsql_check.control
 
 %changelog
+* Thu Oct 26 2017 - Pavel STEHULE <pavel.stehule@gmail.com> 1.2.2-1
+- never read variables detection
+- fix false alarm on MOVE command
+
 * Fri Sep 15 2017 - Pavel STEHULE <pavel.stehule@gmail.com> 1.2.1-1
 - missing RETURN detection
 - fix some bugs and false alarms

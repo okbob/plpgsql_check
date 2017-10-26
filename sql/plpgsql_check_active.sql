@@ -2016,3 +2016,5 @@ end;
 $body$ language 'plpgsql' stable;
 
 select * from plpgsql_check_function_tb('f1(refcursor)');
+
+drop function f1(refcursor);
