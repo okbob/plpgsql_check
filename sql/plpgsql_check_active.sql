@@ -2018,3 +2018,16 @@ $body$ language 'plpgsql' stable;
 select * from plpgsql_check_function_tb('f1(refcursor)');
 
 drop function f1(refcursor);
+
+-- issue #30 segfault due NULL refname
+create or replace function test(a varchar)
+returns void as $$
+  declare x cursor (_a varchar) for select _a;
+begin
+  open x(a);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function_tb('test(varchar)');
+
+drop function test(varchar);

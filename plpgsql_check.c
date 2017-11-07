@@ -4,7 +4,7 @@
  *
  *			  enhanced checks for plpgsql functions
  *
- * by Pavel Stehule 2013-2016
+ * by Pavel Stehule 2013-2017
  *
  *-------------------------------------------------------------------------
  *
@@ -2893,6 +2893,8 @@ static bool
 is_internal(char *refname, int lineno)
 {
 	if (lineno <= 0)
+		return true;
+	if (refname == NULL)
 		return true;
 	if (strcmp(refname, "*internal*") == 0)
 		return true;

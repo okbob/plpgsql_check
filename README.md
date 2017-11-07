@@ -406,12 +406,13 @@ or compile by self:
   1. copy `plpgsql_check.dll` to `PostgreSQL\9.3\lib`
   2. copy `plpgsql_check.control` and `plpgsql_check--0.8.sql` to `PostgreSQL\9.3\share\extension`
 
-
 ## Checked on
 
 * gcc on Linux (against all supported PostgreSQL)
 * clang 3.4 on Linux (against PostgreSQL 9.5)
 * for success regress tests the PostgreSQL 9.3.10, 9.4.5, 9.5 or higher is required
+
+Compilation against PostgreSQL 10 requires libICU!
 
 # Licence
 

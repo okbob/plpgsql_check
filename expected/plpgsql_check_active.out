@@ -2614,3 +2614,17 @@ select * from plpgsql_check_function('a()');
 (1 row)
 
 drop function a();
+-- issue #30 segfault due NULL refname
+create or replace function test(a varchar)
+returns void as $$
+  declare x cursor (_a varchar) for select _a;
+begin
+  open x(a);
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function_tb('test(varchar)');
+ functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
+(0 rows)
+
+drop function test(varchar);
