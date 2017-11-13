@@ -1099,9 +1099,6 @@ $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
                                 plpgsql_check_function                                
 --------------------------------------------------------------------------------------
- warning:42804:5:assignment:target type is different type than source type
- Detail: cast "text" value to "integer" type
- Hint: The input expression type does not have an assignment cast to the target type.
  warning:42804:7:assignment:target type is different type than source type
  Detail: cast "text" value to "integer" type
  Hint: The input expression type does not have an assignment cast to the target type.
@@ -1118,7 +1115,7 @@ select * from plpgsql_check_function('f1()', performance_warnings := true);
  Detail: cast "text" value to "integer" type
  Hint: The input expression type does not have an assignment cast to the target type.
  warning:00000:3:DECLARE:never read variable "intval"
-(19 rows)
+(16 rows)
 
 drop function f1();
 create or replace function f1()
@@ -1153,12 +1150,9 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
-                                plpgsql_check_function                                
---------------------------------------------------------------------------------------
- warning:42804:3:RETURN:target type is different type than source type
- Detail: cast "text" value to "integer" type
- Hint: The input expression type does not have an assignment cast to the target type.
-(3 rows)
+ plpgsql_check_function 
+------------------------
+(0 rows)
 
 create or replace function f1()
 returns int as $$
@@ -1855,12 +1849,9 @@ select * from test_t();
 (1 row)
 
 select * from plpgsql_check_function('test_t()', performance_warnings := true);
-                                plpgsql_check_function                                
---------------------------------------------------------------------------------------
- warning:42804:3:assignment:target type is different type than source type
- Detail: cast "text" value to "integer" type
- Hint: The input expression type does not have an assignment cast to the target type.
-(3 rows)
+ plpgsql_check_function 
+------------------------
+(0 rows)
 
 create or replace function fx()
 returns void as $$
@@ -2644,3 +2635,17 @@ select * from plpgsql_check_function_tb('test(varchar)');
 (0 rows)
 
 drop function test(varchar);
+create or replace function test()
+returns void as $$
+declare x numeric;
+begin
+  x := NULL;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('test()');
+             plpgsql_check_function              
+-------------------------------------------------
+ warning:00000:2:DECLARE:never read variable "x"
+(1 row)
+
+drop function test();

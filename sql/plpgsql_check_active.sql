@@ -2031,3 +2031,15 @@ $$ language plpgsql;
 select * from plpgsql_check_function_tb('test(varchar)');
 
 drop function test(varchar);
+
+create or replace function test()
+returns void as $$
+declare x numeric;
+begin
+  x := NULL;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('test()');
+
+drop function test();
