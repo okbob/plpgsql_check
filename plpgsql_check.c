@@ -218,6 +218,15 @@ static void check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigt
 									  bool performance_warnings,
 									  bool extra_warnings);
 static void check_row_or_rec(PLpgSQL_checkstate *cstate, PLpgSQL_row *row, PLpgSQL_rec *rec);
+
+#if PG_VERSION_NUM >= 110000
+
+static void check_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var);
+static void check_assignment_to_variable(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
+				 PLpgSQL_variable *var, int targetdno);
+
+#endif
+
 static void check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **exceptions);
 static void check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **exceptions);
 static void check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *expected_typmod);
@@ -2139,11 +2148,23 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 					int		closing_local;
 					List   *exceptions_local;
 
+#if PG_VERSION_NUM >= 110000
+
+					check_variable(cstate, stmt_fors->var);
+
+					/* we need to set hidden variable type */
+					check_assignment_to_variable(cstate, stmt_fors->query,
+									 stmt_fors->var, -1);
+
+#else
+
 					check_row_or_rec(cstate, stmt_fors->row, stmt_fors->rec);
 
 					/* we need to set hidden variable type */
 					check_assignment(cstate, stmt_fors->query,
 									 stmt_fors->rec, stmt_fors->row, -1);
+
+#endif
 
 					check_stmts(cstate, stmt_fors->body, &closing_local, &exceptions_local);
 					*closing = possibly_closed(closing_local);
@@ -2157,13 +2178,31 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 					int		closing_local;
 					List   *exceptions_local;
 
+#if PG_VERSION_NUM >= 110000
+
+					check_variable(cstate, stmt_forc->var);
+
+#else
+
 					check_row_or_rec(cstate, stmt_forc->row, stmt_forc->rec);
 
+#endif
+
 					check_expr(cstate, stmt_forc->argquery);
+
+#if PG_VERSION_NUM >= 110000
+
+					if (var->cursor_explicit_expr != NULL)
+						check_assignment_to_variable(cstate, var->cursor_explicit_expr,
+										 stmt_forc->var, -1);
+
+#else
 
 					if (var->cursor_explicit_expr != NULL)
 						check_assignment(cstate, var->cursor_explicit_expr,
 										 stmt_forc->rec, stmt_forc->row, -1);
+
+#endif
 
 					check_stmts(cstate, stmt_forc->body, &closing_local, &exceptions_local);
 					*closing = possibly_closed(closing_local);
@@ -2179,7 +2218,15 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 					int		closing_local;
 					List   *exceptions_local;
 
+#if PG_VERSION_NUM >= 110000
+
+					check_variable(cstate, stmt_dynfors->var);
+
+#else
+
 					check_row_or_rec(cstate, stmt_dynfors->row, stmt_dynfors->rec);
+
+#endif
 
 					check_expr(cstate, stmt_dynfors->query);
 
@@ -2188,7 +2235,16 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 						check_expr(cstate, (PLpgSQL_expr *) lfirst(l));
 					}
 
+#if PG_VERSION_NUM >= 110000
+
+					if (stmt_dynfors->var->dtype == PLPGSQL_DTYPE_REC)
+
+#else
+
 					if (stmt_dynfors->rec != NULL)
+
+#endif
+
 					{
 						put_error(cstate,
 									  0, 0,
@@ -2557,9 +2613,21 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 
 					if (stmt_execsql->into)
 					{
+
+#if PG_VERSION_NUM >= 110000
+
+						check_variable(cstate, stmt_execsql->target);
+						check_assignment_to_variable(cstate, stmt_execsql->sqlstmt,
+													  stmt_execsql->target, -1);
+
+#else
+
 						check_row_or_rec(cstate, stmt_execsql->row, stmt_execsql->rec);
 						check_assignment(cstate, stmt_execsql->sqlstmt,
 								   stmt_execsql->rec, stmt_execsql->row, -1);
+
+#endif
+
 					}
 					else
 						/* only statement */
@@ -2580,9 +2648,21 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 
 					if (stmt_dynexecute->into)
 					{
+
+#if PG_VERSION_NUM >= 110000
+
+						check_variable(cstate, stmt_dynexecute->target);
+
+						if (stmt_dynexecute->target->dtype == PLPGSQL_DTYPE_REC)
+
+#else
+
 						check_row_or_rec(cstate, stmt_dynexecute->row, stmt_dynexecute->rec);
 
 						if (stmt_dynexecute->rec != NULL)
+
+#endif
+
 						{
 							put_error(cstate,
 										  0, 0,
@@ -2640,11 +2720,23 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 					PLpgSQL_stmt_fetch *stmt_fetch = (PLpgSQL_stmt_fetch *) stmt;
 					PLpgSQL_var *var = (PLpgSQL_var *) (cstate->estate->datums[stmt_fetch->curvar]);
 
+#if PG_VERSION_NUM >= 110000
+
+					check_variable(cstate, stmt_fetch->target);
+
+					if (var != NULL && var->cursor_explicit_expr != NULL)
+						check_assignment_to_variable(cstate, var->cursor_explicit_expr,
+									   stmt_fetch->target, -1);
+
+#else
+
 					check_row_or_rec(cstate, stmt_fetch->row, stmt_fetch->rec);
 
 					if (var != NULL && var->cursor_explicit_expr != NULL)
 						check_assignment(cstate, var->cursor_explicit_expr,
 									   stmt_fetch->rec, stmt_fetch->row, -1);
+
+#endif
 
 					check_expr(cstate, stmt_fetch->expr);
 
@@ -3224,6 +3316,31 @@ check_assignment(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 						  is_expression);
 }
 
+#if PG_VERSION_NUM >= 110000
+
+static void
+check_assignment_to_variable(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
+				 PLpgSQL_variable *targetvar, int targetdno)
+{
+	if (targetvar != NULL)
+	{
+		if (targetvar->dtype == PLPGSQL_DTYPE_ROW)
+			check_expr_as_rvalue(cstate, expr, NULL, (PLpgSQL_row *) targetvar, targetdno,
+								  false, false);
+		else if (targetvar->dtype == PLPGSQL_DTYPE_REC)
+			check_expr_as_rvalue(cstate, expr, (PLpgSQL_rec *) targetvar, NULL, targetdno,
+								  false, false);
+		else
+			elog(ERROR, "unsupported target variable type");
+	}
+	else
+	{
+		check_expr_as_rvalue(cstate, expr, NULL, NULL, targetdno, false, true);
+	}
+}
+
+#endif
+
 /*
  * Verify an assignment of 'expr' to 'target' with possible slices
  *
@@ -3634,6 +3751,51 @@ check_expr_as_sqlstmt_nodata(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 	}
 	PG_END_TRY();
 }
+
+#if PG_VERSION_NUM >= 110000
+
+static void
+check_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var)
+{
+	/* leave quickly when var is not defined */
+	if (var == NULL)
+		return;
+
+	if (var->dtype == PLPGSQL_DTYPE_ROW)
+	{
+		PLpgSQL_row *row = (PLpgSQL_row *) var;
+		int		fnum;
+
+		for (fnum = 0; fnum < row->nfields; fnum++)
+		{
+			/* skip dropped columns */
+			if (row->varnos[fnum] < 0)
+				continue;
+
+			check_target(cstate, row->varnos[fnum], NULL, NULL);
+		}
+		record_variable_usage(cstate, row->dno, true);
+
+		return;
+	}
+
+	if (var->dtype == PLPGSQL_DTYPE_REC)
+	{
+		PLpgSQL_rec *rec = (PLpgSQL_rec *) var;
+
+		/*
+		 * There are no checks done on records currently; just record that the
+		 * variable is not unused.
+		 */
+		record_variable_usage(cstate, rec->dno, true);
+
+		return;
+	}
+
+	elog(ERROR, "unsupported dtype %d", var->dtype);
+}
+
+#endif
 
 /*
  * Check composed lvalue There is nothing to check on rec variables
