@@ -1572,11 +1572,21 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 
 	cstate->sinfo = NULL;
 
+#if PG_VERSION_NUM >= 110000
+
+	cstate->check_cxt = AllocSetContextCreate(CurrentMemoryContext,
+										 "plpgsql_check temporary cxt",
+										   ALLOCSET_DEFAULT_SIZES);
+
+#else
+
 	cstate->check_cxt = AllocSetContextCreate(CurrentMemoryContext,
 										 "plpgsql_check temporary cxt",
 										   ALLOCSET_DEFAULT_MINSIZE,
 										   ALLOCSET_DEFAULT_INITSIZE,
 										   ALLOCSET_DEFAULT_MAXSIZE);
+
+#endif
 
 	cstate->found_return_query = false;
 }
