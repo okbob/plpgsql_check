@@ -41,6 +41,12 @@
 
 #endif
 
+#if PG_VERSION_NUM >= 110000
+
+#include "utils/expandedrecord.h"
+
+#endif
+
 #if PG_VERSION_NUM >= 100000
 
 #include "utils/regproc.h"
@@ -225,6 +231,13 @@ static void check_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var);
 static void check_assignment_to_variable(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 				 PLpgSQL_variable *var, int targetdno);
 
+#define get_eval_mcontext(estate) \
+	((estate)->eval_econtext->ecxt_per_tuple_memory)
+#define eval_mcontext_alloc(estate, sz) \
+	MemoryContextAlloc(get_eval_mcontext(estate), sz)
+#define eval_mcontext_alloc0(estate, sz) \
+	MemoryContextAllocZero(get_eval_mcontext(estate), sz)
+
 #endif
 
 static void check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **exceptions);
@@ -332,6 +345,20 @@ static const struct config_enum_entry plpgsql_check_mode_options[] = {
 	{NULL, 0, false}
 };
 
+#if PG_VERSION_NUM >= 110000
+
+#define recvar_tuple(rec)		(rec->erh ? expanded_record_get_tuple(rec->erh) : NULL)
+#define recvar_tupdesc(rec)		(rec->erh ? expanded_record_fetch_tupdesc(rec->erh) : NULL)
+
+#else
+
+#define recvar_tuple(rec)		(rec->tup)
+#define recvar_tupdesc(rec)		(rec->tupdesc)
+
+#endif
+
+
+
 /* ----------
  * Hash table for checked functions
  * ----------
@@ -417,6 +444,145 @@ _PG_init(void)
 }
 
 /*
+ * recval_init
+ *
+ *      initialize PLpgSQL_rec variable to NULL value. This function is necessary
+ *      to minimize differences between PostgreSQL 11 and older.
+ */
+static void
+recval_init(PLpgSQL_rec *rec)
+{
+	Assert(rec->dtype == PLPGSQL_DTYPE_REC);
+
+#if PG_VERSION_NUM >= 110000
+
+	rec->erh = NULL;
+
+#else
+
+	rec->tup = NULL;
+	rec->freetup = false;
+	rec->freetupdesc = false;
+
+#endif
+}
+
+static void
+recval_release(PLpgSQL_rec *rec)
+{
+
+#if PG_VERSION_NUM >= 110000
+
+	Assert(rec->dtype == PLPGSQL_DTYPE_REC);
+
+	if (rec->erh)
+		DeleteExpandedObject(ExpandedRecordGetDatum(rec->erh));
+	rec->erh = NULL;
+
+#else
+
+	if (rec->freetup)
+		heap_freetuple(rec->tup);
+
+	if (rec->freetupdesc)
+		FreeTupleDesc(rec->tupdesc);
+
+	rec->freetup = false;
+	rec->freetupdesc = false;
+
+#endif
+
+}
+
+
+static void
+recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec, TupleDesc tupdesc)
+{
+
+
+#if PG_VERSION_NUM >= 110000
+
+	PLpgSQL_execstate	   *estate = cstate->estate;
+	ExpandedRecordHeader   *newerh;
+	MemoryContext			mcontext = get_eval_mcontext(estate);
+	TupleDesc	var_tupdesc;
+	Datum	   *newvalues;
+	bool	   *newnulls;
+	char	   *chunk;
+	int			vtd_natts;
+	int			i;
+
+	recval_release(rec);
+
+	/*
+	 * code is reduced version of make_expanded_record_for_rec
+	 */
+	if (rec->rectypeid != RECORDOID)
+	{
+		newerh = make_expanded_record_from_typeid(rec->rectypeid, -1,
+													  mcontext);
+	}
+	else
+	{
+		if (!tupdesc)
+			return;
+
+		newerh = make_expanded_record_from_tupdesc(tupdesc,
+													   mcontext);
+	}
+
+	/*
+	 * code is reduced version of exec_move_row_from_field
+	 */
+	var_tupdesc = expanded_record_get_tupdesc(newerh);
+	vtd_natts = var_tupdesc->natts;
+
+	chunk = eval_mcontext_alloc(estate,
+								vtd_natts * (sizeof(Datum) + sizeof(bool)));
+	newvalues = (Datum *) chunk;
+	newnulls = (bool *) (chunk + vtd_natts * sizeof(Datum));
+
+	for (i = 0; i < vtd_natts; i++)
+	{
+		newvalues[i] = (Datum) 0;
+		newnulls[i] = true;
+	}
+
+	expanded_record_set_fields(newerh, newvalues, newnulls);
+
+	TransferExpandedRecord(newerh, estate->datum_context);
+	rec->erh = newerh;
+
+#else
+
+	bool	   *nulls;
+	HeapTuple	tup;
+
+	recval_release(rec);
+
+	/* initialize rec by NULLs */
+	nulls = (bool *) palloc(tupdesc->natts * sizeof(bool));
+	memset(nulls, true, tupdesc->natts * sizeof(bool));
+
+	rec->tupdesc = CreateTupleDescCopy(tupdesc);
+	rec->freetupdesc = true;
+
+	tup = heap_form_tuple(tupdesc, NULL, nulls);
+	if (HeapTupleIsValid(tup))
+	{
+		rec->tup = tup;
+		rec->freetup = true;
+	}
+	else
+		elog(ERROR, "cannot to build valid composite value");
+
+#endif
+
+}
+
+
+
+/*
  * plpgsql_check_func_beg 
  *
  *      callback function - called by plgsql executor, when function is started
@@ -481,6 +647,17 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 			{
 				PLpgSQL_rec *rec = (PLpgSQL_rec *) estate->datums[i];
 
+#if PG_VERSION_NUM >= 110000
+
+				if (rec->erh)
+					expanded_record_set_tuple(saved_records[i].erh,
+											  expanded_record_get_tuple(rec->erh),
+											  true);
+				else
+					saved_records[i].erh = NULL;
+
+#else
+
 				saved_records[i].tup = rec->tup;
 				saved_records[i].tupdesc = rec->tupdesc;
 				saved_records[i].freetup = rec->freetup;
@@ -489,6 +666,9 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 				/* don't release a original tupdesc and original tup */
 				rec->freetup = false;
 				rec->freetupdesc = false;
+
+#endif
+
 			}
 			else if (estate->datums[i]->dtype == PLPGSQL_DTYPE_VAR)
 			{
@@ -559,6 +739,14 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 			{
 				PLpgSQL_rec *rec = (PLpgSQL_rec *) estate->datums[i];
 
+#if PG_VERSION_NUM >= 110000
+
+				expanded_record_set_tuple(rec->erh,
+										  expanded_record_get_tuple(saved_records[i].erh),
+										  false);
+
+#else
+
 				if (rec->freetupdesc)
 					FreeTupleDesc(rec->tupdesc);
 
@@ -566,6 +754,9 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 				rec->tupdesc = saved_records[i].tupdesc;
 				rec->freetup = saved_records[i].freetup;
 				rec->freetupdesc = saved_records[i].freetupdesc;
+
+#endif
+
 			}
 			else if (estate->datums[i]->dtype == PLPGSQL_DTYPE_VAR)
 			{
@@ -1290,6 +1481,28 @@ trigger_check(PLpgSQL_function *func, Node *tdata,
 		 * NEW.foo = 'xyz')", which should parse regardless of the current
 		 * trigger type.
 		 */
+#if PG_VERSION_NUM >= 110000
+
+
+		/*
+		 * find all PROMISE VARIABLES and initit their
+		 */
+		for (i = 0; i < func->ndatums; i++)
+		{
+			PLpgSQL_datum *datum = func->datums[i];
+
+			if (datum->dtype == PLPGSQL_DTYPE_PROMISE)
+				init_datum_dno(cstate, datum->dno);
+		}
+
+		rec_new = (PLpgSQL_rec *) (cstate->estate->datums[func->new_varno]);
+		recval_assign_tupdesc(cstate, rec_new, trigdata->tg_relation->rd_att);
+		rec_old = (PLpgSQL_rec *) (cstate->estate->datums[func->old_varno]);
+		recval_assign_tupdesc(cstate, rec_old, trigdata->tg_relation->rd_att);
+	}
+
+#else
+
 		rec_new = (PLpgSQL_rec *) (cstate->estate->datums[func->new_varno]);
 		rec_new->freetup = false;
 		rec_new->freetupdesc = false;
@@ -1322,6 +1535,8 @@ trigger_check(PLpgSQL_function *func, Node *tdata,
 		init_datum_dno(cstate, func->tg_event_varno);
 		init_datum_dno(cstate, func->tg_tag_varno);
 	}
+
+#endif
 
 #endif
 
@@ -1615,7 +1830,12 @@ setup_plpgsql_estate(PLpgSQL_execstate *estate,
 
 	estate->readonly_func = func->fn_readonly;
 
+#if PG_VERSION_NUM < 110000
+
 	estate->rettupdesc = NULL;
+
+#endif
+
 	estate->exitlabel = NULL;
 	estate->cur_error = NULL;
 
@@ -1625,8 +1845,18 @@ setup_plpgsql_estate(PLpgSQL_execstate *estate,
 		estate->tuple_store_cxt = rsi->econtext->ecxt_per_query_memory;
 		estate->tuple_store_owner = CurrentResourceOwner;
 
+#if PG_VERSION_NUM >= 110000
+
+		estate->tuple_store_desc = rsi->expectedDesc;
+
+#else
+
 		if (estate->retisset)
 			estate->rettupdesc = rsi->expectedDesc;
+
+#endif
+
+
 	}
 	else
 	{
@@ -1728,10 +1958,7 @@ copy_plpgsql_datum(PLpgSQL_datum *datum)
 
 				memcpy(new, datum, sizeof(PLpgSQL_rec));
 				/* Ensure the value is null (possibly not needed?) */
-				new->tup = NULL;
-				new->tupdesc = NULL;
-				new->freetup = false;
-				new->freetupdesc = false;
+				recval_init(new);
 
 				result = (PLpgSQL_datum *) new;
 			}
@@ -2360,12 +2587,12 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 								{
 									PLpgSQL_rec *rec = (PLpgSQL_rec *) retvar;
 
-									if (rec->tupdesc && estate->rsi && IsA(estate->rsi, ReturnSetInfo))
+									if (recvar_tupdesc(rec) && estate->rsi && IsA(estate->rsi, ReturnSetInfo))
 									{
 										TupleDesc	rettupdesc = estate->rsi->expectedDesc;
 										TupleConversionMap *tupmap ;
 
-										tupmap = convert_tuples_by_position(rec->tupdesc, rettupdesc,
+										tupmap = convert_tuples_by_position(recvar_tupdesc(rec), rettupdesc,
 											 gettext_noop("returned record type does not match expected record type"));
 
 										if (tupmap)
@@ -2422,9 +2649,18 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 									(errcode(ERRCODE_SYNTAX_ERROR),
 									 errmsg("cannot use RETURN NEXT in a non-SETOF function")));
 
+#if PG_VERSION_NUM >= 110000
+
+						tupdesc = estate->tuple_store_desc;
+
+#else
+
 						tupdesc = estate->rettupdesc;
+
+#endif
+
 						natts = tupdesc ? tupdesc->natts : 0;
-	
+
 						switch (retvar->dtype)
 						{
 							case PLPGSQL_DTYPE_VAR:
@@ -2447,7 +2683,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 									PLpgSQL_rec *rec = (PLpgSQL_rec *) retvar;
 									TupleConversionMap *tupmap;
 
-									if (!HeapTupleIsValid(rec->tup))
+									if (!HeapTupleIsValid(recvar_tuple(rec)))
 										ereport(ERROR,
 												  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 												   errmsg("record \"%s\" is not assigned yet",
@@ -2457,7 +2693,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 
 									if (tupdesc)
 									{
-										tupmap = convert_tuples_by_position(rec->tupdesc,
+										tupmap = convert_tuples_by_position(recvar_tupdesc(rec),
 																tupdesc,
 											gettext_noop("wrong record type supplied in RETURN NEXT"));
 										if (tupmap)
@@ -3867,12 +4103,12 @@ check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *e
 			{
 				PLpgSQL_rec *rec = (PLpgSQL_rec *) target;
 
-				if (rec->tupdesc != NULL)
+				if (recvar_tupdesc(rec) != NULL)
 				{
 					if (expected_typoid != NULL)
-						*expected_typoid = rec->tupdesc->tdtypeid;
+						*expected_typoid = recvar_tupdesc(rec)->tdtypeid;
 					if (expected_typmod != NULL)
-						*expected_typmod = rec->tupdesc->tdtypmod;
+						*expected_typmod = recvar_tupdesc(rec)->tdtypmod;
 				}
 				else
 				{
@@ -3921,7 +4157,7 @@ check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *e
 				 * that because records don't have any predefined field
 				 * structure.
 				 */
-				if (!HeapTupleIsValid(rec->tup))
+				if (!HeapTupleIsValid(recvar_tuple(rec)))
 					ereport(ERROR,
 						  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					errmsg("record \"%s\" is not assigned to tuple structure",
@@ -3932,7 +4168,7 @@ check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *e
 				 * number of attributes in the tuple.  Note: disallow system
 				 * column names because the code below won't cope.
 				 */
-				fno = SPI_fnumber(rec->tupdesc, recfield->fieldname);
+				fno = SPI_fnumber(recvar_tupdesc(rec), recfield->fieldname);
 				if (fno <= 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_UNDEFINED_COLUMN),
@@ -3940,10 +4176,10 @@ check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *e
 									rec->refname, recfield->fieldname)));
 
 				if (expected_typoid)
-					*expected_typoid = SPI_gettypeid(rec->tupdesc, fno);
+					*expected_typoid = SPI_gettypeid(recvar_tupdesc(rec), fno);
 
 				if (expected_typmod)
-					*expected_typmod = TupleDescAttr(rec->tupdesc, fno - 1)->atttypmod;
+					*expected_typmod = TupleDescAttr(recvar_tupdesc(rec), fno - 1)->atttypmod;
 			}
 			break;
 
@@ -4208,22 +4444,21 @@ assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, boo
 				{
 					PLpgSQL_rec rec;
 
-					rec.tup = NULL;
-					rec.freetup = false;
-					rec.freetupdesc = false;
+					recval_init(&rec);
 
 					PG_TRY();
 					{
-						rec.tupdesc = lookup_rowtype_tupdesc_noerror(expected_typoid, expected_typmod, true);
-						assign_tupdesc_row_or_rec(cstate, NULL, &rec, tupdesc, isnull);
+						recval_assign_tupdesc(cstate, &rec,
+											  lookup_rowtype_tupdesc_noerror(expected_typoid,
+																			 expected_typmod,
+																			 true));
 
-						if (rec.tupdesc)
-							ReleaseTupleDesc(rec.tupdesc);
+						assign_tupdesc_row_or_rec(cstate, NULL, &rec, tupdesc, isnull);
+						recval_release(&rec);
 					}
 					PG_CATCH();
 					{
-						if (rec.tupdesc)
-							ReleaseTupleDesc(rec.tupdesc);
+						recval_release(&rec);
 
 						PG_RE_THROW();
 					}
@@ -4252,9 +4487,6 @@ assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 						  PLpgSQL_row *row, PLpgSQL_rec *rec,
 						  TupleDesc tupdesc, bool isnull)
 {
-	bool	   *nulls;
-	HeapTuple	tup;
-
 	if (tupdesc == NULL)
 	{
 		put_error(cstate,
@@ -4272,27 +4504,8 @@ assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 	{
 		PLpgSQL_rec *target = (PLpgSQL_rec *) (cstate->estate->datums[rec->dno]);
 
-		if (target->freetup)
-			heap_freetuple(target->tup);
-
-		if (rec->freetupdesc)
-			FreeTupleDesc(target->tupdesc);
-
-		/* initialize rec by NULLs */
-		nulls = (bool *) palloc(tupdesc->natts * sizeof(bool));
-		memset(nulls, true, tupdesc->natts * sizeof(bool));
-
-		target->tupdesc = CreateTupleDescCopy(tupdesc);
-		target->freetupdesc = true;
-
-		tup = heap_form_tuple(tupdesc, NULL, nulls);
-		if (HeapTupleIsValid(tup))
-		{
-			target->tup = tup;
-			target->freetup = true;
-		}
-		else
-			elog(ERROR, "cannot to build valid composite value");
+		recval_release(target);
+		recval_assign_tupdesc(cstate, target, tupdesc);
 	}
 
 	else if (row != NULL && tupdesc != NULL)
