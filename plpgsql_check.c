@@ -504,7 +504,7 @@ recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec, TupleDesc tu
 
 	PLpgSQL_execstate	   *estate = cstate->estate;
 	ExpandedRecordHeader   *newerh;
-	MemoryContext			mcontext = get_eval_mcontext(estate);
+	MemoryContext			mcontext;
 	TupleDesc	var_tupdesc;
 	Datum	   *newvalues;
 	bool	   *newnulls;
@@ -512,6 +512,7 @@ recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec, TupleDesc tu
 	int			vtd_natts;
 	int			i;
 
+	mcontext = get_eval_mcontext(estate);
 	recval_release(rec);
 
 	/*
@@ -1833,6 +1834,15 @@ setup_plpgsql_estate(PLpgSQL_execstate *estate,
 #if PG_VERSION_NUM < 110000
 
 	estate->rettupdesc = NULL;
+	estate->eval_econtext = NULL;
+
+#else
+
+	estate->eval_econtext = makeNode(ExprContext);
+	estate->eval_econtext->ecxt_per_tuple_memory = AllocSetContextCreate(CurrentMemoryContext,
+													"ExprContext",
+													ALLOCSET_DEFAULT_SIZES);
+	estate->datum_context = CurrentMemoryContext;
 
 #endif
 
@@ -1873,7 +1883,6 @@ setup_plpgsql_estate(PLpgSQL_execstate *estate,
 	estate->eval_tuptable = NULL;
 	estate->eval_processed = 0;
 	estate->eval_lastoid = InvalidOid;
-	estate->eval_econtext = NULL;
 
 #if PG_VERSION_NUM < 90500
 
@@ -1897,6 +1906,7 @@ init_datum_dno(PLpgSQL_checkstate *cstate, int dno)
 {
 	switch (cstate->estate->datums[dno]->dtype)
 	{
+		case PLPGSQL_DTYPE_PROMISE:
 		case PLPGSQL_DTYPE_VAR:
 			{
 				PLpgSQL_var *var = (PLpgSQL_var *) cstate->estate->datums[dno];
@@ -1939,6 +1949,7 @@ copy_plpgsql_datum(PLpgSQL_datum *datum)
 	switch (datum->dtype)
 	{
 		case PLPGSQL_DTYPE_VAR:
+		case PLPGSQL_DTYPE_PROMISE:
 			{
 				PLpgSQL_var *new = palloc(sizeof(PLpgSQL_var));
 
