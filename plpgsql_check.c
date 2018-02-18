@@ -4,7 +4,7 @@
  *
  *			  enhanced checks for plpgsql functions
  *
- * by Pavel Stehule 2013-2017
+ * by Pavel Stehule 2013-2018
  *
  *-------------------------------------------------------------------------
  *
@@ -5878,4 +5878,3 @@ mark_as_checked(PLpgSQL_function *func)
 		hentry->is_checked = true;
 	}
 }
-
