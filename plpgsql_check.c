@@ -328,7 +328,12 @@ static int merge_closing(int c, int c_local, List **exceptions, List *exceptions
 static int possibly_closed(int c);
 static char *ExprGetString(PLpgSQL_expr *query, bool *IsConst);
 static bool exception_matches_conditions(int err_code, PLpgSQL_condition *cond);
+
+#if PG_VERSION_NUM >= 110000
+
 static bool compatible_tupdescs(TupleDesc src_tupdesc, TupleDesc dst_tupdesc);
+
+#endif
 
 static bool plpgsql_check_other_warnings = false;
 static bool plpgsql_check_extra_warnings = false;
@@ -636,6 +641,9 @@ recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec, TupleDesc tu
 	HeapTuple	tup;
 
 	recval_release(rec);
+
+	if (!tupdesc)
+		return;
 
 	/* initialize rec by NULLs */
 	nulls = (bool *) palloc(tupdesc->natts * sizeof(bool));
@@ -1989,7 +1997,13 @@ init_datum_dno(PLpgSQL_checkstate *cstate, int dno)
 {
 	switch (cstate->estate->datums[dno]->dtype)
 	{
+
+#if PG_VERSION_NUM >= 110000
+
 		case PLPGSQL_DTYPE_PROMISE:
+
+#endif
+
 		case PLPGSQL_DTYPE_VAR:
 			{
 				PLpgSQL_var *var = (PLpgSQL_var *) cstate->estate->datums[dno];
@@ -2045,7 +2059,13 @@ copy_plpgsql_datum(PLpgSQL_checkstate *cstate, PLpgSQL_datum *datum)
 	switch (datum->dtype)
 	{
 		case PLPGSQL_DTYPE_VAR:
+
+#if PG_VERSION_NUM >= 110000
+
 		case PLPGSQL_DTYPE_PROMISE:
+
+#endif
+
 			{
 				PLpgSQL_var *new = palloc(sizeof(PLpgSQL_var));
 
@@ -4225,6 +4245,8 @@ check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *e
 			{
 				PLpgSQL_rec *rec = (PLpgSQL_rec *) target;
 
+#if PG_VERSION_NUM >= 110000
+
 				if (rec->rectypeid != RECORDOID)
 				{
 					if (expected_typoid != NULL)
@@ -4232,7 +4254,11 @@ check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *e
 					if (expected_typmod != NULL)
 						*expected_typmod = -1;
 				}
-				else if (recvar_tupdesc(rec) != NULL)
+				else
+
+#endif
+
+				if (recvar_tupdesc(rec) != NULL)
 				{
 					if (expected_typoid != NULL)
 						*expected_typoid = recvar_tupdesc(rec)->tdtypeid;
@@ -4777,6 +4803,8 @@ ExprGetConst(PLpgSQL_expr *query, bool *IsConst)
 	return result;
 }
 
+#if PG_VERSION_NUM >= 110000
+
 /*
  * compatible_tupdescs: detect whether two tupdescs are physically compatible
  *
@@ -4817,6 +4845,8 @@ compatible_tupdescs(TupleDesc src_tupdesc, TupleDesc dst_tupdesc)
 	}
 	return true;
 }
+
+#endif
 
 /*
  * Returns true for entered NULL constant

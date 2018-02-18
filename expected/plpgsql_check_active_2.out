@@ -2611,6 +2611,22 @@ select * from plpgsql_check_function('a()');
 (1 row)
 
 drop function a();
+-- issue #29 false unused variable
+create or replace function f1(in p_cursor refcursor) returns void as
+$body$
+declare
+  z_offset integer;
+begin
+  z_offset := 10;
+  move absolute z_offset from p_cursor;
+end;
+$body$ language 'plpgsql' stable;
+select * from plpgsql_check_function_tb('f1(refcursor)');
+ functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
+(0 rows)
+
+drop function f1(refcursor);
 -- issue #30 segfault due NULL refname
 create or replace function test(a varchar)
 returns void as $$
@@ -2625,3 +2641,17 @@ select * from plpgsql_check_function_tb('test(varchar)');
 (0 rows)
 
 drop function test(varchar);
+create or replace function test()
+returns void as $$
+declare x numeric;
+begin
+  x := NULL;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('test()');
+             plpgsql_check_function              
+-------------------------------------------------
+ warning:00000:2:DECLARE:never read variable "x"
+(1 row)
+
+drop function test();
