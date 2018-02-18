@@ -53,30 +53,7 @@
 
 #endif
 
-
-#if PG_VERSION_NUM >= 90300
-
 #include "access/htup_details.h"
-
-#else
-
-/* Older version doesn't support event triggers */
-
-#ifdef _MSC_VER
-typedef struct {char nothing[0];}  EventTriggerData;
-#else
-typedef struct {}  EventTriggerData;
-#endif
-
-typedef enum PLpgSQL_trigtype
-{
-	PLPGSQL_DML_TRIGGER,
-	PLPGSQL_EVENT_TRIGGER,
-	PLPGSQL_NOT_TRIGGER
-} PLpgSQL_trigtype;
-
-#endif
-
 #include "access/tupconvert.h"
 #include "access/tupdesc.h"
 
@@ -1213,14 +1190,8 @@ get_trigtype(HeapTuple procTuple)
 		if (proc->prorettype == TRIGGEROID ||
 			(proc->prorettype == OPAQUEOID && proc->pronargs == 0))
 			return PLPGSQL_DML_TRIGGER;
-
-#if PG_VERSION_NUM >= 90300
-
 		else if (proc->prorettype == EVTTRIGGEROID)
 			return PLPGSQL_EVENT_TRIGGER;
-
-#endif
-
 		else if (proc->prorettype != RECORDOID &&
 				 proc->prorettype != VOIDOID &&
 				 !IsPolymorphicType(proc->prorettype))
@@ -1379,22 +1350,7 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 
 			/* recheck trigtype */
 
-#if PG_VERSION_NUM >= 90300
-
 			Assert(function->fn_is_trigger == trigtype);
-
-#else
-
-#ifdef USE_ASSERT_CHECKING
-
-			if (function->fn_is_trigger)
-				Assert(trigtype == PLPGSQL_DML_TRIGGER);
-			else
-				Assert(trigtype == PLPGSQL_NOT_TRIGGER);
-
-#endif
-
-#endif
 
 			setup_plpgsql_estate(&estate, function, (ReturnSetInfo *) fake_fcinfo.resultinfo);
 			cstate.estate = &estate;
@@ -1615,9 +1571,6 @@ trigger_check(PLpgSQL_function *func, Node *tdata,
 #endif
 
 	}
-
-#if PG_VERSION_NUM >= 90300
-
 	else if (IsA(tdata, EventTriggerData))
 	{
 
@@ -1629,9 +1582,6 @@ trigger_check(PLpgSQL_function *func, Node *tdata,
 #endif
 
 	}
-
-#endif
-
 	else
 		elog(ERROR, "unexpected environment");
 
@@ -1779,17 +1729,12 @@ setup_fake_fcinfo(HeapTuple procTuple,
 		if (OidIsValid(relid))
 			trigdata->tg_relation = relation_open(relid, AccessShareLock);
 	}
-
-#if PG_VERSION_NUM >= 90300
-
 	else if (trigtype == PLPGSQL_EVENT_TRIGGER)
 	{
 		MemSet(etrigdata, 0, sizeof(etrigdata));
 		etrigdata->type = T_EventTriggerData;
 		fcinfo->context = (Node *) etrigdata;
 	}
-
-#endif
 
 	/* 
 	 * prepare ReturnSetInfo
