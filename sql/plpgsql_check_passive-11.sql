@@ -27,3 +27,14 @@ select f1();
 
 drop function f1();
 drop type _exception_type;
+
+create or replace procedure proc_test()
+as $$
+begin
+  commit;
+end;
+$$ language plpgsql;
+
+call proc_test();
+
+drop procedure proc_test();

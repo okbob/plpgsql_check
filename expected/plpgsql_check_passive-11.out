@@ -24,3 +24,11 @@ ERROR:  record "_exception" has no field "hint"
 CONTEXT:  PL/pgSQL function f1() line 7 at GET STACKED DIAGNOSTICS
 drop function f1();
 drop type _exception_type;
+create or replace procedure proc_test()
+as $$
+begin
+  commit;
+end;
+$$ language plpgsql;
+call proc_test();
+drop procedure proc_test();
