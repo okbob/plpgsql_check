@@ -31,4 +31,6 @@ begin
 end;
 $$ language plpgsql;
 call proc_test();
+ERROR:  invalid transaction termination
+CONTEXT:  PL/pgSQL function proc_test() line 3 at COMMIT
 drop procedure proc_test();
