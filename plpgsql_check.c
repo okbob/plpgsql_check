@@ -3085,9 +3085,20 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 			case PLPGSQL_STMT_CALL:
 				{
 					PLpgSQL_stmt_call *stmt_call = (PLpgSQL_stmt_call *) stmt;
+					PLpgSQL_row *target;
 
 					check_expr(cstate, stmt_call->expr);
-					CallExprGetRowTarget(cstate, stmt_call->expr);
+					target = CallExprGetRowTarget(cstate, stmt_call->expr);
+
+					if (target != NULL)
+					{
+						check_variable(cstate, (PLpgSQL_variable *) target);
+						check_assignment_to_variable(cstate, stmt_call->expr,
+																(PLpgSQL_variable *) target, -1);
+
+						pfree(target->varnos);
+						pfree(target);
+					}
 				}
 				break;
 
@@ -4833,6 +4844,7 @@ CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr)
 		char	   *argmodes;
 		ListCell   *lc;
 		int			i;
+		int			nfields = 0;
 
 		if (plan == NULL || plan->magic != _SPI_PLAN_MAGIC)
 			elog(ERROR, "cached plan is not valid plan");
@@ -4858,13 +4870,17 @@ CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr)
 
 		get_func_arg_info(tuple, &argtypes, &argnames, &argmodes);
 
+		result = palloc0(sizeof(PLpgSQL_row));
+		result->dtype = PLPGSQL_DTYPE_ROW;
+		result->lineno = 0;
+		result->varnos = palloc(sizeof(int) * FUNC_MAX_ARGS);
+
 		/*
 		 * Construct row
 		 */
 		i = 0;
 		foreach (lc, funcexpr->args)
 		{
-			PLpgSQL_datum *target;
 			Node *n = lfirst(lc);
 
 			if (argmodes && argmodes[i] == PROARGMODE_INOUT)
@@ -4877,13 +4893,12 @@ CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr)
 							 errmsg("argument %d is an output argument but is not writable", i + 1)));
 
 				param = castNode(Param, n);
-				target = cstate->estate->datums[param->paramid - 1];
-
-				/* check target - can be enhanced about type check */
-				check_target(cstate, target->dno, NULL, NULL);
+				result->varnos[nfields++] = param->paramid - 1;
 			}
 			i++;
 		}
+
+		result->nfields = nfields;
 
 		ReleaseSysCache(tuple);
 	}
