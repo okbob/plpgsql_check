@@ -309,6 +309,7 @@ static bool exception_matches_conditions(int err_code, PLpgSQL_condition *cond);
 #if PG_VERSION_NUM >= 110000
 
 static bool compatible_tupdescs(TupleDesc src_tupdesc, TupleDesc dst_tupdesc);
+static PLpgSQL_row *CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr);
 
 #endif
 
@@ -3086,6 +3087,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 					PLpgSQL_stmt_call *stmt_call = (PLpgSQL_stmt_call *) stmt;
 
 					check_expr(cstate, stmt_call->expr);
+					CallExprGetRowTarget(cstate, stmt_call->expr);
 				}
 				break;
 
@@ -4811,6 +4813,88 @@ compatible_tupdescs(TupleDesc src_tupdesc, TupleDesc dst_tupdesc)
 	}
 	return true;
 }
+
+/*
+ * Try to calculate row target from used INOUT variables
+ */
+static PLpgSQL_row *
+CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr)
+{
+	Node	   *node;
+	FuncExpr   *funcexpr;
+	PLpgSQL_row *result = NULL;
+
+	if (CallExpr->plan != NULL)
+	{
+		SPIPlanPtr	plan = CallExpr->plan;
+		HeapTuple		tuple;
+		Oid		   *argtypes;
+		char	  **argnames;
+		char	   *argmodes;
+		ListCell   *lc;
+		int			i;
+
+		if (plan == NULL || plan->magic != _SPI_PLAN_MAGIC)
+			elog(ERROR, "cached plan is not valid plan");
+
+		if (list_length(plan->plancache_list) != 1)
+			elog(ERROR, "plan is not single execution plan");
+
+		/*
+		 * Get the original CallStmt
+		 */
+		node = linitial_node(Query, ((CachedPlanSource *) linitial(plan->plancache_list))->query_list)->utilityStmt;
+		if (!IsA(node, CallStmt))
+			elog(ERROR, "returned row from not a CallStmt");
+
+		funcexpr = castNode(CallStmt, node)->funcexpr;
+
+		/*
+		 * Get the argument modes
+		 */
+		tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcexpr->funcid));
+		if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for function %u", funcexpr->funcid);
+
+		get_func_arg_info(tuple, &argtypes, &argnames, &argmodes);
+
+		/*
+		 * Construct row
+		 */
+		i = 0;
+		foreach (lc, funcexpr->args)
+		{
+			PLpgSQL_datum *target;
+			Node *n = lfirst(lc);
+
+			if (argmodes && argmodes[i] == PROARGMODE_INOUT)
+			{
+				Param	   *param;
+
+				if (!IsA(n, Param))
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("argument %d is an output argument but is not writable", i + 1)));
+
+				param = castNode(Param, n);
+				target = cstate->estate->datums[param->paramid - 1];
+
+				/* check target - can be enhanced about type check */
+				check_target(cstate, target->dno, NULL, NULL);
+			}
+			i++;
+		}
+
+		ReleaseSysCache(tuple);
+	}
+	else
+		elog(ERROR, "there are no plan for query: \"%s\"",
+			 CallExpr->query);
+
+	return result;
+}
+
+
 
 #endif
 

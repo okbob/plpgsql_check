@@ -322,3 +322,98 @@ select * from plpgsql_check_function('testproc()');
 ------------------------
 (0 rows)
 
+-- should to fail
+create or replace procedure testproc()
+as $$
+begin
+  call proc((select count(*) from pg_class));
+end;
+$$ language plpgsql;
+call testproc();
+ERROR:  cannot use subquery in CALL argument
+LINE 1: CALL proc((select count(*) from pg_class))
+                  ^
+QUERY:  CALL proc((select count(*) from pg_class))
+CONTEXT:  PL/pgSQL function testproc() line 3 at CALL
+select * from plpgsql_check_function('testproc()');
+                 plpgsql_check_function                  
+---------------------------------------------------------
+ error:0A000:3:CALL:cannot use subquery in CALL argument
+ Query: CALL proc((select count(*) from pg_class))
+ --               ^
+(3 rows)
+
+drop procedure proc(int);
+create procedure proc(in a int, inout b int, in c int)
+as $$
+begin
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('proc(int,int, int)');
+             plpgsql_check_function              
+-------------------------------------------------
+ warning extra:00000:parameter "a" is never read
+ warning extra:00000:parameter "b" is never read
+ warning extra:00000:parameter "c" is never read
+ warning extra:00000:unmodified OUT variable "b"
+(4 rows)
+
+create or replace procedure proc(in a int, inout b int, in c int)
+as $$
+begin
+  b := a + c;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('proc(int,int, int)');
+             plpgsql_check_function              
+-------------------------------------------------
+ warning extra:00000:parameter "b" is never read
+(1 row)
+
+create or replace procedure testproc()
+as $$
+declare r int;
+begin
+  call proc(10, r, 20);
+end;
+$$ language plpgsql;
+call testproc();
+select * from plpgsql_check_function('testproc()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+-- should to fail
+create or replace procedure testproc()
+as $$
+declare r int;
+begin
+  call proc(10, r + 10, 20);
+end;
+$$ language plpgsql;
+call testproc();
+ERROR:  argument 2 is an output argument but is not writable
+CONTEXT:  PL/pgSQL function testproc() line 4 at CALL
+select * from plpgsql_check_function('testproc()');
+                         plpgsql_check_function                          
+-------------------------------------------------------------------------
+ error:42601:4:CALL:argument 2 is an output argument but is not writable
+(1 row)
+
+create or replace procedure testproc(inout r int)
+as $$
+begin
+  call proc(10, r, 20);
+end;
+$$ language plpgsql;
+call testproc(10);
+ r  
+----
+ 30
+(1 row)
+
+select * from plpgsql_check_function('testproc(int)');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+

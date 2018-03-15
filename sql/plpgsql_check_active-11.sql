@@ -266,3 +266,69 @@ call testproc();
 
 select * from plpgsql_check_function('testproc()');
 
+-- should to fail
+create or replace procedure testproc()
+as $$
+begin
+  call proc((select count(*) from pg_class));
+end;
+$$ language plpgsql;
+
+call testproc();
+
+select * from plpgsql_check_function('testproc()');
+
+drop procedure proc(int);
+
+create procedure proc(in a int, inout b int, in c int)
+as $$
+begin
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('proc(int,int, int)');
+
+create or replace procedure proc(in a int, inout b int, in c int)
+as $$
+begin
+  b := a + c;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('proc(int,int, int)');
+
+create or replace procedure testproc()
+as $$
+declare r int;
+begin
+  call proc(10, r, 20);
+end;
+$$ language plpgsql;
+
+call testproc();
+
+select * from plpgsql_check_function('testproc()');
+
+-- should to fail
+create or replace procedure testproc()
+as $$
+declare r int;
+begin
+  call proc(10, r + 10, 20);
+end;
+$$ language plpgsql;
+
+call testproc();
+
+select * from plpgsql_check_function('testproc()');
+
+create or replace procedure testproc(inout r int)
+as $$
+begin
+  call proc(10, r, 20);
+end;
+$$ language plpgsql;
+
+call testproc(10);
+
+select * from plpgsql_check_function('testproc(int)');
