@@ -244,3 +244,25 @@ select * from plpgsql_check_function('f1()');
 
 drop function f1();
 drop type _exception_type;
+
+create or replace procedure proc(a int)
+as $$
+begin
+end;
+$$ language plpgsql;
+
+call proc(10);
+
+select * from plpgsql_check_function('proc(int)');
+
+create or replace procedure testproc()
+as $$
+begin
+  call proc(10);
+end;
+$$ language plpgsql;
+
+call testproc();
+
+select * from plpgsql_check_function('testproc()');
+

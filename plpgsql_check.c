@@ -299,11 +299,11 @@ static void tuplestore_put_text_line(Tuplestorestate *tuple_store, TupleDesc tup
 static void report_unused_variables(PLpgSQL_checkstate *cstate);
 static void record_variable_usage(PLpgSQL_checkstate *cstate, int dno, bool write);
 static bool datum_is_used(PLpgSQL_checkstate *cstate, int dno, bool write);
-static bool is_const_null_expr(PLpgSQL_expr *query);
+static bool is_const_null_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
 static void prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
 static int merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int err_code);
 static int possibly_closed(int c);
-static char *ExprGetString(PLpgSQL_expr *query, bool *IsConst);
+static char *ExprGetString(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query, bool *IsConst);
 static bool exception_matches_conditions(int err_code, PLpgSQL_condition *cond);
 
 #if PG_VERSION_NUM >= 110000
@@ -2870,7 +2870,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 						if (opt->opt_type == PLPGSQL_RAISEOPTION_ERRCODE)
 						{
 							bool		IsConst;
-							char	   *value = ExprGetString(opt->expr, &IsConst);
+							char	   *value = ExprGetString(cstate, opt->expr, &IsConst);
 
 							if (IsConst && value != NULL)
 								err_code = plpgsql_recognize_err_condition(value, true);
@@ -3079,6 +3079,14 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TRANSACTION_TERMINATION),
 							 errmsg("invalid transaction termination")));
+				break;
+
+			case PLPGSQL_STMT_CALL:
+				{
+					PLpgSQL_stmt_call *stmt_call = (PLpgSQL_stmt_call *) stmt;
+
+					check_expr(cstate, stmt_call->expr);
+				}
 				break;
 
 #endif
@@ -3727,7 +3735,7 @@ check_expr_with_expected_scalar_type(PLpgSQL_checkstate *cstate,
 			cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
 			tupdesc = expr_get_desc(cstate, expr, false, true, true, NULL);
-			is_immutable_null = is_const_null_expr(expr);
+			is_immutable_null = is_const_null_expr(cstate, expr);
 
 			if (tupdesc)
 			{
@@ -3806,7 +3814,7 @@ check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expr
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
 		tupdesc = expr_get_desc(cstate, expr, false, true, is_expression, &first_level_typ);
-		is_immutable_null = is_const_null_expr(expr);
+		is_immutable_null = is_const_null_expr(cstate, expr);
 
 		if (tupdesc)
 		{
@@ -3934,7 +3942,7 @@ check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
 		tupdesc = expr_get_desc(cstate, expr, use_element_type, expand, is_expression, &first_level_typoid);
-		is_immutable_null = is_const_null_expr(expr);
+		is_immutable_null = is_const_null_expr(cstate, expr);
 
 		if (expected_typoid != InvalidOid && type_is_rowtype(expected_typoid) && first_level_typoid != InvalidOid)
 		{
@@ -4671,7 +4679,7 @@ assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
  *
  */
 static CachedPlan *
-ExprGetPlan(PLpgSQL_expr *query)
+ExprGetPlan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query, bool *returns_result)
 {
 	CachedPlanSource *plansource = NULL;
 	CachedPlan *cplan;
@@ -4689,7 +4697,19 @@ ExprGetPlan(PLpgSQL_expr *query)
 		plansource = (CachedPlanSource *) linitial(plan->plancache_list);
 
 		if (!plansource->resultDesc)
-			elog(ERROR, "query returns no result");
+		{
+			bool		result_is_optional = false;
+
+			if (cstate->estate->err_stmt != NULL)
+				result_is_optional = cstate->estate->err_stmt->cmd_type == PLPGSQL_STMT_CALL;
+
+			if (!result_is_optional)
+				elog(ERROR, "query returns no result");
+
+			*returns_result = false;
+		}
+		else
+			*returns_result = true;
 	}
 	else
 		elog(ERROR, "there are no plan for query: \"%s\"",
@@ -4719,18 +4739,19 @@ ExprGetPlan(PLpgSQL_expr *query)
  *
  */
 static Const *
-ExprGetConst(PLpgSQL_expr *query, bool *IsConst)
+ExprGetConst(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query, bool *IsConst)
 {
 	PlannedStmt *_stmt;
 	Plan	   *_plan;
 	TargetEntry *tle;
 	CachedPlan *cplan;
 	Const	   *result = NULL;
+	bool		returns_result;
 
-	cplan = ExprGetPlan(query);
+	cplan = ExprGetPlan(cstate, query, &returns_result);
 	_stmt = (PlannedStmt *) linitial(cplan->stmt_list);
 
-	if (IsA(_stmt, PlannedStmt) &&_stmt->commandType == CMD_SELECT)
+	if (returns_result && IsA(_stmt, PlannedStmt) &&_stmt->commandType == CMD_SELECT)
 	{
 		_plan = _stmt->planTree;
 		if (IsA(_plan, Result) &&list_length(_plan->targetlist) == 1)
@@ -4798,12 +4819,12 @@ compatible_tupdescs(TupleDesc src_tupdesc, TupleDesc dst_tupdesc)
  *
  */
 static bool
-is_const_null_expr(PLpgSQL_expr *query)
+is_const_null_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query)
 {
 	Const	   *c;
 	bool		IsConst;
 
-	c = ExprGetConst(query, &IsConst);
+	c = ExprGetConst(cstate, query, &IsConst);
 
 	return IsConst ? c->constisnull : false;
 }
@@ -4814,12 +4835,12 @@ is_const_null_expr(PLpgSQL_expr *query)
  *
  */
 static char *
-ExprGetString(PLpgSQL_expr *query, bool *IsConst)
+ExprGetString(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query, bool *IsConst)
 {
 	Const	   *c;
 	char	   *result = NULL;
 
-	c = ExprGetConst(query, IsConst);
+	c = ExprGetConst(cstate, query, IsConst);
 	if (*IsConst && !c->constisnull)
 	{
 		Oid		typoutput;
