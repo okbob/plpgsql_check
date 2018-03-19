@@ -4713,8 +4713,12 @@ ExprGetPlan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query, bool *returns_resul
 		{
 			bool		result_is_optional = false;
 
+#if PG_VERSION_NUM >= 110000
+
 			if (cstate->estate->err_stmt != NULL)
 				result_is_optional = cstate->estate->err_stmt->cmd_type == PLPGSQL_STMT_CALL;
+
+#endif
 
 			if (!result_is_optional)
 				elog(ERROR, "query returns no result");
