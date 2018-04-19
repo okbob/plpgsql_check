@@ -643,6 +643,40 @@ recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec, TupleDesc tu
 
 }
 
+static int
+TupleDescNVatts(TupleDesc tupdesc)
+{
+	int		natts = 0;
+	int		i;
+
+	for (i = 0; i < tupdesc->natts; i++)
+	{
+		if (!TupleDescAttr(tupdesc, i)->attisdropped)
+			natts += 1;
+	}
+
+	return natts;
+}
+
+/*
+ * row->nfields can cound dropped columns. When this behave can raise
+ * false alarms, we should to count fields more precisely.
+ */
+static int
+RowGetValidFields(PLpgSQL_row *row)
+{
+	int		i;
+	int		result = 0;
+
+	for (i = 0; i < row->nfields; i++)
+	{
+		if (row->varnos[i] != -1)
+			result += 1;
+	}
+
+	return result;
+}
+
 /*
  * plpgsql_check_func_beg 
  *
@@ -3988,7 +4022,7 @@ check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 
 			if (targetrow)
 			{
-				if (targetrow->nfields > tupdesc->natts)
+				if (RowGetValidFields(targetrow) > TupleDescNVatts(tupdesc))
 					put_error(cstate,
 								  0, 0,
 								  "too few attributes for target variables",
@@ -3996,7 +4030,7 @@ check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 						  "Check target variables in SELECT INTO statement.",
 								  PLPGSQL_CHECK_WARNING_OTHERS,
 								  0, NULL, NULL);
-				else if (targetrow->nfields < tupdesc->natts)
+				else if (RowGetValidFields(targetrow) < TupleDescNVatts(tupdesc))
 					put_error(cstate,
 								  0, 0,
 								  "too many attributes for target variables",
