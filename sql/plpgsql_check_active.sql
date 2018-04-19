@@ -2043,3 +2043,32 @@ $$ language plpgsql;
 select * from plpgsql_check_function('test()');
 
 drop function test();
+
+create table testtable(a int);
+
+create or replace function test()
+returns int as $$
+declare r testtable;
+begin
+  select * into r from testtable;
+  return r.a;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('test()');
+
+drop table testtable;
+
+create table testtable(a int, b int);
+
+create or replace function test()
+returns int as $$
+declare r testtable;
+begin
+  select * into r from testtable;
+  return r.a;
+end;
+$$ language plpgsql;
+
+alter table testtable drop column b;
+select * from plpgsql_check_function('test()');
