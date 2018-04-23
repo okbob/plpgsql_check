@@ -473,10 +473,10 @@ end;
 $$ language plpgsql;
 -- raise warning
 select * from plpgsql_check_function_tb('f1()');
- functionid | lineno |   statement   | sqlstate |                  message                  |                            detail                             |                      hint                       |  level  | position | query | context 
-------------+--------+---------------+----------+-------------------------------------------+---------------------------------------------------------------+-------------------------------------------------+---------+----------+-------+---------
- f1         |      4 | SQL statement | 00000    | too many attributies for target variables | There are less target variables than output columns in query. | Check target variables in SELECT INTO statement | warning |          |       | 
- f1         |      2 | DECLARE       | 00000    | never read variable "a1"                  |                                                               |                                                 | warning |          |       | 
+ functionid | lineno |   statement   | sqlstate |                 message                  |                            detail                             |                      hint                       |  level  | position | query | context 
+------------+--------+---------------+----------+------------------------------------------+---------------------------------------------------------------+-------------------------------------------------+---------+----------+-------+---------
+ f1         |      4 | SQL statement | 00000    | too many attributes for target variables | There are less target variables than output columns in query. | Check target variables in SELECT INTO statement | warning |          |       | 
+ f1         |      2 | DECLARE       | 00000    | never read variable "a1"                 |                                                               |                                                 | warning |          |       | 
 (2 rows)
 
 create or replace function f1()
@@ -488,11 +488,11 @@ end;
 $$ language plpgsql;
 -- raise warning
 select * from plpgsql_check_function_tb('f1()');
- functionid | lineno |   statement   | sqlstate |                 message                  |                            detail                             |                       hint                       |  level  | position | query | context 
-------------+--------+---------------+----------+------------------------------------------+---------------------------------------------------------------+--------------------------------------------------+---------+----------+-------+---------
- f1         |      4 | SQL statement | 00000    | too few attributies for target variables | There are more target variables than output columns in query. | Check target variables in SELECT INTO statement. | warning |          |       | 
- f1         |      2 | DECLARE       | 00000    | never read variable "a1"                 |                                                               |                                                  | warning |          |       | 
- f1         |      2 | DECLARE       | 00000    | never read variable "a2"                 |                                                               |                                                  | warning |          |       | 
+ functionid | lineno |   statement   | sqlstate |                 message                 |                            detail                             |                       hint                       |  level  | position | query | context 
+------------+--------+---------------+----------+-----------------------------------------+---------------------------------------------------------------+--------------------------------------------------+---------+----------+-------+---------
+ f1         |      4 | SQL statement | 00000    | too few attributes for target variables | There are more target variables than output columns in query. | Check target variables in SELECT INTO statement. | warning |          |       | 
+ f1         |      2 | DECLARE       | 00000    | never read variable "a1"                |                                                               |                                                  | warning |          |       | 
+ f1         |      2 | DECLARE       | 00000    | never read variable "a2"                |                                                               |                                                  | warning |          |       | 
 (3 rows)
 
 -- bogus code
@@ -852,9 +852,9 @@ end;
 $$ language plpgsql;
 -- raise warning
 select * from plpgsql_check_function('f1()');
-                         plpgsql_check_function                          
--------------------------------------------------------------------------
- warning:00000:4:SQL statement:too many attributies for target variables
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ warning:00000:4:SQL statement:too many attributes for target variables
  Detail: There are less target variables than output columns in query.
  Hint: Check target variables in SELECT INTO statement
  warning:00000:2:DECLARE:never read variable "a1"
@@ -869,9 +869,9 @@ end;
 $$ language plpgsql;
 -- raise warning
 select * from plpgsql_check_function('f1()');
-                         plpgsql_check_function                         
-------------------------------------------------------------------------
- warning:00000:4:SQL statement:too few attributies for target variables
+                        plpgsql_check_function                         
+-----------------------------------------------------------------------
+ warning:00000:4:SQL statement:too few attributes for target variables
  Detail: There are more target variables than output columns in query.
  Hint: Check target variables in SELECT INTO statement.
  warning:00000:2:DECLARE:never read variable "a1"
@@ -1995,15 +1995,15 @@ select fx();
 (1 row)
 
 select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
-                         plpgsql_check_function                          
--------------------------------------------------------------------------
- warning:00000:4:SQL statement:too many attributies for target variables
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ warning:00000:4:SQL statement:too many attributes for target variables
  Detail: There are less target variables than output columns in query.
  Hint: Check target variables in SELECT INTO statement
- warning:00000:5:SQL statement:too few attributies for target variables
+ warning:00000:5:SQL statement:too few attributes for target variables
  Detail: There are more target variables than output columns in query.
  Hint: Check target variables in SELECT INTO statement.
- warning:00000:6:SQL statement:too few attributies for target variables
+ warning:00000:6:SQL statement:too few attributes for target variables
  Detail: There are more target variables than output columns in query.
  Hint: Check target variables in SELECT INTO statement.
  warning:00000:2:DECLARE:never read variable "f1"
@@ -2655,3 +2655,40 @@ select * from plpgsql_check_function('test()');
 (1 row)
 
 drop function test();
+create table testtable(a int);
+create or replace function test()
+returns int as $$
+declare r testtable;
+begin
+  select * into r from testtable;
+  return r.a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('test()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+set check_function_bodies to on;
+drop table testtable;
+create table testtable(a int, b int);
+create or replace function test()
+returns int as $$
+declare r testtable;
+begin
+  select * into r from testtable;
+  return r.a;
+end;
+$$ language plpgsql;
+alter table testtable drop column b;
+-- expected false alarm on PostgreSQL 10 and older
+-- there is not possibility to enforce recompilation
+-- before checking. 
+select * from plpgsql_check_function('test()');
+                        plpgsql_check_function                         
+-----------------------------------------------------------------------
+ warning:00000:4:SQL statement:too few attributes for target variables
+ Detail: There are more target variables than output columns in query.
+ Hint: Check target variables in SELECT INTO statement.
+(3 rows)
+

@@ -2663,6 +2663,7 @@ select * from plpgsql_check_function('test()');
 ------------------------
 (0 rows)
 
+set check_function_bodies to on;
 drop table testtable;
 create table testtable(a int, b int);
 create or replace function test()
@@ -2674,8 +2675,14 @@ begin
 end;
 $$ language plpgsql;
 alter table testtable drop column b;
+-- expected false alarm on PostgreSQL 10 and older
+-- there is not possibility to enforce recompilation
+-- before checking. 
 select * from plpgsql_check_function('test()');
- plpgsql_check_function 
-------------------------
-(0 rows)
+                        plpgsql_check_function                         
+-----------------------------------------------------------------------
+ warning:00000:4:SQL statement:too few attributes for target variables
+ Detail: There are more target variables than output columns in query.
+ Hint: Check target variables in SELECT INTO statement.
+(3 rows)
 
