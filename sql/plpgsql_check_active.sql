@@ -2057,6 +2057,8 @@ $$ language plpgsql;
 
 select * from plpgsql_check_function('test()');
 
+set check_function_bodies to on;
+
 drop table testtable;
 
 create table testtable(a int, b int);
@@ -2071,4 +2073,8 @@ end;
 $$ language plpgsql;
 
 alter table testtable drop column b;
+
+-- expected false alarm on PostgreSQL 10 and older
+-- there is not possibility to enforce recompilation
+-- before checking. 
 select * from plpgsql_check_function('test()');
