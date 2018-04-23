@@ -28,6 +28,8 @@ plpgsql_check is next generation of plpgsql_lint. It allows to check source code
 
 PostgreSQL PostgreSQL 9.3, 9.4, 9.5, 9.6 and 10 are supported (Develop 11 is supported too).
 
+PostgreSQL 9.3 is compileable, but regress tests are not maintained.
+
 The SQL statements inside PL/pgSQL functions are checked by validator for semantic errors. These errors
 can be found by plpgsql_check_function:
 
