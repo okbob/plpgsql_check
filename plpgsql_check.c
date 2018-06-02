@@ -608,7 +608,7 @@ recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec, TupleDesc tu
 		newnulls[i] = true;
 	}
 
-	expanded_record_set_fields(newerh, newvalues, newnulls);
+	expanded_record_set_fields(newerh, newvalues, newnulls, true);
 
 	TransferExpandedRecord(newerh, estate->datum_context);
 	rec->erh = newerh;
@@ -749,6 +749,7 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 				if (rec->erh)
 					expanded_record_set_tuple(saved_records[i].erh,
 											  expanded_record_get_tuple(rec->erh),
+											  true,
 											  true);
 				else
 					saved_records[i].erh = NULL;
@@ -841,6 +842,7 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 
 				expanded_record_set_tuple(rec->erh,
 										  expanded_record_get_tuple(saved_records[i].erh),
+										  false,
 										  false);
 
 #else
