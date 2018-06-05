@@ -2078,3 +2078,46 @@ alter table testtable drop column b;
 -- there is not possibility to enforce recompilation
 -- before checking. 
 select * from plpgsql_check_function('test()');
+
+drop function test();
+
+-- issue #32
+create table bigtable(id bigint, v varchar);
+
+create or replace function test()
+returns void as $$
+declare
+  r record;
+  _id numeric;
+begin
+  select * into r from bigtable where id = _id;
+  for r in select * from bigtable where _id = id
+  loop
+  end loop;
+  if (exists(select * from bigtable where id = _id)) then
+  end if;
+end;
+$$ language plpgsql;
+
+select test();
+
+-- should to show performance warnings
+select * from plpgsql_check_function('test()', performance_warnings => true);
+
+create or replace function test()
+returns void as $$
+declare
+  r record;
+  _id bigint;
+begin
+  select * into r from bigtable where id = _id;
+  for r in select * from bigtable where _id = id
+  loop
+  end loop;
+  if (exists(select * from bigtable where id = _id)) then
+  end if;
+end;
+$$ language plpgsql;
+
+-- there are not any performance issue now
+select * from plpgsql_check_function('test()', performance_warnings => true);

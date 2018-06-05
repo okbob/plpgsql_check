@@ -252,6 +252,7 @@ static int load_configuration(HeapTuple procTuple, bool *reload_config);
 static void mark_as_checked(PLpgSQL_function *func);
 static void plpgsql_check_HashTableInit(void);
 static void prohibit_write_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
+static void check_fishy_qual(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
 static void put_error(PLpgSQL_checkstate *cstate,
 					  int sqlerrcode, int lineno,
 					  const char *message, const char *detail, const char *hint,
@@ -4463,6 +4464,9 @@ prepare_expr(PLpgSQL_checkstate *cstate,
 			}
 		}
 
+		
+
+
 		/*
 		 * We would to check all plans, but when plan exists, then don't 
 		 * overwrite existing plan.
@@ -4479,6 +4483,9 @@ prepare_expr(PLpgSQL_checkstate *cstate,
 	/* Don't allow write plan when function is read only */
 	if (cstate->estate->readonly_func)
 		prohibit_write_plan(cstate, expr);
+
+	if (cstate->performance_warnings)
+		check_fishy_qual(cstate, expr);
 
 	prohibit_transaction_stmt(cstate, expr);
 }
@@ -4721,6 +4728,97 @@ assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 			}
 		}
 	}
+}
+
+static bool
+contain_fishy_cast_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, OpExpr))
+	{
+		OpExpr *opexpr = (OpExpr *) node;
+
+		if (!opexpr->opretset && opexpr->opresulttype == BOOLOID
+				&& list_length(opexpr->args) == 2)
+		{
+			Node *l1 = linitial(opexpr->args);
+			Node *l2 = lsecond(opexpr->args);
+			Param *param = NULL;
+			FuncExpr *fexpr = NULL;
+
+			if (IsA(l1, Param))
+				param = (Param *) l1;
+			else if (IsA(l1, FuncExpr))
+				fexpr = (FuncExpr *) l1;
+
+			if (IsA(l2, Param))
+				param = (Param *) l2;
+			else if (IsA(l2, FuncExpr))
+				fexpr = (FuncExpr *) l2;
+
+			if (param != NULL && fexpr != NULL)
+			{
+				if (param->paramkind != PARAM_EXTERN)
+					return false;
+
+				if (fexpr->funcformat != COERCE_IMPLICIT_CAST ||
+						fexpr->funcretset ||
+						list_length(fexpr->args) != 1 ||
+						param->paramtype != fexpr->funcresulttype)
+					return false;
+
+				if (!IsA(linitial(fexpr->args), Var))
+					return false;
+
+				*((Param **) context) = param;
+
+				return true;
+			}
+		}
+	}
+
+	return expression_tree_walker(node, contain_fishy_cast_walker, context);
+}
+
+/*
+ * Try to identify constraint where variable from one side is implicitly casted to
+ * parameter type of second side. It can symptom of parameter wrong type.
+ *
+ */
+static bool
+contain_fishy_cast(Node *node, Param **param)
+{
+	return contain_fishy_cast_walker(node, param);
+}
+
+static bool
+qual_has_fishy_cast(PlannedStmt *plannedstmt, Plan *plan, Param **param)
+{
+	ListCell *lc;
+
+	if (plan == NULL)
+		return false;
+
+	if (contain_fishy_cast((Node *) plan->qual, param))
+		return true;
+
+	if (qual_has_fishy_cast(plannedstmt, innerPlan(plan), param))
+		return true;
+	if (qual_has_fishy_cast(plannedstmt, outerPlan(plan), param))
+		return true;
+
+	foreach(lc, plan->initPlan)
+	{
+		SubPlan *subplan = (SubPlan *) lfirst(lc);
+		Plan *s_plan = exec_subplan_get_plan(plannedstmt, subplan);
+
+		if (qual_has_fishy_cast(plannedstmt, s_plan, param))
+			return true;
+	}
+
+	return false;
 }
 
 /*
@@ -5163,6 +5261,7 @@ expr_get_desc(PLpgSQL_checkstate *cstate,
 		if (IsA(_stmt, PlannedStmt) &&_stmt->commandType == CMD_SELECT)
 		{
 			_plan = _stmt->planTree;
+
 			if (IsA(_plan, Result) &&list_length(_plan->targetlist) == 1)
 			{
 				tle = (TargetEntry *) linitial(_plan->targetlist);
@@ -5376,6 +5475,76 @@ prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query)
 
 	ReleaseCachedPlan(cplan, true);
 }
+
+
+/*
+ * Raise a performance warning when plan hash fishy qual
+ */
+static void
+check_fishy_qual(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query)
+{
+	CachedPlanSource *plansource = NULL;
+	SPIPlanPtr	 plan = query->plan;
+	CachedPlan	*cplan;
+	List		*stmt_list;
+	ListCell	*lc;
+
+	if (plan == NULL || plan->magic != _SPI_PLAN_MAGIC)
+		elog(ERROR, "cached plan is not valid plan");
+
+	if (list_length(plan->plancache_list) != 1)
+		elog(ERROR, "plan is not single execution plan");
+
+	plansource = (CachedPlanSource *) linitial(plan->plancache_list);
+
+#if PG_VERSION_NUM >= 100000
+
+	cplan = GetCachedPlan(plansource, NULL, true, NULL);
+
+#else
+
+	cplan = GetCachedPlan(plansource, NULL, true);
+
+#endif
+
+	stmt_list = cplan->stmt_list;
+
+	foreach(lc, stmt_list)
+	{
+		Param	*param;
+
+#if PG_VERSION_NUM >= 100000
+
+		PlannedStmt *pstmt = (PlannedStmt *) lfirst(lc);
+		Plan *plan = NULL;
+
+		Assert(IsA(pstmt, PlannedStmt));
+
+		plan = pstmt->planTree;
+
+#else
+
+		Node *pstmt = (Node *) lfirst(lc);
+		Plan *plan = NULL;
+
+#endif
+
+		if (qual_has_fishy_cast(pstmt, plan, &param))
+		{
+			put_error(cstate,
+					  ERRCODE_DATATYPE_MISMATCH, 0,
+					  "implicit cast of attribute caused by different PLpgSQL variable type in WHERE clause",
+					  "An index of some attribute cannot be used, when variable, used in predicate, has not right type like a attribute",
+					  "Check a variable type - int versus numeric",
+					  PLPGSQL_CHECK_WARNING_PERFORMANCE,
+					  param->location,
+					  query->query, NULL);
+		}
+	}
+
+	ReleaseCachedPlan(cplan, true);
+}
+
 
 /*
  * returns refname of PLpgSQL_datum
