@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	1.2.2
+Version:	1.2.3
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -48,6 +48,10 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/plpgsql_check.control
 
 %changelog
+* Wed Jun 6 2018 - Pavel STEHULE <pavel.stehule@gmail.com> 1.2.3-1
+- PostgreSQL 11 support
+- detect hidden casts in expressions
+
 * Thu Oct 26 2017 - Pavel STEHULE <pavel.stehule@gmail.com> 1.2.2-1
 - never read variables detection
 - fix false alarm on MOVE command
