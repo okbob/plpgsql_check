@@ -2102,7 +2102,7 @@ $$ language plpgsql;
 select test();
 
 -- should to show performance warnings
-select * from plpgsql_check_function('test()', performance_warnings => true);
+select * from plpgsql_check_function('test()', performance_warnings := true);
 
 create or replace function test()
 returns void as $$
@@ -2120,4 +2120,4 @@ end;
 $$ language plpgsql;
 
 -- there are not any performance issue now
-select * from plpgsql_check_function('test()', performance_warnings => true);
+select * from plpgsql_check_function('test()', performance_warnings := true);

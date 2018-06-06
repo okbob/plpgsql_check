@@ -1,0 +1,4 @@
+plpgsql_check_active_2.out			PostgreSQL 9.4, 9.5, 9.6
+plpgsql_check_active.out			PostgreSQL 10
+plpgsql_check_active_1.out			PostgreSQL 11
+

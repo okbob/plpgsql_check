@@ -2709,7 +2709,7 @@ select test();
 (1 row)
 
 -- should to show performance warnings
-select * from plpgsql_check_function('test()', performance_warnings => true);
+select * from plpgsql_check_function('test()', performance_warnings := true);
                                                     plpgsql_check_function                                                     
 -------------------------------------------------------------------------------------------------------------------------------
  performance:42804:6:SQL statement:implicit cast of attribute caused by different PLpgSQL variable type in WHERE clause
@@ -2745,7 +2745,7 @@ begin
 end;
 $$ language plpgsql;
 -- there are not any performance issue now
-select * from plpgsql_check_function('test()', performance_warnings => true);
+select * from plpgsql_check_function('test()', performance_warnings := true);
              plpgsql_check_function              
 -------------------------------------------------
  warning:00000:3:DECLARE:never read variable "r"

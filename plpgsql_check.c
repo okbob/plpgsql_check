@@ -5527,22 +5527,12 @@ check_fishy_qual(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query)
 	foreach(lc, stmt_list)
 	{
 		Param	*param;
-
-#if PG_VERSION_NUM >= 100000
-
 		PlannedStmt *pstmt = (PlannedStmt *) lfirst(lc);
 		Plan *plan = NULL;
 
 		Assert(IsA(pstmt, PlannedStmt));
 
 		plan = pstmt->planTree;
-
-#else
-
-		Node *pstmt = (Node *) lfirst(lc);
-		Plan *plan = NULL;
-
-#endif
 
 		if (qual_has_fishy_cast(pstmt, plan, &param))
 		{
