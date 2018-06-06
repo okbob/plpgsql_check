@@ -2461,8 +2461,6 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 										     BOOLOID,
 										     true);
 
-					check_expr(cstate, stmt_while->cond);
-
 					/*
 					 * When is not guaranteed execution (possible zero loops),
 					 * then ignore closing info from body.
@@ -2639,7 +2637,10 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 				{
 					PLpgSQL_stmt_exit *stmt_exit = (PLpgSQL_stmt_exit *) stmt;
 
-					check_expr(cstate, stmt_exit->cond);
+					check_expr_with_expected_scalar_type(cstate,
+										     stmt_exit->cond,
+										     BOOLOID,
+										     false);
 
 					if (stmt_exit->label != NULL)
 					{
@@ -2670,6 +2671,20 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 
 			case PLPGSQL_STMT_PERFORM:
 				check_expr(cstate, ((PLpgSQL_stmt_perform *) stmt)->expr);
+
+				/*
+				 * Note: if you want to raise warning when used expressions returns
+				 * some value (other than VOID type), change previous command check_expr
+				 * to following check_expr_with_expected_scalar_type. This should be 
+				 * not enabled by default, because PERFORM can be used with reason
+				 * to ignore result.
+				 *
+				 * check_expr_with_expected_scalar_type(cstate,
+				 * 					     ((PLpgSQL_stmt_perform *) stmt)->expr,
+				 * 					     VOIDOID,
+				 * 					     true);
+				 */
+
 				break;
 
 			case PLPGSQL_STMT_RETURN:
@@ -3762,77 +3777,77 @@ check_expr_with_expected_scalar_type(PLpgSQL_checkstate *cstate,
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
 
-	oldowner = CurrentResourceOwner;
-	BeginInternalSubTransaction(NULL);
-	MemoryContextSwitchTo(oldCxt);
-
 	if (!expr)
 	{
 		if (required)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("required expression is empty")));
+
+		return;
 	}
-	else
+
+	oldowner = CurrentResourceOwner;
+	BeginInternalSubTransaction(NULL);
+	MemoryContextSwitchTo(oldCxt);
+
+	PG_TRY();
 	{
-		PG_TRY();
+		TupleDesc	tupdesc;
+		bool		is_immutable_null;
+
+		prepare_expr(cstate, expr, 0);
+		/* record all variables used by the query */
+		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
+
+		tupdesc = expr_get_desc(cstate, expr, false, true, true, NULL);
+		is_immutable_null = is_const_null_expr(cstate, expr);
+
+		if (tupdesc)
 		{
-			TupleDesc	tupdesc;
-			bool		is_immutable_null;
-
-			prepare_expr(cstate, expr, 0);
-			/* record all variables used by the query */
-			cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
-
-			tupdesc = expr_get_desc(cstate, expr, false, true, true, NULL);
-			is_immutable_null = is_const_null_expr(cstate, expr);
-
-			if (tupdesc)
-			{
-				/* when we know value or type */
-				if (!is_immutable_null)
-					check_assign_to_target_type(cstate,
-									    expected_typoid, -1,
-									    TupleDescAttr(tupdesc, 0)->atttypid,
-									    is_immutable_null);
-			}
-
-			ReleaseTupleDesc(tupdesc);
-
-			RollbackAndReleaseCurrentSubTransaction();
-			MemoryContextSwitchTo(oldCxt);
-			CurrentResourceOwner = oldowner;
-
-			SPI_restore_connection();
+			/* when we know value or type */
+			if (!is_immutable_null)
+				check_assign_to_target_type(cstate,
+								    expected_typoid, -1,
+								    TupleDescAttr(tupdesc, 0)->atttypid,
+								    is_immutable_null);
 		}
-		PG_CATCH();
-		{
-			ErrorData  *edata;
 
-			MemoryContextSwitchTo(oldCxt);
-			edata = CopyErrorData();
-			FlushErrorState();
+		ReleaseTupleDesc(tupdesc);
 
-			RollbackAndReleaseCurrentSubTransaction();
-			MemoryContextSwitchTo(oldCxt);
-			CurrentResourceOwner = oldowner;
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldCxt);
+		CurrentResourceOwner = oldowner;
 
-			/*
-			 * If fatal_errors is true, we just propagate the error up to the
-			 * highest level. Otherwise the error is appended to our current list
-			 * of errors, and we continue checking.
-			 */
-			if (cstate->fatal_errors)
-				ReThrowError(edata);
-			else
-				put_error_edata(cstate, edata);
-			MemoryContextSwitchTo(oldCxt);
-
-			/* reconnect spi */
-			SPI_restore_connection();
-		}
-		PG_END_TRY();
+		SPI_restore_connection();
 	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		MemoryContextSwitchTo(oldCxt);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldCxt);
+		CurrentResourceOwner = oldowner;
+
+		/*
+		 * If fatal_errors is true, we just propagate the error up to the
+		 * highest level. Otherwise the error is appended to our current list
+		 * of errors, and we continue checking.
+		 */
+		if (cstate->fatal_errors)
+			ReThrowError(edata);
+		else
+			put_error_edata(cstate, edata);
+		MemoryContextSwitchTo(oldCxt);
+
+		/* reconnect spi */
+		SPI_restore_connection();
+	}
+	PG_END_TRY();
 }
 
 /*
