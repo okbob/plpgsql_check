@@ -2686,3 +2686,69 @@ select * from plpgsql_check_function('test()');
  Hint: Check target variables in SELECT INTO statement.
 (3 rows)
 
+drop function test();
+-- issue #32
+create table bigtable(id bigint, v varchar);
+create or replace function test()
+returns void as $$
+declare
+  r record;
+  _id numeric;
+begin
+  select * into r from bigtable where id = _id;
+  for r in select * from bigtable where _id = id
+  loop
+  end loop;
+  if (exists(select * from bigtable where id = _id)) then
+  end if;
+end;
+$$ language plpgsql;
+select test();
+ test 
+------
+ 
+(1 row)
+
+-- should to show performance warnings
+select * from plpgsql_check_function('test()', performance_warnings => true);
+                                                    plpgsql_check_function                                                     
+-------------------------------------------------------------------------------------------------------------------------------
+ performance:42804:6:SQL statement:implicit cast of attribute caused by different PLpgSQL variable type in WHERE clause
+ Query: select *        from bigtable where id = _id
+ --                                             ^
+ Detail: An index of some attribute cannot be used, when variable, used in predicate, has not right type like a attribute
+ Hint: Check a variable type - int versus numeric
+ performance:42804:7:FOR over SELECT rows:implicit cast of attribute caused by different PLpgSQL variable type in WHERE clause
+ Query: select * from bigtable where _id = id
+ --                                 ^
+ Detail: An index of some attribute cannot be used, when variable, used in predicate, has not right type like a attribute
+ Hint: Check a variable type - int versus numeric
+ performance:42804:10:IF:implicit cast of attribute caused by different PLpgSQL variable type in WHERE clause
+ Query: SELECT (exists(select * from bigtable where id = _id))
+ --                                                     ^
+ Detail: An index of some attribute cannot be used, when variable, used in predicate, has not right type like a attribute
+ Hint: Check a variable type - int versus numeric
+ warning:00000:3:DECLARE:never read variable "r"
+(16 rows)
+
+create or replace function test()
+returns void as $$
+declare
+  r record;
+  _id bigint;
+begin
+  select * into r from bigtable where id = _id;
+  for r in select * from bigtable where _id = id
+  loop
+  end loop;
+  if (exists(select * from bigtable where id = _id)) then
+  end if;
+end;
+$$ language plpgsql;
+-- there are not any performance issue now
+select * from plpgsql_check_function('test()', performance_warnings => true);
+             plpgsql_check_function              
+-------------------------------------------------
+ warning:00000:3:DECLARE:never read variable "r"
+(1 row)
+
