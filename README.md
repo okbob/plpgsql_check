@@ -123,6 +123,23 @@ Function plpgsql_check_function() has two possible formats: text or xml
       </Function>
      (1 row)
 
+## Options
+
+You can set level of warnings via function's parameters:
+
+* `fatal_errors boolean DEFAULT true` - stop on first error
+
+* `other_warnings boolean DEFAULT true` - show warnings like different attributes number
+  in assignmenet on left and right side, variable overlaps function's parameter, unused
+  variables, unwanted casting, ..
+
+* `extra_warnings boolean DEFAULT true` - show warnings like missing `RETURN`,
+  shadowed variables, dead code, never read (unused) function's parameter,
+  unmodified variables, ..
+
+* `performance_warnings boolean DEFAULT false` - performance related warnings like
+  declared type with type modificator, casting, implicit casts in where clause (can be
+  reason why index is not used), ..
 
 ## Triggers
 

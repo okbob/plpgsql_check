@@ -3514,7 +3514,7 @@ datum_is_used(PLpgSQL_checkstate *cstate, int dno, bool write)
 #define UNUSED_PARAMETER_TEXT			"unused parameter \"%s\""
 #define NEVER_READ_PARAMETER_TEXT		"parameter \"%s\" is never read"
 #define UNMODIFIED_VARIABLE_TEXT		"unmodified OUT variable \"%s\""
-#define OUT_COMPOSITE_IS_NOT_SINGE_TEXT	"composite OUT variable \"%s\" is not single argument"
+#define OUT_COMPOSITE_IS_NOT_SINGLE_TEXT	"composite OUT variable \"%s\" is not single argument"
 
 /*
  * Reports all unused variables explicitly DECLAREd by the user.  Ignores
@@ -3573,7 +3573,7 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 						  message.data,
 						  NULL,
 						  NULL,
-						  PLPGSQL_CHECK_WARNING_OTHERS,
+						  PLPGSQL_CHECK_WARNING_EXTRA,
 						  0, NULL, NULL);
 
 				pfree(message.data);
@@ -3650,7 +3650,7 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 					{
 						initStringInfo(&message);
 						appendStringInfo(&message,
-									  OUT_COMPOSITE_IS_NOT_SINGE_TEXT, var->refname);
+									  OUT_COMPOSITE_IS_NOT_SINGLE_TEXT, var->refname);
 						put_error(cstate,
 								  0, 0,
 								  message.data,
