@@ -214,3 +214,33 @@ begin
   end if;
 end;
 $$;
+
+-- tests designed for 9.2
+set check_function_bodies to off;
+
+create or replace function f1()
+returns void as $$
+begin
+  if false then
+    raise notice '%', 1, 2;
+  end if;
+end;
+$$ language plpgsql;
+
+select f1();
+
+drop function f1();
+
+create or replace function f1()
+returns void as $$
+begin
+  if false then
+    raise notice '% %';
+  end if;
+end;
+$$ language plpgsql;
+
+select f1();
+
+drop function f1();
+

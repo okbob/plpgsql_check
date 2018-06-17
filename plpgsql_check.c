@@ -253,6 +253,7 @@ static void mark_as_checked(PLpgSQL_function *func);
 static void plpgsql_check_HashTableInit(void);
 static void prohibit_write_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
 static void check_fishy_qual(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
+static void check_seq_functions(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
 static void put_error(PLpgSQL_checkstate *cstate,
 					  int sqlerrcode, int lineno,
 					  const char *message, const char *detail, const char *hint,
@@ -304,6 +305,7 @@ static bool is_const_null_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
 static void prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
 static int merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int err_code);
 static int possibly_closed(int c);
+static Query *ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
 static char *ExprGetString(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query, bool *IsConst);
 static bool exception_matches_conditions(int err_code, PLpgSQL_condition *cond);
 
@@ -4502,6 +4504,8 @@ prepare_expr(PLpgSQL_checkstate *cstate,
 	if (cstate->performance_warnings)
 		check_fishy_qual(cstate, expr);
 
+	check_seq_functions(cstate, expr);
+
 	prohibit_transaction_stmt(cstate, expr);
 }
 
@@ -4745,6 +4749,137 @@ assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 	}
 }
 
+/*
+ * Expecting persistent oid of nextval, currval and setval functions.
+ * Ensured by regress tests.
+ */
+#define NEXTVAL_OID		1574
+#define CURRVAL_OID		1575
+#define SETVAL_OID		1576
+#define SETVAL2_OID		1765
+
+typedef struct 
+{
+	PLpgSQL_checkstate *cstate;
+	PLpgSQL_expr *query;
+} check_seq_functions_walker_params;
+
+/*
+ * When sequence related functions has constant oid parameter, then ensure, so
+ * this oid is related to some sequnce object.
+ *
+ */
+static bool
+check_seq_functions_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, Query))
+	{
+		return query_tree_walker((Query *) node,
+								 check_seq_functions_walker,
+								 context, 0);
+	}
+	if (IsA(node, FuncExpr))
+	{
+		FuncExpr *fexpr = (FuncExpr *) node;
+		int		location = -1;
+
+		switch (fexpr->funcid)
+		{
+			case NEXTVAL_OID:
+			case CURRVAL_OID:
+			case SETVAL_OID:
+			case SETVAL2_OID:
+			{
+				Node *first_arg = linitial(fexpr->args);
+
+				location = fexpr->location;
+
+				if (first_arg && IsA(first_arg, Const))
+				{
+					Const *c = (Const *) first_arg;
+
+					if (c->consttype == REGCLASSOID && !c->constisnull)
+					{
+						Oid		classid;
+
+						if (c->location != -1)
+							location = c->location;
+
+						classid = DatumGetObjectId(c->constvalue);
+
+						if (get_rel_relkind(classid) != RELKIND_SEQUENCE)
+						{
+							char	message[1024];
+							check_seq_functions_walker_params *wp;
+
+							wp = (check_seq_functions_walker_params *) context;
+
+							snprintf(message, sizeof(message), "\"%s\" is not a sequence", get_rel_name(classid));
+
+							put_error(wp->cstate,
+										  ERRCODE_WRONG_OBJECT_TYPE, 0,
+										  message,
+										  NULL, NULL,
+										  PLPGSQL_CHECK_ERROR,
+										  location,
+										  wp->query->query, NULL);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return expression_tree_walker(node, check_seq_functions_walker, context);
+}
+
+/*
+ * Returns Query node for expression
+ *
+ */
+static Query *
+ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query)
+{
+	CachedPlanSource *plansource = NULL;
+	Query *result = NULL;
+
+	if (query->plan != NULL)
+	{
+		SPIPlanPtr	plan = query->plan;
+
+		if (plan == NULL || plan->magic != _SPI_PLAN_MAGIC)
+			elog(ERROR, "cached plan is not valid plan");
+
+		if (list_length(plan->plancache_list) != 1)
+			elog(ERROR, "plan is not single execution plan");
+
+		plansource = (CachedPlanSource *) linitial(plan->plancache_list);
+
+		if (list_length(plansource->query_list) != 1)
+			elog(ERROR, "there is not single query");
+
+		result = linitial(plansource->query_list);
+	}
+
+	return result;
+}
+
+static void
+check_seq_functions(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+{
+	Query	   *query;
+	check_seq_functions_walker_params  wp;
+
+	wp.cstate = cstate;
+	wp.query = expr;
+
+	query = ExprGetQuery(cstate, expr);
+	check_seq_functions_walker((Node *) query, &wp);
+}
+
 static bool
 contain_fishy_cast_walker(Node *node, void *context)
 {
@@ -4898,7 +5033,6 @@ ExprGetPlan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query, bool *returns_resul
 
 	return cplan;
 }
-
 
 /*
  * Returns Const Value from expression if it is possible.
@@ -5061,8 +5195,6 @@ CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr)
 
 	return result;
 }
-
-
 
 #endif
 
@@ -5491,7 +5623,6 @@ prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query)
 	ReleaseCachedPlan(cplan, true);
 }
 
-
 /*
  * Raise a performance warning when plan hash fishy qual
  */
@@ -5549,7 +5680,6 @@ check_fishy_qual(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query)
 
 	ReleaseCachedPlan(cplan, true);
 }
-
 
 /*
  * returns refname of PLpgSQL_datum
@@ -6095,7 +6225,8 @@ tuplestore_put_text_line(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 /*
  * routines for beginning and finishing function checking
  *
-* it is used primary for XML & JSON format - create almost left and almost right tag per function
+ * it is used primary for XML & JSON format - create almost left
+ * and almost right tag per function
  *
  */
 static void
