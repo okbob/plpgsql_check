@@ -273,7 +273,7 @@ select * from plpgsql_check_function('fx2()', performance_warnings := true);
 --------------------------------------------------------------------
  performance:42804:5:SQL statement:target type has type modificator
  Hint: Usage of type modificator enforces slower IO casting.
- warning:00000:2:DECLARE:never read variable "_pa"
+ warning extra:00000:2:DECLARE:never read variable "_pa"
 (3 rows)
 
 drop function fx2();
@@ -290,7 +290,7 @@ select * from plpgsql_check_function('fx2()', performance_warnings := true);
 -----------------------------------------------------------------
  performance:42804:5:assignment:target type has type modificator
  Hint: Usage of type modificator enforces slower IO casting.
- warning:00000:2:DECLARE:never read variable "_pa"
+ warning extra:00000:2:DECLARE:never read variable "_pa"
 (3 rows)
 
 drop function fx2();
