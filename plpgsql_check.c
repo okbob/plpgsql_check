@@ -5727,8 +5727,7 @@ datum_get_refname(PLpgSQL_datum *d)
 	 * PostgreSQL 12 started use "(unnamed row)" name for internal
 	 * variables. Hide this name too (lineno is -1).
 	 */
-	if (strcmp(refname, "(unnamed row)") == 0
-			&& lineno == -1)
+	if (is_internal(refname, lineno))
 		return NULL;
 
 	return refname;
