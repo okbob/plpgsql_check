@@ -308,6 +308,8 @@ static int possibly_closed(int c);
 static Query *ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
 static char *ExprGetString(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query, bool *IsConst);
 static bool exception_matches_conditions(int err_code, PLpgSQL_condition *cond);
+static bool is_internal_variable(PLpgSQL_variable *var);
+
 
 #if PG_VERSION_NUM >= 110000
 
@@ -3398,7 +3400,15 @@ is_internal(char *refname, int lineno)
 		return true;
 	if (strcmp(refname, "*internal*") == 0)
 		return true;
+	if (strcmp(refname, "(unnamed row)") == 0)
+		return true;
 	return false;
+}
+
+static bool
+is_internal_variable(PLpgSQL_variable *var)
+{
+	return is_internal(var->refname, var->lineno);
 }
 
 
@@ -3635,7 +3645,7 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 			int		varno = func->out_param_varno;
 			PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[varno];
 
-			if (var->dtype == PLPGSQL_DTYPE_ROW && var->refname == NULL)
+			if (var->dtype == PLPGSQL_DTYPE_ROW && is_internal_variable(var))
 			{
 				/* this function has more OUT parameters */
 				PLpgSQL_row *row = (PLpgSQL_row*) var;
@@ -5682,25 +5692,46 @@ check_fishy_qual(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query)
 }
 
 /*
- * returns refname of PLpgSQL_datum
+ * returns refname of PLpgSQL_datum. When refname is generated,
+ * then return null too, although refname is not null.
  */
 static char *
 datum_get_refname(PLpgSQL_datum *d)
 {
+	char	   *refname;
+	int			lineno;
+
 	switch (d->dtype)
 	{
 		case PLPGSQL_DTYPE_VAR:
-			return ((PLpgSQL_var *) d)->refname;
+			refname = ((PLpgSQL_var *) d)->refname;
+			lineno = ((PLpgSQL_var *) d)->lineno;
+			break;
 
 		case PLPGSQL_DTYPE_ROW:
-			return ((PLpgSQL_row *) d)->refname;
+			refname = ((PLpgSQL_row *) d)->refname;
+			lineno = ((PLpgSQL_row *) d)->lineno;
+			break;
 
 		case PLPGSQL_DTYPE_REC:
-			return ((PLpgSQL_rec *) d)->refname;
+			refname = ((PLpgSQL_rec *) d)->refname;
+			lineno = ((PLpgSQL_rec *) d)->lineno;
+			break;
 
 		default:
-			return NULL;
+			refname = NULL;
+			lineno = -1;
 	}
+
+	/*
+	 * PostgreSQL 12 started use "(unnamed row)" name for internal
+	 * variables. Hide this name too (lineno is -1).
+	 */
+	if (strcmp(refname, "(unnamed row)") == 0
+			&& lineno == -1)
+		return NULL;
+
+	return refname;
 }
 
 /****************************************************************************************
