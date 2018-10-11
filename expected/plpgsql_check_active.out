@@ -934,9 +934,9 @@ select * from plpgsql_check_function('f1(int)');
  warning extra:00000:6:DECLARE:never read variable "_f4"
  warning extra:00000:8:DECLARE:never read variable "_r"
  warning extra:00000:9:DECLARE:never read variable "_tbl"
- warning extra:00000:parameter "$1" is never read
- warning extra:00000:unmodified OUT variable "$2"
- warning extra:00000:unmodified OUT variable "$3"
+ warning extra:00000:parameter "_input1" is never read
+ warning extra:00000:unmodified OUT variable "_output1"
+ warning extra:00000:unmodified OUT variable "_output2"
 (9 rows)
 
 drop function f1(int);
@@ -1260,10 +1260,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx()', performance_warnings := true);
-                       plpgsql_check_function                        
----------------------------------------------------------------------
+                             plpgsql_check_function                              
+---------------------------------------------------------------------------------
  error:42804:4:RETURN NEXT:wrong record type supplied in RETURN NEXT
-(1 row)
+ Detail: Returned type integer does not match expected type numeric in column 2.
+(2 rows)
 
 create or replace function fx()
 returns setof t2 as $$
@@ -1638,9 +1639,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
- functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
-(0 rows)
+ functionid | lineno |     statement      | sqlstate |                  message                  | detail | hint |  level  | position | query | context 
+------------+--------+--------------------+----------+-------------------------------------------+--------+------+---------+----------+-------+---------
+ fx         |      6 | FOREACH over array | 00000    | too few attributes for composite variable |        |      | warning |          |       | 
+(1 row)
 
 create or replace function fx()
 returns int as $$
@@ -1839,7 +1841,7 @@ $$ language plpgsql;
 select test_t();
  test_t 
 --------
- ()
+ 
 (1 row)
 
 select * from test_t();
@@ -1867,7 +1869,7 @@ $$ language plpgsql;
 select test_t();
  test_t 
 --------
- ()
+ 
 (1 row)
 
 select * from test_t();
@@ -1900,7 +1902,7 @@ $$ language plpgsql;
 select test_t();
  test_t 
 --------
- ()
+ 
 (1 row)
 
 select * from test_t();
@@ -1929,7 +1931,7 @@ $$ language plpgsql;
 select test_t();
  test_t 
 --------
- ()
+ 
 (1 row)
 
 select * from test_t();
@@ -1960,7 +1962,7 @@ $$ language plpgsql;
 select test_t();
  test_t 
 --------
- ()
+ 
 (1 row)
 
 select * from test_t();
@@ -2084,13 +2086,13 @@ begin
 end;
 $$ language plpgsql;
 select fxx();
-ERROR:  cannot begin/end transactions in PL/pgSQL
-HINT:  Use a BEGIN block with an EXCEPTION clause instead.
-CONTEXT:  PL/pgSQL function fxx() line 3 at SQL statement
+ERROR:  invalid transaction termination
+CONTEXT:  PL/pgSQL function fxx() line 3 at ROLLBACK
 select * from plpgsql_check_function('fxx()');
- plpgsql_check_function 
-------------------------
-(0 rows)
+                 plpgsql_check_function                 
+--------------------------------------------------------
+ error:2D000:3:ROLLBACK:invalid transaction termination
+(1 row)
 
 drop function fxx();
 create or replace function fxx()
@@ -2126,10 +2128,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fxx(int, int)');
-              plpgsql_check_function              
---------------------------------------------------
- warning extra:00000:parameter "$2" is never read
- warning extra:00000:unmodified OUT variable "$4"
+             plpgsql_check_function              
+-------------------------------------------------
+ warning extra:00000:parameter "b" is never read
+ warning extra:00000:unmodified OUT variable "d"
 (2 rows)
 
 create or replace function fxx(in a int, in b int, out c int, out d int)
@@ -2139,11 +2141,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fxx(int, int)');
-              plpgsql_check_function              
---------------------------------------------------
- warning extra:00000:parameter "$1" is never read
- warning extra:00000:parameter "$2" is never read
- warning extra:00000:unmodified OUT variable "$4"
+             plpgsql_check_function              
+-------------------------------------------------
+ warning extra:00000:parameter "a" is never read
+ warning extra:00000:parameter "b" is never read
+ warning extra:00000:unmodified OUT variable "d"
 (3 rows)
 
 create type ct as (a int, b int);
@@ -2154,12 +2156,12 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fxx(ct, ct)');
-                         plpgsql_check_function                         
-------------------------------------------------------------------------
- warning extra:00000:parameter "$2" is never read
- warning extra:00000:composite OUT variable "$3" is not single argument
- warning extra:00000:composite OUT variable "$4" is not single argument
- warning extra:00000:unmodified OUT variable "$4"
+                        plpgsql_check_function                         
+-----------------------------------------------------------------------
+ warning extra:00000:parameter "b" is never read
+ warning extra:00000:composite OUT variable "c" is not single argument
+ warning extra:00000:composite OUT variable "d" is not single argument
+ warning extra:00000:unmodified OUT variable "d"
 (4 rows)
 
 create or replace function fxx(a ct, b ct, OUT c ct, OUT d ct)
@@ -2169,13 +2171,13 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fxx(ct, ct)');
-                         plpgsql_check_function                         
-------------------------------------------------------------------------
- warning extra:00000:parameter "$1" is never read
- warning extra:00000:parameter "$2" is never read
- warning extra:00000:composite OUT variable "$3" is not single argument
- warning extra:00000:composite OUT variable "$4" is not single argument
- warning extra:00000:unmodified OUT variable "$4"
+                        plpgsql_check_function                         
+-----------------------------------------------------------------------
+ warning extra:00000:parameter "a" is never read
+ warning extra:00000:parameter "b" is never read
+ warning extra:00000:composite OUT variable "c" is not single argument
+ warning extra:00000:composite OUT variable "d" is not single argument
+ warning extra:00000:unmodified OUT variable "d"
 (5 rows)
 
 create or replace function tx(a int)
@@ -2200,7 +2202,7 @@ select * from plpgsql_check_function('tx(int)');
  warning:00000:2:DECLARE:unused variable "ax"
  warning extra:00000:2:DECLARE:never read variable "a"
  warning extra:00000:4:DECLARE:never read variable "ax"
- warning extra:00000:parameter "$1" is never read
+ warning extra:00000:parameter "a" is never read
 (8 rows)
 
 create type xt as (a int, b int, c int);
@@ -2213,11 +2215,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx_xt()');
-              plpgsql_check_function              
---------------------------------------------------
+             plpgsql_check_function              
+-------------------------------------------------
  warning:00000:2:DECLARE:unused variable "l"
  warning:00000:3:DECLARE:unused variable "a"
- warning extra:00000:unmodified OUT variable "$1"
+ warning extra:00000:unmodified OUT variable "x"
 (3 rows)
 
 drop function fx_xt();
@@ -2246,14 +2248,14 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx_xt()');
-                         plpgsql_check_function                         
-------------------------------------------------------------------------
+                        plpgsql_check_function                         
+-----------------------------------------------------------------------
  warning:00000:2:DECLARE:unused variable "c1"
  warning:00000:2:DECLARE:unused variable "c2"
- warning extra:00000:composite OUT variable "$1" is not single argument
- warning extra:00000:unmodified OUT variable "$1"
- warning extra:00000:composite OUT variable "$2" is not single argument
- warning extra:00000:unmodified OUT variable "$2"
+ warning extra:00000:composite OUT variable "x" is not single argument
+ warning extra:00000:unmodified OUT variable "x"
+ warning extra:00000:composite OUT variable "y" is not single argument
+ warning extra:00000:unmodified OUT variable "y"
 (6 rows)
 
 drop function fx_xt();
@@ -2267,12 +2269,12 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx_xt()');
-                         plpgsql_check_function                         
-------------------------------------------------------------------------
+                        plpgsql_check_function                         
+-----------------------------------------------------------------------
  warning:00000:2:DECLARE:unused variable "c1"
  warning:00000:2:DECLARE:unused variable "c2"
- warning extra:00000:composite OUT variable "$1" is not single argument
- warning extra:00000:composite OUT variable "$2" is not single argument
+ warning extra:00000:composite OUT variable "x" is not single argument
+ warning extra:00000:composite OUT variable "y" is not single argument
 (4 rows)
 
 drop function fx_xt();
@@ -2283,11 +2285,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx_xt()');
-                         plpgsql_check_function                         
-------------------------------------------------------------------------
- warning extra:00000:composite OUT variable "$1" is not single argument
- warning extra:00000:unmodified OUT variable "$1"
- warning extra:00000:unmodified OUT variable "$2"
+                        plpgsql_check_function                         
+-----------------------------------------------------------------------
+ warning extra:00000:composite OUT variable "x" is not single argument
+ warning extra:00000:unmodified OUT variable "x"
+ warning extra:00000:unmodified OUT variable "z"
 (3 rows)
 
 drop function fx_xt();
@@ -2679,12 +2681,9 @@ alter table testtable drop column b;
 -- there is not possibility to enforce recompilation
 -- before checking. 
 select * from plpgsql_check_function('test()');
-                        plpgsql_check_function                         
------------------------------------------------------------------------
- warning:00000:4:SQL statement:too few attributes for target variables
- Detail: There are more target variables than output columns in query.
- Hint: Check target variables in SELECT INTO statement.
-(3 rows)
+ plpgsql_check_function 
+------------------------
+(0 rows)
 
 drop function test();
 -- issue #32
@@ -3060,3 +3059,45 @@ select * from plpgsql_check_function('f1()');
 drop function f1();
 drop type _exception_type;
 drop table t1;
+create function myfunc1(a int, b float) returns integer as $$ begin end $$ language plpgsql;
+create function myfunc2(a int, b float) returns integer as $$ begin end $$ language plpgsql;
+create function myfunc3(a int, b float) returns integer as $$ begin end $$ language plpgsql;
+create function myfunc4(a int, b float) returns integer as $$ begin end $$ language plpgsql;
+create table mytable(a int);
+create table myview as select * from mytable;
+create function testfunc(a int, b float)
+returns void as $$
+declare x integer;
+begin
+  raise notice '%', myfunc1(a, b);
+  x := myfunc2(a, b);
+  perform myfunc3(m.a, b) from myview m;
+  insert into mytable select myfunc4(a, b);
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('testfunc(int,float)');
+                plpgsql_check_function                 
+-------------------------------------------------------
+ warning extra:00000:2:DECLARE:never read variable "x"
+(1 row)
+
+select type, schema, name, params from plpgsql_show_dependency_tb('testfunc(int,float)');
+   type   | schema |  name   |           params           
+----------+--------+---------+----------------------------
+ FUNCTION | public | myfunc1 | (integer,double precision)
+ FUNCTION | public | myfunc2 | (integer,double precision)
+ FUNCTION | public | myfunc3 | (integer,double precision)
+ FUNCTION | public | myfunc4 | (integer,double precision)
+ RELATION | public | mytable | 
+ RELATION | public | myview  | 
+(6 rows)
+
+drop function testfunc(int, float);
+drop function myfunc1(int, float);
+drop function myfunc2(int, float);
+drop function myfunc3(int, float);
+drop function myfunc4(int, float);
+drop table mytable;
+drop view myview;
+ERROR:  "myview" is not a view
+HINT:  Use DROP TABLE to remove a table.

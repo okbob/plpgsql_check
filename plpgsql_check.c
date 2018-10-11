@@ -62,6 +62,7 @@
 #endif
 
 #include "catalog/pg_language.h"
+#include "catalog/pg_namespace.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "executor/spi_priv.h"
@@ -102,6 +103,19 @@ PG_MODULE_MAGIC;
 #define Anum_result_query			9
 #define Anum_result_context			10
 
+/*
+ * columns of plpgsql_show_dependency_tb result 
+ *
+ */
+#define Natts_dependency				5
+
+#define Anum_dependency_type			0
+#define Anum_dependency_oid				1
+#define Anum_dependency_schema			2
+#define Anum_dependency_name			3
+#define Anum_dependency_params			4
+
+
 enum
 {
 	PLPGSQL_CHECK_ERROR,
@@ -116,7 +130,8 @@ enum
 	PLPGSQL_CHECK_FORMAT_TEXT,
 	PLPGSQL_CHECK_FORMAT_TABULAR,
 	PLPGSQL_CHECK_FORMAT_XML,
-	PLPGSQL_CHECK_FORMAT_JSON
+	PLPGSQL_CHECK_FORMAT_JSON,
+	PLPGSQL_SHOW_DEPENDENCY_FORMAT_TABULAR
 };
 
 enum
@@ -164,6 +179,8 @@ typedef struct PLpgSQL_checkstate
 	PLpgSQL_stmt_stack_item *top_stmt_stack;	/* list of known labels + related command */
 	bool		found_return_query;			/* true, when code contains RETURN query */
 	bool		is_procedure;				/* true, when checked code is a procedure */
+	Bitmapset	   *func_oids;				/* list of used (and displayed) functions */
+	Bitmapset	   *rel_oids;				/* list of used (and displayed) relations */
 } PLpgSQL_checkstate;
 
 static void assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, bool isnull);
@@ -309,7 +326,10 @@ static Query *ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
 static char *ExprGetString(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query, bool *IsConst);
 static bool exception_matches_conditions(int err_code, PLpgSQL_condition *cond);
 static bool is_internal_variable(PLpgSQL_variable *var);
-
+static void detect_dependency(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
+static void tuplestore_put_dependency(Tuplestorestate *tuple_store,
+									  TupleDesc tupdesc, char *type, Oid oid,
+									  char *schema, char *name, char *params);
 
 #if PG_VERSION_NUM >= 110000
 
@@ -368,6 +388,7 @@ typedef struct plpgsql_hashent
 
 PG_FUNCTION_INFO_V1(plpgsql_check_function);
 PG_FUNCTION_INFO_V1(plpgsql_check_function_tb);
+PG_FUNCTION_INFO_V1(plpgsql_show_dependency_tb);
 
 /*
  * Module initialization
@@ -1864,6 +1885,9 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 
 	cstate->format = format;
 	cstate->is_active_mode = is_active_mode;
+
+	cstate->func_oids = NULL;
+	cstate->rel_oids = NULL;
 
 	cstate->sinfo = NULL;
 
@@ -4516,6 +4540,9 @@ prepare_expr(PLpgSQL_checkstate *cstate,
 
 	check_seq_functions(cstate, expr);
 
+	if (cstate->format == PLPGSQL_SHOW_DEPENDENCY_FORMAT_TABULAR)
+		detect_dependency(cstate, expr);
+
 	prohibit_transaction_stmt(cstate, expr);
 }
 
@@ -4758,6 +4785,98 @@ assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 		}
 	}
 }
+
+static bool
+detect_dependency_walker(Node *node, void *context)
+{
+	PLpgSQL_checkstate *cstate = (PLpgSQL_checkstate *) context;
+
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, Query))
+	{
+		Query *query = (Query *) node;
+		ListCell *lc;
+
+		foreach(lc, query->rtable)
+		{
+			RangeTblEntry *rt = (RangeTblEntry *) lfirst(lc);
+
+			if (rt->rtekind == RTE_RELATION)
+			{
+				if (!bms_is_member(rt->relid, cstate->rel_oids))
+				{
+					tuplestore_put_dependency(cstate->tuple_store,
+											 cstate->tupdesc,
+											 "RELATION",
+											 rt->relid,
+											 get_namespace_name(get_rel_namespace(rt->relid)),
+											 get_rel_name(rt->relid),
+											 NULL);
+
+					cstate->rel_oids = bms_add_member(cstate->rel_oids, rt->relid);
+				}
+			}
+		}
+
+		return query_tree_walker((Query *) node,
+								 detect_dependency_walker,
+								 context, 0);
+	}
+
+	if (IsA(node, FuncExpr) )
+	{
+		FuncExpr *fexpr = (FuncExpr *) node;
+
+		if (get_func_namespace(fexpr->funcid) != PG_CATALOG_NAMESPACE)
+		{
+			if (!bms_is_member(fexpr->funcid, cstate->func_oids))
+			{
+				StringInfoData		str;
+				ListCell		   *lc;
+				int		i = 0;
+
+				initStringInfo(&str);
+				appendStringInfoChar(&str, '(');
+				foreach(lc, fexpr->args)
+				{
+					Node *expr = (Node *) lfirst(lc);
+
+					if (i++ > 0)
+						appendStringInfoChar(&str, ',');
+
+					appendStringInfoString(&str, format_type_be(exprType(expr)));
+				}
+				appendStringInfoChar(&str, ')');
+
+				tuplestore_put_dependency(cstate->tuple_store,
+										  cstate->tupdesc,
+										  "FUNCTION",
+										  fexpr->funcid,
+										  get_namespace_name(get_func_namespace(fexpr->funcid)),
+										  get_func_name(fexpr->funcid),
+										  str.data);
+
+				pfree(str.data);
+
+				cstate->func_oids = bms_add_member(cstate->func_oids, fexpr->funcid);
+			}
+		}
+	}
+
+	return expression_tree_walker(node, detect_dependency_walker, context);
+}
+
+static void
+detect_dependency(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+{
+	Query	   *query;
+
+	query = ExprGetQuery(cstate, expr);
+	detect_dependency_walker((Node *) query, cstate);
+}
+
 
 /*
  * Expecting persistent oid of nextval, currval and setval functions.
@@ -5784,6 +5903,10 @@ put_error(PLpgSQL_checkstate *cstate,
 					  const char *query,
 					  const char *context)
 {
+	/* In this case we would not to see a errors */
+	if (cstate->format == PLPGSQL_SHOW_DEPENDENCY_FORMAT_TABULAR)
+		return;
+
 	/* ignore warnings when is not requested */
 	if ((level == PLPGSQL_CHECK_WARNING_PERFORMANCE && !cstate->performance_warnings) ||
 			    (level == PLPGSQL_CHECK_WARNING_OTHERS && !cstate->other_warnings) ||
@@ -5865,6 +5988,32 @@ error_level_str(int level)
 }
 
 /*
+ * store dependency fields to result tuplestore
+ *
+ */
+static void
+tuplestore_put_dependency(Tuplestorestate *tuple_store,
+						  TupleDesc tupdesc,
+						  char *type,
+						  Oid oid,
+						  char *schema,
+						  char *name,
+						  char *params)
+{
+	Datum	values[Natts_dependency];
+	bool	nulls[Natts_dependency];
+
+	SET_RESULT_TEXT(Anum_dependency_type, type);
+	SET_RESULT_OID(Anum_dependency_oid, oid);
+	SET_RESULT_TEXT(Anum_dependency_schema, schema);
+	SET_RESULT_TEXT(Anum_dependency_name, name);
+	SET_RESULT_TEXT(Anum_dependency_params, params);
+
+	tuplestore_putvalues(tuple_store, tupdesc, values, nulls);
+}
+
+
+/*
  * store error fields to result tuplestore
  *
  */
@@ -5929,6 +6078,7 @@ tuplestore_put_error_tabular(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 
 	tuplestore_putvalues(tuple_store, tupdesc, values, nulls);
 }
+
 
 /*
  * collects errors and warnings in plain text format
@@ -6372,4 +6522,73 @@ mark_as_checked(PLpgSQL_function *func)
 
 		hentry->is_checked = true;
 	}
+}
+
+/*
+ * plpgsql_show_dependency_tb
+ *
+ * Prepare tuplestore and start check function in mode dependency detection
+ *
+ */
+Datum
+plpgsql_show_dependency_tb(PG_FUNCTION_ARGS)
+{
+	Oid			funcoid = PG_GETARG_OID(0);
+	Oid			relid = PG_GETARG_OID(1);
+	TupleDesc	tupdesc;
+	HeapTuple	procTuple;
+	Tuplestorestate *tupstore;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	PLpgSQL_trigtype trigtype;
+	ErrorContextCallback *prev_errorcontext;
+
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not allowed in this context")));
+
+	procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcoid));
+	if (!HeapTupleIsValid(procTuple))
+		elog(ERROR, "cache lookup failed for function %u", funcoid);
+
+	trigtype = get_trigtype(procTuple);
+	precheck_conditions(procTuple, trigtype, relid);
+
+	/* need to build tuplestore in query context */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	tupdesc = CreateTupleDescCopy(rsinfo->expectedDesc);
+	tupstore = tuplestore_begin_heap(false, false, work_mem);
+	MemoryContextSwitchTo(oldcontext);
+
+	prev_errorcontext = error_context_stack;
+
+	/* Envelope outer plpgsql function is not interesting */
+	error_context_stack = NULL;
+
+	check_plpgsql_function(procTuple, relid, trigtype,
+							   tupdesc, tupstore,
+							   PLPGSQL_SHOW_DEPENDENCY_FORMAT_TABULAR,
+								   false, false, false, false);
+	error_context_stack = prev_errorcontext;
+
+	ReleaseSysCache(procTuple);
+
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	return (Datum) 0;
 }

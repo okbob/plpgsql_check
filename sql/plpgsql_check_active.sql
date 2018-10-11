@@ -2322,3 +2322,34 @@ drop function f1();
 drop type _exception_type;
 
 drop table t1;
+
+create function myfunc1(a int, b float) returns integer as $$ begin end $$ language plpgsql;
+create function myfunc2(a int, b float) returns integer as $$ begin end $$ language plpgsql;
+create function myfunc3(a int, b float) returns integer as $$ begin end $$ language plpgsql;
+create function myfunc4(a int, b float) returns integer as $$ begin end $$ language plpgsql;
+
+create table mytable(a int);
+create table myview as select * from mytable;
+
+create function testfunc(a int, b float)
+returns void as $$
+declare x integer;
+begin
+  raise notice '%', myfunc1(a, b);
+  x := myfunc2(a, b);
+  perform myfunc3(m.a, b) from myview m;
+  insert into mytable select myfunc4(a, b);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('testfunc(int,float)');
+select type, schema, name, params from plpgsql_show_dependency_tb('testfunc(int,float)');
+
+drop function testfunc(int, float);
+drop function myfunc1(int, float);
+drop function myfunc2(int, float);
+drop function myfunc3(int, float);
+drop function myfunc4(int, float);
+
+drop table mytable;
+drop view myview;

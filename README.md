@@ -20,7 +20,7 @@ google group.
 * partially detection of dead code (due RETURN command)
 * detection of missing RETURN command in function
 * try to identify unwanted hidden casts, that can be performance issue like unused indexes
-
+* possibility to collect relations and functions used by function
 
 I invite any ideas, patches, bugreports
 
@@ -335,6 +335,22 @@ tables. So you can do (with following trick safetly):
 
 This trick emulates GLOBAL TEMP tables partially and it allows a statical validation.
 Other possibility is using a [template foreign data wrapper] (https://github.com/okbob/template_fdw)
+
+# Dependency list
+
+A function <i>plpgsql_show_dependency_tb</i> can show all functions and relations used
+inside processed function:
+
+    postgres=# select * from plpgsql_show_dependency_tb('testfunc(int,float)');
+    ┌──────────┬───────┬────────┬─────────┬────────────────────────────┐
+    │   type   │  oid  │ schema │  name   │           params           │
+    ╞══════════╪═══════╪════════╪═════════╪════════════════════════════╡
+    │ FUNCTION │ 36008 │ public │ myfunc1 │ (integer,double precision) │
+    │ FUNCTION │ 35999 │ public │ myfunc2 │ (integer,double precision) │
+    │ RELATION │ 36005 │ public │ myview  │                            │
+    │ RELATION │ 36002 │ public │ mytable │                            │
+    └──────────┴───────┴────────┴─────────┴────────────────────────────┘
+    (4 rows)
 
 # Compilation
 
