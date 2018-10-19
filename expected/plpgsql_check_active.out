@@ -3101,3 +3101,19 @@ drop table mytable;
 drop view myview;
 ERROR:  "myview" is not a view
 HINT:  Use DROP TABLE to remove a table.
+-- issue #34
+create or replace function testcase()
+returns bool as $$
+declare x int;
+begin
+  set local search_path to public, test;
+  case x when 1 then return true; else return false; end case;
+end;
+$$ language plpgsql;
+-- should not to raise warning
+select * from plpgsql_check_function('testcase()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function testcase();

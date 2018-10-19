@@ -2353,3 +2353,18 @@ drop function myfunc4(int, float);
 
 drop table mytable;
 drop view myview;
+
+-- issue #34
+create or replace function testcase()
+returns bool as $$
+declare x int;
+begin
+  set local search_path to public, test;
+  case x when 1 then return true; else return false; end case;
+end;
+$$ language plpgsql;
+
+-- should not to raise warning
+select * from plpgsql_check_function('testcase()');
+
+drop function testcase();

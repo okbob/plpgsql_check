@@ -203,6 +203,7 @@ static void check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 				   int targetdno, bool use_element_type, bool is_expression);
 static void check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expression);
 static void check_expr_as_sqlstmt_nodata(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
+static bool check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 static void check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 							 Oid target_typoid, int32 target_typmod,
 							 Oid value_typoid,
@@ -2426,6 +2427,11 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 						 * we need to set hidden variable type
 						 */
 						prepare_expr(cstate, stmt_case->t_expr, 0);
+
+						/* record all variables used by the query */
+						cstate->used_variables = bms_add_members(cstate->used_variables,
+																 stmt_case->t_expr->paramnos);
+
 						tupdesc = expr_get_desc(cstate,
 												stmt_case->t_expr,
 												false,	/* no element type */
@@ -3153,6 +3159,13 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 
 #if PG_VERSION_NUM >= 110000
 
+			case PLPGSQL_STMT_SET:
+				/*
+				 * We can not check this now, syntax should be ok.
+				 * The expression there has not plan.
+				 */
+				break;
+
 			case PLPGSQL_STMT_COMMIT:
 			case PLPGSQL_STMT_ROLLBACK:
 				/* These commands are allowed only in procedures */
@@ -3166,9 +3179,15 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 				{
 					PLpgSQL_stmt_call *stmt_call = (PLpgSQL_stmt_call *) stmt;
 					PLpgSQL_row *target;
+					bool		has_data;
 
-					check_expr(cstate, stmt_call->expr);
+					has_data = check_expr_as_sqlstmt(cstate, stmt_call->expr);
+
+					/* any check_expr_xxx should be called before CallExprGetRowTarget */
 					target = CallExprGetRowTarget(cstate, stmt_call->expr);
+
+					if (has_data != (target != NULL))
+						elog(ERROR, "plpgsql internal error, broken CALL statement %d %d", has_data, target);
 
 					if (target != NULL)
 					{
@@ -3400,7 +3419,7 @@ static void
 check_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 {
 	if (expr)
-		check_expr_as_rvalue(cstate, expr, NULL, NULL, -1, false, false);
+		check_expr_as_rvalue(cstate, expr, NULL, NULL, -1, false, true);
 }
 
 static void
@@ -4141,8 +4160,22 @@ no_other_check:
 static void
 check_expr_as_sqlstmt_nodata(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 {
+	if (check_expr_as_sqlstmt(cstate, expr))
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("query has no destination for result data")));
+}
+
+/*
+ * Check a SQL statement, can (not) returs data. Returns true
+ * when statement returns data.
+ */
+static bool
+check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+{
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
+	volatile bool result = false;
 
 	oldowner = CurrentResourceOwner;
 	BeginInternalSubTransaction(NULL);
@@ -4154,10 +4187,7 @@ check_expr_as_sqlstmt_nodata(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 		/* record all variables used by the query */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
-		if (expr_get_desc(cstate, expr, false, false, false, NULL))
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("query has no destination for result data")));
+		result = expr_get_desc(cstate, expr, false, false, false, NULL);
 
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
@@ -4192,7 +4222,10 @@ check_expr_as_sqlstmt_nodata(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 		SPI_restore_connection();
 	}
 	PG_END_TRY();
+
+	return result;
 }
+
 
 #if PG_VERSION_NUM >= 110000
 
@@ -5253,6 +5286,7 @@ CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr)
 
 	if (CallExpr->plan != NULL)
 	{
+		PLpgSQL_row *row;
 		SPIPlanPtr	plan = CallExpr->plan;
 		HeapTuple		tuple;
 		Oid		   *argtypes;
@@ -5286,10 +5320,10 @@ CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr)
 
 		get_func_arg_info(tuple, &argtypes, &argnames, &argmodes);
 
-		result = palloc0(sizeof(PLpgSQL_row));
-		result->dtype = PLPGSQL_DTYPE_ROW;
-		result->lineno = 0;
-		result->varnos = palloc(sizeof(int) * FUNC_MAX_ARGS);
+		row = palloc0(sizeof(PLpgSQL_row));
+		row->dtype = PLPGSQL_DTYPE_ROW;
+		row->lineno = 0;
+		row->varnos = palloc(sizeof(int) * FUNC_MAX_ARGS);
 
 		/*
 		 * Construct row
@@ -5309,14 +5343,25 @@ CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr)
 							 errmsg("argument %d is an output argument but is not writable", i + 1)));
 
 				param = castNode(Param, n);
-				result->varnos[nfields++] = param->paramid - 1;
+				row->varnos[nfields++] = param->paramid - 1;
 			}
 			i++;
 		}
 
-		result->nfields = nfields;
+		row->nfields = nfields;
 
 		ReleaseSysCache(tuple);
+
+		/* Don't return empty row variable */
+		if (nfields > 0)
+		{
+			result = row;
+		}
+		else
+		{
+			pfree(row->varnos);
+			pfree(row);
+		}
 	}
 	else
 		elog(ERROR, "there are no plan for query: \"%s\"",
