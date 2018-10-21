@@ -3187,7 +3187,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 					target = CallExprGetRowTarget(cstate, stmt_call->expr);
 
 					if (has_data != (target != NULL))
-						elog(ERROR, "plpgsql internal error, broken CALL statement %d %d", has_data, target);
+						elog(ERROR, "plpgsql internal error, broken CALL statement");
 
 					if (target != NULL)
 					{
@@ -4168,13 +4168,14 @@ check_expr_as_sqlstmt_nodata(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 
 /*
  * Check a SQL statement, can (not) returs data. Returns true
- * when statement returns data.
+ * when statement returns data - we are able to get tuple descriptor.
  */
 static bool
 check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 {
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
+	TupleDesc	tupdesc;
 	volatile bool result = false;
 
 	oldowner = CurrentResourceOwner;
@@ -4187,7 +4188,12 @@ check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 		/* record all variables used by the query */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
-		result = expr_get_desc(cstate, expr, false, false, false, NULL);
+		tupdesc = expr_get_desc(cstate, expr, false, false, false, NULL);
+		if (tupdesc)
+		{
+			result = true;
+			ReleaseTupleDesc(tupdesc);
+		}
 
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
