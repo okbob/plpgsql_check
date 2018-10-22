@@ -2368,3 +2368,21 @@ $$ language plpgsql;
 select * from plpgsql_check_function('testcase()');
 
 drop function testcase();
+
+-- Adam's Bartoszewicz example
+create or replace function public.test12()
+returns refcursor
+language plpgsql
+as $body$
+declare
+  rc refcursor;
+begin
+  open rc scroll for select pc.* from pg_cast pc;
+  return rc;
+end;
+$body$;
+
+-- should not returns false alarm
+select * from plpgsql_check_function('test12()');
+
+drop function public.test12();

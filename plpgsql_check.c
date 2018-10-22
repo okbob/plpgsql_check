@@ -203,6 +203,7 @@ static void check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 				   int targetdno, bool use_element_type, bool is_expression);
 static void check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expression);
 static void check_expr_as_sqlstmt_nodata(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
+static void check_expr_as_sqlstmt_data(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 static bool check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 static void check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 							 Oid target_typoid, int32 target_typmod,
@@ -3089,9 +3090,11 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 					PLpgSQL_var *var = (PLpgSQL_var *) (cstate->estate->datums[stmt_open->curvar]);
 
 					if (var->cursor_explicit_expr)
-						check_expr(cstate, var->cursor_explicit_expr);
+						check_expr_as_sqlstmt_data(cstate, var->cursor_explicit_expr);
 
-					check_expr(cstate, stmt_open->query);
+					if (stmt_open->query)
+						check_expr_as_sqlstmt_data(cstate, stmt_open->query);
+
 					if (var != NULL && stmt_open->query != NULL)
 						var->cursor_explicit_expr = stmt_open->query;
 
@@ -4165,6 +4168,20 @@ check_expr_as_sqlstmt_nodata(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("query has no destination for result data")));
 }
+
+/*
+ * Check a SQL statement, should to return data
+ *
+ */
+static void
+check_expr_as_sqlstmt_data(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+{
+	if (!check_expr_as_sqlstmt(cstate, expr))
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("query does not return data")));
+}
+
 
 /*
  * Check a SQL statement, can (not) returs data. Returns true
