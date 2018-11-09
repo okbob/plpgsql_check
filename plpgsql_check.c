@@ -67,6 +67,7 @@
 #include "catalog/pg_type.h"
 #include "executor/spi_priv.h"
 #include "nodes/nodeFuncs.h"
+#include "optimizer/clauses.h"
 #include "parser/parse_coerce.h"
 #include "tcop/utility.h"
 #include "tsearch/ts_locale.h"
@@ -5312,6 +5313,7 @@ CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr)
 		PLpgSQL_row *row;
 		SPIPlanPtr	plan = CallExpr->plan;
 		HeapTuple		tuple;
+		List	   *funcargs;
 		Oid		   *argtypes;
 		char	  **argnames;
 		char	   *argmodes;
@@ -5341,39 +5343,58 @@ CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr)
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for function %u", funcexpr->funcid);
 
+		/* Extract function arguments, and expand any named-arg notation */
+		funcargs = expand_function_arguments(funcexpr->args,
+											 funcexpr->funcresulttype,
+											 tuple);
+
 		get_func_arg_info(tuple, &argtypes, &argnames, &argmodes);
+
+		ReleaseSysCache(tuple);
 
 		row = palloc0(sizeof(PLpgSQL_row));
 		row->dtype = PLPGSQL_DTYPE_ROW;
 		row->lineno = 0;
-		row->varnos = palloc(sizeof(int) * FUNC_MAX_ARGS);
+		row->varnos = palloc(sizeof(int) * list_length(funcargs));
 
 		/*
 		 * Construct row
 		 */
 		i = 0;
-		foreach (lc, funcexpr->args)
+		foreach(lc, funcargs)
 		{
-			Node *n = lfirst(lc);
+			Node	   *n = lfirst(lc);
 
-			if (argmodes && argmodes[i] == PROARGMODE_INOUT)
+			if (argmodes &&
+				(argmodes[i] == PROARGMODE_INOUT ||
+				 argmodes[i] == PROARGMODE_OUT))
 			{
-				Param	   *param;
+				if (IsA(n, Param))
+				{
+					Param	   *param = (Param *) n;
 
-				if (!IsA(n, Param))
-					ereport(ERROR,
-							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("argument %d is an output argument but is not writable", i + 1)));
-
-				param = castNode(Param, n);
-				row->varnos[nfields++] = param->paramid - 1;
+					/* paramid is offset by 1 (see make_datum_param()) */
+					row->varnos[nfields++] = param->paramid - 1;
+				}
+				else
+				{
+					/* report error using parameter name, if available */
+					if (argnames && argnames[i] && argnames[i][0])
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("procedure parameter \"%s\" is an output parameter but corresponding argument is not writable",
+										argnames[i])));
+					else
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("procedure parameter %d is an output parameter but corresponding argument is not writable",
+										i + 1)));
+				}
 			}
 			i++;
 		}
 
 		row->nfields = nfields;
-
-		ReleaseSysCache(tuple);
 
 		/* Don't return empty row variable */
 		if (nfields > 0)
