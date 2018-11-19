@@ -334,6 +334,74 @@ static void tuplestore_put_dependency(Tuplestorestate *tuple_store,
 									  TupleDesc tupdesc, char *type, Oid oid,
 									  char *schema, char *name, char *params);
 
+/*
+ * Any instance of plpgsql function will have a own profile.
+ * When function will be dropped, then related profile should
+ * be removed from shared memory.
+ *
+ * The local profile is created when function is initialized,
+ * and it is stored in plugin_info field. When function is finished,
+ * data from local profile is merged to shared profile.
+ */
+typedef struct profiler_hashkey
+{
+	Oid			fn_oid;
+	Oid			db_oid;
+	TransactionId fn_xmin;
+	ItemPointerData fn_tid;
+} profiler_hashkey;
+
+/*
+ * Attention - the commands that can contains nestested commands
+ * has attached own time and nested statements time too.
+ */
+typedef struct profiler_stmt
+{
+	int		lineno;
+	int64	us_max;
+	int64	us_total;
+	int64	rows;
+	int64	exec_count;
+	instr_time	start_time;
+} profiler_stmt;
+
+/*
+ * It is used for fast mapping plpgsql stmt -> stmtid
+ */
+typedef struct profiler_map_entry
+{
+	PLpgSQL_stmt *stmt;
+	int			stmtid;
+	struct profiler_map_entry *next;
+} profiler_map_entry;
+
+typedef struct profiler_profile
+{
+	int			nstatements;
+	profiler_stmt *stmts;  /* should be stored in shared memory */
+	int			stmts_map_max_lineno;
+	profiler_map_entry *stmts_map;
+} profiler_profile;
+
+typedef struct profiler_info
+{
+	profiler_profile *profile;
+	profiler_stmt *stmts;
+} profiler_info;
+
+static HTAB *profiler_HashTable = NULL;
+
+static void profiler_localHashTableInit(void);
+
+static void profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *func);
+static void profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func);
+static void profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
+static void profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
+
+static void profiler_touch_stmt(profiler_profile *profile, PLpgSQL_stmt *stmt);
+
+static bool plpgsql_check_profiler = true;
+
 #if PG_VERSION_NUM >= 110000
 
 static bool compatible_tupdescs(TupleDesc src_tupdesc, TupleDesc dst_tupdesc);
@@ -347,7 +415,13 @@ static bool plpgsql_check_performance_warnings = false;
 static bool plpgsql_check_fatal_errors = true;
 static int plpgsql_check_mode = PLPGSQL_CHECK_MODE_BY_FUNCTION;
 
-static PLpgSQL_plugin plugin_funcs = { NULL, check_on_func_beg, NULL, NULL, NULL};
+static PLpgSQL_plugin plugin_funcs = { profiler_func_init,
+									   check_on_func_beg,
+									   profiler_func_end,
+									   profiler_stmt_beg,
+									   profiler_stmt_end,
+									   NULL,
+									   NULL};
 
 static const struct config_enum_entry plpgsql_check_mode_options[] = {
 	{"disabled", PLPGSQL_CHECK_MODE_DISABLED, false},
@@ -356,6 +430,9 @@ static const struct config_enum_entry plpgsql_check_mode_options[] = {
 	{"every_start", PLPGSQL_CHECK_MODE_EVERY_START, false},
 	{NULL, 0, false}
 };
+
+
+static MemoryContext profiler_mcxt = NULL;
 
 #if PG_VERSION_NUM >= 110000
 
@@ -392,6 +469,7 @@ typedef struct plpgsql_hashent
 PG_FUNCTION_INFO_V1(plpgsql_check_function);
 PG_FUNCTION_INFO_V1(plpgsql_check_function_tb);
 PG_FUNCTION_INFO_V1(plpgsql_show_dependency_tb);
+PG_FUNCTION_INFO_V1(plpgsql_profiler);
 
 /*
  * Module initialization
@@ -453,7 +531,23 @@ _PG_init(void)
 					    PGC_SUSET, 0,
 					    NULL, NULL, NULL);
 
+	DefineCustomBoolVariable("plpgsql_check.profiler",
+					    "when is true, then function execution profile is updated",
+					    NULL,
+					    &plpgsql_check_profiler,
+					    true,
+					    PGC_SUSET, 0,
+					    NULL, NULL, NULL);
+
+	if (!profiler_mcxt)
+		profiler_mcxt = AllocSetContextCreate(TopMemoryContext,
+												"plpgsql_check - profiler context",
+												ALLOCSET_DEFAULT_MINSIZE,
+												ALLOCSET_DEFAULT_INITSIZE,
+												ALLOCSET_DEFAULT_MAXSIZE);
+
 	plpgsql_check_HashTableInit();
+	profiler_localHashTableInit();
 
 	inited = true;
 }
@@ -6662,6 +6756,7 @@ mark_as_checked(PLpgSQL_function *func)
 	}
 }
 
+
 /*
  * plpgsql_show_dependency_tb
  *
@@ -6729,4 +6824,377 @@ plpgsql_show_dependency_tb(PG_FUNCTION_ARGS)
 	rsinfo->setDesc = tupdesc;
 
 	return (Datum) 0;
+}
+
+/*
+ * Profiler implementation
+ */
+
+
+static void
+profiler_init_hashkey(profiler_hashkey *hk, PLpgSQL_function *func)
+{
+	hk->db_oid = MyDatabaseId;
+
+	hk->fn_oid = func->fn_oid;
+	hk->fn_xmin = func->fn_xmin;
+	hk->fn_tid = func->fn_tid;
+}
+
+/*
+ * Hash table for profiles
+ */
+static void
+profiler_localHashTableInit(void)
+{
+	HASHCTL		ctl;
+
+	Assert(profiler_HashTable == NULL);
+
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.keysize = sizeof(profiler_hashkey);
+	ctl.entrysize = sizeof(profiler_profile);
+	ctl.hcxt = profiler_mcxt;
+	ctl.hash = tag_hash;
+	profiler_HashTable = hash_create("plpgsql_check function profiler local cache",
+									FUNCS_PER_USER,
+									&ctl,
+									HASH_ELEM | HASH_FUNCTION);
+}
+
+/*
+ * PLpgSQL statements has not unique id. We can assign some unique id
+ * that can be used for statements counters. Fast access to this id
+ * is implemented via map structure. It is a array of lists structure.
+ */
+static void
+profiler_update_map(profiler_profile *profile, PLpgSQL_stmt *stmt)
+{
+	int		lineno = stmt->lineno;
+	profiler_map_entry *pme;
+
+	if (lineno > profile->stmts_map_max_lineno)
+	{
+		int		lines;
+		int		i;
+
+		/* calculate new size of map */
+		for (lines = profile->stmts_map_max_lineno; stmt->lineno < lines;)
+			if (lines < 10000)
+				lines *= 2;
+			else
+				lines += 10000;
+
+		profile->stmts_map = realloc(profile->stmts_map,
+									 lines * sizeof(profiler_map_entry));
+
+		for (i = profile->stmts_map_max_lineno; i < lines; i++)
+			profile->stmts_map[i].stmt = NULL;
+
+		profile->stmts_map_max_lineno = lines;
+	}
+
+	pme = &profile->stmts_map[lineno];
+
+	if (!pme->stmt)
+	{
+		pme->stmt = stmt;
+		pme->stmtid = profile->nstatements++;
+	}
+	else
+	{
+		profiler_map_entry *new_pme = palloc(sizeof(profiler_map_entry));
+
+		new_pme->stmt = stmt;
+		new_pme->stmtid = profile->nstatements++;
+		new_pme->next = NULL;
+
+		while (pme->next)
+			pme = pme->next;
+
+		pme->next = new_pme;
+	}
+}
+
+/*
+ * Returns statement id assigned to plpgsql statement. Should be
+ * fast, because lineno is usually unique.
+ */
+static int
+profiler_get_stmtid(profiler_profile *profile, PLpgSQL_stmt *stmt)
+{
+	int		lineno = stmt->lineno;
+	profiler_map_entry *pme;
+
+	if (lineno > profile->stmts_map_max_lineno)
+		elog(ERROR, "broken statement map - too high lineno");
+
+	pme = &profile->stmts_map[lineno];
+
+	/* pme->stmt should not be null */
+	if (!pme->stmt)
+		elog(ERROR, "broken statement map - broken format");
+
+	while (pme && pme->stmt != stmt)
+		pme = pme->next;
+
+	/* we should to find statement */
+	if (!pme)
+		elog(ERROR, "broken statement map - cannot to find statement");
+
+	return pme->stmtid;
+}
+
+static void
+profiler_touch_stmts(profiler_profile *profile, List *stmts)
+{
+	ListCell *lc;
+
+	foreach(lc, stmts)
+	{
+		PLpgSQL_stmt *stmt = (PLpgSQL_stmt *) lfirst(lc);
+
+		profiler_touch_stmt(profile, stmt);
+	}
+}
+
+/*
+ * This function should to iterate over all plpgsql commands to:
+ *   count statements and build statement -> uniq id map,
+ *   collect counted metrics.
+ */
+static void
+profiler_touch_stmt(profiler_profile *profile, PLpgSQL_stmt *stmt)
+{
+	profiler_update_map(profile, stmt);
+
+	switch (PLPGSQL_STMT_TYPES stmt->cmd_type)
+	{
+		case PLPGSQL_STMT_BLOCK:
+			{
+				PLpgSQL_stmt_block *stmt_block = (PLpgSQL_stmt_block *) stmt;
+
+				profiler_touch_stmts(profile, stmt_block->body);
+
+				if (stmt_block->exceptions)
+				{
+					ListCell *lc;
+
+					foreach(lc, stmt_block->exceptions->exc_list)
+					{
+						profiler_touch_stmts(profile, ((PLpgSQL_exception *) lfirst(lc))->action);
+					}
+				}
+			}
+			break;
+
+		case PLPGSQL_STMT_IF:
+			{
+				PLpgSQL_stmt_if *stmt_if = (PLpgSQL_stmt_if *) stmt;
+				ListCell *lc;
+
+				profiler_touch_stmts(profile, stmt_if->then_body);
+
+				foreach(lc, stmt_if->elsif_list)
+				{
+					profiler_touch_stmts(profile, ((PLpgSQL_if_elsif *) lfirst(lc))->stmts);
+				}
+
+				profiler_touch_stmts(profile, stmt_if->else_body);
+			}
+			break;
+
+		case PLPGSQL_STMT_CASE:
+			{
+				PLpgSQL_stmt_case *stmt_case = (PLpgSQL_stmt_case *) stmt;
+				ListCell *lc;
+
+				foreach(lc, stmt_case->case_when_list)
+				{
+					profiler_touch_stmts(profile, ((PLpgSQL_case_when *) lfirst(lc))->stmts);
+				}
+
+				profiler_touch_stmts(profile, stmt_case->else_stmts);
+			}
+			break;
+
+		case PLPGSQL_STMT_LOOP:
+			profiler_touch_stmts(profile, ((PLpgSQL_stmt_while *) stmt)->body);
+			break;
+
+		case PLPGSQL_STMT_FORI:
+			profiler_touch_stmts(profile, ((PLpgSQL_stmt_fori *) stmt)->body);
+			break;
+
+		case PLPGSQL_STMT_FORS:
+			profiler_touch_stmts(profile, ((PLpgSQL_stmt_fors *) stmt)->body);
+			break;
+
+		case PLPGSQL_STMT_FORC:
+			profiler_touch_stmts(profile, ((PLpgSQL_stmt_forc *) stmt)->body);
+			break;
+
+		case PLPGSQL_STMT_DYNFORS:
+			profiler_touch_stmts(profile, ((PLpgSQL_stmt_dynfors *) stmt)->body);
+			break;
+
+		case PLPGSQL_STMT_FOREACH_A:
+			profiler_touch_stmts(profile, ((PLpgSQL_stmt_foreach_a *) stmt)->body);
+			break;
+
+		default:
+			/* do nothing - other commands has not nested statements */
+			break;
+	}
+}
+
+/*
+ * Try to search profile pattern for function. Creates profile pattern when
+ * it doesn't exists.
+ */
+static void
+profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *func)
+{
+	if (1 || plpgsql_check_profiler)
+	{
+		profiler_info *pinfo;
+		profiler_profile *profile;
+		profiler_hashkey hk;
+		bool		found;
+
+		profiler_init_hashkey(&hk, func);
+		profile = (profiler_profile *) hash_search(profiler_HashTable,
+											 (void *) &hk,
+											 HASH_ENTER,
+											 &found);
+
+		if (!found)
+		{
+			MemoryContext oldcxt;
+
+			profile->nstatements = 0;
+			profile->stmts_map_max_lineno = 200;
+
+			oldcxt = MemoryContextSwitchTo(profiler_mcxt);
+			profile->stmts_map = palloc0(profile->stmts_map_max_lineno * sizeof(profiler_map_entry));
+			profile->stmts = palloc0(profile->nstatements * sizeof(profiler_stmt));
+
+			profiler_touch_stmt(profile, (PLpgSQL_stmt *) func->action);
+
+			MemoryContextSwitchTo(oldcxt);
+		}
+
+		pinfo = palloc0(sizeof(profiler_info));
+		pinfo->stmts = palloc0(profile->nstatements * sizeof(profiler_stmt));
+		pinfo->profile = profile;
+
+		estate->plugin_info = pinfo;
+	}
+}
+
+static void
+profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
+{
+	if ((1 || plpgsql_check_profiler) && estate->plugin_info)
+	{
+		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
+		profiler_profile *profile = pinfo->profile;
+		int		i;
+
+		for (i = 0; i < profile->nstatements; i++)
+		{
+			profiler_stmt *src = &pinfo->stmts[i];
+			profiler_stmt *trg = &profile->stmts[i];
+
+			if (src->us_max > trg->us_max)
+				trg->us_max = src->us_max;
+
+			trg->us_total += src->us_total;
+			trg->rows += src->rows;
+			trg->exec_count += src->exec_count;
+		}
+
+		pfree(pinfo->stmts);
+		pfree(pinfo);
+	}
+}
+
+static void
+profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
+{
+	if ((1 || plpgsql_check_profiler) && estate->plugin_info)
+	{
+		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
+		profiler_profile *profile  = pinfo->profile;
+		int stmtid = profiler_get_stmtid(profile, stmt);
+		profiler_stmt *pstmt = &profile->stmts[stmtid];
+
+		INSTR_TIME_SET_CURRENT(pstmt->start_time);
+	}
+}
+
+static void
+profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
+{
+	if ((1 || plpgsql_check_profiler) && estate->plugin_info)
+	{
+		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
+		profiler_profile *profile  = pinfo->profile;
+		int stmtid = profiler_get_stmtid(profile, stmt);
+		profiler_stmt *pstmt = &profile->stmts[stmtid];
+		instr_time		end_time;
+		uint64			elapsed;
+
+		INSTR_TIME_SET_CURRENT(end_time);
+		INSTR_TIME_SUBTRACT(end_time, pstmt->start_time);
+
+		elapsed = INSTR_TIME_GET_MICROSEC(end_time);
+
+		if (elapsed > pstmt->us_max)
+			pstmt->us_max = elapsed;
+
+		pstmt->us_total += elapsed;
+		pstmt->rows += estate->eval_processed;
+		pstmt->exec_count++;
+	}
+}
+
+Datum
+plpgsql_profiler(PG_FUNCTION_ARGS)
+{
+	Oid			funcoid = PG_GETARG_OID(0);
+	profiler_hashkey hk;
+	profiler_profile *profile;
+	HeapTuple	procTuple;
+	bool found;
+
+	procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcoid));
+	if (!HeapTupleIsValid(procTuple))
+		elog(ERROR, "cache lookup failed for function %u", funcoid);
+
+	hk.fn_oid = funcoid;
+	hk.db_oid = MyDatabaseId;
+	hk.fn_xmin = HeapTupleHeaderGetRawXmin(procTuple->t_data);
+	hk.fn_tid = procTuple->t_self;
+
+	profile = (profiler_profile *) hash_search(profiler_HashTable,
+											 (void *) &hk,
+											 HASH_FIND,
+											 &found);
+
+	if (found)
+	{
+		int		i;
+
+		for (i = 0; i < profile->nstatements; i++)
+		{
+			elog(NOTICE, "%d executed %ld", i, profile->stmts[i].exec_count);
+		}
+	}
+	else
+		elog(NOTICE, "not found profile");
+
+	ReleaseSysCache(procTuple);
+
+	PG_RETURN_NULL();
 }

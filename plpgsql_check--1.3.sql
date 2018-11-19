@@ -95,3 +95,9 @@ RETURNS TABLE(type text,
               params text)
 AS 'MODULE_PATHNAME','plpgsql_show_dependency_tb'
 LANGUAGE C STRICT;
+
+
+CREATE FUNCTION plpgsql_profiler(funcoid regprocedure)
+RETURNS void 
+AS 'MODULE_PATHNAME','plpgsql_profiler'
+LANGUAGE C STRICT;
