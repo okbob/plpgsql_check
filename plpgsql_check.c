@@ -377,7 +377,9 @@ typedef struct profiler_map_entry
 
 typedef struct profiler_profile
 {
+	profiler_hashkey key;
 	int			nstatements;
+	int			entry_stmtid;
 	profiler_stmt *stmts;  /* should be stored in shared memory */
 	int			stmts_map_max_lineno;
 	profiler_map_entry *stmts_map;
@@ -6810,7 +6812,7 @@ profiler_localHashTableInit(void)
 	profiler_HashTable = hash_create("plpgsql_check function profiler local cache",
 									FUNCS_PER_USER,
 									&ctl,
-									HASH_ELEM | HASH_FUNCTION);
+									HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
 }
 
 /*
@@ -6894,6 +6896,26 @@ profiler_get_stmtid(profiler_profile *profile, PLpgSQL_stmt *stmt)
 		elog(ERROR, "broken statement map - cannot to find statement");
 
 	return pme->stmtid;
+}
+
+static void
+profiler_copy_lineno_to_profile(profiler_profile *profile)
+{
+	int		lineno;
+
+	for(lineno = 0; lineno < profile->stmts_map_max_lineno; lineno++)
+	{
+		profiler_map_entry *pme = &profile->stmts_map[lineno];
+
+		if (pme->stmt)
+		{
+			while (pme)
+			{
+				profile->stmts[pme->stmtid].lineno = lineno;
+				pme = pme->next;
+			}
+		}
+	}
 }
 
 static void
@@ -7006,7 +7028,7 @@ profiler_touch_stmt(profiler_profile *profile, PLpgSQL_stmt *stmt)
 static void
 profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 {
-	if (1 || plpgsql_check_profiler)
+	if ((1 || plpgsql_check_profiler) && func->fn_oid != InvalidOid )
 	{
 		profiler_info *pinfo;
 		profiler_profile *profile;
@@ -7028,9 +7050,14 @@ profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 			oldcxt = MemoryContextSwitchTo(profiler_mcxt);
 			profile->stmts_map = palloc0(profile->stmts_map_max_lineno * sizeof(profiler_map_entry));
-			profile->stmts = palloc0(profile->nstatements * sizeof(profiler_stmt));
 
 			profiler_touch_stmt(profile, (PLpgSQL_stmt *) func->action);
+
+			profile->stmts = palloc0(profile->nstatements * sizeof(profiler_stmt));
+			profiler_copy_lineno_to_profile(profile);
+
+			/* entry statements is not visible for plugin functions */
+			profile->entry_stmtid = profiler_get_stmtid(profile, (PLpgSQL_stmt *) func->action);
 
 			MemoryContextSwitchTo(oldcxt);
 		}
@@ -7046,11 +7073,15 @@ profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 static void
 profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 {
-	if ((1 || plpgsql_check_profiler) && estate->plugin_info)
+	if ((1 || plpgsql_check_profiler) && estate->plugin_info && func->fn_oid != InvalidOid)
 	{
 		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 		profiler_profile *profile = pinfo->profile;
 		int		i;
+
+		/* function entry plpgsql statement is ignored by plugin functions */
+		if (pinfo->stmts[profile->entry_stmtid].exec_count == 0)
+			pinfo->stmts[profile->entry_stmtid].exec_count = 1;
 
 		for (i = 0; i < profile->nstatements; i++)
 		{
@@ -7073,7 +7104,7 @@ profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 static void
 profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
-	if ((1 || plpgsql_check_profiler) && estate->plugin_info)
+	if ((1 || plpgsql_check_profiler) && estate->plugin_info && estate->func->fn_oid != InvalidOid)
 	{
 		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 		profiler_profile *profile  = pinfo->profile;
@@ -7087,7 +7118,7 @@ profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 static void
 profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
-	if ((1 || plpgsql_check_profiler) && estate->plugin_info)
+	if ((1 || plpgsql_check_profiler) && estate->plugin_info && estate->func->fn_oid != InvalidOid)
 	{
 		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 		profiler_profile *profile  = pinfo->profile;
@@ -7139,7 +7170,7 @@ plpgsql_profiler(PG_FUNCTION_ARGS)
 
 		for (i = 0; i < profile->nstatements; i++)
 		{
-			elog(NOTICE, "%d executed %ld", i, profile->stmts[i].exec_count);
+			elog(NOTICE, "%d executed %ld, time: %ld", profile->stmts[i].lineno, profile->stmts[i].exec_count, profile->stmts[i].us_total);
 		}
 	}
 	else
