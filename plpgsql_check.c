@@ -116,6 +116,20 @@ PG_MODULE_MAGIC;
 #define Anum_dependency_name			3
 #define Anum_dependency_params			4
 
+/*
+ * columns of plpgsql_profiler_function_tb result
+ *
+ */
+#define Natts_profiler					8
+
+#define Anum_profiler_lineno			0
+#define Anum_profiler_stmt_lineno		1
+#define Anum_profiler_exec_count		2
+#define Anum_profiler_total_time		3
+#define Anum_profiler_avg_time			4
+#define Anum_profiler_max_time			5
+#define Anum_profiler_processed_rows	6
+#define Anum_profiler_source			7
 
 enum
 {
@@ -7141,18 +7155,82 @@ profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	}
 }
 
+/*
+#define Natts_profiler					8
+
+#define Anum_profiler_lineno			0
+#define Anum_profiler_stmt_lineno		1
+#define Anum_profiler_exec_count		2
+#define Anum_profiler_total_time		3
+#define Anum_profiler_avg_time			4
+#define Anum_profiler_max_time			5
+#define Anum_profiler_processed_rows	6
+#define Anum_profiler_source			7
+*/
+
+static void
+tuplestore_put_profile(Tuplestorestate *tuple_store,
+					   TupleDesc tupdesc,
+					   int lineno,
+					   char *source_row)
+{
+	Datum	values[Natts_profiler];
+	bool	nulls[Natts_profiler];
+
+	SET_RESULT_NULL(Anum_profiler_stmt_lineno);
+	SET_RESULT_NULL(Anum_profiler_exec_count);
+	SET_RESULT_NULL(Anum_profiler_total_time);
+	SET_RESULT_NULL(Anum_profiler_avg_time);
+	SET_RESULT_NULL(Anum_profiler_max_time);
+	SET_RESULT_NULL(Anum_profiler_processed_rows);
+	SET_RESULT_NULL(Anum_profiler_source);
+
+	SET_RESULT_INT32(Anum_profiler_lineno, lineno);
+	SET_RESULT_TEXT(Anum_profiler_source, source_row);
+
+	tuplestore_putvalues(tuple_store, tupdesc, values, nulls);
+}
+
 Datum
-plpgsql_profiler(PG_FUNCTION_ARGS)
+plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 {
 	Oid			funcoid = PG_GETARG_OID(0);
 	profiler_hashkey hk;
 	profiler_profile *profile;
 	HeapTuple	procTuple;
 	bool found;
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	Tuplestorestate *tupstore;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+	TupleDesc	tupdesc;
+	char	   *prosrc;
+	Datum		prosrcdatum;
+	bool		isnull;
+	int			lineno = 1;
+
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not allowed in this context")));
+
 
 	procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcoid));
 	if (!HeapTupleIsValid(procTuple))
 		elog(ERROR, "cache lookup failed for function %u", funcoid);
+
+	prosrcdatum = SysCacheGetAttr(PROCOID, procTuple,
+								  Anum_pg_proc_prosrc, &isnull);
+	if (isnull)
+		elog(ERROR, "null prosrc");
+
+	prosrc = TextDatumGetCString(prosrcdatum);
 
 	hk.fn_oid = funcoid;
 	hk.db_oid = MyDatabaseId;
@@ -7178,5 +7256,42 @@ plpgsql_profiler(PG_FUNCTION_ARGS)
 
 	ReleaseSysCache(procTuple);
 
-	PG_RETURN_NULL();
+	/* need to build tuplestore in query context */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	tupdesc = CreateTupleDescCopy(rsinfo->expectedDesc);
+	tupstore = tuplestore_begin_heap(false, false, work_mem);
+	MemoryContextSwitchTo(oldcontext);
+
+	while (prosrc)
+	{
+		char *lineend = prosrc;
+		char *linebeg = prosrc;
+
+		/* find lineend */
+		while (*lineend != '\0' || *lineend != '\n')
+			lineend += 1;
+
+		if (*lineend == '\n')
+		{
+			*lineend = '\0';
+			prosrc = lineend + 1;
+		}
+
+		tuplestore_put_profile(tupstore, tupdesc,
+							   lineno,
+							   linebeg);
+
+		lineno += 1;
+	}
+
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	return (Datum) 0;
 }
