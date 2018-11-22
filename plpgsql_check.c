@@ -1284,7 +1284,16 @@ precheck_conditions(HeapTuple procTuple, PLpgSQL_trigtype trigtype, Oid relid)
 	char	   *funcname;
 
 	proc = (Form_pg_proc) GETSTRUCT(procTuple);
+
+#if PG_VERSION_NUM >= 120000
+
+	funcname = format_procedure(proc->oid);
+
+#else
+
 	funcname = format_procedure(HeapTupleGetOid(procTuple));
+
+#endif
 
 	/* used language must be plpgsql */
 	languageTuple = SearchSysCache1(LANGOID, ObjectIdGetDatum(proc->prolang));
@@ -1350,7 +1359,15 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 	PLpgSQL_execstate estate;
 	ReturnSetInfo rsinfo;
 
+#if PG_VERSION_NUM >= 120000
+
+	funcoid = ((Form_pg_proc) GETSTRUCT(procTuple))->oid;
+
+#else
+
 	funcoid = HeapTupleGetOid(procTuple);
+
+#endif
 
 	/*
 	 * Connect to SPI manager
@@ -1830,7 +1847,16 @@ setup_fake_fcinfo(HeapTuple procTuple,
 			resultTupleDesc = lookup_rowtype_tupdesc_copy(rettype, -1);
 		else
 		{
+#if PG_VERSION_NUM >= 120000
+
+			resultTupleDesc = CreateTemplateTupleDesc(1);
+
+#else
+
 			resultTupleDesc = CreateTemplateTupleDesc(1, false);
+
+#endif
+
 			TupleDescInitEntry(resultTupleDesc,
 							    (AttrNumber) 1, "__result__",
 							    rettype, -1, 0);
@@ -1987,13 +2013,20 @@ setup_plpgsql_estate(PLpgSQL_execstate *estate,
 
 	estate->eval_tuptable = NULL;
 	estate->eval_processed = 0;
+
+#if PG_VERSION_NUM < 120000
+
 	estate->eval_lastoid = InvalidOid;
+
 
 #if PG_VERSION_NUM < 90500
 
 	estate->cur_expr = NULL;
 
 #endif
+
+#endif
+
 
 	estate->err_stmt = NULL;
 	estate->err_text = NULL;
@@ -5538,7 +5571,15 @@ expr_get_desc(PLpgSQL_checkstate *cstate,
 		{
 			TupleDesc rettupdesc;
 
+#if PG_VERSION_NUM >= 120000
+
+			rettupdesc = CreateTemplateTupleDesc(1);
+
+#else
+
 			rettupdesc = CreateTemplateTupleDesc(1, false);
+
+#endif
 
 			TupleDescInitEntry(rettupdesc, 1, "__array_element__", elemtype, -1, 0);
 
@@ -5666,7 +5707,15 @@ expr_get_desc(PLpgSQL_checkstate *cstate,
 							TupleDesc rettupdesc;
 							int			i = 1;
 
+#if PG_VERSION_NUM >= 120000
+
+							rettupdesc = CreateTemplateTupleDesc(list_length(row->args));
+
+#else
+
 							rettupdesc = CreateTemplateTupleDesc(list_length(row->args), false);
+
+#endif
 
 							forboth (lc_colname, row->colnames, lc_arg, row->args)
 							{
