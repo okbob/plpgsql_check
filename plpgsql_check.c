@@ -485,7 +485,7 @@ typedef struct plpgsql_hashent
 PG_FUNCTION_INFO_V1(plpgsql_check_function);
 PG_FUNCTION_INFO_V1(plpgsql_check_function_tb);
 PG_FUNCTION_INFO_V1(plpgsql_show_dependency_tb);
-PG_FUNCTION_INFO_V1(plpgsql_profiler);
+PG_FUNCTION_INFO_V1(plpgsql_profiler_function_tb);
 
 /*
  * Module initialization
@@ -7221,6 +7221,7 @@ static void
 tuplestore_put_profile(Tuplestorestate *tuple_store,
 					   TupleDesc tupdesc,
 					   int lineno,
+					   int stmt_lineno,
 					   char *source_row)
 {
 	Datum	values[Natts_profiler];
@@ -7236,6 +7237,9 @@ tuplestore_put_profile(Tuplestorestate *tuple_store,
 
 	SET_RESULT_INT32(Anum_profiler_lineno, lineno);
 	SET_RESULT_TEXT(Anum_profiler_source, source_row);
+
+	if (stmt_lineno > 0)
+		SET_RESULT_INT32(Anum_profiler_stmt_lineno, stmt_lineno);
 
 	tuplestore_putvalues(tuple_store, tupdesc, values, nulls);
 }
@@ -7257,6 +7261,7 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 	Datum		prosrcdatum;
 	bool		isnull;
 	int			lineno = 1;
+	int			current_statement = 0;
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -7291,17 +7296,8 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 											 HASH_FIND,
 											 &found);
 
-	if (found)
-	{
-		int		i;
-
-		for (i = 0; i < profile->nstatements; i++)
-		{
-			elog(NOTICE, "%d executed %ld, time: %ld", profile->stmts[i].lineno, profile->stmts[i].exec_count, profile->stmts[i].us_total);
-		}
-	}
-	else
-		elog(NOTICE, "not found profile");
+	if (!found)
+		elog(NOTICE, "there are not a profile for function %u", funcoid);
 
 	ReleaseSysCache(procTuple);
 
@@ -7313,13 +7309,13 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 	tupstore = tuplestore_begin_heap(false, false, work_mem);
 	MemoryContextSwitchTo(oldcontext);
 
-	while (prosrc)
+	while (*prosrc)
 	{
 		char *lineend = prosrc;
 		char *linebeg = prosrc;
 
 		/* find lineend */
-		while (*lineend != '\0' || *lineend != '\n')
+		while (*lineend != '\0' && *lineend != '\n')
 			lineend += 1;
 
 		if (*lineend == '\n')
@@ -7327,10 +7323,26 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 			*lineend = '\0';
 			prosrc = lineend + 1;
 		}
+		else
+			prosrc = lineend;
 
-		tuplestore_put_profile(tupstore, tupdesc,
-							   lineno,
-							   linebeg);
+		if (found)
+		{
+			/* is there some statement for this line ? */
+			while (profile->stmts[current_statement].lineno < lineno &&
+					current_statement < profile->nstatements)
+				current_statement += 1;
+
+			tuplestore_put_profile(tupstore, tupdesc,
+								   lineno,
+								   profile->stmts[current_statement].lineno == lineno ? lineno : -1,
+								   linebeg);
+		}
+		else
+			tuplestore_put_profile(tupstore, tupdesc,
+								   lineno,
+								   -1,
+								   linebeg);
 
 		lineno += 1;
 	}
