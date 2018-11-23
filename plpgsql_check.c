@@ -29,6 +29,8 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 
+#include "math.h"
+
 #include "plpgsql_check_builtins.h"
 
 #if PG_VERSION_NUM >= 100000
@@ -71,6 +73,7 @@
 #include "parser/parse_coerce.h"
 #include "tcop/utility.h"
 #include "tsearch/ts_locale.h"
+#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
@@ -120,16 +123,17 @@ PG_MODULE_MAGIC;
  * columns of plpgsql_profiler_function_tb result
  *
  */
-#define Natts_profiler					8
+#define Natts_profiler					9
 
 #define Anum_profiler_lineno			0
 #define Anum_profiler_stmt_lineno		1
-#define Anum_profiler_exec_count		2
-#define Anum_profiler_total_time		3
-#define Anum_profiler_avg_time			4
-#define Anum_profiler_max_time			5
-#define Anum_profiler_processed_rows	6
-#define Anum_profiler_source			7
+#define Anum_profiler_cmds_on_row		2
+#define Anum_profiler_exec_count		3
+#define Anum_profiler_total_time		4
+#define Anum_profiler_avg_time			5
+#define Anum_profiler_max_time			6
+#define Anum_profiler_processed_rows	7
+#define Anum_profiler_source			8
 
 enum
 {
@@ -393,7 +397,7 @@ typedef struct profiler_profile
 {
 	profiler_hashkey key;
 	int			nstatements;
-	int			entry_stmtid;
+	PLpgSQL_stmt *entry_stmt;
 	profiler_stmt *stmts;  /* should be stored in shared memory */
 	int			stmts_map_max_lineno;
 	profiler_map_entry *stmts_map;
@@ -403,6 +407,7 @@ typedef struct profiler_info
 {
 	profiler_profile *profile;
 	profiler_stmt *stmts;
+	instr_time	start_time;
 } profiler_info;
 
 static HTAB *profiler_HashTable = NULL;
@@ -414,7 +419,11 @@ static void profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 static void profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 static void profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 
-static void profiler_touch_stmt(profiler_profile *profile, PLpgSQL_stmt *stmt);
+static void profiler_touch_stmt(profiler_info *pinfo,
+								PLpgSQL_stmt *stmt,
+								bool generate_map,
+								bool finelize_profile,
+								int64 *us_total);
 
 static bool plpgsql_check_profiler = true;
 
@@ -6132,7 +6141,9 @@ datum_get_refname(PLpgSQL_datum *d)
 	} while (0)
 
 #define SET_RESULT_INT32(anum, ival)	SET_RESULT((anum), Int32GetDatum((ival)))
-#define SET_RESULT_OID(anum, oid)	SET_RESULT((anum), ObjectIdGetDatum((oid)))
+#define SET_RESULT_INT64(anum, ival)	SET_RESULT((anum), Int64GetDatum((ival)))
+#define SET_RESULT_OID(anum, oid)		SET_RESULT((anum), ObjectIdGetDatum((oid)))
+#define SET_RESULT_FLOAT8(anum, fval)	SET_RESULT((anum), Float8GetDatum(fval))
 
 /*
  * error processing switch - ignore warnings when it is necessary,
@@ -6962,35 +6973,30 @@ profiler_get_stmtid(profiler_profile *profile, PLpgSQL_stmt *stmt)
 }
 
 static void
-profiler_copy_lineno_to_profile(profiler_profile *profile)
-{
-	int		lineno;
-
-	for(lineno = 0; lineno < profile->stmts_map_max_lineno; lineno++)
-	{
-		profiler_map_entry *pme = &profile->stmts_map[lineno];
-
-		if (pme->stmt)
-		{
-			while (pme)
-			{
-				profile->stmts[pme->stmtid].lineno = lineno;
-				pme = pme->next;
-			}
-		}
-	}
-}
-
-static void
-profiler_touch_stmts(profiler_profile *profile, List *stmts)
+profiler_touch_stmts(profiler_info *pinfo,
+					 List *stmts,
+					 bool generate_map,
+					 bool finalize_profile,
+					 int64 *nested_us_total)
 {
 	ListCell *lc;
 
+	*nested_us_total = 0;
+
 	foreach(lc, stmts)
 	{
+		int64		us_total = 0;
+
 		PLpgSQL_stmt *stmt = (PLpgSQL_stmt *) lfirst(lc);
 
-		profiler_touch_stmt(profile, stmt);
+		profiler_touch_stmt(pinfo,
+							stmt,
+							generate_map,
+							finalize_profile,
+							&us_total);
+
+		if (finalize_profile)
+			*nested_us_total += us_total;
 	}
 }
 
@@ -7000,9 +7006,28 @@ profiler_touch_stmts(profiler_profile *profile, List *stmts)
  *   collect counted metrics.
  */
 static void
-profiler_touch_stmt(profiler_profile *profile, PLpgSQL_stmt *stmt)
+profiler_touch_stmt(profiler_info *pinfo,
+					PLpgSQL_stmt *stmt,
+					bool generate_map,
+					bool finalize_profile,
+					int64 *nested_us_total)
 {
-	profiler_update_map(profile, stmt);
+	int64		us_total = 0;
+	profiler_profile *profile = pinfo->profile;
+	profiler_stmt *pstmt = NULL;
+
+	if (generate_map)
+		profiler_update_map(profile, stmt);
+
+	if (finalize_profile)
+	{
+		int stmtid = profiler_get_stmtid(profile, stmt);
+
+		*nested_us_total = 0;
+
+		pstmt = &pinfo->stmts[stmtid];
+		pstmt->lineno = stmt->lineno;
+	}
 
 	switch (PLPGSQL_STMT_TYPES stmt->cmd_type)
 	{
@@ -7010,7 +7035,14 @@ profiler_touch_stmt(profiler_profile *profile, PLpgSQL_stmt *stmt)
 			{
 				PLpgSQL_stmt_block *stmt_block = (PLpgSQL_stmt_block *) stmt;
 
-				profiler_touch_stmts(profile, stmt_block->body);
+				profiler_touch_stmts(pinfo,
+									 stmt_block->body,
+									 generate_map,
+									 finalize_profile,
+									 &us_total);
+
+				if (finalize_profile)
+					*nested_us_total += us_total;
 
 				if (stmt_block->exceptions)
 				{
@@ -7018,8 +7050,31 @@ profiler_touch_stmt(profiler_profile *profile, PLpgSQL_stmt *stmt)
 
 					foreach(lc, stmt_block->exceptions->exc_list)
 					{
-						profiler_touch_stmts(profile, ((PLpgSQL_exception *) lfirst(lc))->action);
+						profiler_touch_stmts(pinfo,
+											 ((PLpgSQL_exception *) lfirst(lc))->action,
+											 generate_map,
+											 finalize_profile,
+											 &us_total);
+
+						if (finalize_profile)
+							*nested_us_total += us_total;
 					}
+				}
+
+				if (finalize_profile)
+				{
+					pstmt->us_total -= *nested_us_total;
+
+					/*
+					 * the max time can be calculated only when this node
+					 * was executed once!
+					 */
+					if (pstmt->exec_count == 1)
+						pstmt->us_max = pstmt->us_total;
+					else
+						pstmt->us_max = 0;
+
+					*nested_us_total += pstmt->us_total;
 				}
 			}
 			break;
@@ -7029,14 +7084,51 @@ profiler_touch_stmt(profiler_profile *profile, PLpgSQL_stmt *stmt)
 				PLpgSQL_stmt_if *stmt_if = (PLpgSQL_stmt_if *) stmt;
 				ListCell *lc;
 
-				profiler_touch_stmts(profile, stmt_if->then_body);
+				profiler_touch_stmts(pinfo,
+									 stmt_if->then_body,
+									 generate_map,
+									 finalize_profile,
+									 &us_total);
+
+				if (finalize_profile)
+					*nested_us_total += us_total;
 
 				foreach(lc, stmt_if->elsif_list)
 				{
-					profiler_touch_stmts(profile, ((PLpgSQL_if_elsif *) lfirst(lc))->stmts);
+					profiler_touch_stmts(pinfo,
+										 ((PLpgSQL_if_elsif *) lfirst(lc))->stmts,
+										 generate_map,
+										 finalize_profile,
+										 &us_total);
+
+					if (finalize_profile)
+						*nested_us_total += us_total;
 				}
 
-				profiler_touch_stmts(profile, stmt_if->else_body);
+				profiler_touch_stmts(pinfo,
+									 stmt_if->else_body,
+									 generate_map,
+									 finalize_profile,
+									 &us_total);
+
+				if (finalize_profile)
+					*nested_us_total += us_total;
+
+				if (finalize_profile)
+				{
+					pstmt->us_total -= *nested_us_total;
+
+					/*
+					 * the max time can be calculated only when this node
+					 * was executed once!
+					 */
+					if (pstmt->exec_count == 1)
+						pstmt->us_max = pstmt->us_total;
+					else
+						pstmt->us_max = 0;
+
+					*nested_us_total += pstmt->us_total;
+				}
 			}
 			break;
 
@@ -7047,39 +7139,108 @@ profiler_touch_stmt(profiler_profile *profile, PLpgSQL_stmt *stmt)
 
 				foreach(lc, stmt_case->case_when_list)
 				{
-					profiler_touch_stmts(profile, ((PLpgSQL_case_when *) lfirst(lc))->stmts);
+					profiler_touch_stmts(pinfo,
+										 ((PLpgSQL_case_when *) lfirst(lc))->stmts,
+										 generate_map,
+										 finalize_profile,
+										 &us_total);
+
+					if (finalize_profile)
+						*nested_us_total += us_total;
+
 				}
 
-				profiler_touch_stmts(profile, stmt_case->else_stmts);
+				profiler_touch_stmts(pinfo,
+									 stmt_case->else_stmts,
+									 generate_map,
+									 finalize_profile,
+									 &us_total);
+
+				if (finalize_profile)
+					*nested_us_total += us_total;
+
+				if (finalize_profile)
+				{
+					pstmt->us_total -= *nested_us_total;
+
+					/*
+					 * the max time can be calculated only when this node
+					 * was executed once!
+					 */
+					if (pstmt->exec_count == 1)
+						pstmt->us_max = pstmt->us_total;
+					else
+						pstmt->us_max = 0;
+
+					*nested_us_total += pstmt->us_total;
+				}
 			}
 			break;
 
 		case PLPGSQL_STMT_LOOP:
-			profiler_touch_stmts(profile, ((PLpgSQL_stmt_while *) stmt)->body);
-			break;
-
 		case PLPGSQL_STMT_FORI:
-			profiler_touch_stmts(profile, ((PLpgSQL_stmt_fori *) stmt)->body);
-			break;
-
 		case PLPGSQL_STMT_FORS:
-			profiler_touch_stmts(profile, ((PLpgSQL_stmt_fors *) stmt)->body);
-			break;
-
 		case PLPGSQL_STMT_FORC:
-			profiler_touch_stmts(profile, ((PLpgSQL_stmt_forc *) stmt)->body);
-			break;
-
 		case PLPGSQL_STMT_DYNFORS:
-			profiler_touch_stmts(profile, ((PLpgSQL_stmt_dynfors *) stmt)->body);
-			break;
-
 		case PLPGSQL_STMT_FOREACH_A:
-			profiler_touch_stmts(profile, ((PLpgSQL_stmt_foreach_a *) stmt)->body);
+			{
+				List   *stmts;
+
+				switch (PLPGSQL_STMT_TYPES stmt->cmd_type)
+				{
+					case PLPGSQL_STMT_LOOP:
+						stmts = ((PLpgSQL_stmt_while *) stmt)->body;
+						break;
+					case PLPGSQL_STMT_FORI:
+						stmts = ((PLpgSQL_stmt_fori *) stmt)->body;
+						break;
+					case PLPGSQL_STMT_FORS:
+						stmts = ((PLpgSQL_stmt_fors *) stmt)->body;
+						break;
+					case PLPGSQL_STMT_FORC:
+						stmts = ((PLpgSQL_stmt_forc *) stmt)->body;
+						break;
+					case PLPGSQL_STMT_DYNFORS:
+						stmts = ((PLpgSQL_stmt_dynfors *) stmt)->body;
+						break;
+					case PLPGSQL_STMT_FOREACH_A:
+						stmts = ((PLpgSQL_stmt_foreach_a *) stmt)->body;
+						break;
+					default:
+						stmts = NIL;
+						break;
+				}
+
+				profiler_touch_stmts(pinfo,
+								 stmts,
+								 generate_map,
+								 finalize_profile,
+								 &us_total);
+
+				if (finalize_profile)
+					*nested_us_total += us_total;
+
+				if (finalize_profile)
+				{
+					pstmt->us_total -= *nested_us_total;
+
+					/*
+					 * the max time can be calculated only when this node
+					 * was executed once!
+					 */
+					if (pstmt->exec_count == 1)
+						pstmt->us_max = pstmt->us_total;
+					else
+						pstmt->us_max = 0;
+
+					*nested_us_total += pstmt->us_total;
+				}
+			}
 			break;
 
 		default:
-			/* do nothing - other commands has not nested statements */
+			if (finalize_profile)
+				*nested_us_total = pstmt->us_total;
 			break;
 	}
 }
@@ -7104,6 +7265,9 @@ profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 											 HASH_ENTER,
 											 &found);
 
+		pinfo = palloc0(sizeof(profiler_info));
+		pinfo->profile = profile;
+
 		if (!found)
 		{
 			MemoryContext oldcxt;
@@ -7114,20 +7278,19 @@ profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 			oldcxt = MemoryContextSwitchTo(profiler_mcxt);
 			profile->stmts_map = palloc0(profile->stmts_map_max_lineno * sizeof(profiler_map_entry));
 
-			profiler_touch_stmt(profile, (PLpgSQL_stmt *) func->action);
+			profiler_touch_stmt(pinfo, (PLpgSQL_stmt *) func->action, true, false, NULL);
 
 			profile->stmts = palloc0(profile->nstatements * sizeof(profiler_stmt));
-			profiler_copy_lineno_to_profile(profile);
 
 			/* entry statements is not visible for plugin functions */
-			profile->entry_stmtid = profiler_get_stmtid(profile, (PLpgSQL_stmt *) func->action);
+			profile->entry_stmt = (PLpgSQL_stmt *) func->action;
 
 			MemoryContextSwitchTo(oldcxt);
 		}
 
-		pinfo = palloc0(sizeof(profiler_info));
 		pinfo->stmts = palloc0(profile->nstatements * sizeof(profiler_stmt));
-		pinfo->profile = profile;
+
+		INSTR_TIME_SET_CURRENT(pinfo->start_time);
 
 		estate->plugin_info = pinfo;
 	}
@@ -7140,11 +7303,30 @@ profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	{
 		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 		profiler_profile *profile = pinfo->profile;
+		int		entry_stmtid = profiler_get_stmtid(profile, profile->entry_stmt);
+		instr_time		end_time;
+		uint64			elapsed;
+		int64			nested_us_total;
 		int		i;
 
-		/* function entry plpgsql statement is ignored by plugin functions */
-		if (pinfo->stmts[profile->entry_stmtid].exec_count == 0)
-			pinfo->stmts[profile->entry_stmtid].exec_count = 1;
+		INSTR_TIME_SET_CURRENT(end_time);
+		INSTR_TIME_SUBTRACT(end_time, pinfo->start_time);
+
+		elapsed = INSTR_TIME_GET_MICROSEC(end_time);
+
+		if (pinfo->stmts[entry_stmtid].exec_count == 0)
+		{
+			pinfo->stmts[entry_stmtid].exec_count = 1;
+			pinfo->stmts[entry_stmtid].us_total = elapsed;
+			pinfo->stmts[entry_stmtid].us_max = elapsed;
+		}
+
+		/* finalize profile - get result profile */
+		profiler_touch_stmt(pinfo,
+						   profile->entry_stmt,
+						   false,
+						   true,
+						   &nested_us_total);
 
 		for (i = 0; i < profile->nstatements; i++)
 		{
@@ -7154,6 +7336,7 @@ profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 			if (src->us_max > trg->us_max)
 				trg->us_max = src->us_max;
 
+			trg->lineno = src->lineno;
 			trg->us_total += src->us_total;
 			trg->rows += src->rows;
 			trg->exec_count += src->exec_count;
@@ -7172,7 +7355,7 @@ profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 		profiler_profile *profile  = pinfo->profile;
 		int stmtid = profiler_get_stmtid(profile, stmt);
-		profiler_stmt *pstmt = &profile->stmts[stmtid];
+		profiler_stmt *pstmt = &pinfo->stmts[stmtid];
 
 		INSTR_TIME_SET_CURRENT(pstmt->start_time);
 	}
@@ -7186,7 +7369,7 @@ profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 		profiler_profile *profile  = pinfo->profile;
 		int stmtid = profiler_get_stmtid(profile, stmt);
-		profiler_stmt *pstmt = &profile->stmts[stmtid];
+		profiler_stmt *pstmt = &pinfo->stmts[stmtid];
 		instr_time		end_time;
 		uint64			elapsed;
 
@@ -7204,24 +7387,16 @@ profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	}
 }
 
-/*
-#define Natts_profiler					8
-
-#define Anum_profiler_lineno			0
-#define Anum_profiler_stmt_lineno		1
-#define Anum_profiler_exec_count		2
-#define Anum_profiler_total_time		3
-#define Anum_profiler_avg_time			4
-#define Anum_profiler_max_time			5
-#define Anum_profiler_processed_rows	6
-#define Anum_profiler_source			7
-*/
-
 static void
 tuplestore_put_profile(Tuplestorestate *tuple_store,
 					   TupleDesc tupdesc,
 					   int lineno,
 					   int stmt_lineno,
+					   int cmds_on_row,
+					   int exec_count,
+					   int64 us_total,
+					   Datum max_time_array,
+					   Datum processed_rows_array,
 					   char *source_row)
 {
 	Datum	values[Natts_profiler];
@@ -7234,12 +7409,21 @@ tuplestore_put_profile(Tuplestorestate *tuple_store,
 	SET_RESULT_NULL(Anum_profiler_max_time);
 	SET_RESULT_NULL(Anum_profiler_processed_rows);
 	SET_RESULT_NULL(Anum_profiler_source);
+	SET_RESULT_NULL(Anum_profiler_cmds_on_row);
 
 	SET_RESULT_INT32(Anum_profiler_lineno, lineno);
 	SET_RESULT_TEXT(Anum_profiler_source, source_row);
 
 	if (stmt_lineno > 0)
+	{
 		SET_RESULT_INT32(Anum_profiler_stmt_lineno, stmt_lineno);
+		SET_RESULT_INT32(Anum_profiler_cmds_on_row, cmds_on_row);
+		SET_RESULT_INT64(Anum_profiler_exec_count, exec_count);
+		SET_RESULT_FLOAT8(Anum_profiler_total_time, us_total / 1000.0);
+		SET_RESULT_FLOAT8(Anum_profiler_avg_time, ceil(((float8) us_total) / exec_count) / 1000.0);
+		SET_RESULT(Anum_profiler_max_time, max_time_array);
+		SET_RESULT(Anum_profiler_processed_rows, processed_rows_array);
+	}
 
 	tuplestore_putvalues(tuple_store, tupdesc, values, nulls);
 }
@@ -7311,8 +7495,14 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 
 	while (*prosrc)
 	{
-		char *lineend = prosrc;
-		char *linebeg = prosrc;
+		char	   *lineend = prosrc;
+		char	   *linebeg = prosrc;
+		int			stmt_lineno = -1;
+		int64		us_total = 0;
+		int64		exec_count = 0;
+		Datum		max_time_array = (Datum) 0;
+		Datum		processed_rows_array = (Datum) 0;
+		int			cmds_on_row = 0;
 
 		/* find lineend */
 		while (*lineend != '\0' && *lineend != '\n')
@@ -7326,23 +7516,61 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 		else
 			prosrc = lineend;
 
-		if (found)
+		if (profile)
 		{
 			/* is there some statement for this line ? */
 			while (profile->stmts[current_statement].lineno < lineno &&
 					current_statement < profile->nstatements)
 				current_statement += 1;
 
-			tuplestore_put_profile(tupstore, tupdesc,
-								   lineno,
-								   profile->stmts[current_statement].lineno == lineno ? lineno : -1,
-								   linebeg);
+			if (profile->stmts[current_statement].lineno == lineno)
+			{
+				ArrayBuildState *max_time_abs;
+				ArrayBuildState *processed_rows_abs;
+
+				max_time_abs = initArrayResult(FLOAT8OID, CurrentMemoryContext, true);
+				processed_rows_abs = initArrayResult(INT8OID, CurrentMemoryContext, true);
+
+				stmt_lineno = lineno;
+
+				/* try to collect all statements on the line */
+				while (profile->stmts[current_statement].lineno == lineno &&
+						current_statement < profile->nstatements)
+				{
+					profiler_stmt *pstmt = &profile->stmts[current_statement];
+
+					us_total += pstmt->us_total;
+					exec_count += pstmt->exec_count;
+
+					cmds_on_row += 1;
+
+					max_time_abs = accumArrayResult(max_time_abs,
+													Float8GetDatum(pstmt->us_max / 1000.0), false,
+													FLOAT8OID,
+													CurrentMemoryContext);
+
+					processed_rows_abs = accumArrayResult(processed_rows_abs,
+														 Int64GetDatum(pstmt->rows), false,
+														 INT8OID,
+														 CurrentMemoryContext);
+
+					current_statement += 1;
+				}
+
+				max_time_array = makeArrayResult(max_time_abs, CurrentMemoryContext);
+				processed_rows_array = makeArrayResult(processed_rows_abs, CurrentMemoryContext);
+			}
 		}
-		else
-			tuplestore_put_profile(tupstore, tupdesc,
-								   lineno,
-								   -1,
-								   linebeg);
+
+		tuplestore_put_profile(tupstore, tupdesc,
+							   lineno,
+							   stmt_lineno,
+							   cmds_on_row,
+							   exec_count,
+							   us_total,
+							   max_time_array,
+							   processed_rows_array,
+							   linebeg);
 
 		lineno += 1;
 	}
