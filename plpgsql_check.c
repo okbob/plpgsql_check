@@ -485,11 +485,7 @@ typedef struct plpgsql_hashent
 PG_FUNCTION_INFO_V1(plpgsql_check_function);
 PG_FUNCTION_INFO_V1(plpgsql_check_function_tb);
 PG_FUNCTION_INFO_V1(plpgsql_show_dependency_tb);
-<<<<<<< HEAD
 PG_FUNCTION_INFO_V1(plpgsql_profiler_function_tb);
-=======
-PG_FUNCTION_INFO_V1(plpgsql_profiler);
->>>>>>> afd11a500b4cda281bd2ee452924e14073a9d579
 
 /*
  * Module initialization
@@ -7225,10 +7221,7 @@ static void
 tuplestore_put_profile(Tuplestorestate *tuple_store,
 					   TupleDesc tupdesc,
 					   int lineno,
-<<<<<<< HEAD
 					   int stmt_lineno,
-=======
->>>>>>> afd11a500b4cda281bd2ee452924e14073a9d579
 					   char *source_row)
 {
 	Datum	values[Natts_profiler];
@@ -7245,12 +7238,9 @@ tuplestore_put_profile(Tuplestorestate *tuple_store,
 	SET_RESULT_INT32(Anum_profiler_lineno, lineno);
 	SET_RESULT_TEXT(Anum_profiler_source, source_row);
 
-<<<<<<< HEAD
 	if (stmt_lineno > 0)
 		SET_RESULT_INT32(Anum_profiler_stmt_lineno, stmt_lineno);
 
-=======
->>>>>>> afd11a500b4cda281bd2ee452924e14073a9d579
 	tuplestore_putvalues(tuple_store, tupdesc, values, nulls);
 }
 
@@ -7271,10 +7261,7 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 	Datum		prosrcdatum;
 	bool		isnull;
 	int			lineno = 1;
-<<<<<<< HEAD
 	int			current_statement = 0;
-=======
->>>>>>> afd11a500b4cda281bd2ee452924e14073a9d579
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -7309,22 +7296,8 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 											 HASH_FIND,
 											 &found);
 
-<<<<<<< HEAD
 	if (!found)
 		elog(NOTICE, "there are not a profile for function %u", funcoid);
-=======
-	if (found)
-	{
-		int		i;
-
-		for (i = 0; i < profile->nstatements; i++)
-		{
-			elog(NOTICE, "%d executed %ld, time: %ld", profile->stmts[i].lineno, profile->stmts[i].exec_count, profile->stmts[i].us_total);
-		}
-	}
-	else
-		elog(NOTICE, "not found profile");
->>>>>>> afd11a500b4cda281bd2ee452924e14073a9d579
 
 	ReleaseSysCache(procTuple);
 
@@ -7336,21 +7309,13 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 	tupstore = tuplestore_begin_heap(false, false, work_mem);
 	MemoryContextSwitchTo(oldcontext);
 
-<<<<<<< HEAD
 	while (*prosrc)
-=======
-	while (prosrc)
->>>>>>> afd11a500b4cda281bd2ee452924e14073a9d579
 	{
 		char *lineend = prosrc;
 		char *linebeg = prosrc;
 
 		/* find lineend */
-<<<<<<< HEAD
 		while (*lineend != '\0' && *lineend != '\n')
-=======
-		while (*lineend != '\0' || *lineend != '\n')
->>>>>>> afd11a500b4cda281bd2ee452924e14073a9d579
 			lineend += 1;
 
 		if (*lineend == '\n')
@@ -7358,7 +7323,6 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 			*lineend = '\0';
 			prosrc = lineend + 1;
 		}
-<<<<<<< HEAD
 		else
 			prosrc = lineend;
 
@@ -7379,12 +7343,6 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 								   lineno,
 								   -1,
 								   linebeg);
-=======
-
-		tuplestore_put_profile(tupstore, tupdesc,
-							   lineno,
-							   linebeg);
->>>>>>> afd11a500b4cda281bd2ee452924e14073a9d579
 
 		lineno += 1;
 	}
