@@ -71,6 +71,9 @@
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
 #include "parser/parse_coerce.h"
+#include "storage/ipc.h"
+#include "storage/lwlock.h"
+#include "storage/shmem.h"
 #include "tcop/utility.h"
 #include "tsearch/ts_locale.h"
 #include "utils/array.h"
@@ -367,6 +370,7 @@ typedef struct profiler_hashkey
 	Oid			db_oid;
 	TransactionId fn_xmin;
 	ItemPointerData fn_tid;
+	int16		chunk_num;
 } profiler_hashkey;
 
 /*
@@ -383,6 +387,45 @@ typedef struct profiler_stmt
 	instr_time	start_time;
 } profiler_stmt;
 
+typedef struct profiler_stmt_reduced
+{
+	int		lineno;
+	int64	us_max;
+	int64	us_total;
+	int64	rows;
+	int64	exec_count;
+} profiler_stmt_reduced;
+
+#define		STATEMENTS_PER_CHUNK		30
+
+/*
+ * The shared profile will be stored as set of chunks
+ */
+typedef struct profiler_stmt_chunk
+{
+	profiler_hashkey key;
+	slock_t	mutex;			/* only first chunk require mutex */
+	profiler_stmt_reduced stmts[STATEMENTS_PER_CHUNK];
+} profiler_stmt_chunk;
+
+typedef struct profiler_shared_state
+{
+	LWLock	   *lock;
+} profiler_shared_state;
+
+/*
+ * should be enough for project of 300K PLpgSQL rows.
+ * It should to take about 18MB of shared memory.
+ */
+#define		MAX_SHARED_CHUNKS		15000
+
+static HTAB *shared_profiler_chunks_HashTable = NULL;
+static HTAB *profiler_chunks_HashTable = NULL;
+
+static void profiler_chunks_HashTableInit(void);
+
+static profiler_shared_state *profiler_ss = NULL;
+
 /*
  * It is used for fast mapping plpgsql stmt -> stmtid
  */
@@ -398,7 +441,6 @@ typedef struct profiler_profile
 	profiler_hashkey key;
 	int			nstatements;
 	PLpgSQL_stmt *entry_stmt;
-	profiler_stmt *stmts;  /* should be stored in shared memory */
 	int			stmts_map_max_lineno;
 	profiler_map_entry *stmts_map;
 } profiler_profile;
@@ -496,6 +538,49 @@ PG_FUNCTION_INFO_V1(plpgsql_check_function_tb);
 PG_FUNCTION_INFO_V1(plpgsql_show_dependency_tb);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_function_tb);
 
+void			_PG_init(void);
+void			_PG_fini(void);
+
+static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
+
+static void
+profiler_shmem_startup(void)
+{
+	bool		found;
+	HASHCTL		info;
+
+	shared_profiler_chunks_HashTable = NULL;
+
+	if (prev_shmem_startup_hook)
+		prev_shmem_startup_hook();
+
+	/*
+	 * Create or attach to the shared memory state, including hash table
+	 */
+	LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
+
+	profiler_ss = ShmemInitStruct("plpgsql_check profiler state",
+						   sizeof(profiler_shared_state),
+						   &found);
+
+	if (!found)
+	{
+		profiler_ss->lock = &(GetNamedLWLockTranche("plpgsql_check profiler"))->lock;
+	}
+
+	memset(&info, 0, sizeof(info));
+	info.keysize = sizeof(profiler_hashkey);
+	info.entrysize = sizeof(profiler_stmt_chunk);
+
+	shared_profiler_chunks_HashTable = ShmemInitHash("plpgsql_check profiler chunks",
+													MAX_SHARED_CHUNKS,
+													MAX_SHARED_CHUNKS,
+													&info,
+													HASH_ELEM | HASH_BLOBS);
+
+	LWLockRelease(AddinShmemInitLock);
+}
+
 /*
  * Module initialization
  *
@@ -573,8 +658,36 @@ _PG_init(void)
 
 	plpgsql_check_HashTableInit();
 	profiler_localHashTableInit();
+	profiler_chunks_HashTableInit();
+
+	/* Use shared memory when we can register more for self */
+	if (process_shared_preload_libraries_in_progress)
+	{
+		Size		num_bytes = 0;
+
+		num_bytes = MAXALIGN(sizeof(profiler_shared_state));
+		num_bytes = add_size(num_bytes, hash_estimate_size(MAX_SHARED_CHUNKS, sizeof(profiler_stmt_chunk)));
+
+		RequestAddinShmemSpace(num_bytes);
+		RequestNamedLWLockTranche("plpgsql_check profiler", 1);
+
+		/*
+		 * Install hooks.
+		 */
+		prev_shmem_startup_hook = shmem_startup_hook;
+		shmem_startup_hook = profiler_shmem_startup;
+	}
 
 	inited = true;
+}
+
+/*
+ * Module unload callback
+ */
+void
+_PG_fini(void)
+{
+	shmem_startup_hook = prev_shmem_startup_hook;
 }
 
 /*
@@ -6271,7 +6384,6 @@ tuplestore_put_dependency(Tuplestorestate *tuple_store,
 	tuplestore_putvalues(tuple_store, tupdesc, values, nulls);
 }
 
-
 /*
  * store error fields to result tuplestore
  *
@@ -6783,7 +6895,6 @@ mark_as_checked(PLpgSQL_function *func)
 	}
 }
 
-
 /*
  * plpgsql_show_dependency_tb
  *
@@ -6857,19 +6968,20 @@ plpgsql_show_dependency_tb(PG_FUNCTION_ARGS)
  * Profiler implementation
  */
 
-
 static void
 profiler_init_hashkey(profiler_hashkey *hk, PLpgSQL_function *func)
 {
-	hk->db_oid = MyDatabaseId;
+	memset(hk, 0, sizeof(profiler_hashkey));
 
+	hk->db_oid = MyDatabaseId;
 	hk->fn_oid = func->fn_oid;
 	hk->fn_xmin = func->fn_xmin;
 	hk->fn_tid = func->fn_tid;
+	hk->chunk_num = 1;
 }
 
 /*
- * Hash table for profiles
+ * Hash table for function profiling metadata.
  */
 static void
 profiler_localHashTableInit(void)
@@ -6887,6 +6999,193 @@ profiler_localHashTableInit(void)
 									FUNCS_PER_USER,
 									&ctl,
 									HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+}
+
+/*
+ * Hash table for local function profiles. When shared memory is not available
+ * because plpgsql_check was not loaded by shared_proload_libraries, then function
+ * profiles is stored in local profile chunks. A format is same for shared profiles.
+ */
+static void
+profiler_chunks_HashTableInit(void)
+{
+	HASHCTL		ctl;
+
+	Assert(profiler_chunks_HashTable == NULL);
+
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.keysize = sizeof(profiler_hashkey);
+	ctl.entrysize = sizeof(profiler_stmt_chunk);
+	ctl.hcxt = profiler_mcxt;
+	ctl.hash = tag_hash;
+	profiler_chunks_HashTable = hash_create("plpgsql_check function profiler local chunks",
+									FUNCS_PER_USER,
+									&ctl,
+									HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+}
+
+static void
+update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
+{
+	profiler_profile *profile = pinfo->profile;
+	profiler_hashkey hk;
+	profiler_stmt_chunk *chunk;
+	profiler_stmt_chunk *first_chunk;
+	bool		found;
+	int			i;
+	int			stmt_counter = 0;
+	HTAB	   *chunks;
+	bool		shared_chunks;
+	bool		exclusive_lock = false;
+	volatile bool unlock_mutex = false;
+
+	if (shared_profiler_chunks_HashTable)
+	{
+		chunks = shared_profiler_chunks_HashTable;
+		LWLockAcquire(profiler_ss->lock, LW_SHARED);
+		shared_chunks = true;
+	}
+	else
+	{
+		chunks = profiler_chunks_HashTable;
+		shared_chunks = false;
+	}
+
+	profiler_init_hashkey(&hk, func);
+
+	/* don't need too strong lock for shared memory */
+	chunk = (profiler_stmt_chunk *) hash_search(chunks,
+											 (void *) &hk,
+											 HASH_FIND,
+											 &found);
+
+	/* We need exclusive lock */
+	if (!found && shared_chunks)
+	{
+		LWLockRelease(profiler_ss->lock);
+		LWLockAcquire(profiler_ss->lock, LW_EXCLUSIVE);
+		exclusive_lock = true;
+
+		chunk = (profiler_stmt_chunk *) hash_search(chunks,
+												 (void *) &hk,
+												 HASH_ENTER,
+												 &found);
+	}
+
+	if (!found)
+	{
+		int		i;
+		int		stmt_counter;
+
+		/* first shared chunk is prepared already. local chunk should be done */
+		if (shared_chunks)
+		{
+			/* for first chunk we need to initialize mutex */
+			SpinLockInit(&chunk->mutex);
+			stmt_counter = 0;
+		}
+		else
+			stmt_counter = -1;
+
+		/* we should to enter empty chunks first */
+		for (i = 0; i < profile->nstatements; i++)
+		{
+			profiler_stmt_reduced *prstmt;
+			profiler_stmt *pstmt = &pinfo->stmts[i];
+
+			hk.chunk_num = 0;
+
+			if (stmt_counter == -1 || stmt_counter >= STATEMENTS_PER_CHUNK)
+			{
+				hk.chunk_num += 1;
+
+				chunk = (profiler_stmt_chunk *) hash_search(chunks,
+															 (void *) &hk,
+															 HASH_ENTER,
+															 &found);
+
+				if (found)
+					elog(ERROR, "broken consistency of plpgsql_check profiler chunks");
+
+				stmt_counter = 0;
+			}
+
+			prstmt = &chunk->stmts[stmt_counter++];
+
+			prstmt->lineno = pstmt->lineno;
+			prstmt->us_max = pstmt->us_max;
+			prstmt->us_total = pstmt->us_total;
+			prstmt->rows = pstmt->rows;
+			prstmt->exec_count = pstmt->exec_count;
+		}
+
+		/* clean unused stmts in chunk */
+		while (stmt_counter < STATEMENTS_PER_CHUNK)
+			chunk->stmts[stmt_counter++].lineno = -1;
+
+		if (shared_chunks)
+			LWLockRelease(profiler_ss->lock);
+
+		return;
+	}
+
+	/* if we have not exclusive lock, we should to lock first chunk */
+	PG_TRY();
+	{
+		if (!exclusive_lock)
+		{
+			first_chunk = chunk;
+			SpinLockAcquire(&first_chunk->mutex);
+			unlock_mutex = true;
+		}
+
+		/* there is a profiler chunk already */
+		for (i = 0; i < profile->nstatements; i++)
+		{
+			profiler_stmt_reduced *prstmt;
+			profiler_stmt *pstmt = &pinfo->stmts[i];
+
+			if (stmt_counter >= STATEMENTS_PER_CHUNK)
+			{
+				hk.chunk_num += 1;
+
+				chunk = (profiler_stmt_chunk *) hash_search(chunks,
+															 (void *) &hk,
+															 HASH_FIND,
+															 &found);
+
+				if (!found)
+					elog(ERROR, "broken consistency of plpgsql_check profiler chunks");
+
+				stmt_counter = 0;
+			}
+
+			prstmt = &chunk->stmts[stmt_counter++];
+
+			if (prstmt->lineno != pstmt->lineno)
+				elog(ERROR, "broken consistency of plpgsql_check profiler chunks");
+
+			if (prstmt->us_max < pstmt->us_max)
+				prstmt->us_max = pstmt->us_max;
+
+			prstmt->us_total += pstmt->us_total;
+			prstmt->rows += pstmt->rows;
+			prstmt->exec_count += pstmt->exec_count;
+		}
+	}
+	PG_CATCH();
+	{
+		if (unlock_mutex)
+			SpinLockRelease(&first_chunk->mutex);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	if (unlock_mutex)
+		SpinLockRelease(&first_chunk->mutex);
+
+	if (shared_chunks)
+		LWLockRelease(profiler_ss->lock);
 }
 
 /*
@@ -7280,8 +7579,6 @@ profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 			profiler_touch_stmt(pinfo, (PLpgSQL_stmt *) func->action, true, false, NULL);
 
-			profile->stmts = palloc0(profile->nstatements * sizeof(profiler_stmt));
-
 			/* entry statements is not visible for plugin functions */
 			profile->entry_stmt = (PLpgSQL_stmt *) func->action;
 
@@ -7307,7 +7604,6 @@ profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 		instr_time		end_time;
 		uint64			elapsed;
 		int64			nested_us_total;
-		int		i;
 
 		INSTR_TIME_SET_CURRENT(end_time);
 		INSTR_TIME_SUBTRACT(end_time, pinfo->start_time);
@@ -7328,19 +7624,7 @@ profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 						   true,
 						   &nested_us_total);
 
-		for (i = 0; i < profile->nstatements; i++)
-		{
-			profiler_stmt *src = &pinfo->stmts[i];
-			profiler_stmt *trg = &profile->stmts[i];
-
-			if (src->us_max > trg->us_max)
-				trg->us_max = src->us_max;
-
-			trg->lineno = src->lineno;
-			trg->us_total += src->us_total;
-			trg->rows += src->rows;
-			trg->exec_count += src->exec_count;
-		}
+		update_persistent_profile(pinfo, func);
 
 		pfree(pinfo->stmts);
 		pfree(pinfo);
@@ -7433,7 +7717,6 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 {
 	Oid			funcoid = PG_GETARG_OID(0);
 	profiler_hashkey hk;
-	profiler_profile *profile;
 	HeapTuple	procTuple;
 	bool found;
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
@@ -7446,6 +7729,11 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 	bool		isnull;
 	int			lineno = 1;
 	int			current_statement = 0;
+	profiler_stmt_chunk *chunk = NULL;
+	profiler_stmt_chunk *first_chunk = NULL;
+	HTAB	   *chunks;
+	bool		shared_chunks;
+	volatile bool		unlock_mutex;
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -7470,12 +7758,27 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 
 	prosrc = TextDatumGetCString(prosrcdatum);
 
+	/* ensure correct complete content of hash key */
+	memset(&hk, 0, sizeof(profiler_hashkey));
 	hk.fn_oid = funcoid;
 	hk.db_oid = MyDatabaseId;
 	hk.fn_xmin = HeapTupleHeaderGetRawXmin(procTuple->t_data);
-	hk.fn_tid = procTuple->t_self;
+	hk.fn_tid =  procTuple->t_self;
+	hk.chunk_num = 1;
 
-	profile = (profiler_profile *) hash_search(profiler_HashTable,
+	if (shared_profiler_chunks_HashTable)
+	{
+		LWLockAcquire(profiler_ss->lock, LW_SHARED);
+		chunks = shared_profiler_chunks_HashTable;
+		shared_chunks = true;
+	}
+	else
+	{
+		chunks = profiler_chunks_HashTable;
+		shared_chunks = false;
+	}
+
+	chunk = (profiler_stmt_chunk *) hash_search(chunks,
 											 (void *) &hk,
 											 HASH_FIND,
 											 &found);
@@ -7493,87 +7796,150 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 	tupstore = tuplestore_begin_heap(false, false, work_mem);
 	MemoryContextSwitchTo(oldcontext);
 
-	while (*prosrc)
+	PG_TRY();
 	{
-		char	   *lineend = prosrc;
-		char	   *linebeg = prosrc;
-		int			stmt_lineno = -1;
-		int64		us_total = 0;
-		int64		exec_count = 0;
-		Datum		max_time_array = (Datum) 0;
-		Datum		processed_rows_array = (Datum) 0;
-		int			cmds_on_row = 0;
-
-		/* find lineend */
-		while (*lineend != '\0' && *lineend != '\n')
-			lineend += 1;
-
-		if (*lineend == '\n')
+		if (shared_chunks && chunk)
 		{
-			*lineend = '\0';
-			prosrc = lineend + 1;
+			first_chunk = chunk;
+			SpinLockAcquire(&first_chunk->mutex);
+			unlock_mutex = true;
 		}
-		else
-			prosrc = lineend;
 
-		if (profile)
+		while (*prosrc)
 		{
-			/* is there some statement for this line ? */
-			while (profile->stmts[current_statement].lineno < lineno &&
-					current_statement < profile->nstatements)
-				current_statement += 1;
+			char	   *lineend = prosrc;
+			char	   *linebeg = prosrc;
+			int			stmt_lineno = -1;
+			int64		us_total = 0;
+			int64		exec_count = 0;
+			Datum		max_time_array = (Datum) 0;
+			Datum		processed_rows_array = (Datum) 0;
+			int			cmds_on_row = 0;
 
-			if (profile->stmts[current_statement].lineno == lineno)
+			/* find lineend */
+			while (*lineend != '\0' && *lineend != '\n')
+				lineend += 1;
+
+			if (*lineend == '\n')
 			{
-				ArrayBuildState *max_time_abs;
-				ArrayBuildState *processed_rows_abs;
+				*lineend = '\0';
+				prosrc = lineend + 1;
+			}
+			else
+				prosrc = lineend;
 
-				max_time_abs = initArrayResult(FLOAT8OID, CurrentMemoryContext, true);
-				processed_rows_abs = initArrayResult(INT8OID, CurrentMemoryContext, true);
-
-				stmt_lineno = lineno;
-
-				/* try to collect all statements on the line */
-				while (profile->stmts[current_statement].lineno == lineno &&
-						current_statement < profile->nstatements)
+			if (chunk)
+			{
+				while (chunk->stmts[current_statement].lineno < lineno)
 				{
-					profiler_stmt *pstmt = &profile->stmts[current_statement];
-
-					us_total += pstmt->us_total;
-					exec_count += pstmt->exec_count;
-
-					cmds_on_row += 1;
-
-					max_time_abs = accumArrayResult(max_time_abs,
-													Float8GetDatum(pstmt->us_max / 1000.0), false,
-													FLOAT8OID,
-													CurrentMemoryContext);
-
-					processed_rows_abs = accumArrayResult(processed_rows_abs,
-														 Int64GetDatum(pstmt->rows), false,
-														 INT8OID,
-														 CurrentMemoryContext);
-
 					current_statement += 1;
+
+					if (current_statement >= STATEMENTS_PER_CHUNK)
+					{
+						hk.chunk_num += 1;
+
+						chunk = (profiler_stmt_chunk *) hash_search(chunks,
+														 (void *) &hk,
+														 HASH_FIND,
+														 &found);
+
+						if (!found)
+						{
+							chunk = NULL;
+							break;
+						}
+
+						current_statement = 0;
+					}
 				}
 
-				max_time_array = makeArrayResult(max_time_abs, CurrentMemoryContext);
-				processed_rows_array = makeArrayResult(processed_rows_abs, CurrentMemoryContext);
+				if (chunk && chunk->stmts[current_statement].lineno == lineno)
+				{
+					ArrayBuildState *max_time_abs;
+					ArrayBuildState *processed_rows_abs;
+
+					max_time_abs = initArrayResult(FLOAT8OID, CurrentMemoryContext, true);
+					processed_rows_abs = initArrayResult(INT8OID, CurrentMemoryContext, true);
+
+					stmt_lineno = lineno;
+
+					/* try to collect all statements on the line */
+					while (chunk->stmts[current_statement].lineno == lineno)
+					{
+						profiler_stmt_reduced *prstmt;
+
+						if (current_statement >= STATEMENTS_PER_CHUNK)
+						{
+							hk.chunk_num += 1;
+
+							chunk = (profiler_stmt_chunk *) hash_search(chunks,
+															 (void *) &hk,
+															 HASH_FIND,
+															 &found);
+
+							if (!found)
+							{
+								chunk = NULL;
+								break;
+							}
+
+							current_statement = 0;
+						}
+
+						if (!chunk)
+							break;
+
+						prstmt = &chunk->stmts[current_statement];
+
+						us_total += prstmt->us_total;
+						exec_count += prstmt->exec_count;
+
+						cmds_on_row += 1;
+
+						max_time_abs = accumArrayResult(max_time_abs,
+														Float8GetDatum(prstmt->us_max / 1000.0), false,
+														FLOAT8OID,
+														CurrentMemoryContext);
+
+						processed_rows_abs = accumArrayResult(processed_rows_abs,
+															 Int64GetDatum(prstmt->rows), false,
+															 INT8OID,
+															 CurrentMemoryContext);
+
+						current_statement += 1;
+					}
+
+					max_time_array = makeArrayResult(max_time_abs, CurrentMemoryContext);
+					processed_rows_array = makeArrayResult(processed_rows_abs, CurrentMemoryContext);
+				}
 			}
+
+			tuplestore_put_profile(tupstore, tupdesc,
+								   lineno,
+								   stmt_lineno,
+								   cmds_on_row,
+								   exec_count,
+								   us_total,
+								   max_time_array,
+								   processed_rows_array,
+								   linebeg);
+
+			lineno += 1;
 		}
-
-		tuplestore_put_profile(tupstore, tupdesc,
-							   lineno,
-							   stmt_lineno,
-							   cmds_on_row,
-							   exec_count,
-							   us_total,
-							   max_time_array,
-							   processed_rows_array,
-							   linebeg);
-
-		lineno += 1;
 	}
+	PG_CATCH();
+	{
+		if (unlock_mutex)
+			SpinLockRelease(&first_chunk->mutex);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	if (unlock_mutex)
+		SpinLockRelease(&first_chunk->mutex);
+
+	if (shared_chunks)
+		LWLockRelease(profiler_ss->lock);
 
 	/* clean up and return the tuplestore */
 	tuplestore_donestoring(tupstore);
