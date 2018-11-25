@@ -55,7 +55,7 @@
 
 #endif
 
-#if PG_VERSION_NUM < 100000
+#if PG_VERSION_NUM < 110000
 
 #include "storage/spin.h"
 
@@ -6168,6 +6168,19 @@ prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query)
 	foreach(lc, stmt_list)
 	{
 		Node *pstmt = (Node *) lfirst(lc);
+
+#if PG_VERSION_NUM >= 100000
+
+		/* PostgtreSQL 10 can have one level of nesting more */
+		if (IsA(pstmt, PlannedStmt))
+		{
+			PlannedStmt *planstmt = (PlannedStmt *) pstmt;
+
+			if (planstmt->commandType == CMD_UTILITY)
+				pstmt = (Node *) planstmt->utilityStmt;
+		}
+
+#endif
 
 		if (IsA(pstmt, TransactionStmt))
 		{
