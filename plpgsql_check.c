@@ -55,6 +55,13 @@
 
 #endif
 
+#if PG_VERSION_NUM < 90600
+
+#include "storage/spin.h"
+
+#endif
+
+
 #include "access/htup_details.h"
 #include "access/tupconvert.h"
 #include "access/tupdesc.h"
@@ -569,18 +576,46 @@ profiler_shmem_startup(void)
 
 	if (!found)
 	{
+
+#if PG_VERSION_NUM > 90600
+
 		profiler_ss->lock = &(GetNamedLWLockTranche("plpgsql_check profiler"))->lock;
+
+#else
+
+		profiler_ss->lock = LWLockAssign();
+
+#endif
+
 	}
 
 	memset(&info, 0, sizeof(info));
+
 	info.keysize = sizeof(profiler_hashkey);
 	info.entrysize = sizeof(profiler_stmt_chunk);
+	info.hash = tag_hash;
+
+#if PG_VERSION_NUM >= 90500
 
 	shared_profiler_chunks_HashTable = ShmemInitHash("plpgsql_check profiler chunks",
 													MAX_SHARED_CHUNKS,
 													MAX_SHARED_CHUNKS,
 													&info,
 													HASH_ELEM | HASH_BLOBS);
+
+#else
+
+	info.hash = tag_hash;
+
+	shared_profiler_chunks_HashTable = ShmemInitHash("plpgsql_check profiler chunks",
+													MAX_SHARED_CHUNKS,
+													MAX_SHARED_CHUNKS,
+													&info,
+													HASH_ELEM | HASH_FUNCTION);
+
+
+
+#endif
 
 	LWLockRelease(AddinShmemInitLock);
 }
@@ -672,7 +707,7 @@ _PG_init(void)
 					    "when is true, then function execution profile is updated",
 					    NULL,
 					    &plpgsql_check_profiler,
-					    true,
+					    false,
 					    PGC_SUSET, 0,
 					    NULL, NULL, NULL);
 
@@ -690,7 +725,16 @@ _PG_init(void)
 		num_bytes = add_size(num_bytes, hash_estimate_size(MAX_SHARED_CHUNKS, sizeof(profiler_stmt_chunk)));
 
 		RequestAddinShmemSpace(num_bytes);
+
+#if PG_VERSION_NUM >= 90600
+
 		RequestNamedLWLockTranche("plpgsql_check profiler", 1);
+
+#else
+
+		RequestAddinLWLocks(1);
+
+#endif
 
 		/*
 		 * Install hooks.
@@ -7150,7 +7194,7 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 	/* if we have not exclusive lock, we should to lock first chunk */
 	PG_TRY();
 	{
-		if (!exclusive_lock)
+		if (shared_chunks && !exclusive_lock)
 		{
 			first_chunk = chunk;
 			SpinLockAcquire(&first_chunk->mutex);
@@ -7569,7 +7613,7 @@ profiler_touch_stmt(profiler_info *pinfo,
 static void
 profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 {
-	if ((1 || plpgsql_check_profiler) && func->fn_oid != InvalidOid )
+	if (plpgsql_check_profiler && func->fn_oid != InvalidOid)
 	{
 		profiler_info *pinfo;
 		profiler_profile *profile;
@@ -7614,7 +7658,9 @@ profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 static void
 profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 {
-	if ((1 || plpgsql_check_profiler) && estate->plugin_info && func->fn_oid != InvalidOid)
+	if (plpgsql_check_profiler &&
+		estate->plugin_info &&
+		func->fn_oid != InvalidOid)
 	{
 		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 		profiler_profile *profile = pinfo->profile;
@@ -7652,7 +7698,9 @@ profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 static void
 profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
-	if ((1 || plpgsql_check_profiler) && estate->plugin_info && estate->func->fn_oid != InvalidOid)
+	if (plpgsql_check_profiler &&
+		estate->plugin_info &&
+		estate->func->fn_oid != InvalidOid)
 	{
 		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 		profiler_profile *profile  = pinfo->profile;
@@ -7666,7 +7714,9 @@ profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 static void
 profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
-	if ((1 || plpgsql_check_profiler) && estate->plugin_info && estate->func->fn_oid != InvalidOid)
+	if (plpgsql_check_profiler && 
+		estate->plugin_info && 
+		estate->func->fn_oid != InvalidOid)
 	{
 		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 		profiler_profile *profile  = pinfo->profile;
@@ -7801,9 +7851,6 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 											 HASH_FIND,
 											 &found);
 
-	if (!found)
-		elog(NOTICE, "there are not a profile for function %u", funcoid);
-
 	ReleaseSysCache(procTuple);
 
 	/* need to build tuplestore in query context */
@@ -7873,11 +7920,15 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 
 				if (chunk && chunk->stmts[current_statement].lineno == lineno)
 				{
-					ArrayBuildState *max_time_abs;
-					ArrayBuildState *processed_rows_abs;
+					ArrayBuildState *max_time_abs = NULL;
+					ArrayBuildState *processed_rows_abs = NULL;
+
+#if PG_VERSION_NUM >= 90500
 
 					max_time_abs = initArrayResult(FLOAT8OID, CurrentMemoryContext, true);
 					processed_rows_abs = initArrayResult(INT8OID, CurrentMemoryContext, true);
+
+#endif
 
 					stmt_lineno = lineno;
 

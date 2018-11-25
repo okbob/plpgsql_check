@@ -72,6 +72,109 @@ select * from plpgsql_check_function_tb('f1()', fatal_errors := false);
 (3 rows)
 
 drop function f1();
+-- profiler check
+set plpgsql_check.profiler to on;
+create function f1()
+returns void as $$
+begin
+  if false then
+    insert into t1 values(10,20);
+    update t1 set a = 10;
+    delete from t1;
+  end if;
+end;
+$$ language plpgsql;
+select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+ lineno | stmt_lineno | exec_stmts |              source               
+--------+-------------+------------+-----------------------------------
+      1 |             |            | 
+      2 |             |            | begin
+      3 |             |            |   if false then
+      4 |             |            |     insert into t1 values(10,20);
+      5 |             |            |     update t1 set a = 10;
+      6 |             |            |     delete from t1;
+      7 |             |            |   end if;
+      8 |             |            | end;
+(8 rows)
+
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+ lineno | stmt_lineno | exec_stmts |              source               
+--------+-------------+------------+-----------------------------------
+      1 |             |            | 
+      2 |           2 |          1 | begin
+      3 |           3 |          1 |   if false then
+      4 |           4 |          0 |     insert into t1 values(10,20);
+      5 |           5 |          0 |     update t1 set a = 10;
+      6 |           6 |          0 |     delete from t1;
+      7 |             |            |   end if;
+      8 |             |            | end;
+(8 rows)
+
+select plpgsql_profiler_reset('f1()');
+ plpgsql_profiler_reset 
+------------------------
+ 
+(1 row)
+
+select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+ lineno | stmt_lineno | exec_stmts |              source               
+--------+-------------+------------+-----------------------------------
+      1 |             |            | 
+      2 |             |            | begin
+      3 |             |            |   if false then
+      4 |             |            |     insert into t1 values(10,20);
+      5 |             |            |     update t1 set a = 10;
+      6 |             |            |     delete from t1;
+      7 |             |            |   end if;
+      8 |             |            | end;
+(8 rows)
+
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+ lineno | stmt_lineno | exec_stmts |              source               
+--------+-------------+------------+-----------------------------------
+      1 |             |            | 
+      2 |           2 |          1 | begin
+      3 |           3 |          1 |   if false then
+      4 |           4 |          0 |     insert into t1 values(10,20);
+      5 |           5 |          0 |     update t1 set a = 10;
+      6 |           6 |          0 |     delete from t1;
+      7 |             |            |   end if;
+      8 |             |            | end;
+(8 rows)
+
+select plpgsql_profiler_reset_all();
+ plpgsql_profiler_reset_all 
+----------------------------
+ 
+(1 row)
+
+select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+ lineno | stmt_lineno | exec_stmts |              source               
+--------+-------------+------------+-----------------------------------
+      1 |             |            | 
+      2 |             |            | begin
+      3 |             |            |   if false then
+      4 |             |            |     insert into t1 values(10,20);
+      5 |             |            |     update t1 set a = 10;
+      6 |             |            |     delete from t1;
+      7 |             |            |   end if;
+      8 |             |            | end;
+(8 rows)
+
+drop function f1();
+set plpgsql_check.profiler to off;
 create function f1()
 returns void as $$
 declare r record;
@@ -2812,29 +2915,37 @@ begin
 end;
 $$ language plpgsql;
 select f1();
-ERROR:  too few parameters specified for RAISE
-CONTEXT:  compilation of PL/pgSQL function "f1" near line 7
+ f1 
+----
+ 
+(1 row)
+
 select * from plpgsql_check_function_tb('f1()', fatal_errors := true);
- functionid | lineno | statement | sqlstate |                message                 | detail | hint | level | position | query |                      context                      
-------------+--------+-----------+----------+----------------------------------------+--------+------+-------+----------+-------+---------------------------------------------------
- f1         |        |           | 42601    | too few parameters specified for RAISE |        |      | error |          |       | compilation of PL/pgSQL function "f1" near line 7
+ functionid | lineno |   statement   | sqlstate |                  message                   | detail | hint | level | position |        query         | context 
+------------+--------+---------------+----------+--------------------------------------------+--------+------+-------+----------+----------------------+---------
+ f1         |      4 | SQL statement | 42703    | column "c" of relation "t1" does not exist |        |      | error |       15 | update t1 set c = 30 | 
 (1 row)
 
 select * from plpgsql_check_function_tb('f1()', fatal_errors := false);
- functionid | lineno | statement | sqlstate |                message                 | detail | hint | level | position | query |                      context                      
-------------+--------+-----------+----------+----------------------------------------+--------+------+-------+----------+-------+---------------------------------------------------
- f1         |        |           | 42601    | too few parameters specified for RAISE |        |      | error |          |       | compilation of PL/pgSQL function "f1" near line 7
-(1 row)
+ functionid | lineno |   statement   | sqlstate |                  message                   | detail | hint | level | position |        query         | context 
+------------+--------+---------------+----------+--------------------------------------------+--------+------+-------+----------+----------------------+---------
+ f1         |      4 | SQL statement | 42703    | column "c" of relation "t1" does not exist |        |      | error |       15 | update t1 set c = 30 | 
+ f1         |      7 | RAISE         | 42P01    | missing FROM-clause entry for table "r"    |        |      | error |        8 | SELECT r.c           | 
+ f1         |      7 | RAISE         | 42601    | too few parameters specified for RAISE     |        |      | error |          |                      | 
+(3 rows)
 
 select * from plpgsql_check_function_tb('f1()');
- functionid | lineno | statement | sqlstate |                message                 | detail | hint | level | position | query |                      context                      
-------------+--------+-----------+----------+----------------------------------------+--------+------+-------+----------+-------+---------------------------------------------------
- f1         |        |           | 42601    | too few parameters specified for RAISE |        |      | error |          |       | compilation of PL/pgSQL function "f1" near line 7
+ functionid | lineno |   statement   | sqlstate |                  message                   | detail | hint | level | position |        query         | context 
+------------+--------+---------------+----------+--------------------------------------------+--------+------+-------+----------+----------------------+---------
+ f1         |      4 | SQL statement | 42703    | column "c" of relation "t1" does not exist |        |      | error |       15 | update t1 set c = 30 | 
 (1 row)
 
 select f1();
-ERROR:  too few parameters specified for RAISE
-CONTEXT:  compilation of PL/pgSQL function "f1" near line 7
+ f1 
+----
+ 
+(1 row)
+
 drop function f1();
 create or replace function f1()
 returns void as $$
@@ -2845,17 +2956,23 @@ begin
 end;
 $$ language plpgsql;
 select f1();
-ERROR:  too many parameters specified for RAISE
-CONTEXT:  compilation of PL/pgSQL function "f1" near line 4
+ f1 
+----
+ 
+(1 row)
+
 select * from plpgsql_check_function_tb('f1()');
- functionid | lineno | statement | sqlstate |                 message                 | detail | hint | level | position | query |                      context                      
-------------+--------+-----------+----------+-----------------------------------------+--------+------+-------+----------+-------+---------------------------------------------------
- f1         |        |           | 42601    | too many parameters specified for RAISE |        |      | error |          |       | compilation of PL/pgSQL function "f1" near line 4
+ functionid | lineno | statement | sqlstate |                 message                 | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+-----------------------------------------+--------+------+-------+----------+-------+---------
+ f1         |      4 | RAISE     | 42601    | too many parameters specified for RAISE |        |      | error |          |       | 
 (1 row)
 
 select f1();
-ERROR:  too many parameters specified for RAISE
-CONTEXT:  compilation of PL/pgSQL function "f1" near line 4
+ f1 
+----
+ 
+(1 row)
+
 drop function f1();
 create or replace function f1()
 returns void as $$
@@ -2866,17 +2983,23 @@ begin
 end;
 $$ language plpgsql;
 select f1();
-ERROR:  too few parameters specified for RAISE
-CONTEXT:  compilation of PL/pgSQL function "f1" near line 4
+ f1 
+----
+ 
+(1 row)
+
 select * from plpgsql_check_function_tb('f1()');
- functionid | lineno | statement | sqlstate |                message                 | detail | hint | level | position | query |                      context                      
-------------+--------+-----------+----------+----------------------------------------+--------+------+-------+----------+-------+---------------------------------------------------
- f1         |        |           | 42601    | too few parameters specified for RAISE |        |      | error |          |       | compilation of PL/pgSQL function "f1" near line 4
+ functionid | lineno | statement | sqlstate |                message                 | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+----------------------------------------+--------+------+-------+----------+-------+---------
+ f1         |      4 | RAISE     | 42601    | too few parameters specified for RAISE |        |      | error |          |       | 
 (1 row)
 
 select f1();
-ERROR:  too few parameters specified for RAISE
-CONTEXT:  compilation of PL/pgSQL function "f1" near line 4
+ f1 
+----
+ 
+(1 row)
+
 drop function f1();
 create or replace function ml_trg()
 returns trigger as $$
@@ -2910,8 +3033,10 @@ $$ language plpgsql;
 select * from plpgsql_check_function('ml_trg()', 'ml', performance_warnings := true);
                           plpgsql_check_function                          
 --------------------------------------------------------------------------
+ performance:42804:9:SQL statement:target type has type modificator
+ Hint: Usage of type modificator enforces slower IO casting.
  error:42703:13:SQL statement:record "new" has no field "status_from_xxx"
-(1 row)
+(3 rows)
 
 create or replace function fx2()
 returns void as $$
@@ -2922,10 +3047,12 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx2()', performance_warnings := true);
-                 plpgsql_check_function                  
----------------------------------------------------------
+                       plpgsql_check_function                       
+--------------------------------------------------------------------
+ performance:42804:5:SQL statement:target type has type modificator
+ Hint: Usage of type modificator enforces slower IO casting.
  warning extra:00000:2:DECLARE:never read variable "_pa"
-(1 row)
+(3 rows)
 
 drop function fx2();
 create or replace function fx2()
@@ -2937,10 +3064,12 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx2()', performance_warnings := true);
-                 plpgsql_check_function                  
----------------------------------------------------------
+                     plpgsql_check_function                      
+-----------------------------------------------------------------
+ performance:42804:5:assignment:target type has type modificator
+ Hint: Usage of type modificator enforces slower IO casting.
  warning extra:00000:2:DECLARE:never read variable "_pa"
-(1 row)
+(3 rows)
 
 drop function fx2();
 create or replace function test_lab()
@@ -2962,51 +3091,15 @@ begin
 end;
 $$ language plpgsql;
 select test_lab();
-ERROR:  block label "sub" cannot be used in CONTINUE
-LINE 10:                 continue sub;
-                                  ^
-QUERY:  
-begin
-    <<outer>>
-    for a in 1..3 loop
-    <<sub>>
-    BEGIN
-        <<inner>>
-        for b in 8..9 loop
-            if a=2 then
-                continue sub;
-            end if;
-            raise notice '% %', a, b;
-        end loop inner;
-    END sub;
-    end loop outer;
-end;
-
-CONTEXT:  compilation of PL/pgSQL function "test_lab" near line 10
+NOTICE:  1 8
+NOTICE:  1 9
+ERROR:  CONTINUE cannot be used outside a loop
+CONTEXT:  PL/pgSQL function test_lab()
 select * from plpgsql_check_function('test_lab()', performance_warnings := true);
-                      plpgsql_check_function                       
--------------------------------------------------------------------
- error:42601:block label "sub" cannot be used in CONTINUE
- Query: 
-        begin
-            <<outer>>
-            for a in 1..3 loop
-            <<sub>>
-            BEGIN
-                <<inner>>
-                for b in 8..9 loop
-                    if a=2 then
-                        continue sub;
- --                              ^
-                    end if;
-                    raise notice '% %', a, b;
-                end loop inner;
-            END sub;
-            end loop outer;
-        end;
-        
- Context: compilation of PL/pgSQL function "test_lab" near line 10
-(20 rows)
+                        plpgsql_check_function                        
+----------------------------------------------------------------------
+ error:42601:10:CONTINUE:block label "sub" cannot be used in CONTINUE
+(1 row)
 
 create or replace function test_lab()
 returns void as $$
@@ -3016,26 +3109,12 @@ end;
 $$ language plpgsql;
 select test_lab();
 ERROR:  CONTINUE cannot be used outside a loop
-LINE 3:   continue;
-          ^
-QUERY:  
-begin
-  continue;
-end;
-
-CONTEXT:  compilation of PL/pgSQL function "test_lab" near line 3
+CONTEXT:  PL/pgSQL function test_lab()
 select * from plpgsql_check_function('test_lab()', performance_warnings := true);
-                      plpgsql_check_function                      
-------------------------------------------------------------------
- error:42601:CONTINUE cannot be used outside a loop
- Query: 
-        begin
-          continue;
- --       ^
-        end;
-        
- Context: compilation of PL/pgSQL function "test_lab" near line 3
-(8 rows)
+                    plpgsql_check_function                     
+---------------------------------------------------------------
+ error:42601:3:CONTINUE:CONTINUE cannot be used outside a loop
+(1 row)
 
 create type _exception_type as (
   state text,
@@ -3062,9 +3141,9 @@ select f1();
 (1 row)
 
 select * from plpgsql_check_function('f1()');
-                            plpgsql_check_function                             
--------------------------------------------------------------------------------
- error:42703:7:GET STACKED DIAGNOSTICS:record "_exception" has no field "hint"
+                        plpgsql_check_function                         
+-----------------------------------------------------------------------
+ error:42703:7:GET DIAGNOSTICS:record "_exception" has no field "hint"
 (1 row)
 
 drop function f1();
@@ -3112,3 +3191,38 @@ drop table mytable;
 drop view myview;
 ERROR:  "myview" is not a view
 HINT:  Use DROP TABLE to remove a table.
+-- issue #34
+create or replace function testcase()
+returns bool as $$
+declare x int;
+begin
+  set local search_path to public, test;
+  case x when 1 then return true; else return false; end case;
+end;
+$$ language plpgsql;
+-- should not to raise warning
+select * from plpgsql_check_function('testcase()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function testcase();
+-- Adam's Bartoszewicz example
+create or replace function public.test12()
+returns refcursor
+language plpgsql
+as $body$
+declare
+  rc refcursor;
+begin
+  open rc scroll for select pc.* from pg_cast pc;
+  return rc;
+end;
+$body$;
+-- should not returns false alarm
+select * from plpgsql_check_function('test12()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function public.test12();

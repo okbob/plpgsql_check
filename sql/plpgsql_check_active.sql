@@ -44,9 +44,46 @@ end;
 $$ language plpgsql stable;
 
 select f1();
+
 select * from plpgsql_check_function_tb('f1()', fatal_errors := false);
 
 drop function f1();
+
+-- profiler check
+set plpgsql_check.profiler to on;
+
+create function f1()
+returns void as $$
+begin
+  if false then
+    insert into t1 values(10,20);
+    update t1 set a = 10;
+    delete from t1;
+  end if;
+end;
+$$ language plpgsql;
+
+select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+
+select f1();
+
+select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+
+select plpgsql_profiler_reset('f1()');
+
+select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+
+select f1();
+
+select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+
+select plpgsql_profiler_reset_all();
+
+select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+
+drop function f1();
+
+set plpgsql_check.profiler to off;
 
 create function f1()
 returns void as $$

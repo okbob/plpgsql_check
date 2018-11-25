@@ -372,6 +372,9 @@ Due dependencies, `shared_preload_libraries` should to contains `plpgsql` first
     └──────────────────────────┘
     (1 row)
 
+The profiler is active when GUC `plpgsql_check.profiler` is on. The profiler doesn't require shared memory,
+but if there are not shared memory, then the profile is limmitted just to active session.
+
 Attention: A update of shared profiles can decrease performance on servers under higher load.
 
 The profile can be displayed by function `plpgsql_profiler_function_tb`:
