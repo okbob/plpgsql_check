@@ -72,6 +72,109 @@ select * from plpgsql_check_function_tb('f1()', fatal_errors := false);
 (3 rows)
 
 drop function f1();
+-- profiler check
+set plpgsql_check.profiler to on;
+create function f1()
+returns void as $$
+begin
+  if false then
+    insert into t1 values(10,20);
+    update t1 set a = 10;
+    delete from t1;
+  end if;
+end;
+$$ language plpgsql;
+select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+ lineno | stmt_lineno | exec_stmts |              source               
+--------+-------------+------------+-----------------------------------
+      1 |             |            | 
+      2 |             |            | begin
+      3 |             |            |   if false then
+      4 |             |            |     insert into t1 values(10,20);
+      5 |             |            |     update t1 set a = 10;
+      6 |             |            |     delete from t1;
+      7 |             |            |   end if;
+      8 |             |            | end;
+(8 rows)
+
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+ lineno | stmt_lineno | exec_stmts |              source               
+--------+-------------+------------+-----------------------------------
+      1 |             |            | 
+      2 |           2 |          1 | begin
+      3 |           3 |          1 |   if false then
+      4 |           4 |          0 |     insert into t1 values(10,20);
+      5 |           5 |          0 |     update t1 set a = 10;
+      6 |           6 |          0 |     delete from t1;
+      7 |             |            |   end if;
+      8 |             |            | end;
+(8 rows)
+
+select plpgsql_profiler_reset('f1()');
+ plpgsql_profiler_reset 
+------------------------
+ 
+(1 row)
+
+select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+ lineno | stmt_lineno | exec_stmts |              source               
+--------+-------------+------------+-----------------------------------
+      1 |             |            | 
+      2 |             |            | begin
+      3 |             |            |   if false then
+      4 |             |            |     insert into t1 values(10,20);
+      5 |             |            |     update t1 set a = 10;
+      6 |             |            |     delete from t1;
+      7 |             |            |   end if;
+      8 |             |            | end;
+(8 rows)
+
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+ lineno | stmt_lineno | exec_stmts |              source               
+--------+-------------+------------+-----------------------------------
+      1 |             |            | 
+      2 |           2 |          1 | begin
+      3 |           3 |          1 |   if false then
+      4 |           4 |          0 |     insert into t1 values(10,20);
+      5 |           5 |          0 |     update t1 set a = 10;
+      6 |           6 |          0 |     delete from t1;
+      7 |             |            |   end if;
+      8 |             |            | end;
+(8 rows)
+
+select plpgsql_profiler_reset_all();
+ plpgsql_profiler_reset_all 
+----------------------------
+ 
+(1 row)
+
+select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+ lineno | stmt_lineno | exec_stmts |              source               
+--------+-------------+------------+-----------------------------------
+      1 |             |            | 
+      2 |             |            | begin
+      3 |             |            |   if false then
+      4 |             |            |     insert into t1 values(10,20);
+      5 |             |            |     update t1 set a = 10;
+      6 |             |            |     delete from t1;
+      7 |             |            |   end if;
+      8 |             |            | end;
+(8 rows)
+
+drop function f1();
+set plpgsql_check.profiler to off;
 create function f1()
 returns void as $$
 declare r record;
