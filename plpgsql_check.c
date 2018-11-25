@@ -55,7 +55,7 @@
 
 #endif
 
-#if PG_VERSION_NUM < 90600
+#if PG_VERSION_NUM < 100000
 
 #include "storage/spin.h"
 
