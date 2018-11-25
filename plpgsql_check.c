@@ -4858,9 +4858,6 @@ prepare_expr(PLpgSQL_checkstate *cstate,
 			}
 		}
 
-		
-
-
 		/*
 		 * We would to check all plans, but when plan exists, then don't 
 		 * overwrite existing plan.
