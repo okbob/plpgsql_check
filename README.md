@@ -359,6 +359,9 @@ a access to shared memory. It depends on `shared_preload_libraries` config. When
 by `shared_preload_libraries`, then it can allocate shared memory, and function's profiles are stored there.
 When plpgsql_check cannot to allocate shared momory, the profile is stored in session memory.
 
+The profile of any function is updated after successful execution of function. When function was canceled
+or it fails, the profiles is not updated.
+
 Due dependencies, `shared_preload_libraries` should to contains `plpgsql` first
 
     postgres=# show shared_preload_libraries ;
@@ -388,6 +391,23 @@ The profile can be displayed by function `plpgsql_profiler_function_tb`:
     └────────┴──────────┴───────────────────────────────────────────────────────────────────┘
     (9 rows)
 
+There are two functions for cleaning stored profiles: `plpgsql_profiler_reset_all()` and
+`plpgsql_profiler_reset(regprocedure)`.
+
+## Note
+
+There is another very good PLpgSQL profiler - https://bitbucket.org/openscg/plprofiler
+
+My extension is designed to be simple for use and practical. Nothing more or less.
+
+plprofiler is more complex. It build call graphs and from this graph it can creates
+flame graph of execution times.
+
+Both extensions can be used together with buildin PostgreSQL's feature - tracking functions.
+
+    set track_functions to 'pl';
+    ...
+    select * from pg_stat_user_functions;
 
 # Compilation
 

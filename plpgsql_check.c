@@ -535,8 +535,12 @@ typedef struct plpgsql_hashent
 
 PG_FUNCTION_INFO_V1(plpgsql_check_function);
 PG_FUNCTION_INFO_V1(plpgsql_check_function_tb);
+
 PG_FUNCTION_INFO_V1(plpgsql_show_dependency_tb);
+
 PG_FUNCTION_INFO_V1(plpgsql_profiler_function_tb);
+PG_FUNCTION_INFO_V1(plpgsql_profiler_reset_all);
+PG_FUNCTION_INFO_V1(plpgsql_profiler_reset);
 
 void			_PG_init(void);
 void			_PG_fini(void);
@@ -579,6 +583,29 @@ profiler_shmem_startup(void)
 													HASH_ELEM | HASH_BLOBS);
 
 	LWLockRelease(AddinShmemInitLock);
+}
+
+static void
+profiler_init_hash_tables(void)
+{
+	if (profiler_mcxt)
+	{
+		MemoryContextReset(profiler_mcxt);
+
+		profiler_HashTable = NULL;
+		profiler_chunks_HashTable = NULL;
+	}
+	else
+	{
+		profiler_mcxt = AllocSetContextCreate(TopMemoryContext,
+												"plpgsql_check - profiler context",
+												ALLOCSET_DEFAULT_MINSIZE,
+												ALLOCSET_DEFAULT_INITSIZE,
+												ALLOCSET_DEFAULT_MAXSIZE);
+	}
+
+	profiler_localHashTableInit();
+	profiler_chunks_HashTableInit();
 }
 
 /*
@@ -649,16 +676,10 @@ _PG_init(void)
 					    PGC_SUSET, 0,
 					    NULL, NULL, NULL);
 
-	if (!profiler_mcxt)
-		profiler_mcxt = AllocSetContextCreate(TopMemoryContext,
-												"plpgsql_check - profiler context",
-												ALLOCSET_DEFAULT_MINSIZE,
-												ALLOCSET_DEFAULT_INITSIZE,
-												ALLOCSET_DEFAULT_MAXSIZE);
 
 	plpgsql_check_HashTableInit();
-	profiler_localHashTableInit();
-	profiler_chunks_HashTableInit();
+
+	profiler_init_hash_tables();
 
 	/* Use shared memory when we can register more for self */
 	if (process_shared_preload_libraries_in_progress)
@@ -7949,4 +7970,85 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 	rsinfo->setDesc = tupdesc;
 
 	return (Datum) 0;
+}
+
+/*
+ * clean all chunks used by profiler
+ */
+Datum
+plpgsql_profiler_reset_all(PG_FUNCTION_ARGS)
+{
+	if (shared_profiler_chunks_HashTable)
+	{
+		HASH_SEQ_STATUS			hash_seq;
+		profiler_stmt_chunk    *chunk;
+
+		LWLockAcquire(profiler_ss->lock, LW_EXCLUSIVE);
+
+		hash_seq_init(&hash_seq, shared_profiler_chunks_HashTable);
+
+		while ((chunk = hash_seq_search(&hash_seq)) != NULL)
+		{
+			hash_search(shared_profiler_chunks_HashTable, &(chunk->key), HASH_REMOVE, NULL);
+		}
+
+		LWLockRelease(profiler_ss->lock);
+	}
+	else
+		profiler_init_hash_tables();
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * Clean chunks related to some function
+ */
+Datum
+plpgsql_profiler_reset(PG_FUNCTION_ARGS)
+{
+	Oid			funcoid = PG_GETARG_OID(0);
+	profiler_hashkey hk;
+	HTAB	   *chunks;
+	HeapTuple	procTuple;
+	bool		found;
+	bool		shared_chunks;
+
+	procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcoid));
+	if (!HeapTupleIsValid(procTuple))
+		elog(ERROR, "cache lookup failed for function %u", funcoid);
+
+	/* ensure correct complete content of hash key */
+	memset(&hk, 0, sizeof(profiler_hashkey));
+	hk.fn_oid = funcoid;
+	hk.db_oid = MyDatabaseId;
+	hk.fn_xmin = HeapTupleHeaderGetRawXmin(procTuple->t_data);
+	hk.fn_tid =  procTuple->t_self;
+	hk.chunk_num = 1;
+
+	ReleaseSysCache(procTuple);
+
+	if (shared_profiler_chunks_HashTable)
+	{
+		LWLockAcquire(profiler_ss->lock, LW_EXCLUSIVE);
+		chunks = shared_profiler_chunks_HashTable;
+		shared_chunks = true;
+	}
+	else
+	{
+		chunks = profiler_chunks_HashTable;
+		shared_chunks = false;
+	}
+
+	for(;;)
+	{
+		hash_search(chunks, (void *) &hk, HASH_REMOVE, &found);
+		if (!found)
+			break;
+		hk.chunk_num += 1;
+	}
+
+	if (shared_chunks)
+		LWLockRelease(profiler_ss->lock);
+
+	PG_RETURN_VOID();
 }

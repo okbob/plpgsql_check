@@ -108,3 +108,11 @@ RETURNS TABLE(lineno int,
               source text)
 AS 'MODULE_PATHNAME','plpgsql_profiler_function_tb'
 LANGUAGE C STRICT;
+
+CREATE FUNCTION plpgsql_profiler_reset_all()
+RETURNS void AS 'MODULE_PATHNAME','plpgsql_profiler_reset_all'
+LANGUAGE C STRICT;
+
+CREATE FUNCTION plpgsql_profiler_reset(funcoid regprocedure)
+RETURNS void AS 'MODULE_PATHNAME','plpgsql_profiler_reset'
+LANGUAGE C STRICT;
