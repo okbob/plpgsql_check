@@ -191,6 +191,8 @@ typedef struct PLpgSQL_checkstate
 {
 	Oid			fn_oid;						/* oid of checked function */
 	List	    *argnames;					/* function arg names */
+	char		decl_volatility;			/* declared function volatility */
+	char		volatility;					/* detected function volatility */
 	PLpgSQL_execstate	   *estate;			/* check state is estate extension */
 	Tuplestorestate		   *tuple_store;	/* result target */
 	TupleDesc	tupdesc;					/* result description */
@@ -210,6 +212,7 @@ typedef struct PLpgSQL_checkstate
 	bool		is_procedure;				/* true, when checked code is a procedure */
 	Bitmapset	   *func_oids;				/* list of used (and displayed) functions */
 	Bitmapset	   *rel_oids;				/* list of used (and displayed) relations */
+	
 } PLpgSQL_checkstate;
 
 static void assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, bool isnull);
@@ -302,6 +305,7 @@ static void plpgsql_check_HashTableInit(void);
 static void prohibit_write_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
 static void check_fishy_qual(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
 static void check_seq_functions(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
+static void collect_volatility(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 static void put_error(PLpgSQL_checkstate *cstate,
 					  int sqlerrcode, int lineno,
 					  const char *message, const char *detail, const char *hint,
@@ -312,7 +316,8 @@ static void precheck_conditions(HeapTuple procTuple, PLpgSQL_trigtype trigtype, 
 static void prepare_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, int cursorOptions);
 static void release_exprs(List *exprs);
 static void setup_cstate(PLpgSQL_checkstate *cstate,
-							 Oid fn_oid, TupleDesc tupdesc, Tuplestorestate *tupstore,
+							 Oid fn_oid, char decl_volatility,
+							 TupleDesc tupdesc, Tuplestorestate *tupstore,
 							 bool fatal_errors,
 								 bool other_warnings, bool perform_warnings, bool extra_warnings,
 												    int format,
@@ -349,6 +354,7 @@ static void tuplestore_put_text_line(Tuplestorestate *tuple_store, TupleDesc tup
 static void report_unused_variables(PLpgSQL_checkstate *cstate);
 static void record_variable_usage(PLpgSQL_checkstate *cstate, int dno, bool write);
 static bool datum_is_used(PLpgSQL_checkstate *cstate, int dno, bool write);
+static void report_too_high_volatility(PLpgSQL_checkstate *cstate);
 static bool is_const_null_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
 static void prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query);
 static int merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int err_code);
@@ -1027,6 +1033,7 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 					 old_cxt;
 		ResourceOwner oldowner;
 		PLpgSQL_checkstate cstate;
+		char		provolatile;
 
 		/*
 		 * don't allow repeated execution on checked function
@@ -1034,15 +1041,25 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 		 */
 		if (plpgsql_check_mode == PLPGSQL_CHECK_MODE_FRESH_START &&
 			is_checked(func))
-		{
-			elog(NOTICE, "function \"%s\" was checked already",
-							    func->fn_signature);
 			return;
-		}
 
 		mark_as_checked(func);
 
-		setup_cstate(&cstate, func->fn_oid, NULL, NULL,
+		if (OidIsValid(func->fn_oid))
+		{
+			HeapTuple	procTuple;
+
+			procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(func->fn_oid));
+			if (!HeapTupleIsValid(procTuple))
+				elog(ERROR, "cache lookup failed for function %u", func->fn_oid);
+			provolatile = ((Form_pg_proc) GETSTRUCT(procTuple))->provolatile;
+			ReleaseSysCache(procTuple);
+		}
+		else
+			provolatile = PROVOLATILE_IMMUTABLE;
+
+		setup_cstate(&cstate, func->fn_oid, provolatile,
+								NULL, NULL,
 							    plpgsql_check_fatal_errors,
 							    plpgsql_check_other_warnings,
 							    plpgsql_check_performance_warnings,
@@ -1136,6 +1153,8 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 								  0, NULL, NULL);
 
 			report_unused_variables(&cstate);
+			report_too_high_volatility(&cstate);
+
 		}
 		PG_CATCH();
 		{
@@ -1655,6 +1674,7 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 	MemoryContext old_cxt;
 	PLpgSQL_execstate estate;
 	ReturnSetInfo rsinfo;
+	char		provolatile;
 
 #if PG_VERSION_NUM >= 120000
 
@@ -1666,6 +1686,8 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 
 #endif
 
+	provolatile = ((Form_pg_proc) GETSTRUCT(procTuple))->provolatile;
+
 	/*
 	 * Connect to SPI manager
 	 */
@@ -1675,7 +1697,7 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 	setup_fake_fcinfo(procTuple, &flinfo, &fake_fcinfo, &rsinfo, &trigdata, relid, &etrigdata,
 										  funcoid, trigtype, &tg_trigger);
 
-	setup_cstate(&cstate, funcoid, tupdesc, tupstore,
+	setup_cstate(&cstate, funcoid, provolatile, tupdesc, tupstore,
 							    fatal_errors,
 							    other_warnings, performance_warnings, extra_warnings,
 										    format,
@@ -1868,6 +1890,7 @@ function_check(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 						  0, NULL, NULL);
 
 	report_unused_variables(cstate);
+	report_too_high_volatility(cstate);
 }
 
 /*
@@ -1984,6 +2007,7 @@ trigger_check(PLpgSQL_function *func, Node *tdata,
 						  0, NULL, NULL);
 
 	report_unused_variables(cstate);
+	report_too_high_volatility(cstate);
 }
 
 /*
@@ -2186,6 +2210,7 @@ setup_fake_fcinfo(HeapTuple procTuple,
 static void
 setup_cstate(PLpgSQL_checkstate *cstate,
 			 Oid fn_oid,
+			 char decl_volatility,
 			 TupleDesc tupdesc,
 			 Tuplestorestate *tupstore,
 			 bool fatal_errors,
@@ -2196,6 +2221,9 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 			 bool is_active_mode)
 {
 	cstate->fn_oid = fn_oid;
+
+	cstate->decl_volatility = decl_volatility;
+	cstate->volatility = PROVOLATILE_IMMUTABLE;
 	cstate->estate = NULL;
 	cstate->tupdesc = tupdesc;
 	cstate->tuple_store = tupstore;
@@ -4091,7 +4119,59 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 					message.data = NULL;
 				}
 			}
+		}
+	}
+}
 
+/*
+ * Report too high volatility
+ *
+ */
+static void
+report_too_high_volatility(PLpgSQL_checkstate *cstate)
+{
+	if (cstate->performance_warnings)
+	{
+		char	   *current;
+		char	   *should_be;
+		bool 		raise_warning;
+
+		if (cstate->volatility == PROVOLATILE_IMMUTABLE &&
+				(cstate->decl_volatility == PROVOLATILE_VOLATILE ||
+				 cstate->decl_volatility == PROVOLATILE_STABLE))
+		{
+			should_be = "IMMUTABLE";
+			current = cstate->decl_volatility == PROVOLATILE_VOLATILE ?
+						"VOLATILE" : "STABLE";
+			raise_warning = true;
+		}
+		else if (cstate->volatility == PROVOLATILE_STABLE &&
+				(cstate->decl_volatility == PROVOLATILE_VOLATILE))
+		{
+			should_be = "IMMUTABLE";
+			current = "VOLATILE";
+			raise_warning = true;
+		}
+		else
+			raise_warning = false;
+
+		if (raise_warning)
+		{
+			StringInfoData message;
+
+			initStringInfo(&message);
+
+			appendStringInfo(&message, "routine is marked as %s, should be %s", current, should_be);
+			put_error(cstate,
+					  0, -1,
+					  message.data,
+					  NULL,
+					  NULL,
+					  PLPGSQL_CHECK_WARNING_PERFORMANCE,
+					  0, NULL, NULL);
+
+			pfree(message.data);
+			message.data = NULL;
 		}
 	}
 }
@@ -4924,6 +5004,8 @@ prepare_expr(PLpgSQL_checkstate *cstate,
 
 	check_seq_functions(cstate, expr);
 
+	collect_volatility(cstate, expr);
+
 	if (cstate->format == PLPGSQL_SHOW_DEPENDENCY_FORMAT_TABULAR)
 		detect_dependency(cstate, expr);
 
@@ -5391,6 +5473,58 @@ check_seq_functions(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 
 	query = ExprGetQuery(cstate, expr);
 	check_seq_functions_walker((Node *) query, &wp);
+}
+
+/*
+ * We can detect a volatility of some expressions
+ */
+static void
+collect_volatility(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+{
+	/*
+	 * Try to detect volatility only when we are not sure about it
+	 */
+	if (cstate->performance_warnings && cstate->volatility != PROVOLATILE_VOLATILE)
+	{
+		Query	   *query;
+
+		query = ExprGetQuery(cstate, expr);
+
+		switch (query->commandType)
+		{
+			case CMD_SELECT:
+				{
+					if (!query->hasModifyingCTE && !query->hasForUpdate)
+					{
+						/* there is chance so query will be immutable */
+						if (contain_volatile_functions((Node *) query))
+							cstate->volatility = PROVOLATILE_VOLATILE;
+						else if (!contain_mutable_functions((Node *) query))
+						{
+							/*
+							 * when level is still immutable, check if there
+							 * are not reference to tables.
+							 */
+							if (cstate->volatility == PROVOLATILE_IMMUTABLE)
+							{
+								if (query->rtable != NIL)
+									cstate->volatility = PROVOLATILE_STABLE;
+							}
+						}
+						else
+							cstate->volatility = PROVOLATILE_STABLE;
+					}
+					else
+						cstate->volatility = PROVOLATILE_VOLATILE;
+				}
+				break;
+
+			default:
+				/* these statements are not read only and requires VOLATILE flag */
+				cstate->volatility = PROVOLATILE_VOLATILE;
+				break;
+		}
+	}
 }
 
 static bool
@@ -7847,6 +7981,8 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 	hk.fn_tid =  procTuple->t_self;
 	hk.chunk_num = 1;
 
+	ReleaseSysCache(procTuple);
+
 	if (shared_profiler_chunks_HashTable)
 	{
 		LWLockAcquire(profiler_ss->lock, LW_SHARED);
@@ -7864,7 +8000,6 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 											 HASH_FIND,
 											 &found);
 
-	ReleaseSysCache(procTuple);
 
 	/* need to build tuplestore in query context */
 	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;

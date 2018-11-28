@@ -60,9 +60,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings => true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                        plpgsql_check_function                        
+----------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+(1 row)
 
 create or replace function f1()
 returns setof t1tab as $$
@@ -87,9 +88,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings => true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                        plpgsql_check_function                        
+----------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+(1 row)
 
 create or replace function f1()
 returns setof t1tab as $$
@@ -188,10 +190,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx2()', performance_warnings := true);
-                 plpgsql_check_function                  
----------------------------------------------------------
+                        plpgsql_check_function                        
+----------------------------------------------------------------------
  warning extra:00000:2:DECLARE:never read variable "_pa"
-(1 row)
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+(2 rows)
 
 drop function fx2();
 create or replace function fx2()
@@ -203,10 +206,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx2()', performance_warnings := true);
-                 plpgsql_check_function                  
----------------------------------------------------------
+                        plpgsql_check_function                        
+----------------------------------------------------------------------
  warning extra:00000:2:DECLARE:never read variable "_pa"
-(1 row)
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+(2 rows)
 
 drop function fx2();
 create type _exception_type as (

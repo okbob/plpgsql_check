@@ -152,8 +152,6 @@ QUERY:  insert into badbadtable values(10,20)
 CONTEXT:  PL/pgSQL function f1() line 4 at SQL statement
 -- should not raise exception there
 select f1();
-NOTICE:  function "f1()" was checked already
-CONTEXT:  PL/pgSQL function f1() during function entry
  f1 
 ----
  

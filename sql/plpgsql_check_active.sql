@@ -2423,3 +2423,29 @@ $body$;
 select * from plpgsql_check_function('test12()');
 
 drop function public.test12();
+
+-- should to show performance warning on bad flag
+create or replace function flag_test1(int)
+returns int as $$
+begin
+  return $1 + 10;
+end;
+$$ language plpgsql stable;
+
+create table fufu(a int);
+
+create or replace function flag_test2(int)
+returns int as $$
+begin
+  return (select * from fufu limit 1)
+end;
+$$ language plpgsql volatile;
+
+select * from plpgsql_check_function('flag_test1(int)', performance_warning => true);
+select * from plpgsql_check_function('flag_test2(int)', performance_warning => true);
+
+drop table fufu;
+drop function flag_test1(int);
+drop function flag_test2(int);
+
+
