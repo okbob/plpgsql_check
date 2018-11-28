@@ -5476,6 +5476,51 @@ check_seq_functions(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 }
 
 /*
+ * Try to detect relations in query
+ */
+static bool
+has_rtable_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, Query))
+	{
+		Query *query = (Query *) node;
+		bool		has_relation = false;
+		ListCell *lc;
+
+		foreach (lc, query->rtable)
+		{
+			RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
+
+			if (rte->rtekind == RTE_RELATION)
+			{
+				has_relation = true;
+				break;
+			}
+		}
+
+		if (has_relation)
+		{
+			return true;
+		}
+		else
+			return query_tree_walker(query, has_rtable_walker, context, 0);
+	}
+	return expression_tree_walker(node, has_rtable_walker, context);
+}
+
+/*
+ * Returns true, if query use any relation
+ */
+static bool
+has_rtable(Query *query)
+{
+	return has_rtable_walker((Node *) query, NULL);
+}
+
+/*
  * We can detect a volatility of some expressions
  */
 static void
@@ -5507,7 +5552,7 @@ collect_volatility(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 							 */
 							if (cstate->volatility == PROVOLATILE_IMMUTABLE)
 							{
-								if (query->rtable != NIL)
+								if (has_rtable(query))
 									cstate->volatility = PROVOLATILE_STABLE;
 							}
 						}
