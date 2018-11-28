@@ -4148,7 +4148,7 @@ report_too_high_volatility(PLpgSQL_checkstate *cstate)
 		else if (cstate->volatility == PROVOLATILE_STABLE &&
 				(cstate->decl_volatility == PROVOLATILE_VOLATILE))
 		{
-			should_be = "IMMUTABLE";
+			should_be = "STABLE";
 			current = "VOLATILE";
 			raise_warning = true;
 		}
