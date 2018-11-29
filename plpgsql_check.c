@@ -398,6 +398,7 @@ typedef struct profiler_stmt
 	int64	rows;
 	int64	exec_count;
 	instr_time	start_time;
+	instr_time	total;
 } profiler_stmt;
 
 typedef struct profiler_stmt_reduced
@@ -7916,16 +7917,19 @@ profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		profiler_stmt *pstmt = &pinfo->stmts[stmtid];
 		instr_time		end_time;
 		uint64			elapsed;
+		instr_time		end_time2;
 
 		INSTR_TIME_SET_CURRENT(end_time);
-		INSTR_TIME_SUBTRACT(end_time, pstmt->start_time);
+		end_time2 = end_time;
+		INSTR_TIME_ACCUM_DIFF(pstmt->total, end_time, pstmt->start_time);
 
-		elapsed = INSTR_TIME_GET_MICROSEC(end_time);
+		INSTR_TIME_SUBTRACT(end_time2, pstmt->start_time);
+		elapsed = INSTR_TIME_GET_MICROSEC(end_time2);
 
 		if (elapsed > pstmt->us_max)
 			pstmt->us_max = elapsed;
 
-		pstmt->us_total += elapsed;
+		pstmt->us_total = INSTR_TIME_GET_MICROSEC(pstmt->total);
 		pstmt->rows += estate->eval_processed;
 		pstmt->exec_count++;
 	}
