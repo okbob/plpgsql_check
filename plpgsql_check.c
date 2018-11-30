@@ -4167,7 +4167,7 @@ report_too_high_volatility(PLpgSQL_checkstate *cstate)
 					  0, -1,
 					  message.data,
 					  NULL,
-					  NULL,
+					  "When you fix this issue, please, recheck other functions that uses this function.",
 					  PLPGSQL_CHECK_WARNING_PERFORMANCE,
 					  0, NULL, NULL);
 
