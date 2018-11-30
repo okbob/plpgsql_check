@@ -368,6 +368,8 @@ static void tuplestore_put_dependency(Tuplestorestate *tuple_store,
 									  TupleDesc tupdesc, char *type, Oid oid,
 									  char *schema, char *name, char *params);
 
+static void SetRurningFunctionCheck(ReturnSetInfo *rsinfo);
+
 /*
  * Any instance of plpgsql function will have a own profile.
  * When function will be dropped, then related profile should
@@ -1343,15 +1345,7 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	extra_warnings = PG_GETARG_BOOL(5);
 
 	/* check to see if caller supports us returning a tuplestore */
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("set-valued function called in context that cannot accept a set")));
-
-	if (!(rsinfo->allowedModes & SFRM_Materialize))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not allowed in this context")));
+	SetRurningFunctionCheck(rsinfo);
 
 	procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcoid));
 	if (!HeapTupleIsValid(procTuple))
@@ -7171,15 +7165,7 @@ plpgsql_show_dependency_tb(PG_FUNCTION_ARGS)
 	ErrorContextCallback *prev_errorcontext;
 
 	/* check to see if caller supports us returning a tuplestore */
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("set-valued function called in context that cannot accept a set")));
-
-	if (!(rsinfo->allowedModes & SFRM_Materialize))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not allowed in this context")));
+	SetRurningFunctionCheck(rsinfo);
 
 	procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcoid));
 	if (!HeapTupleIsValid(procTuple))
@@ -7976,6 +7962,21 @@ tuplestore_put_profile(Tuplestorestate *tuple_store,
 	tuplestore_putvalues(tuple_store, tupdesc, values, nulls);
 }
 
+static void
+SetRurningFunctionCheck(ReturnSetInfo *rsinfo)
+{
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not allowed in this context")));
+}
+
 Datum
 plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 {
@@ -8000,16 +8001,7 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 	volatile bool		unlock_mutex;
 
 	/* check to see if caller supports us returning a tuplestore */
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("set-valued function called in context that cannot accept a set")));
-
-	if (!(rsinfo->allowedModes & SFRM_Materialize))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not allowed in this context")));
-
+	SetRurningFunctionCheck(rsinfo);
 
 	procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcoid));
 	if (!HeapTupleIsValid(procTuple))
