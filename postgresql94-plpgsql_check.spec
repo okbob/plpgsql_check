@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	1.2.3
+Version:	1.4.0
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -43,12 +43,19 @@ rm -rf %{buildroot}
 %defattr(644,root,root,755)
 %doc README.md
 %{pginstdir}/lib/plpgsql_check.so
-%{pginstdir}/share/extension/plpgsql_check--1.2.sql
+%{pginstdir}/share/extension/plpgsql_check--1.4.sql
 %{pginstdir}/share/extension/plpgsql_check--1.0--1.1.sql
 %{pginstdir}/share/extension/plpgsql_check--1.1--1.2.sql
+%{pginstdir}/share/extension/plpgsql_check--1.2--1.3.sql
+%{pginstdir}/share/extension/plpgsql_check--1.3--1.4.sql
 %{pginstdir}/share/extension/plpgsql_check.control
 
 %changelog
+* Sun Dec 2 2018 - Pavel STEHULE <pavel.stehule@gmail.com> 1.4.0-1
+- possible to show function's dependency on functions and tables
+- integrated profiler
+- bug fixes (almost false alarms)
+
 * Wed Jun 6 2018 - Pavel STEHULE <pavel.stehule@gmail.com> 1.2.3-1
 - PostgreSQL 11 support
 - detect hidden casts in expressions
