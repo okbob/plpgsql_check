@@ -1,5 +1,18 @@
 LOAD 'plpgsql';
 
+CREATE OR REPLACE FUNCTION __plpgsql_check_getfuncid(text)
+RETURNS regprocedure AS $$
+BEGIN
+  -- raise a exception handler, when input is function signature
+  PERFORM parse_ident($1);
+  RETURN $1::regproc::regprocedure;
+
+  EXCEPTION WHEN invalid_parameter_value THEN
+    -- try to convert it directly
+    RETURN $1::regprocedure;
+END
+$$ LANGUAGE plpgsql STABLE STRICT;
+
 CREATE FUNCTION __plpgsql_check_function_tb(funcoid regprocedure,
                                        relid regclass,
                                        fatal_errors boolean,
@@ -73,6 +86,48 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STRICT;
 
+CREATE FUNCTION plpgsql_check_function_tb(name text,
+                                       relid regclass DEFAULT 0,
+                                       fatal_errors boolean DEFAULT true,
+                                       others_warnings boolean DEFAULT true,
+                                       performance_warnings boolean DEFAULT false,
+                                       extra_warnings boolean DEFAULT true)
+RETURNS TABLE(functionid regproc,
+              lineno int,
+              statement text,
+              sqlstate text,
+              message text,
+              detail text,
+              hint text,
+              level text,
+              "position" int,
+              query text,
+              context text)
+AS $$
+BEGIN
+  RETURN QUERY SELECT * FROM @extschema@.__plpgsql_check_function_tb(@extschema@.__plpgsql_check_getfuncid(name), relid,
+                                      fatal_errors, others_warnings, performance_warnings, extra_warnings);
+  RETURN;
+END;
+$$ LANGUAGE plpgsql STRICT;
+
+CREATE FUNCTION plpgsql_check_function(name text,
+                                       relid regclass DEFAULT 0,
+                                       format text DEFAULT 'text',
+                                       fatal_errors boolean DEFAULT true,
+                                       others_warnings boolean DEFAULT true,
+                                       performance_warnings boolean DEFAULT false,
+                                       extra_warnings boolean DEFAULT true)
+RETURNS SETOF text
+AS $$
+BEGIN
+  RETURN QUERY SELECT s FROM @extschema@.__plpgsql_check_function(@extschema@.__plpgsql_check_getfuncid(name), relid,
+                                  format, fatal_errors, others_warnings,
+                                  performance_warnings, extra_warnings) g(s);
+  RETURN;
+END;
+$$ LANGUAGE plpgsql STRICT;
+
 CREATE FUNCTION plpgsql_show_dependency_tb(funcoid regprocedure, relid regclass DEFAULT 0)
 RETURNS TABLE(type text,
               oid oid,
@@ -87,6 +142,20 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STRICT;
 
+CREATE FUNCTION plpgsql_show_dependency_tb(fnname text, relid regclass DEFAULT 0)
+RETURNS TABLE(type text,
+              oid oid,
+              schema text,
+              name text,
+              params text)
+AS $$
+BEGIN
+  RETURN QUERY SELECT * 
+                  FROM @extschema@.__plpgsql_show_dependency_tb(@extschema@.__plpgsql_check_getfuncid(fnname), relid)
+                 ORDER BY 1, 3, 4;
+END;
+$$ LANGUAGE plpgsql STRICT;
+
 CREATE FUNCTION __plpgsql_show_dependency_tb(funcoid regprocedure, relid regclass DEFAULT 0)
 RETURNS TABLE(type text,
               oid oid,
@@ -97,6 +166,40 @@ AS 'MODULE_PATHNAME','plpgsql_show_dependency_tb'
 LANGUAGE C STRICT;
 
 CREATE FUNCTION plpgsql_profiler_function_tb(funcoid regprocedure)
+RETURNS TABLE(lineno int,
+              stmt_lineno int,
+              cmds_on_row int,
+              exec_stmts int8,
+              total_time double precision,
+              avg_time double precision,
+              max_time double precision[],
+              processed_rows int8[],
+              source text)
+AS $$
+BEGIN
+  RETURN QUERY
+    SELECT * FROM @extschema@.__plpgsql_profiler_function_tb(funcoid);
+END
+$$ LANGUAGE plpgsql STRICT;
+
+CREATE FUNCTION plpgsql_profiler_function_tb(name text)
+RETURNS TABLE(lineno int,
+              stmt_lineno int,
+              cmds_on_row int,
+              exec_stmts int8,
+              total_time double precision,
+              avg_time double precision,
+              max_time double precision[],
+              processed_rows int8[],
+              source text)
+AS $$
+BEGIN
+  RETURN QUERY
+    SELECT * FROM @extschema@.__plpgsql_profiler_function_tb(@extschema@.__plpgsql_check_getfuncid(name));
+END
+$$ LANGUAGE plpgsql STRICT;
+
+CREATE FUNCTION __plpgsql_profiler_function_tb(funcoid regprocedure)
 RETURNS TABLE(lineno int,
               stmt_lineno int,
               cmds_on_row int,
