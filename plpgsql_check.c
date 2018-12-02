@@ -7271,7 +7271,7 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 	profiler_profile *profile = pinfo->profile;
 	profiler_hashkey hk;
 	profiler_stmt_chunk *chunk;
-	profiler_stmt_chunk *first_chunk;
+	profiler_stmt_chunk *first_chunk = NULL;
 	bool		found;
 	int			i;
 	int			stmt_counter = 0;
@@ -7998,7 +7998,7 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 	profiler_stmt_chunk *first_chunk = NULL;
 	HTAB	   *chunks;
 	bool		shared_chunks;
-	volatile bool		unlock_mutex;
+	volatile bool		unlock_mutex = false;
 
 	/* check to see if caller supports us returning a tuplestore */
 	SetRurningFunctionCheck(rsinfo);
