@@ -121,9 +121,21 @@ Function plpgsql_check_function() has two possible formats: text or xml
       </Function>
      (1 row)
 
-## Options
+## Arguments
 
 You can set level of warnings via function's parameters:
+
+### Mandatory arguments
+
+* function name or function signature - these functions requires function specification.
+  Any function in PostgreSQL can be specified by Oid or by name or by signature. When
+  you know oid or complete function's signature, you can use a regprocedure type parameter
+  like `'fx()'::regprocedure` or `16799::regprocedure`. Possible alternative is using
+  a name only, when function's name is unique - like `'fx'`. When the name is not unique
+  or the function doesn't exists it raises a error.
+
+### Optional arguments
+
 
 * `fatal_errors boolean DEFAULT true` - stop on first error
 
