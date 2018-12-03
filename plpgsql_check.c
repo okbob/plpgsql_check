@@ -368,7 +368,7 @@ static void tuplestore_put_dependency(Tuplestorestate *tuple_store,
 									  TupleDesc tupdesc, char *type, Oid oid,
 									  char *schema, char *name, char *params);
 
-static void SetRurningFunctionCheck(ReturnSetInfo *rsinfo);
+static void SetReturningFunctionCheck(ReturnSetInfo *rsinfo);
 
 /*
  * Any instance of plpgsql function will have a own profile.
@@ -719,7 +719,6 @@ _PG_init(void)
 					    false,
 					    PGC_SUSET, 0,
 					    NULL, NULL, NULL);
-
 
 	plpgsql_check_HashTableInit();
 
@@ -1345,7 +1344,7 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	extra_warnings = PG_GETARG_BOOL(5);
 
 	/* check to see if caller supports us returning a tuplestore */
-	SetRurningFunctionCheck(rsinfo);
+	SetReturningFunctionCheck(rsinfo);
 
 	procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcoid));
 	if (!HeapTupleIsValid(procTuple))
@@ -7165,7 +7164,7 @@ plpgsql_show_dependency_tb(PG_FUNCTION_ARGS)
 	ErrorContextCallback *prev_errorcontext;
 
 	/* check to see if caller supports us returning a tuplestore */
-	SetRurningFunctionCheck(rsinfo);
+	SetReturningFunctionCheck(rsinfo);
 
 	procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcoid));
 	if (!HeapTupleIsValid(procTuple))
@@ -7963,7 +7962,7 @@ tuplestore_put_profile(Tuplestorestate *tuple_store,
 }
 
 static void
-SetRurningFunctionCheck(ReturnSetInfo *rsinfo)
+SetReturningFunctionCheck(ReturnSetInfo *rsinfo)
 {
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -8001,7 +8000,7 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 	volatile bool		unlock_mutex = false;
 
 	/* check to see if caller supports us returning a tuplestore */
-	SetRurningFunctionCheck(rsinfo);
+	SetReturningFunctionCheck(rsinfo);
 
 	procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcoid));
 	if (!HeapTupleIsValid(procTuple))
