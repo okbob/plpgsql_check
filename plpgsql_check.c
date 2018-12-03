@@ -677,7 +677,7 @@ _PG_init(void)
 					    &plpgsql_check_mode,
 					    PLPGSQL_CHECK_MODE_BY_FUNCTION,
 					    plpgsql_check_mode_options,
-					    PGC_SUSET, 0,
+					    PGC_USERSET, 0,
 					    NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.show_nonperformance_extra_warnings",
@@ -685,7 +685,7 @@ _PG_init(void)
 					    NULL,
 					    &plpgsql_check_extra_warnings,
 					    false,
-					    PGC_SUSET, 0,
+					    PGC_USERSET, 0,
 					    NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.show_nonperformance_warnings",
@@ -693,7 +693,7 @@ _PG_init(void)
 					    NULL,
 					    &plpgsql_check_other_warnings,
 					    false,
-					    PGC_SUSET, 0,
+					    PGC_USERSET, 0,
 					    NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.show_performance_warnings",
@@ -701,7 +701,7 @@ _PG_init(void)
 					    NULL,
 					    &plpgsql_check_performance_warnings,
 					    false,
-					    PGC_SUSET, 0,
+					    PGC_USERSET, 0,
 					    NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.fatal_errors",
@@ -709,7 +709,7 @@ _PG_init(void)
 					    NULL,
 					    &plpgsql_check_fatal_errors,
 					    true,
-					    PGC_SUSET, 0,
+					    PGC_USERSET, 0,
 					    NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.profiler",
@@ -717,7 +717,7 @@ _PG_init(void)
 					    NULL,
 					    &plpgsql_check_profiler,
 					    false,
-					    PGC_SUSET, 0,
+					    PGC_USERSET, 0,
 					    NULL, NULL, NULL);
 
 	plpgsql_check_HashTableInit();

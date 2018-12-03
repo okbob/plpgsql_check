@@ -212,10 +212,24 @@ RETURNS TABLE(lineno int,
 AS 'MODULE_PATHNAME','plpgsql_profiler_function_tb'
 LANGUAGE C STRICT;
 
-CREATE FUNCTION plpgsql_profiler_reset_all()
+CREATE FUNCTION __plpgsql_profiler_reset_all()
 RETURNS void AS 'MODULE_PATHNAME','plpgsql_profiler_reset_all'
 LANGUAGE C STRICT;
 
-CREATE FUNCTION plpgsql_profiler_reset(funcoid regprocedure)
+CREATE FUNCTION __plpgsql_profiler_reset(funcoid regprocedure)
 RETURNS void AS 'MODULE_PATHNAME','plpgsql_profiler_reset'
 LANGUAGE C STRICT;
+
+CREATE FUNCTION plpgsql_profiler_reset_all()
+RETURNS void AS $$
+BEGIN
+  PERFORM @extschema@.__plpgsql_profiler_reset_all()
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE FUNCTION __plpgsql_profiler_reset(funcoid regprocedure)
+RETURNS void AS $$
+BEGIN
+  PERFORM @extschema@.__plpgsql_profiler_reset(funcoid)
+END;
+$$ LANGUAGE plpgsql;
