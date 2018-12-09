@@ -223,13 +223,13 @@ LANGUAGE C STRICT;
 CREATE FUNCTION plpgsql_profiler_reset_all()
 RETURNS void AS $$
 BEGIN
-  PERFORM @extschema@.__plpgsql_profiler_reset_all()
+  PERFORM @extschema@.__plpgsql_profiler_reset_all();
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE FUNCTION __plpgsql_profiler_reset(funcoid regprocedure)
+CREATE FUNCTION plpgsql_profiler_reset(funcoid regprocedure)
 RETURNS void AS $$
 BEGIN
-  PERFORM @extschema@.__plpgsql_profiler_reset(funcoid)
+  PERFORM @extschema@.__plpgsql_profiler_reset(funcoid);
 END;
 $$ LANGUAGE plpgsql;
