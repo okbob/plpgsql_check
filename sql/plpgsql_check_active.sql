@@ -2448,4 +2448,23 @@ drop table fufu;
 drop function flag_test1(int);
 drop function flag_test2(int);
 
+create or replace function rrecord01()
+returns setof record as $$
+begin
+  return query select 1,2;
+end;
+$$ language plpgsql;
 
+create or replace function rrecord02()
+returns record as $$
+begin
+  return row(10,20,30);
+end;
+$$ language plpgsql;
+
+-- should not to raise false alarms
+select * from plpgsql_check_function('rrecord01');
+select * from plpgsql_check_function('rrecord02');
+
+drop function rrecord01();
+drop function rrecord02();

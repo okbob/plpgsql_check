@@ -212,7 +212,7 @@ typedef struct PLpgSQL_checkstate
 	bool		is_procedure;				/* true, when checked code is a procedure */
 	Bitmapset	   *func_oids;				/* list of used (and displayed) functions */
 	Bitmapset	   *rel_oids;				/* list of used (and displayed) relations */
-	
+	bool		fake_rtd;					/* true when functions returns record */
 } PLpgSQL_checkstate;
 
 static void assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, bool isnull);
@@ -321,7 +321,7 @@ static void setup_cstate(PLpgSQL_checkstate *cstate,
 							 bool fatal_errors,
 								 bool other_warnings, bool perform_warnings, bool extra_warnings,
 												    int format,
-												    bool is_active_mode);
+												    bool is_active_mode, bool fake_rtd);
 static void setup_fake_fcinfo(HeapTuple procTuple,
 						 FmgrInfo *flinfo,
 						 FunctionCallInfoData *fcinfo,
@@ -331,7 +331,8 @@ static void setup_fake_fcinfo(HeapTuple procTuple,
 										 EventTriggerData *etrigdata,
 										 Oid funcoid,
 										 PLpgSQL_trigtype trigtype,
-										 Trigger *tg_trigger);
+										 Trigger *tg_trigger,
+										 bool *fake_rtd);
 static void setup_plpgsql_estate(PLpgSQL_execstate *estate,
 								 PLpgSQL_function *func, ReturnSetInfo *rsi);
 static void trigger_check(PLpgSQL_function *func,
@@ -1067,6 +1068,7 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 							    plpgsql_check_performance_warnings,
 							    plpgsql_check_extra_warnings,
 							    PLPGSQL_CHECK_FORMAT_ELOG,
+							    false,
 							    false);
 
 		/* use real estate */
@@ -1669,6 +1671,7 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 	PLpgSQL_execstate estate;
 	ReturnSetInfo rsinfo;
 	char		provolatile;
+	bool		fake_rtd;
 
 #if PG_VERSION_NUM >= 120000
 
@@ -1689,13 +1692,14 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 		elog(ERROR, "SPI_connect failed: %s", SPI_result_code_string(rc));
 
 	setup_fake_fcinfo(procTuple, &flinfo, &fake_fcinfo, &rsinfo, &trigdata, relid, &etrigdata,
-										  funcoid, trigtype, &tg_trigger);
+										  funcoid, trigtype, &tg_trigger, &fake_rtd);
 
 	setup_cstate(&cstate, funcoid, provolatile, tupdesc, tupstore,
 							    fatal_errors,
 							    other_warnings, performance_warnings, extra_warnings,
 										    format,
-										    true);
+										    true,
+										    fake_rtd);
 
 	old_cxt = MemoryContextSwitchTo(cstate.check_cxt);
 
@@ -2083,6 +2087,8 @@ is_polymorphic_tupdesc(TupleDesc tupdesc)
  *
  * There should be a different real argtypes for polymorphic params.
  *
+ * When output fake_rtd is true, then we should to not compare result fields,
+ * because we know nothing about expected result.
  */
 static void
 setup_fake_fcinfo(HeapTuple procTuple,
@@ -2094,11 +2100,14 @@ setup_fake_fcinfo(HeapTuple procTuple,
 						  EventTriggerData *etrigdata,
 						  Oid funcoid,
 						  PLpgSQL_trigtype trigtype,
-						  Trigger *tg_trigger)
+						  Trigger *tg_trigger,
+						  bool *fake_rtd)
 {
 	Form_pg_proc procform;
 	Oid		rettype;
 	TupleDesc resultTupleDesc;
+
+	*fake_rtd = false;
 
 	procform = (Form_pg_proc) GETSTRUCT(procTuple);
 	rettype = procform->prorettype;
@@ -2162,6 +2171,8 @@ setup_fake_fcinfo(HeapTuple procTuple,
 			resultTupleDesc = lookup_rowtype_tupdesc_copy(rettype, -1);
 		else
 		{
+			*fake_rtd = rettype == RECORDOID;
+
 #if PG_VERSION_NUM >= 120000
 
 			resultTupleDesc = CreateTemplateTupleDesc(1);
@@ -2212,7 +2223,8 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 			 bool performance_warnings,
 			 bool extra_warnings,
 			 int format,
-			 bool is_active_mode)
+			 bool is_active_mode,
+			 bool fake_rtd)
 {
 	cstate->fn_oid = fn_oid;
 
@@ -2256,6 +2268,8 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 #endif
 
 	cstate->found_return_query = false;
+
+	cstate->fake_rtd = fake_rtd;
 }
 
 /* ----------
@@ -2277,6 +2291,7 @@ setup_plpgsql_estate(PLpgSQL_execstate *estate,
 	estate->rettype = InvalidOid;
 
 	estate->fn_rettype = func->fn_rettype;
+
 	estate->retistuple = func->fn_retistuple;
 	estate->retisset = func->fn_retset;
 
@@ -4365,7 +4380,7 @@ check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expr
 			else if (func->fn_retistuple || is_return_query)
 			{
 				/* should to know expected result */
-				if (estate->rsi && IsA(estate->rsi, ReturnSetInfo))
+				if (!cstate->fake_rtd && estate->rsi && IsA(estate->rsi, ReturnSetInfo))
 				{
 					TupleDesc	rettupdesc = estate->rsi->expectedDesc;
 					TupleConversionMap *tupmap ;

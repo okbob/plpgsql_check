@@ -11,7 +11,7 @@ BEGIN
     -- try to convert it directly
     RETURN $1::regprocedure;
 END
-$$ LANGUAGE plpgsql STABLE STRICT;
+$$ LANGUAGE plpgsql STABLE STRICT SET plpgsql_check.profiler TO off;
 
 CREATE FUNCTION plpgsql_show_dependency_tb(fnname text, relid regclass DEFAULT 0)
 RETURNS TABLE(type text,
@@ -25,7 +25,7 @@ BEGIN
                   FROM @extschema@.__plpgsql_show_dependency_tb(@extschema@.__plpgsql_check_getfuncid(fnname), relid)
                  ORDER BY 1, 3, 4;
 END;
-$$ LANGUAGE plpgsql STRICT;
+$$ LANGUAGE plpgsql STRICT SET plpgsql_check.profiler TO off;
 
 CREATE FUNCTION plpgsql_profiler_function_tb(funcoid regprocedure)
 RETURNS TABLE(lineno int,
@@ -42,7 +42,7 @@ BEGIN
   RETURN QUERY
     SELECT * FROM @extschema@.__plpgsql_profiler_function_tb(funcoid);
 END
-$$ LANGUAGE plpgsql STRICT;
+$$ LANGUAGE plpgsql STRICT SET plpgsql_check.profiler TO off;
 
 CREATE FUNCTION plpgsql_profiler_function_tb(name text)
 RETURNS TABLE(lineno int,
@@ -59,7 +59,7 @@ BEGIN
   RETURN QUERY
     SELECT * FROM @extschema@.__plpgsql_profiler_function_tb(@extschema@.__plpgsql_check_getfuncid(name));
 END
-$$ LANGUAGE plpgsql STRICT;
+$$ LANGUAGE plpgsql STRICT SET plpgsql_check.profiler TO off;
 
 CREATE FUNCTION __plpgsql_profiler_function_tb(funcoid regprocedure)
 RETURNS TABLE(lineno int,
@@ -87,11 +87,11 @@ RETURNS void AS $$
 BEGIN
   PERFORM @extschema@.__plpgsql_profiler_reset_all();
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET plpgsql_check.profiler TO off;
 
 CREATE FUNCTION plpgsql_profiler_reset(funcoid regprocedure)
 RETURNS void AS $$
 BEGIN
   PERFORM @extschema@.__plpgsql_profiler_reset(funcoid);
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET plpgsql_check.profiler TO off;
