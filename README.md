@@ -471,6 +471,13 @@ result:
      All 3 tests passed. 
     =====================
 
+## Compilation on Ubuntu
+
+Sometimes successful compilation can require libicu-dev package (PostgreSQL 10 and higher - when pg was compiled with
+ICU support)
+
+    sudo apt install libicu-dev
+
 ## Compilation plpgsql_check on OS X
 
 use `-undefined dynamic_lookup` to the last line of the `Makefile ("override CFLAGS += ...")` allowed it to build.
