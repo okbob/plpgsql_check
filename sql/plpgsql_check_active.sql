@@ -2468,3 +2468,47 @@ select * from plpgsql_check_function('rrecord02');
 
 drop function rrecord01();
 drop function rrecord02();
+
+create or replace function bugfunc01()
+returns void as $$
+declare
+  cvar cursor(a int, b int) for select a + b from generate_series(1,b);
+begin
+  for t in cvar(1,3)
+  loop
+    raise notice '%', t;
+  end loop;
+end;
+$$ language plpgsql;
+
+select bugfunc01();
+
+select * from plpgsql_check_function('bugfunc01');
+
+create or replace function bugfunc02()
+returns void as $$
+declare
+  cvar cursor(a int, b int) for select a + b from generate_series(1,b);
+begin
+  open cvar(10,20);
+  close cvar;
+end;
+$$ language plpgsql;
+
+select bugfunc02();
+
+select * from plpgsql_check_function('bugfunc02');
+
+create or replace function bugfunc03()
+returns void as $$
+declare
+  cvar cursor(a int, b int) for select a + b from not_exists_table;
+begin
+  open cvar(10,20);
+  close cvar;
+end;
+$$ language plpgsql;
+
+select bugfunc03();
+
+select * from plpgsql_check_function('bugfunc03');

@@ -2938,7 +2938,8 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 
 #endif
 
-					check_expr(cstate, stmt_forc->argquery);
+					if (stmt_forc->argquery)
+						check_expr_as_sqlstmt_data(cstate, stmt_forc->argquery);
 
 #if PG_VERSION_NUM >= 110000
 
@@ -3466,8 +3467,11 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 					if (var != NULL && stmt_open->query != NULL)
 						var->cursor_explicit_expr = stmt_open->query;
 
-					check_expr(cstate, stmt_open->argquery);
+					if (stmt_open->argquery)
+						check_expr_as_sqlstmt_data(cstate, stmt_open->argquery);
+
 					check_expr(cstate, stmt_open->dynquery);
+
 					foreach(l, stmt_open->params)
 					{
 						check_expr(cstate, (PLpgSQL_expr *) lfirst(l));
