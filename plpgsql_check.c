@@ -2938,8 +2938,7 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 
 #endif
 
-					if (stmt_forc->argquery)
-						check_expr_as_sqlstmt_data(cstate, stmt_forc->argquery);
+					check_expr_as_sqlstmt_data(cstate, stmt_forc->argquery);
 
 #if PG_VERSION_NUM >= 110000
 
@@ -3458,17 +3457,13 @@ check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **
 					PLpgSQL_stmt_open *stmt_open = (PLpgSQL_stmt_open *) stmt;
 					PLpgSQL_var *var = (PLpgSQL_var *) (cstate->estate->datums[stmt_open->curvar]);
 
-					if (var->cursor_explicit_expr)
-						check_expr_as_sqlstmt_data(cstate, var->cursor_explicit_expr);
-
-					if (stmt_open->query)
-						check_expr_as_sqlstmt_data(cstate, stmt_open->query);
+					check_expr_as_sqlstmt_data(cstate, var->cursor_explicit_expr);
+					check_expr_as_sqlstmt_data(cstate, stmt_open->query);
 
 					if (var != NULL && stmt_open->query != NULL)
 						var->cursor_explicit_expr = stmt_open->query;
 
-					if (stmt_open->argquery)
-						check_expr_as_sqlstmt_data(cstate, stmt_open->argquery);
+					check_expr_as_sqlstmt_data(cstate, stmt_open->argquery);
 
 					check_expr(cstate, stmt_open->dynquery);
 
@@ -4587,7 +4582,7 @@ no_other_check:
 static void
 check_expr_as_sqlstmt_nodata(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 {
-	if (check_expr_as_sqlstmt(cstate, expr))
+	if (expr && check_expr_as_sqlstmt(cstate, expr))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("query has no destination for result data")));
@@ -4600,12 +4595,11 @@ check_expr_as_sqlstmt_nodata(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 static void
 check_expr_as_sqlstmt_data(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 {
-	if (!check_expr_as_sqlstmt(cstate, expr))
+	if (expr && !check_expr_as_sqlstmt(cstate, expr))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("query does not return data")));
 }
-
 
 /*
  * Check a SQL statement, can (not) returs data. Returns true
@@ -4618,6 +4612,9 @@ check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 	MemoryContext oldCxt = CurrentMemoryContext;
 	TupleDesc	tupdesc;
 	volatile bool result = false;
+
+	if (!expr)
+		return true;
 
 	oldowner = CurrentResourceOwner;
 	BeginInternalSubTransaction(NULL);
@@ -4672,7 +4669,6 @@ check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 
 	return result;
 }
-
 
 #if PG_VERSION_NUM >= 110000
 
