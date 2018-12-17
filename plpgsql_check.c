@@ -193,6 +193,7 @@ typedef struct PLpgSQL_checkstate
 	List	    *argnames;					/* function arg names */
 	char		decl_volatility;			/* declared function volatility */
 	char		volatility;					/* detected function volatility */
+	bool		skip_volatility_check;		/* don't do this test for trigger */
 	PLpgSQL_execstate	   *estate;			/* check state is estate extension */
 	Tuplestorestate		   *tuple_store;	/* result target */
 	TupleDesc	tupdesc;					/* result description */
@@ -316,7 +317,7 @@ static void precheck_conditions(HeapTuple procTuple, PLpgSQL_trigtype trigtype, 
 static void prepare_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, int cursorOptions);
 static void release_exprs(List *exprs);
 static void setup_cstate(PLpgSQL_checkstate *cstate,
-							 Oid fn_oid, char decl_volatility,
+							 Oid fn_oid, Oid prorettype, char decl_volatility,
 							 TupleDesc tupdesc, Tuplestorestate *tupstore,
 							 bool fatal_errors,
 								 bool other_warnings, bool perform_warnings, bool extra_warnings,
@@ -1061,15 +1062,19 @@ check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 		else
 			provolatile = PROVOLATILE_IMMUTABLE;
 
-		setup_cstate(&cstate, func->fn_oid, provolatile,
-								NULL, NULL,
-							    plpgsql_check_fatal_errors,
-							    plpgsql_check_other_warnings,
-							    plpgsql_check_performance_warnings,
-							    plpgsql_check_extra_warnings,
-							    PLPGSQL_CHECK_FORMAT_ELOG,
-							    false,
-							    false);
+		setup_cstate(&cstate,
+						func->fn_oid,
+						func->fn_rettype,
+						provolatile,
+						NULL,
+						NULL,
+						plpgsql_check_fatal_errors,
+						plpgsql_check_other_warnings,
+						plpgsql_check_performance_warnings,
+						plpgsql_check_extra_warnings,
+						PLPGSQL_CHECK_FORMAT_ELOG,
+						false,
+						false);
 
 		/* use real estate */
 		cstate.estate = estate;
@@ -1659,6 +1664,7 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 	int			save_nestlevel = 0;
 	bool		reload_config;
 	Oid			funcoid;
+	Oid			prorettype;
 	FunctionCallInfoData fake_fcinfo;
 	FmgrInfo	flinfo;
 	TriggerData trigdata;
@@ -1684,6 +1690,7 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 #endif
 
 	provolatile = ((Form_pg_proc) GETSTRUCT(procTuple))->provolatile;
+	prorettype = ((Form_pg_proc) GETSTRUCT(procTuple))->prorettype;
 
 	/*
 	 * Connect to SPI manager
@@ -1694,7 +1701,7 @@ check_plpgsql_function(HeapTuple procTuple, Oid relid, PLpgSQL_trigtype trigtype
 	setup_fake_fcinfo(procTuple, &flinfo, &fake_fcinfo, &rsinfo, &trigdata, relid, &etrigdata,
 										  funcoid, trigtype, &tg_trigger, &fake_rtd);
 
-	setup_cstate(&cstate, funcoid, provolatile, tupdesc, tupstore,
+	setup_cstate(&cstate, funcoid, prorettype, provolatile, tupdesc, tupstore,
 							    fatal_errors,
 							    other_warnings, performance_warnings, extra_warnings,
 										    format,
@@ -2215,6 +2222,7 @@ setup_fake_fcinfo(HeapTuple procTuple,
 static void
 setup_cstate(PLpgSQL_checkstate *cstate,
 			 Oid fn_oid,
+			 Oid prorettype,
 			 char decl_volatility,
 			 TupleDesc tupdesc,
 			 Tuplestorestate *tupstore,
@@ -2230,6 +2238,9 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 
 	cstate->decl_volatility = decl_volatility;
 	cstate->volatility = PROVOLATILE_IMMUTABLE;
+	cstate->skip_volatility_check = (prorettype == TRIGGEROID ||
+									 prorettype == OPAQUEOID ||
+									 prorettype == EVTTRIGGEROID);
 	cstate->estate = NULL;
 	cstate->tupdesc = tupdesc;
 	cstate->tuple_store = tupstore;
@@ -4138,7 +4149,7 @@ report_unused_variables(PLpgSQL_checkstate *cstate)
 static void
 report_too_high_volatility(PLpgSQL_checkstate *cstate)
 {
-	if (cstate->performance_warnings)
+	if (cstate->performance_warnings && !cstate->skip_volatility_check)
 	{
 		char	   *current;
 		char	   *should_be;
@@ -5013,7 +5024,8 @@ prepare_expr(PLpgSQL_checkstate *cstate,
 
 	check_seq_functions(cstate, expr);
 
-	collect_volatility(cstate, expr);
+	if (!cstate->skip_volatility_check)
+		collect_volatility(cstate, expr);
 
 	if (cstate->format == PLPGSQL_SHOW_DEPENDENCY_FORMAT_TABULAR)
 		detect_dependency(cstate, expr);
