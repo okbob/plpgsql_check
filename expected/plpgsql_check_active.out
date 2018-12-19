@@ -3333,19 +3333,24 @@ create table fufu(a int);
 create or replace function flag_test2(int)
 returns int as $$
 begin
-  return (select * from fufu limit 1)
+  return (select * from fufu limit 1);
 end;
 $$ language plpgsql volatile;
-select * from plpgsql_check_function('flag_test1(int)', performance_warning => true);
-ERROR:  function plpgsql_check_function(unknown, performance_warning => boolean) does not exist
-LINE 1: select * from plpgsql_check_function('flag_test1(int)', perf...
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-select * from plpgsql_check_function('flag_test2(int)', performance_warning => true);
-ERROR:  function plpgsql_check_function(unknown, performance_warning => boolean) does not exist
-LINE 1: select * from plpgsql_check_function('flag_test2(int)', perf...
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select * from plpgsql_check_function('flag_test1(int)', performance_warnings => true);
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as STABLE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
+
+select * from plpgsql_check_function('flag_test2(int)', performance_warnings => true);
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ warning extra:00000:parameter "$1" is never read
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(3 rows)
+
 drop table fufu;
 drop function flag_test1(int);
 drop function flag_test2(int);

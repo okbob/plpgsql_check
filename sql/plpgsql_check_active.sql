@@ -2437,12 +2437,12 @@ create table fufu(a int);
 create or replace function flag_test2(int)
 returns int as $$
 begin
-  return (select * from fufu limit 1)
+  return (select * from fufu limit 1);
 end;
 $$ language plpgsql volatile;
 
-select * from plpgsql_check_function('flag_test1(int)', performance_warning => true);
-select * from plpgsql_check_function('flag_test2(int)', performance_warning => true);
+select * from plpgsql_check_function('flag_test1(int)', performance_warnings => true);
+select * from plpgsql_check_function('flag_test2(int)', performance_warnings => true);
 
 drop table fufu;
 drop function flag_test1(int);
