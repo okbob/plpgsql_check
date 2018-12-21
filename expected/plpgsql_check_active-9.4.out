@@ -159,9 +159,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
 
 create or replace function f1()
 returns setof t1tab as $$
@@ -186,9 +188,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
 
 create or replace function f1()
 returns setof t1tab as $$
@@ -269,12 +273,14 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx2()', performance_warnings := true);
-                       plpgsql_check_function                       
---------------------------------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  performance:42804:5:SQL statement:target type has type modificator
  Hint: Usage of type modificator enforces slower IO casting.
  warning extra:00000:2:DECLARE:never read variable "_pa"
-(3 rows)
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(5 rows)
 
 drop function fx2();
 create or replace function fx2()
@@ -286,12 +292,14 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx2()', performance_warnings := true);
-                     plpgsql_check_function                      
------------------------------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  performance:42804:5:assignment:target type has type modificator
  Hint: Usage of type modificator enforces slower IO casting.
  warning extra:00000:2:DECLARE:never read variable "_pa"
-(3 rows)
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(5 rows)
 
 drop function fx2();
 create or replace function test_lab()

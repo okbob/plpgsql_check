@@ -6,7 +6,7 @@ create extension if not exists plpgsql_check;
 --should fail - is not plpgsql
 select * from plpgsql_check_function_tb('session_user()');
 ERROR:  "session_user"() is not a plpgsql function
-CONTEXT:  PL/pgSQL function plpgsql_check_function_tb(regprocedure,regclass,boolean,boolean,boolean,boolean) line 3 at RETURN QUERY
+CONTEXT:  PL/pgSQL function plpgsql_check_function_tb(text,regclass,boolean,boolean,boolean,boolean) line 3 at RETURN QUERY
 create table t1(a int, b int);
 create table pa (id int, pa_id character varying(32), status character varying(60));
 create table  ml(ml_id character varying(32), status_from character varying(60), pa_id character varying(32), xyz int);
@@ -1069,9 +1069,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
 
 create or replace function f1()
 returns int as $$
@@ -1080,12 +1082,14 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
-                          plpgsql_check_function                           
----------------------------------------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  performance:42804:3:RETURN:target type is different type than source type
  Detail: cast "numeric" value to "integer" type
  Hint: Hidden casting can be a performance issue.
-(3 rows)
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(5 rows)
 
 create or replace function f1()
 returns int as $$
@@ -1110,9 +1114,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
 
 drop function f1();
 create or replace function f1()
@@ -1138,9 +1144,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
 
 create or replace function f1()
 returns setof tabret as $$
@@ -1200,8 +1208,8 @@ begin
 end
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
-                                plpgsql_check_function                                
---------------------------------------------------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  warning:42804:7:assignment:target type is different type than source type
  Detail: cast "text" value to "integer" type
  Hint: The input expression type does not have an assignment cast to the target type.
@@ -1218,7 +1226,9 @@ select * from plpgsql_check_function('f1()', performance_warnings := true);
  Detail: cast "text" value to "integer" type
  Hint: The input expression type does not have an assignment cast to the target type.
  warning extra:00000:3:DECLARE:never read variable "intval"
-(16 rows)
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(18 rows)
 
 drop function f1();
 create or replace function f1()
@@ -1228,9 +1238,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
 
 create or replace function f1()
 returns int as $$
@@ -1239,12 +1251,14 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
-                          plpgsql_check_function                           
----------------------------------------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  performance:42804:3:RETURN:target type is different type than source type
  Detail: cast "numeric" value to "integer" type
  Hint: Hidden casting can be a performance issue.
-(3 rows)
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(5 rows)
 
 create or replace function f1()
 returns int as $$
@@ -1253,9 +1267,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
 
 create or replace function f1()
 returns int as $$
@@ -1264,12 +1280,14 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
-                              plpgsql_check_function                              
-----------------------------------------------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  warning:42804:3:RETURN:target type is different type than source type
  Detail: cast "date" value to "integer" type
  Hint: There are no possible explicit coercion between those types, possibly bug!
-(3 rows)
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(5 rows)
 
 create or replace function f1()
 returns int as $$
@@ -1279,9 +1297,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
 
 create or replace function f1()
 returns int as $$
@@ -1291,12 +1311,14 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
-                          plpgsql_check_function                           
----------------------------------------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  performance:42804:4:RETURN:target type is different type than source type
  Detail: cast "numeric" value to "integer" type
  Hint: Hidden casting can be a performance issue.
-(3 rows)
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(5 rows)
 
 drop function f1();
 create or replace function f1()
@@ -1306,9 +1328,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
 
 create or replace function f1()
 returns setof int as $$
@@ -1317,12 +1341,14 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
-                             plpgsql_check_function                             
---------------------------------------------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  performance:42804:3:RETURN NEXT:target type is different type than source type
  Detail: cast "numeric" value to "integer" type
  Hint: Hidden casting can be a performance issue.
-(3 rows)
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(5 rows)
 
 drop function f1();
 create type t1 as (a int, b int, c int);
@@ -1349,9 +1375,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
 
 drop function fx();
 create or replace function fx()
@@ -1377,9 +1405,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
 
 drop function fx();
 create or replace function fx2(_id int, _pa_id varchar(32), _status varchar(60))
@@ -1448,9 +1478,10 @@ end;
 $body$
 language 'plpgsql' stable;
 select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
- functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
-(0 rows)
+     functionid     | lineno | statement | sqlstate |                     message                      | detail |                                       hint                                        |    level    | position | query | context 
+--------------------+--------+-----------+----------+--------------------------------------------------+--------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
+ foreach_array_loop |        |           | 00000    | routine is marked as STABLE, should be IMMUTABLE |        | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
+(1 row)
 
 create or replace function foreach_array_loop()
 returns void as
@@ -1467,10 +1498,11 @@ end;
 $body$
 language 'plpgsql' stable;
 select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
-     functionid     | lineno |     statement      | sqlstate |                    message                     |               detail                |                                      hint                                      |  level  | position | query | context 
---------------------+--------+--------------------+----------+------------------------------------------------+-------------------------------------+--------------------------------------------------------------------------------+---------+----------+-------+---------
- foreach_array_loop |      7 | FOREACH over array | 42804    | target type is different type than source type | cast "text" value to "integer" type | The input expression type does not have an assignment cast to the target type. | warning |          |       | 
-(1 row)
+     functionid     | lineno |     statement      | sqlstate |                     message                      |               detail                |                                       hint                                        |    level    | position | query | context 
+--------------------+--------+--------------------+----------+--------------------------------------------------+-------------------------------------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
+ foreach_array_loop |      7 | FOREACH over array | 42804    | target type is different type than source type   | cast "text" value to "integer" type | The input expression type does not have an assignment cast to the target type.    | warning     |          |       | 
+ foreach_array_loop |        |                    | 00000    | routine is marked as STABLE, should be IMMUTABLE |                                     | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
+(2 rows)
 
 create or replace function foreach_array_loop()
 returns void as
@@ -1487,10 +1519,11 @@ end;
 $body$
 language 'plpgsql' stable;
 select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
-     functionid     | lineno |     statement      | sqlstate |                    message                     |               detail                |                                    hint                                    |  level  | position | query | context 
---------------------+--------+--------------------+----------+------------------------------------------------+-------------------------------------+----------------------------------------------------------------------------+---------+----------+-------+---------
- foreach_array_loop |      7 | FOREACH over array | 42804    | target type is different type than source type | cast "date" value to "integer" type | There are no possible explicit coercion between those types, possibly bug! | warning |          |       | 
-(1 row)
+     functionid     | lineno |     statement      | sqlstate |                     message                      |               detail                |                                       hint                                        |    level    | position | query | context 
+--------------------+--------+--------------------+----------+--------------------------------------------------+-------------------------------------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
+ foreach_array_loop |      7 | FOREACH over array | 42804    | target type is different type than source type   | cast "date" value to "integer" type | There are no possible explicit coercion between those types, possibly bug!        | warning     |          |       | 
+ foreach_array_loop |        |                    | 00000    | routine is marked as STABLE, should be IMMUTABLE |                                     | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
+(2 rows)
 
 create or replace function foreach_array_loop()
 returns void as
@@ -1505,9 +1538,10 @@ end;
 $body$
 language 'plpgsql' stable;
 select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
- functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
-(0 rows)
+     functionid     | lineno | statement | sqlstate |                     message                      | detail |                                       hint                                        |    level    | position | query | context 
+--------------------+--------+-----------+----------+--------------------------------------------------+--------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
+ foreach_array_loop |        |           | 00000    | routine is marked as STABLE, should be IMMUTABLE |        | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
+(1 row)
 
 create or replace function foreach_array_loop()
 returns void as
@@ -1522,10 +1556,11 @@ end;
 $body$
 language 'plpgsql' stable;
 select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
-     functionid     | lineno |     statement      | sqlstate |                    message                     |               detail                |                                      hint                                      |  level  | position | query | context 
---------------------+--------+--------------------+----------+------------------------------------------------+-------------------------------------+--------------------------------------------------------------------------------+---------+----------+-------+---------
- foreach_array_loop |      5 | FOREACH over array | 42804    | target type is different type than source type | cast "text" value to "integer" type | The input expression type does not have an assignment cast to the target type. | warning |          |       | 
-(1 row)
+     functionid     | lineno |     statement      | sqlstate |                     message                      |               detail                |                                       hint                                        |    level    | position | query | context 
+--------------------+--------+--------------------+----------+--------------------------------------------------+-------------------------------------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
+ foreach_array_loop |      5 | FOREACH over array | 42804    | target type is different type than source type   | cast "text" value to "integer" type | The input expression type does not have an assignment cast to the target type.    | warning     |          |       | 
+ foreach_array_loop |        |                    | 00000    | routine is marked as STABLE, should be IMMUTABLE |                                     | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
+(2 rows)
 
 create or replace function foreach_array_loop()
 returns void as
@@ -1540,10 +1575,11 @@ end;
 $body$
 language 'plpgsql' stable;
 select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
-     functionid     | lineno |     statement      | sqlstate |                    message                     |               detail                |                                    hint                                    |  level  | position | query | context 
---------------------+--------+--------------------+----------+------------------------------------------------+-------------------------------------+----------------------------------------------------------------------------+---------+----------+-------+---------
- foreach_array_loop |      5 | FOREACH over array | 42804    | target type is different type than source type | cast "date" value to "integer" type | There are no possible explicit coercion between those types, possibly bug! | warning |          |       | 
-(1 row)
+     functionid     | lineno |     statement      | sqlstate |                     message                      |               detail                |                                       hint                                        |    level    | position | query | context 
+--------------------+--------+--------------------+----------+--------------------------------------------------+-------------------------------------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
+ foreach_array_loop |      5 | FOREACH over array | 42804    | target type is different type than source type   | cast "date" value to "integer" type | There are no possible explicit coercion between those types, possibly bug!        | warning     |          |       | 
+ foreach_array_loop |        |                    | 00000    | routine is marked as STABLE, should be IMMUTABLE |                                     | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
+(2 rows)
 
 drop function foreach_array_loop();
 create or replace function scan_rows(int[]) returns void AS $$
@@ -1557,9 +1593,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('scan_rows(int[])', performance_warnings := true);
- functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
-(0 rows)
+ functionid | lineno | statement | sqlstate |                      message                       | detail |                                       hint                                        |    level    | position | query | context 
+------------+--------+-----------+----------+----------------------------------------------------+--------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
+ scan_rows  |        |           | 00000    | routine is marked as VOLATILE, should be IMMUTABLE |        | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
+(1 row)
 
 create or replace function scan_rows(int[]) returns void AS $$
 declare
@@ -1572,10 +1609,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('scan_rows(int[])', performance_warnings := true);
- functionid | lineno |     statement      | sqlstate |                    message                     |                  detail                  |                                    hint                                    |  level  | position | query | context 
-------------+--------+--------------------+----------+------------------------------------------------+------------------------------------------+----------------------------------------------------------------------------+---------+----------+-------+---------
- scan_rows  |      5 | FOREACH over array | 42804    | target type is different type than source type | cast "integer" value to "integer[]" type | There are no possible explicit coercion between those types, possibly bug! | warning |          |       | 
-(1 row)
+ functionid | lineno |     statement      | sqlstate |                      message                       |                  detail                  |                                       hint                                        |    level    | position | query | context 
+------------+--------+--------------------+----------+----------------------------------------------------+------------------------------------------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
+ scan_rows  |      5 | FOREACH over array | 42804    | target type is different type than source type     | cast "integer" value to "integer[]" type | There are no possible explicit coercion between those types, possibly bug!        | warning     |          |       | 
+ scan_rows  |        |                    | 00000    | routine is marked as VOLATILE, should be IMMUTABLE |                                          | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
+(2 rows)
 
 drop function scan_rows(int[]);
 drop function fx();
@@ -1600,9 +1638,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
- functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
-(0 rows)
+ functionid | lineno | statement | sqlstate |                     message                     | detail |                                       hint                                        |    level    | position | query | context 
+------------+--------+-----------+----------+-------------------------------------------------+--------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
+ fx         |        |           | 00000    | routine is marked as VOLATILE, should be STABLE |        | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
+(1 row)
 
 create or replace function fx()
 returns int as $$
@@ -1620,9 +1659,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
- functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
-(0 rows)
+ functionid | lineno | statement | sqlstate |                     message                     | detail |                                       hint                                        |    level    | position | query | context 
+------------+--------+-----------+----------+-------------------------------------------------+--------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
+ fx         |        |           | 00000    | routine is marked as VOLATILE, should be STABLE |        | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
+(1 row)
 
 create or replace function fx()
 returns int as $$
@@ -1640,9 +1680,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
- functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
-(0 rows)
+ functionid | lineno | statement | sqlstate |                     message                     | detail |                                       hint                                        |    level    | position | query | context 
+------------+--------+-----------+----------+-------------------------------------------------+--------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
+ fx         |        |           | 00000    | routine is marked as VOLATILE, should be STABLE |        | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
+(1 row)
 
 create or replace function fx()
 returns int as $$
@@ -1661,9 +1702,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
- functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
-(0 rows)
+ functionid | lineno | statement | sqlstate |                     message                     | detail |                                       hint                                        |    level    | position | query | context 
+------------+--------+-----------+----------+-------------------------------------------------+--------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
+ fx         |        |           | 00000    | routine is marked as VOLATILE, should be STABLE |        | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
+(1 row)
 
 create or replace function fx()
 returns int as $$
@@ -1680,9 +1722,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
- functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
-(0 rows)
+ functionid | lineno | statement | sqlstate |                     message                     | detail |                                       hint                                        |    level    | position | query | context 
+------------+--------+-----------+----------+-------------------------------------------------+--------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
+ fx         |        |           | 00000    | routine is marked as VOLATILE, should be STABLE |        | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
+(1 row)
 
 create or replace function fx()
 returns int as $$
@@ -1701,9 +1744,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
- functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
-(0 rows)
+ functionid | lineno | statement | sqlstate |                     message                     | detail |                                       hint                                        |    level    | position | query | context 
+------------+--------+-----------+----------+-------------------------------------------------+--------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
+ fx         |        |           | 00000    | routine is marked as VOLATILE, should be STABLE |        | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
+(1 row)
 
 create or replace function fx()
 returns int as $$
@@ -1741,9 +1785,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
- functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
-(0 rows)
+ functionid | lineno | statement | sqlstate |                     message                     | detail |                                       hint                                        |    level    | position | query | context 
+------------+--------+-----------+----------+-------------------------------------------------+--------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
+ fx         |        |           | 00000    | routine is marked as VOLATILE, should be STABLE |        | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
+(1 row)
 
 create or replace function fx()
 returns int as $$
@@ -1759,11 +1804,12 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
- functionid | lineno |     statement      | sqlstate |                    message                     |                 detail                 |                    hint                    |    level    | position | query | context 
-------------+--------+--------------------+----------+------------------------------------------------+----------------------------------------+--------------------------------------------+-------------+----------+-------+---------
- fx         |      6 | FOREACH over array | 42804    | target type is different type than source type | cast "integer" value to "numeric" type | Hidden casting can be a performance issue. | performance |          |       | 
- fx         |      8 | assignment         | 42804    | target type is different type than source type | cast "numeric" value to "integer" type | Hidden casting can be a performance issue. | performance |          |       | 
-(2 rows)
+ functionid | lineno |     statement      | sqlstate |                     message                     |                 detail                 |                                       hint                                        |    level    | position | query | context 
+------------+--------+--------------------+----------+-------------------------------------------------+----------------------------------------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
+ fx         |      6 | FOREACH over array | 42804    | target type is different type than source type  | cast "integer" value to "numeric" type | Hidden casting can be a performance issue.                                        | performance |          |       | 
+ fx         |      8 | assignment         | 42804    | target type is different type than source type  | cast "numeric" value to "integer" type | Hidden casting can be a performance issue.                                        | performance |          |       | 
+ fx         |        |                    | 00000    | routine is marked as VOLATILE, should be STABLE |                                        | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
+(3 rows)
 
 drop function fx();
 drop table t1;
@@ -1824,11 +1870,12 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true, fatal_errors := false);
- functionid | lineno | statement | sqlstate |          message          | detail | hint |     level     | position | query | context 
-------------+--------+-----------+----------+---------------------------+--------+------+---------------+----------+-------+---------
- fx         |      2 | DECLARE   | 00000    | unused variable "old"     |        |      | warning       |          |       | 
- fx         |      2 | DECLARE   | 00000    | never read variable "new" |        |      | warning extra |          |       | 
-(2 rows)
+ functionid | lineno | statement | sqlstate |                     message                     | detail |                                       hint                                        |     level     | position | query | context 
+------------+--------+-----------+----------+-------------------------------------------------+--------+-----------------------------------------------------------------------------------+---------------+----------+-------+---------
+ fx         |      2 | DECLARE   | 00000    | unused variable "old"                           |        |                                                                                   | warning       |          |       | 
+ fx         |      2 | DECLARE   | 00000    | never read variable "new"                       |        |                                                                                   | warning extra |          |       | 
+ fx         |        |           | 00000    | routine is marked as VOLATILE, should be STABLE |        | When you fix this issue, please, recheck other functions that uses this function. | performance   |          |       | 
+(3 rows)
 
 drop function fx();
 create or replace function fx()
@@ -1841,10 +1888,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true, fatal_errors := false);
- functionid | lineno | statement | sqlstate |          message          | detail | hint |     level     | position | query | context 
-------------+--------+-----------+----------+---------------------------+--------+------+---------------+----------+-------+---------
- fx         |      2 | DECLARE   | 00000    | never read variable "new" |        |      | warning extra |          |       | 
-(1 row)
+ functionid | lineno | statement | sqlstate |                      message                       | detail |                                       hint                                        |     level     | position | query | context 
+------------+--------+-----------+----------+----------------------------------------------------+--------+-----------------------------------------------------------------------------------+---------------+----------+-------+---------
+ fx         |      2 | DECLARE   | 00000    | never read variable "new"                          |        |                                                                                   | warning extra |          |       | 
+ fx         |        |           | 00000    | routine is marked as VOLATILE, should be IMMUTABLE |        | When you fix this issue, please, recheck other functions that uses this function. | performance   |          |       | 
+(2 rows)
 
 drop function fx();
 drop table test;
@@ -1862,11 +1910,12 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true, fatal_errors := false);
- functionid | lineno | statement  | sqlstate |                    message                     |               detail                |                                    hint                                    |     level     | position | query | context 
-------------+--------+------------+----------+------------------------------------------------+-------------------------------------+----------------------------------------------------------------------------+---------------+----------+-------+---------
- fx         |      9 | assignment | 42804    | target type is different type than source type | cast "date" value to "integer" type | There are no possible explicit coercion between those types, possibly bug! | warning       |          |       | 
- fx         |      4 | DECLARE    | 00000    | never read variable "sa"                       |                                     |                                                                            | warning extra |          |       | 
-(2 rows)
+ functionid | lineno | statement  | sqlstate |                      message                       |               detail                |                                       hint                                        |     level     | position | query | context 
+------------+--------+------------+----------+----------------------------------------------------+-------------------------------------+-----------------------------------------------------------------------------------+---------------+----------+-------+---------
+ fx         |      9 | assignment | 42804    | target type is different type than source type     | cast "date" value to "integer" type | There are no possible explicit coercion between those types, possibly bug!        | warning       |          |       | 
+ fx         |      4 | DECLARE    | 00000    | never read variable "sa"                           |                                     |                                                                                   | warning extra |          |       | 
+ fx         |        |            | 00000    | routine is marked as VOLATILE, should be IMMUTABLE |                                     | When you fix this issue, please, recheck other functions that uses this function. | performance   |          |       | 
+(3 rows)
 
 drop function fx();
 create type t as (t text);
@@ -1881,12 +1930,14 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx()', performance_warnings := true);
-                        plpgsql_check_function                         
------------------------------------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  error:42804:7:assignment:cannot cast composite value to a scalar type
  warning extra:00000:2:DECLARE:never read variable "_tt"
  warning extra:00000:3:DECLARE:never read variable "_txt"
-(3 rows)
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(5 rows)
 
 drop function fx();
 create or replace function fx()
@@ -1899,9 +1950,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
 
 drop function fx();
 create or replace function fx(out _tt t[]) as $$
@@ -1912,9 +1965,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
 
 drop function fx();
 drop type t;
@@ -1927,10 +1982,12 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx()', performance_warnings := true);
-           plpgsql_check_function            
----------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  warning:00000:2:DECLARE:unused variable "x"
-(1 row)
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(3 rows)
 
 drop function fx();
 create table t(i int);
@@ -1952,9 +2009,11 @@ select * from test_t();
 (1 row)
 
 select * from plpgsql_check_function('test_t()', performance_warnings := true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
 
 create or replace function fx()
 returns void as $$
@@ -1980,13 +2039,15 @@ select * from test_t();
 (1 row)
 
 select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
-                          plpgsql_check_function                          
---------------------------------------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  performance:42804:7:FETCH:target type is different type than source type
  Detail: cast "integer" value to "character varying" type
  Hint: Hidden casting can be a performance issue.
  warning extra:00000:4:DECLARE:never read variable "x"
-(4 rows)
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(6 rows)
 
 drop function fx();
 create or replace function fx()
@@ -2013,10 +2074,12 @@ select * from test_t();
 (1 row)
 
 select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
-                plpgsql_check_function                 
--------------------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  warning extra:00000:4:DECLARE:never read variable "x"
-(1 row)
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(3 rows)
 
 drop function fx();
 create or replace function fx()
@@ -2042,12 +2105,14 @@ select * from test_t();
 (1 row)
 
 select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
-                plpgsql_check_function                 
--------------------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  error:42703:6:RAISE:record "r" has no field "a"
  Context: SQL statement "SELECT r.a"
  warning extra:00000:5:DECLARE:never read variable "r"
-(3 rows)
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(5 rows)
 
 drop function fx();
 create or replace function fx()
@@ -2073,9 +2138,11 @@ select * from test_t();
 (1 row)
 
 select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
 
 drop function fx();
 create table foo(a int, b int);
@@ -2095,8 +2162,8 @@ select fx();
 (1 row)
 
 select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
-                         plpgsql_check_function                         
-------------------------------------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  warning:00000:4:SQL statement:too many attributes for target variables
  Detail: There are less target variables than output columns in query.
  Hint: Check target variables in SELECT INTO statement
@@ -2108,7 +2175,9 @@ select * from plpgsql_check_function('fx()', performance_warnings := true, fatal
  Hint: Check target variables in SELECT INTO statement.
  warning extra:00000:2:DECLARE:never read variable "f1"
  warning extra:00000:2:DECLARE:never read variable "f2"
-(11 rows)
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(13 rows)
 
 drop function fx();
 drop table foo;
@@ -2124,12 +2193,14 @@ select fx();
 ERROR:  invalid input syntax for type date: "1"
 CONTEXT:  PL/pgSQL function fx() line 4 at assignment
 select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
-                              plpgsql_check_function                              
-----------------------------------------------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  warning:42804:4:assignment:target type is different type than source type
  Detail: cast "integer" value to "date" type
  Hint: There are no possible explicit coercion between those types, possibly bug!
-(3 rows)
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(5 rows)
 
 drop function fx();
 create table tab_1(i int);
@@ -2150,9 +2221,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx(int)', performance_warnings := true, fatal_errors := false);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
 
 create or replace function fx(a int)
 returns setof int as $$
@@ -2171,12 +2244,14 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx(int)', performance_warnings := true, fatal_errors := false);
-                 plpgsql_check_function                 
---------------------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  error:42703:12:RETURN NEXT:record "r" has no field "x"
  Context: SQL statement "SELECT r.x"
  warning extra:00000:4:DECLARE:never read variable "r"
-(3 rows)
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(5 rows)
 
 drop function fx(int);
 drop table tab_1;
@@ -2839,7 +2914,9 @@ select * from plpgsql_check_function('test()', performance_warnings := true);
  Detail: An index of some attribute cannot be used, when variable, used in predicate, has not right type like a attribute
  Hint: Check a variable type - int versus numeric
  warning extra:00000:3:DECLARE:never read variable "r"
-(16 rows)
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(18 rows)
 
 create or replace function test()
 returns void as $$
@@ -2857,10 +2934,12 @@ end;
 $$ language plpgsql;
 -- there are not any performance issue now
 select * from plpgsql_check_function('test()', performance_warnings := true);
-                plpgsql_check_function                 
--------------------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  warning extra:00000:3:DECLARE:never read variable "r"
-(1 row)
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(3 rows)
 
 -- nextval, currval and setval test
 create table test_table();
@@ -2907,34 +2986,41 @@ begin
     update t1 set c = 30;
   end if;
   if false then
-    raise notice '% %', r.c;
+    raise notice '%', r.c;
   end if;
 end;
 $$ language plpgsql;
 select f1();
-ERROR:  too few parameters specified for RAISE
-CONTEXT:  compilation of PL/pgSQL function "f1" near line 7
+ f1 
+----
+ 
+(1 row)
+
 select * from plpgsql_check_function_tb('f1()', fatal_errors := true);
- functionid | lineno | statement | sqlstate |                message                 | detail | hint | level | position | query |                      context                      
-------------+--------+-----------+----------+----------------------------------------+--------+------+-------+----------+-------+---------------------------------------------------
- f1         |        |           | 42601    | too few parameters specified for RAISE |        |      | error |          |       | compilation of PL/pgSQL function "f1" near line 7
+ functionid | lineno |   statement   | sqlstate |                  message                   | detail | hint | level | position |        query         | context 
+------------+--------+---------------+----------+--------------------------------------------+--------+------+-------+----------+----------------------+---------
+ f1         |      4 | SQL statement | 42703    | column "c" of relation "t1" does not exist |        |      | error |       15 | update t1 set c = 30 | 
 (1 row)
 
 select * from plpgsql_check_function_tb('f1()', fatal_errors := false);
- functionid | lineno | statement | sqlstate |                message                 | detail | hint | level | position | query |                      context                      
-------------+--------+-----------+----------+----------------------------------------+--------+------+-------+----------+-------+---------------------------------------------------
- f1         |        |           | 42601    | too few parameters specified for RAISE |        |      | error |          |       | compilation of PL/pgSQL function "f1" near line 7
-(1 row)
+ functionid | lineno |   statement   | sqlstate |                  message                   | detail | hint | level | position |        query         | context 
+------------+--------+---------------+----------+--------------------------------------------+--------+------+-------+----------+----------------------+---------
+ f1         |      4 | SQL statement | 42703    | column "c" of relation "t1" does not exist |        |      | error |       15 | update t1 set c = 30 | 
+ f1         |      7 | RAISE         | 42P01    | missing FROM-clause entry for table "r"    |        |      | error |        8 | SELECT r.c           | 
+(2 rows)
 
 select * from plpgsql_check_function_tb('f1()');
- functionid | lineno | statement | sqlstate |                message                 | detail | hint | level | position | query |                      context                      
-------------+--------+-----------+----------+----------------------------------------+--------+------+-------+----------+-------+---------------------------------------------------
- f1         |        |           | 42601    | too few parameters specified for RAISE |        |      | error |          |       | compilation of PL/pgSQL function "f1" near line 7
+ functionid | lineno |   statement   | sqlstate |                  message                   | detail | hint | level | position |        query         | context 
+------------+--------+---------------+----------+--------------------------------------------+--------+------+-------+----------+----------------------+---------
+ f1         |      4 | SQL statement | 42703    | column "c" of relation "t1" does not exist |        |      | error |       15 | update t1 set c = 30 | 
 (1 row)
 
 select f1();
-ERROR:  too few parameters specified for RAISE
-CONTEXT:  compilation of PL/pgSQL function "f1" near line 7
+ f1 
+----
+ 
+(1 row)
+
 drop function f1();
 create or replace function f1()
 returns void as $$
@@ -3022,10 +3108,12 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx2()', performance_warnings := true);
-                 plpgsql_check_function                  
----------------------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  warning extra:00000:2:DECLARE:never read variable "_pa"
-(1 row)
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(3 rows)
 
 drop function fx2();
 create or replace function fx2()
@@ -3037,10 +3125,12 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx2()', performance_warnings := true);
-                 plpgsql_check_function                  
----------------------------------------------------------
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
  warning extra:00000:2:DECLARE:never read variable "_pa"
-(1 row)
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(3 rows)
 
 drop function fx2();
 create or replace function test_lab()
@@ -3247,3 +3337,128 @@ select * from plpgsql_check_function('test12()');
 (0 rows)
 
 drop function public.test12();
+-- should to show performance warning on bad flag
+create or replace function flag_test1(int)
+returns int as $$
+begin
+  return $1 + 10;
+end;
+$$ language plpgsql stable;
+create table fufu(a int);
+create or replace function flag_test2(int)
+returns int as $$
+begin
+  return (select * from fufu limit 1);
+end;
+$$ language plpgsql volatile;
+select * from plpgsql_check_function('flag_test1(int)', performance_warnings => true);
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as STABLE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
+
+select * from plpgsql_check_function('flag_test2(int)', performance_warnings => true);
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ warning extra:00000:parameter "$1" is never read
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(3 rows)
+
+drop table fufu;
+drop function flag_test1(int);
+drop function flag_test2(int);
+create or replace function rrecord01()
+returns setof record as $$
+begin
+  return query select 1,2;
+end;
+$$ language plpgsql;
+create or replace function rrecord02()
+returns record as $$
+begin
+  return row(10,20,30);
+end;
+$$ language plpgsql;
+-- should not to raise false alarms
+select * from plpgsql_check_function('rrecord01');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function('rrecord02');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function rrecord01();
+drop function rrecord02();
+create or replace function bugfunc01()
+returns void as $$
+declare
+  cvar cursor(a int, b int) for select a + b from generate_series(1,b);
+begin
+  for t in cvar(1,3)
+  loop
+    raise notice '%', t;
+  end loop;
+end;
+$$ language plpgsql;
+select bugfunc01();
+NOTICE:  (4)
+NOTICE:  (4)
+NOTICE:  (4)
+ bugfunc01 
+-----------
+ 
+(1 row)
+
+select * from plpgsql_check_function('bugfunc01');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function bugfunc02()
+returns void as $$
+declare
+  cvar cursor(a int, b int) for select a + b from generate_series(1,b);
+begin
+  open cvar(10,20);
+  close cvar;
+end;
+$$ language plpgsql;
+select bugfunc02();
+ bugfunc02 
+-----------
+ 
+(1 row)
+
+select * from plpgsql_check_function('bugfunc02');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function bugfunc03()
+returns void as $$
+declare
+  cvar cursor(a int, b int) for select a + b from not_exists_table;
+begin
+  open cvar(10,20);
+  close cvar;
+end;
+$$ language plpgsql;
+select bugfunc03();
+ERROR:  relation "not_exists_table" does not exist
+LINE 1: select a + b from not_exists_table
+                          ^
+QUERY:  select a + b from not_exists_table
+CONTEXT:  PL/pgSQL function bugfunc03() line 5 at OPEN
+select * from plpgsql_check_function('bugfunc03');
+                    plpgsql_check_function                     
+---------------------------------------------------------------
+ error:42P01:5:OPEN:relation "not_exists_table" does not exist
+ Query: select a + b from not_exists_table
+ --                       ^
+(3 rows)
+

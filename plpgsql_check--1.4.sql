@@ -1,5 +1,15 @@
 LOAD 'plpgsql';
 
+-- falback solution for PostgreSQL 9.4
+CREATE OR REPLACE FUNCTION parse_ident(text)
+returns regproc AS $$
+BEGIN
+  RETURN $1::regproc;
+  EXCEPTION WHEN undefined_function or invalid_name THEN
+    RAISE EXCEPTION invalid_parameter_value;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION __plpgsql_check_getfuncid(text)
 RETURNS regprocedure AS $$
 BEGIN

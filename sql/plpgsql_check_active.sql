@@ -2192,7 +2192,7 @@ begin
     update t1 set c = 30;
   end if;
   if false then
-    raise notice '% %', r.c;
+    raise notice '%', r.c;
   end if;
 end;
 $$ language plpgsql;

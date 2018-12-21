@@ -403,9 +403,9 @@ call testproc();
 ERROR:  procedure parameter "b" is an output parameter but corresponding argument is not writable
 CONTEXT:  PL/pgSQL function testproc() line 4 at CALL
 select * from plpgsql_check_function('testproc()');
-              plpgsql_check_function              
---------------------------------------------------
- error:XX000:4:CALL:cached plan is not valid plan
+                                            plpgsql_check_function                                            
+--------------------------------------------------------------------------------------------------------------
+ error:42601:4:CALL:procedure parameter "b" is an output parameter but corresponding argument is not writable
 (1 row)
 
 create or replace procedure testproc(inout r int)
