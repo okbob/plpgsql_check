@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	1.4.0
+Version:	1.4.1
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -51,6 +51,9 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/plpgsql_check.control
 
 %changelog
+* Fri Dec 21 2018 - Pavel STEHULE <pavel.stehule@gmail.com> 1.4.1-1
+- minor bugfixes
+
 * Sun Dec 2 2018 - Pavel STEHULE <pavel.stehule@gmail.com> 1.4.0-1
 - possible to show function's dependency on functions and tables
 - integrated profiler
