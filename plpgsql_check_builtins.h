@@ -59,5 +59,8 @@ extern void _PG_init(void);
 extern PGDLLEXPORT Datum plpgsql_check_function_tb(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plpgsql_check_function(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plpgsql_show_dependency_tb(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum plpgsql_profiler_reset(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum plpgsql_profiler_reset_all(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum plpgsql_profiler_function_tb(PG_FUNCTION_ARGS);
 
 #endif
