@@ -9,10 +9,308 @@
  *-------------------------------------------------------------------------
  */
 
+#include "plpgsql_check.h"
+
+#include "access/htup_details.h"
+#include "catalog/pg_type.h"
+#include "storage/lwlock.h"
+#include "storage/shmem.h"
+#include "utils/syscache.h"
+
 /*
- * This function should to iterate over all plpgsql commands to:
- *   count statements and build statement -> uniq id map,
- *   collect counted metrics.
+ * Any instance of plpgsql function will have a own profile.
+ * When function will be dropped, then related profile should
+ * be removed from shared memory.
+ *
+ * The local profile is created when function is initialized,
+ * and it is stored in plugin_info field. When function is finished,
+ * data from local profile is merged to shared profile.
+ */
+typedef struct profiler_hashkey
+{
+	Oid			fn_oid;
+	Oid			db_oid;
+	TransactionId fn_xmin;
+	ItemPointerData fn_tid;
+	int16		chunk_num;
+} profiler_hashkey;
+
+/*
+ * Attention - the commands that can contains nestested commands
+ * has attached own time and nested statements time too.
+ */
+typedef struct profiler_stmt
+{
+	int		lineno;
+	int64	us_max;
+	int64	us_total;
+	int64	rows;
+	int64	exec_count;
+	instr_time	start_time;
+	instr_time	total;
+} profiler_stmt;
+
+typedef struct profiler_stmt_reduced
+{
+	int		lineno;
+	int64	us_max;
+	int64	us_total;
+	int64	rows;
+	int64	exec_count;
+} profiler_stmt_reduced;
+
+#define		STATEMENTS_PER_CHUNK		30
+
+/*
+ * The shared profile will be stored as set of chunks
+ */
+typedef struct profiler_stmt_chunk
+{
+	profiler_hashkey key;
+	slock_t	mutex;			/* only first chunk require mutex */
+	profiler_stmt_reduced stmts[STATEMENTS_PER_CHUNK];
+} profiler_stmt_chunk;
+
+typedef struct profiler_shared_state
+{
+	LWLock	   *lock;
+} profiler_shared_state;
+
+/*
+ * should be enough for project of 300K PLpgSQL rows.
+ * It should to take about 18MB of shared memory.
+ */
+#define		MAX_SHARED_CHUNKS		15000
+
+/*
+ * It is used for fast mapping plpgsql stmt -> stmtid
+ */
+typedef struct profiler_map_entry
+{
+	PLpgSQL_stmt *stmt;
+	int			stmtid;
+	struct profiler_map_entry *next;
+} profiler_map_entry;
+
+/*
+ * holds profile data (counters) and metadata (maps)
+ */
+typedef struct profiler_profile
+{
+	profiler_hashkey key;
+	int			nstatements;
+	PLpgSQL_stmt *entry_stmt;
+	int			stmts_map_max_lineno;
+	profiler_map_entry *stmts_map;
+} profiler_profile;
+
+/*
+ * This structure is used as plpgsql extension parameter
+ */
+typedef struct profiler_info
+{
+	profiler_profile *profile;
+	profiler_stmt *stmts;
+	instr_time	start_time;
+} profiler_info;
+
+static HTAB *profiler_HashTable = NULL;
+static HTAB *shared_profiler_chunks_HashTable = NULL;
+static HTAB *profiler_chunks_HashTable = NULL;
+
+static profiler_shared_state *profiler_ss = NULL;
+static MemoryContext profiler_mcxt = NULL;
+
+bool plpgsql_check_profiler = true;
+
+PG_FUNCTION_INFO_V1(plpgsql_profiler_reset_all);
+PG_FUNCTION_INFO_V1(plpgsql_profiler_reset);
+
+static void profiler_touch_stmt(profiler_info *pinfo, PLpgSQL_stmt *stmt, bool generate_map, bool finalize_profile, int64 *nested_us_total);
+static void update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func);
+static void profiler_update_map(profiler_profile *profile, PLpgSQL_stmt *stmt);
+static int profiler_get_stmtid(profiler_profile *profile, PLpgSQL_stmt *stmt);
+static void profiler_touch_stmts(profiler_info *pinfo, List *stmts, bool generate_map, bool finalize_profile, int64 *nested_us_total);
+
+/*
+ * Calculate required size of shared memory for chunks
+ *
+ */
+Size
+plpgsql_check_shmem_size(void)
+{
+	Size		num_bytes = 0;
+
+	num_bytes = MAXALIGN(sizeof(profiler_shared_state));
+	num_bytes = add_size(num_bytes,
+						 hash_estimate_size(MAX_SHARED_CHUNKS,
+											sizeof(profiler_stmt_chunk)));
+
+	return num_bytes;
+}
+
+/*
+ * Initialize shared memory used like permanent profile storage.
+ * No other parts use shared memory, so this code is completly here.
+ *
+ */
+void
+plpgsql_check_profiler_shmem_startup(void)
+{
+	bool		found;
+	HASHCTL		info;
+
+	shared_profiler_chunks_HashTable = NULL;
+
+	if (prev_shmem_startup_hook)
+		prev_shmem_startup_hook();
+
+	/*
+	 * Create or attach to the shared memory state, including hash table
+	 */
+	LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
+
+	profiler_ss = ShmemInitStruct("plpgsql_check profiler state",
+						   sizeof(profiler_shared_state),
+						   &found);
+
+	if (!found)
+	{
+
+#if PG_VERSION_NUM > 90600
+
+		profiler_ss->lock = &(GetNamedLWLockTranche("plpgsql_check profiler"))->lock;
+
+#else
+
+		profiler_ss->lock = LWLockAssign();
+
+#endif
+
+	}
+
+	memset(&info, 0, sizeof(info));
+	info.keysize = sizeof(profiler_hashkey);
+	info.entrysize = sizeof(profiler_stmt_chunk);
+	info.hash = tag_hash;
+
+#if PG_VERSION_NUM >= 90500
+
+	shared_profiler_chunks_HashTable = ShmemInitHash("plpgsql_check profiler chunks",
+													MAX_SHARED_CHUNKS,
+													MAX_SHARED_CHUNKS,
+													&info,
+													HASH_ELEM | HASH_BLOBS);
+
+#else
+
+	info.hash = tag_hash;
+
+	shared_profiler_chunks_HashTable = ShmemInitHash("plpgsql_check profiler chunks",
+													MAX_SHARED_CHUNKS,
+													MAX_SHARED_CHUNKS,
+													&info,
+													HASH_ELEM | HASH_FUNCTION);
+
+#endif
+
+	LWLockRelease(AddinShmemInitLock);
+}
+
+/*
+ * Profiler implementation
+ */
+
+static void
+profiler_init_hashkey(profiler_hashkey *hk, PLpgSQL_function *func)
+{
+	memset(hk, 0, sizeof(profiler_hashkey));
+
+	hk->db_oid = MyDatabaseId;
+	hk->fn_oid = func->fn_oid;
+	hk->fn_xmin = func->fn_xmin;
+	hk->fn_tid = func->fn_tid;
+	hk->chunk_num = 1;
+}
+
+/*
+ * Hash table for function profiling metadata.
+ */
+static void
+profiler_localHashTableInit(void)
+{
+	HASHCTL		ctl;
+
+	Assert(profiler_HashTable == NULL);
+
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.keysize = sizeof(profiler_hashkey);
+	ctl.entrysize = sizeof(profiler_profile);
+	ctl.hcxt = profiler_mcxt;
+	ctl.hash = tag_hash;
+	profiler_HashTable = hash_create("plpgsql_check function profiler local cache",
+									FUNCS_PER_USER,
+									&ctl,
+									HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+}
+
+/*
+ * Hash table for local function profiles. When shared memory is not available
+ * because plpgsql_check was not loaded by shared_proload_libraries, then function
+ * profiles is stored in local profile chunks. A format is same for shared profiles.
+ */
+static void
+profiler_chunks_HashTableInit(void)
+{
+	HASHCTL		ctl;
+
+	Assert(profiler_chunks_HashTable == NULL);
+
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.keysize = sizeof(profiler_hashkey);
+	ctl.entrysize = sizeof(profiler_stmt_chunk);
+	ctl.hcxt = profiler_mcxt;
+	ctl.hash = tag_hash;
+	profiler_chunks_HashTable = hash_create("plpgsql_check function profiler local chunks",
+									FUNCS_PER_USER,
+									&ctl,
+									HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+}
+
+
+void
+plpgsql_check_profiler_init_hash_tables(void)
+{
+	if (profiler_mcxt)
+	{
+		MemoryContextReset(profiler_mcxt);
+
+		profiler_HashTable = NULL;
+		profiler_chunks_HashTable = NULL;
+	}
+	else
+	{
+		profiler_mcxt = AllocSetContextCreate(TopMemoryContext,
+												"plpgsql_check - profiler context",
+												ALLOCSET_DEFAULT_MINSIZE,
+												ALLOCSET_DEFAULT_INITSIZE,
+												ALLOCSET_DEFAULT_MAXSIZE);
+	}
+
+	profiler_localHashTableInit();
+	profiler_chunks_HashTableInit();
+}
+
+/*
+ * profiler_touch_stmt - iterator over plpgsql statements.
+ *
+ * This function is designed for two different purposes:
+ *
+ *   a) assign unique id to every plpgsql statement and
+ *      create statement -> id mapping
+ *   b) iterate over all commends and finalize total time
+ *      as measured total time substract child total time.
+ *
  */
 static void
 profiler_touch_stmt(profiler_info *pinfo,
@@ -254,7 +552,6 @@ profiler_touch_stmt(profiler_info *pinfo,
 	}
 }
 
-
 /*
  * clean all chunks used by profiler
  */
@@ -278,7 +575,7 @@ plpgsql_profiler_reset_all(PG_FUNCTION_ARGS)
 		LWLockRelease(profiler_ss->lock);
 	}
 	else
-		profiler_init_hash_tables();
+		plpgsql_check_profiler_init_hash_tables();
 
 	PG_RETURN_VOID();
 }
@@ -611,23 +908,16 @@ profiler_touch_stmts(profiler_info *pinfo,
 	}
 }
 
-
-
-Datum
-plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
+/*
+ * Prepare tuplestore with function profile
+ *
+ */
+void
+plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
+									plpgsql_check_info *cinfo)
 {
-	Oid			funcoid = PG_GETARG_OID(0);
 	profiler_hashkey hk;
-	HeapTuple	procTuple;
 	bool found;
-	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	Tuplestorestate *tupstore;
-	MemoryContext per_query_ctx;
-	MemoryContext oldcontext;
-	TupleDesc	tupdesc;
-	char	   *prosrc;
-	Datum		prosrcdatum;
-	bool		isnull;
 	int			lineno = 1;
 	int			current_statement = 0;
 	profiler_stmt_chunk *chunk = NULL;
@@ -635,31 +925,17 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 	HTAB	   *chunks;
 	bool		shared_chunks;
 	volatile bool		unlock_mutex = false;
-
-	/* check to see if caller supports us returning a tuplestore */
-	SetReturningFunctionCheck(rsinfo);
-
-	procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcoid));
-	if (!HeapTupleIsValid(procTuple))
-		elog(ERROR, "cache lookup failed for function %u", funcoid);
-
-	prosrcdatum = SysCacheGetAttr(PROCOID, procTuple,
-								  Anum_pg_proc_prosrc, &isnull);
-	if (isnull)
-		elog(ERROR, "null prosrc");
-
-	prosrc = TextDatumGetCString(prosrcdatum);
+	char	   *prosrc = cinfo->src;
 
 	/* ensure correct complete content of hash key */
 	memset(&hk, 0, sizeof(profiler_hashkey));
-	hk.fn_oid = funcoid;
+	hk.fn_oid = cinfo->fn_oid;
 	hk.db_oid = MyDatabaseId;
-	hk.fn_xmin = HeapTupleHeaderGetRawXmin(procTuple->t_data);
-	hk.fn_tid =  procTuple->t_self;
+	hk.fn_xmin = HeapTupleHeaderGetRawXmin(cinfo->proctuple->t_data);
+	hk.fn_tid =  cinfo->proctuple->t_self;
 	hk.chunk_num = 1;
 
-	ReleaseSysCache(procTuple);
-
+	/* try to find first chunk in shared (or local) memory */
 	if (shared_profiler_chunks_HashTable)
 	{
 		LWLockAcquire(profiler_ss->lock, LW_SHARED);
@@ -677,8 +953,6 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 											 HASH_FIND,
 											 &found);
 
-
-
 	PG_TRY();
 	{
 		if (shared_chunks && chunk)
@@ -688,6 +962,7 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 			unlock_mutex = true;
 		}
 
+		/* iterate over source code rows */
 		while (*prosrc)
 		{
 			char	   *lineend = prosrc;
@@ -713,6 +988,7 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 
 			if (chunk)
 			{
+				/* skip invisible statements if any */
 				while (chunk->stmts[current_statement].lineno < lineno)
 				{
 					current_statement += 1;
@@ -801,7 +1077,7 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 				}
 			}
 
-			tuplestore_put_profile(tupstore, tupdesc,
+			plpgsql_check_put_profile(ri,
 								   lineno,
 								   stmt_lineno,
 								   cmds_on_row,
@@ -827,13 +1103,144 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 
 	if (shared_chunks)
 		LWLockRelease(profiler_ss->lock);
+}
 
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
+/*
+ * plpgsql plugin related functions
+ */
 
-	rsinfo->returnMode = SFRM_Materialize;
-	rsinfo->setResult = tupstore;
-	rsinfo->setDesc = tupdesc;
+/*
+ * Try to search profile pattern for function. Creates profile pattern when
+ * it doesn't exists.
+ */
+void
+plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *func)
+{
+	if (plpgsql_check_profiler && func->fn_oid != InvalidOid)
+	{
+		profiler_info *pinfo;
+		profiler_profile *profile;
+		profiler_hashkey hk;
+		bool		found;
 
-	return (Datum) 0;
+		profiler_init_hashkey(&hk, func);
+		profile = (profiler_profile *) hash_search(profiler_HashTable,
+											 (void *) &hk,
+											 HASH_ENTER,
+											 &found);
+
+		pinfo = palloc0(sizeof(profiler_info));
+		pinfo->profile = profile;
+
+		if (!found)
+		{
+			MemoryContext oldcxt;
+
+			profile->nstatements = 0;
+			profile->stmts_map_max_lineno = 200;
+
+			oldcxt = MemoryContextSwitchTo(profiler_mcxt);
+			profile->stmts_map = palloc0(profile->stmts_map_max_lineno * sizeof(profiler_map_entry));
+
+			profiler_touch_stmt(pinfo, (PLpgSQL_stmt *) func->action, true, false, NULL);
+
+			/* entry statements is not visible for plugin functions */
+			profile->entry_stmt = (PLpgSQL_stmt *) func->action;
+
+			MemoryContextSwitchTo(oldcxt);
+		}
+
+		pinfo->stmts = palloc0(profile->nstatements * sizeof(profiler_stmt));
+
+		INSTR_TIME_SET_CURRENT(pinfo->start_time);
+
+		estate->plugin_info = pinfo;
+	}
+}
+
+void
+plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
+{
+	if (plpgsql_check_profiler &&
+		estate->plugin_info &&
+		func->fn_oid != InvalidOid)
+	{
+		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
+		profiler_profile *profile = pinfo->profile;
+		int		entry_stmtid = profiler_get_stmtid(profile, profile->entry_stmt);
+		instr_time		end_time;
+		uint64			elapsed;
+		int64			nested_us_total;
+
+		INSTR_TIME_SET_CURRENT(end_time);
+		INSTR_TIME_SUBTRACT(end_time, pinfo->start_time);
+
+		elapsed = INSTR_TIME_GET_MICROSEC(end_time);
+
+		if (pinfo->stmts[entry_stmtid].exec_count == 0)
+		{
+			pinfo->stmts[entry_stmtid].exec_count = 1;
+			pinfo->stmts[entry_stmtid].us_total = elapsed;
+			pinfo->stmts[entry_stmtid].us_max = elapsed;
+		}
+
+		/* finalize profile - get result profile */
+		profiler_touch_stmt(pinfo,
+						   profile->entry_stmt,
+						   false,
+						   true,
+						   &nested_us_total);
+
+		update_persistent_profile(pinfo, func);
+
+		pfree(pinfo->stmts);
+		pfree(pinfo);
+	}
+}
+
+void
+plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
+{
+	if (plpgsql_check_profiler &&
+		estate->plugin_info &&
+		estate->func->fn_oid != InvalidOid)
+	{
+		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
+		profiler_profile *profile = pinfo->profile;
+		int stmtid = profiler_get_stmtid(profile, stmt);
+		profiler_stmt *pstmt = &pinfo->stmts[stmtid];
+
+		INSTR_TIME_SET_CURRENT(pstmt->start_time);
+	}
+}
+
+void
+plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
+{
+	if (plpgsql_check_profiler && 
+		estate->plugin_info && 
+		estate->func->fn_oid != InvalidOid)
+	{
+		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
+		profiler_profile *profile  = pinfo->profile;
+		int stmtid = profiler_get_stmtid(profile, stmt);
+		profiler_stmt *pstmt = &pinfo->stmts[stmtid];
+		instr_time		end_time;
+		uint64			elapsed;
+		instr_time		end_time2;
+
+		INSTR_TIME_SET_CURRENT(end_time);
+		end_time2 = end_time;
+		INSTR_TIME_ACCUM_DIFF(pstmt->total, end_time, pstmt->start_time);
+
+		INSTR_TIME_SUBTRACT(end_time2, pstmt->start_time);
+		elapsed = INSTR_TIME_GET_MICROSEC(end_time2);
+
+		if (elapsed > pstmt->us_max)
+			pstmt->us_max = elapsed;
+
+		pstmt->us_total = INSTR_TIME_GET_MICROSEC(pstmt->total);
+		pstmt->rows += estate->eval_processed;
+		pstmt->exec_count++;
+	}
 }

@@ -17,6 +17,11 @@
 static void SetReturningFunctionCheck(ReturnSetInfo *rsinfo);
 static void init_check_info(plpgsql_check_info *cinfo, Oid fn_oid);
 
+PG_FUNCTION_INFO_V1(plpgsql_check_function);
+PG_FUNCTION_INFO_V1(plpgsql_check_function_tb);
+PG_FUNCTION_INFO_V1(plpgsql_show_dependency_tb);
+PG_FUNCTION_INFO_V1(plpgsql_profiler_function_tb);
+
 /*
  * Validate function result description
  *
@@ -80,7 +85,11 @@ plpgsql_check_function(PG_FUNCTION_ARGS)
 	if (!HeapTupleIsValid(cinfo.proctuple))
 		elog(ERROR, "cache lookup failed for function %u", cinfo.fn_oid);
 
-	cinfo.trigtype = plpgsql_check_get_trigtype(cinfo.proctuple);
+	plpgsql_check_get_function_info(cinfo.proctuple,
+									&cinfo.rettype,
+									&cinfo.volatility,
+									&cinfo.trigtype);
+
 	plpgsql_check_precheck_conditions(&cinfo);
 
 	/* Envelope outer plpgsql function is not interesting */
@@ -133,7 +142,11 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	if (!HeapTupleIsValid(cinfo.proctuple))
 		elog(ERROR, "cache lookup failed for function %u", cinfo.fn_oid);
 
-	cinfo.trigtype = plpgsql_check_get_trigtype(cinfo.proctuple);
+	plpgsql_check_get_function_info(cinfo.proctuple,
+									&cinfo.rettype,
+									&cinfo.volatility,
+									&cinfo.trigtype);
+
 	plpgsql_check_precheck_conditions(&cinfo);
 
 	/* Envelope outer plpgsql function is not interesting */
@@ -185,7 +198,11 @@ plpgsql_show_dependency_tb(PG_FUNCTION_ARGS)
 	if (!HeapTupleIsValid(cinfo.proctuple))
 		elog(ERROR, "cache lookup failed for function %u", cinfo.fn_oid);
 
-	cinfo.trigtype = plpgsql_check_get_trigtype(cinfo.proctuple);
+	plpgsql_check_get_function_info(cinfo.proctuple,
+									&cinfo.rettype,
+									&cinfo.volatility,
+									&cinfo.trigtype);
+
 	plpgsql_check_precheck_conditions(&cinfo);
 
 	plpgsql_check_init_ri(&ri, PLPGSQL_SHOW_DEPENDENCY_FORMAT_TABULAR, rsinfo);
@@ -223,7 +240,11 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 	if (!HeapTupleIsValid(cinfo.proctuple))
 		elog(ERROR, "cache lookup failed for function %u", cinfo.fn_oid);
 
-	cinfo.trigtype = plpgsql_check_get_trigtype(cinfo.proctuple);
+	plpgsql_check_get_function_info(cinfo.proctuple,
+									&cinfo.rettype,
+									&cinfo.volatility,
+									&cinfo.trigtype);
+
 	plpgsql_check_precheck_conditions(&cinfo);
 
 	cinfo.src = plpgsql_check_get_src(cinfo.proctuple);

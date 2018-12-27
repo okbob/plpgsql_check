@@ -247,7 +247,7 @@ plpgsql_check_put_error(PLpgSQL_checkstate *cstate,
 
 	if (ri->init_tag)
 	{
-		init_tag(ri, cstate->fn_oid);
+		init_tag(ri, cstate->cinfo->fn_oid);
 		ri->init_tag = false;
 	}
 
@@ -256,7 +256,7 @@ plpgsql_check_put_error(PLpgSQL_checkstate *cstate,
 		switch (ri->format)
 		{
 			case PLPGSQL_CHECK_FORMAT_TABULAR:
-				put_error_tabular(ri, estate, cstate->fn_oid,
+				put_error_tabular(ri, estate, cstate->cinfo->fn_oid,
 								  sqlerrcode, lineno, message, detail,
 								  hint, level, position, query, context);
 				break;

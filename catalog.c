@@ -21,10 +21,13 @@
 #include "utils/syscache.h"
 
 /*
- * Returns PLpgSQL_trigtype based on prorettype
+ * Prepare metadata necessary for plpgsql_check
  */
-PLpgSQL_trigtype
-plpgsql_check_get_trigtype(HeapTuple procTuple)
+void
+plpgsql_check_get_function_info(HeapTuple procTuple,
+								Oid *rettype,
+								char *volatility,
+								PLpgSQL_trigtype *trigtype)
 {
 	Form_pg_proc proc;
 	char		functyptype;
@@ -42,9 +45,9 @@ plpgsql_check_get_trigtype(HeapTuple procTuple)
 		/* we assume OPAQUE with no arguments means a trigger */
 		if (proc->prorettype == TRIGGEROID ||
 			(proc->prorettype == OPAQUEOID && proc->pronargs == 0))
-			return PLPGSQL_DML_TRIGGER;
+			*trigtype = PLPGSQL_DML_TRIGGER;
 		else if (proc->prorettype == EVTTRIGGEROID)
-			return PLPGSQL_EVENT_TRIGGER;
+			*trigtype = PLPGSQL_EVENT_TRIGGER;
 		else if (proc->prorettype != RECORDOID &&
 				 proc->prorettype != VOIDOID &&
 				 !IsPolymorphicType(proc->prorettype))
@@ -54,7 +57,10 @@ plpgsql_check_get_trigtype(HeapTuple procTuple)
 							format_type_be(proc->prorettype))));
 	}
 
-	return PLPGSQL_NOT_TRIGGER;
+	*trigtype = PLPGSQL_NOT_TRIGGER;
+
+	*volatility = ((Form_pg_proc) GETSTRUCT(procTuple))->provolatile;
+	*rettype = ((Form_pg_proc) GETSTRUCT(procTuple))->prorettype;
 }
 
 char *

@@ -5,6 +5,7 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "access/tupdesc.h"
+#include "storage/ipc.h"
 
 enum
 {
@@ -25,6 +26,23 @@ enum
 	PLPGSQL_SHOW_PROFILE_TABULAR
 };
 
+enum
+{
+	PLPGSQL_CHECK_MODE_DISABLED,		/* all functionality is disabled */
+	PLPGSQL_CHECK_MODE_BY_FUNCTION,		/* checking is allowed via CHECK function only (default) */
+	PLPGSQL_CHECK_MODE_FRESH_START,		/* check only when function is called first time */
+	PLPGSQL_CHECK_MODE_EVERY_START		/* check on every start */
+};
+
+enum
+{
+	PLPGSQL_CHECK_CLOSED,
+	PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS,
+	PLPGSQL_CHECK_POSSIBLY_CLOSED,
+	PLPGSQL_CHECK_UNCLOSED,
+	PLPGSQL_CHECK_UNKNOWN
+};
+
 typedef struct PLpgSQL_stmt_stack_item
 {
 	PLpgSQL_stmt	   *stmt;
@@ -37,7 +55,6 @@ typedef struct plpgsql_check_result_info
 	int			format;						/* produced / expected format */
 	Tuplestorestate	*tuple_store;			/* target tuple store */
 	TupleDesc	tupdesc;					/* target tuple store tuple descriptor */
-	int			nwrites;					/* number of writes */
 	StringInfo	sinfo;						/* buffer for multi line one value output formats */
 	bool		init_tag;					/* true, when init tag should be created */
 } plpgsql_check_result_info;
@@ -46,6 +63,8 @@ typedef struct plpgsql_check_info
 {
 	HeapTuple	proctuple;
 	Oid			fn_oid;
+	Oid			rettype;
+	char		volatility;
 	Oid			relid;
 	PLpgSQL_trigtype trigtype;
 	char		*src;
@@ -58,7 +77,6 @@ typedef struct plpgsql_check_info
 
 typedef struct PLpgSQL_checkstate
 {
-	Oid			fn_oid;						/* oid of checked function */
 	List	    *argnames;					/* function arg names */
 	char		decl_volatility;			/* declared function volatility */
 	char		volatility;					/* detected function volatility */
@@ -111,7 +129,7 @@ extern void plpgsql_check_put_profile(plpgsql_check_result_info *ri, int lineno,
 /*
  * function from catalog.c
  */
-extern PLpgSQL_trigtype plpgsql_check_get_trigtype(HeapTuple procTuple);
+extern void plpgsql_check_get_function_info(HeapTuple procTuple, Oid *rettype, char *volatility, PLpgSQL_trigtype *trigtype);
 extern void plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo);
 extern char * plpgsql_check_get_src(HeapTuple procTuple);
 
@@ -126,20 +144,23 @@ extern Datum plpgsql_profiler_function_tb(PG_FUNCTION_ARGS);
 /*
  * functions from profiler.c
  */
+extern void plpgsql_check_profiler_shmem_startup(void);
 extern void plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo);
 
 /*
  * functions from check_function.c
  */
 extern void plpgsql_check_function_internal(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo);
+extern void plpgsql_check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func);
+extern void plpgsql_check_HashTableInit(void);
+extern bool plpgsql_check_is_checked(PLpgSQL_function *func);
+extern void plpgsql_check_mark_as_checked(PLpgSQL_function *func);
 
-/*
- * functions from plpgsql_setup.c
- */
-extern void plpgsql_check_setup_fcinfo(HeapTuple procTuple, FmgrInfo *flinfo, FunctionCallInfoData *fcinfo,
-	ReturnSetInfo *rsinfo, TriggerData *trigdata, Oid relid, EventTriggerData *etrigdata, Oid funcoid,
-	PLpgSQL_trigtype trigtype, Trigger *tg_trigger, bool *fake_rtd);
-extern void plpgsql_check_setup_estate(PLpgSQL_execstate *estate, PLpgSQL_function *func, ReturnSetInfo *rsi);
+extern bool plpgsql_check_other_warnings;
+extern bool plpgsql_check_extra_warnings;
+extern bool plpgsql_check_performance_warnings;
+extern bool plpgsql_check_fatal_errors;
+extern int plpgsql_check_mode;
 
 /*
  * functions from expr_walk.c
@@ -184,25 +205,38 @@ extern void plpgsql_check_report_too_high_volatility(PLpgSQL_checkstate *cstate)
 /*
  * functions from stmtwalk.c
  */
-void plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **exceptions);
+extern void plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **exceptions);
 
-
-
-extern TupleDesc
-plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
-			  PLpgSQL_expr *query,
-			  bool use_element_type,
-			  bool expand_record,
-			  bool is_expression,
-			  Oid *first_level_typoid);
+/*
+ * functions from typdesc.c
+ */
+extern TupleDesc plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query,
+	bool use_element_type, bool expand_record, bool is_expression, Oid *first_level_typoid);;
 
 #if PG_VERSION_NUM >= 110000
 
-extern PLpgSQL_row *
-plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr);
+extern PLpgSQL_row * plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr);
 
 #endif
 
+/*
+ * functions from profiler.c
+ */
+extern Size plpgsql_check_shmem_size(void);
+extern void plpgsql_check_profiler_init_hash_tables(void);
+
+extern void plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *func);
+extern void plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func);
+extern void plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
+extern void plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
+
+extern bool plpgsql_check_profiler;
+
+/*
+ * functions from plpgsql_check.c
+ */
+
+extern shmem_startup_hook_type prev_shmem_startup_hook;
 
 #define NEVER_READ_VARIABLE_TEXT		"never read variable \"%s\""
 #define NEVER_READ_VARIABLE_TEXT_CHECK_LENGTH		19
@@ -249,3 +283,5 @@ plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *Cal
 #define PLPGSQL_STMT_TYPES		(enum PLpgSQL_stmt_types)
 
 #endif
+
+#define FUNCS_PER_USER		128 /* initial table size */

@@ -24,15 +24,6 @@ static int merge_closing(int c, int c_local, List **exceptions, List *exceptions
 static bool exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond);
 static bool found_shadowed_variable(char *varname, PLpgSQL_stmt_stack_item *current, PLpgSQL_checkstate *cstate);
 
-enum
-{
-	PLPGSQL_CHECK_CLOSED,
-	PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS,
-	PLPGSQL_CHECK_POSSIBLY_CLOSED,
-	PLPGSQL_CHECK_UNCLOSED,
-	PLPGSQL_CHECK_UNKNOWN
-};
-
 
 #if PG_VERSION_NUM >= 110000
 

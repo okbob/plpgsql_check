@@ -1,13 +1,35 @@
+/*-------------------------------------------------------------------------
+ *
+ * typdesc.c
+ *
+ *			  deduction result tupdesc from expression
+ *
+ * by Pavel Stehule 2013-2018
+ *
+ *-------------------------------------------------------------------------
+ */
+
+#include "plpgsql_check.h"
+
+#include "access/htup_details.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
+#include "executor/spi_priv.h"
+#include "nodes/nodeFuncs.h"
+#include "optimizer/clauses.h"
+#include "utils/builtins.h"
+#include "utils/lsyscache.h"
+#include "utils/syscache.h"
+#include "utils/typcache.h"
 
 #if PG_VERSION_NUM >= 110000
 
 /*
-
-/*
- * Try to calculate row target from used INOUT variables
+ * Try to calculate procedure row target from used INOUT variables
+ *
  */
-static PLpgSQL_row *
-CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr)
+PLpgSQL_row *
+plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr)
 {
 	Node	   *node;
 	FuncExpr   *funcexpr;
@@ -121,14 +143,13 @@ CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr)
 
 #endif
 
-
-
 /*
  * Returns a tuple descriptor based on existing plan, When error is detected
- * returns null.
+ * returns null. Does hardwork when result is based on record type.
+ *
  */
-static TupleDesc
-expr_get_desc(PLpgSQL_checkstate *cstate,
+TupleDesc
+plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 			  PLpgSQL_expr *query,
 			  bool use_element_type,
 			  bool expand_record,
