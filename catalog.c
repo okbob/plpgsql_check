@@ -36,6 +36,8 @@ plpgsql_check_get_function_info(HeapTuple procTuple,
 
 	functyptype = get_typtype(proc->prorettype);
 
+	*trigtype = PLPGSQL_NOT_TRIGGER;
+
 	/*
 	 * Disallow pseudotype result  except for TRIGGER, RECORD, VOID, or
 	 * polymorphic
@@ -57,7 +59,6 @@ plpgsql_check_get_function_info(HeapTuple procTuple,
 							format_type_be(proc->prorettype))));
 	}
 
-	*trigtype = PLPGSQL_NOT_TRIGGER;
 
 	*volatility = ((Form_pg_proc) GETSTRUCT(procTuple))->provolatile;
 	*rettype = ((Form_pg_proc) GETSTRUCT(procTuple))->prorettype;
