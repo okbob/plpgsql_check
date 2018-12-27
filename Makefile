@@ -1,7 +1,8 @@
 # $PostgreSQL: pgsql/contrib/plpgsql_check/Makefile
 
 MODULE_big = plpgsql_check
-OBJS = format.o catalog.o tablefunc.o expr_walk.o assign.o check_expr.o report.o stmtwalk.o check_function.o typdesc.o profiler.o plpgsql_check.o
+OBJS = $(patsubst %.c,%.o,$(wildcard src/*.c))
+#OBJS = src/format.o src/catalog.o src/tablefunc.o src/expr_walk.o src/assign.o src/check_expr.o src/report.o src/stmtwalk.o src/check_function.o src/typdesc.o src/profiler.o src/plpgsql_check.o
 DATA = plpgsql_check--1.5.sql
 EXTENSION = plpgsql_check
 
