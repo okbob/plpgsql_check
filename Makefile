@@ -2,7 +2,6 @@
 
 MODULE_big = plpgsql_check
 OBJS = $(patsubst %.c,%.o,$(wildcard src/*.c))
-#OBJS = src/format.o src/catalog.o src/tablefunc.o src/expr_walk.o src/assign.o src/check_expr.o src/report.o src/stmtwalk.o src/check_function.o src/typdesc.o src/profiler.o src/plpgsql_check.o
 DATA = plpgsql_check--1.5.sql
 EXTENSION = plpgsql_check
 

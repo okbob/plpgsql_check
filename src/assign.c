@@ -31,9 +31,6 @@ static bool compatible_tupdescs(TupleDesc src_tupdesc, TupleDesc dst_tupdesc);
 
 #endif
 
-
-
-
 /*
  * Mark variable as used
  */
