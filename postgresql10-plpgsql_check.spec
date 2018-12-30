@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	1.4.2
+Version:	1.5.0
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -50,6 +50,8 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/plpgsql_check.control
 
 %changelog
+
+
 * Fri Dec 23 2018 - Pavel STEHULE <pavel.stehule@gmail.com> 1.4.2-1
 - metada fix
 
