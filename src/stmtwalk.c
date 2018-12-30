@@ -11,6 +11,7 @@
 
 #include "plpgsql_check.h"
 
+#include "access/tupconvert.h"
 #include "catalog/pg_type.h"
 
 static void check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **exceptions);

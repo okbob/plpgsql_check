@@ -28,6 +28,7 @@
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
 #include "utils/guc.h"
+#include "utils/memutils.h"
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;

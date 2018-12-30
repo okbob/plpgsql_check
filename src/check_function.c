@@ -15,8 +15,9 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "utils/guc.h"
-#include "utils/rel.h"
+#include "utils/memutils.h"
 #include "utils/lsyscache.h"
+#include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 

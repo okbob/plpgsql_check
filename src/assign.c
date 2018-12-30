@@ -11,6 +11,7 @@
 
 #include "plpgsql_check.h"
 
+#include "access/htup_details.h"
 #include "catalog/pg_type.h"
 #include "parser/parse_coerce.h"
 #include "utils/builtins.h"
@@ -26,10 +27,11 @@
 #define eval_mcontext_alloc0(estate, sz) \
 	MemoryContextAllocZero(get_eval_mcontext(estate), sz)
 
+static bool compatible_tupdescs(TupleDesc src_tupdesc, TupleDesc dst_tupdesc);
+
 #endif
 
 
-static bool compatible_tupdescs(TupleDesc src_tupdesc, TupleDesc dst_tupdesc);
 
 
 /*
@@ -699,7 +701,7 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 	bool	   *nulls;
 	HeapTuple	tup;
 
-	recval_release(rec);
+	plpgsql_check_recval_release(rec);
 
 	if (!tupdesc)
 		return;
@@ -723,6 +725,8 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 #endif
 
 }
+
+#if PG_VERSION_NUM >= 110000
 
 /*
  * compatible_tupdescs: detect whether two tupdescs are physically compatible
@@ -764,3 +768,5 @@ compatible_tupdescs(TupleDesc src_tupdesc, TupleDesc dst_tupdesc)
 	}
 	return true;
 }
+
+#endif

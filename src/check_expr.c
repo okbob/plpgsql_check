@@ -12,6 +12,7 @@
 
 #include "plpgsql_check.h"
 
+#include "access/tupconvert.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "executor/spi_priv.h"

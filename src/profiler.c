@@ -15,6 +15,8 @@
 #include "catalog/pg_type.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
+#include "storage/spin.h"
+#include "utils/memutils.h"
 #include "utils/syscache.h"
 
 /*
