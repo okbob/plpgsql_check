@@ -15,7 +15,13 @@
 #include "catalog/pg_type.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
+
+#if PG_VERSION_NUM < 110000
+
 #include "storage/spin.h"
+
+#endif
+
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 
