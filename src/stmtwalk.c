@@ -1108,7 +1108,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 			case PLPGSQL_STMT_COMMIT:
 			case PLPGSQL_STMT_ROLLBACK:
 				/* These commands are allowed only in procedures */
-				if (!is_procedure(cstate->estate))
+				if (!cstate->cinfo->is_procedure)
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TRANSACTION_TERMINATION),
 							 errmsg("invalid transaction termination")));

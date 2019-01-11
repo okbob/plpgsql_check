@@ -88,7 +88,8 @@ plpgsql_check_function(PG_FUNCTION_ARGS)
 	plpgsql_check_get_function_info(cinfo.proctuple,
 									&cinfo.rettype,
 									&cinfo.volatility,
-									&cinfo.trigtype);
+									&cinfo.trigtype,
+									&cinfo.is_procedure);
 
 	plpgsql_check_precheck_conditions(&cinfo);
 
@@ -145,7 +146,8 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	plpgsql_check_get_function_info(cinfo.proctuple,
 									&cinfo.rettype,
 									&cinfo.volatility,
-									&cinfo.trigtype);
+									&cinfo.trigtype,
+									&cinfo.is_procedure);
 
 	plpgsql_check_precheck_conditions(&cinfo);
 
@@ -201,7 +203,8 @@ plpgsql_show_dependency_tb(PG_FUNCTION_ARGS)
 	plpgsql_check_get_function_info(cinfo.proctuple,
 									&cinfo.rettype,
 									&cinfo.volatility,
-									&cinfo.trigtype);
+									&cinfo.trigtype,
+									&cinfo.is_procedure);
 
 	plpgsql_check_precheck_conditions(&cinfo);
 
@@ -243,7 +246,8 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 	plpgsql_check_get_function_info(cinfo.proctuple,
 									&cinfo.rettype,
 									&cinfo.volatility,
-									&cinfo.trigtype);
+									&cinfo.trigtype,
+									&cinfo.is_procedure);
 
 	plpgsql_check_precheck_conditions(&cinfo);
 

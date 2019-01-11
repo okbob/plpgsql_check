@@ -62,6 +62,7 @@ typedef struct plpgsql_check_result_info
 typedef struct plpgsql_check_info
 {
 	HeapTuple	proctuple;
+	bool		is_procedure;
 	Oid			fn_oid;
 	Oid			rettype;
 	char		volatility;
@@ -89,7 +90,6 @@ typedef struct PLpgSQL_checkstate
 	Bitmapset  *modif_variables;			/* track which variables had been changed; bit per varno */
 	PLpgSQL_stmt_stack_item *top_stmt_stack;	/* list of known labels + related command */
 	bool		found_return_query;			/* true, when code contains RETURN query */
-	bool		is_procedure;				/* true, when checked code is a procedure */
 	Bitmapset	   *func_oids;				/* list of used (and displayed) functions */
 	Bitmapset	   *rel_oids;				/* list of used (and displayed) relations */
 	bool		fake_rtd;					/* true when functions returns record */
@@ -129,7 +129,7 @@ extern void plpgsql_check_put_profile(plpgsql_check_result_info *ri, int lineno,
 /*
  * function from catalog.c
  */
-extern void plpgsql_check_get_function_info(HeapTuple procTuple, Oid *rettype, char *volatility, PLpgSQL_trigtype *trigtype);
+extern void plpgsql_check_get_function_info(HeapTuple procTuple, Oid *rettype, char *volatility, PLpgSQL_trigtype *trigtype, bool *is_procedure);
 extern void plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo);
 extern char * plpgsql_check_get_src(HeapTuple procTuple);
 

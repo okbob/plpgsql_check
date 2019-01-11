@@ -290,7 +290,8 @@ plpgsql_check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 			plpgsql_check_get_function_info(procTuple,
 											&cinfo.rettype,
 											&cinfo.volatility,
-											&cinfo.trigtype);
+											&cinfo.trigtype,
+											&cinfo.is_procedure);
 
 			ReleaseSysCache(procTuple);
 
@@ -311,8 +312,6 @@ plpgsql_check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 
 		/* use real estate */
 		cstate.estate = estate;
-
-		cstate.is_procedure = func->fn_rettype == InvalidOid;
 
 		old_cxt = MemoryContextSwitchTo(cstate.check_cxt);
 

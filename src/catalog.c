@@ -24,6 +24,12 @@
 
 #endif
 
+#if PG_VERSION_NUM >= 110000
+
+#include "catalog/pg_proc_d.h"
+
+#endif
+
 #include "utils/syscache.h"
 
 /*
@@ -33,7 +39,8 @@ void
 plpgsql_check_get_function_info(HeapTuple procTuple,
 								Oid *rettype,
 								char *volatility,
-								PLpgSQL_trigtype *trigtype)
+								PLpgSQL_trigtype *trigtype,
+								bool *is_procedure)
 {
 	Form_pg_proc proc;
 	char		functyptype;
@@ -43,6 +50,16 @@ plpgsql_check_get_function_info(HeapTuple procTuple,
 	functyptype = get_typtype(proc->prorettype);
 
 	*trigtype = PLPGSQL_NOT_TRIGGER;
+
+#if PG_VERSION_NUM >= 110000
+
+	*is_procedure = proc->prokind == PROKIND_PROCEDURE;
+
+#else
+
+	*is_procedure = false;
+
+#endif
 
 	/*
 	 * Disallow pseudotype result  except for TRIGGER, RECORD, VOID, or
