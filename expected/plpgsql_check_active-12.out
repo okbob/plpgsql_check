@@ -425,3 +425,22 @@ select * from plpgsql_check_function('testproc(int)');
 ------------------------
 (0 rows)
 
+-- check assignement to recfield
+create table foo(a int);
+create or replace function test_field_assignment()
+returns void as $$
+declare v foo;
+begin
+  v.a := 10;
+  v.a := current_timestamp;
+  raise notice '%', v;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('test_field_assignment');
+                              plpgsql_check_function                              
+----------------------------------------------------------------------------------
+ warning:42804:5:assignment:target type is different type than source type
+ Detail: cast "timestamp with time zone" value to "integer" type
+ Hint: There are no possible explicit coercion between those types, possibly bug!
+(3 rows)
+

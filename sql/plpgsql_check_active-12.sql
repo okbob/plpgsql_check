@@ -332,3 +332,19 @@ $$ language plpgsql;
 call testproc(10);
 
 select * from plpgsql_check_function('testproc(int)');
+
+-- check assignement to recfield
+
+create table foo(a int);
+
+create or replace function test_field_assignment()
+returns void as $$
+declare v foo;
+begin
+  v.a := 10;
+  v.a := current_timestamp;
+  raise notice '%', v;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('test_field_assignment');

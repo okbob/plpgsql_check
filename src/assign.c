@@ -373,6 +373,20 @@ plpgsql_check_assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDes
 			plpgsql_check_assign_tupdesc_row_or_rec(cstate, NULL, (PLpgSQL_rec *) target, tupdesc, isnull);
 			break;
 
+		case PLPGSQL_DTYPE_RECFIELD:
+			{
+				Oid		typoid;
+				int		typmod;
+
+				plpgsql_check_target(cstate, varno, &typoid, &typmod);
+
+				plpgsql_check_assign_to_target_type(cstate,
+									 typoid, typmod,
+									 TupleDescAttr(tupdesc, 0)->atttypid,
+									 isnull);
+			}
+			break;
+
 		case PLPGSQL_DTYPE_ARRAYELEM:
 			{
 				Oid expected_typoid;
