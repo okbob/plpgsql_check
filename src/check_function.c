@@ -21,6 +21,12 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
+#if PG_VERSION_NUM >= 120000
+
+#include "access/heapam.h"
+
+#endif
+
 static HTAB *plpgsql_check_HashTable = NULL;
 
 bool plpgsql_check_other_warnings = false;
