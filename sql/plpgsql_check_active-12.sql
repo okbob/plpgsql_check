@@ -348,3 +348,17 @@ end;
 $$ language plpgsql;
 
 select * from plpgsql_check_function('test_field_assignment');
+
+drop table foo;
+
+create table foo(a int, b int);
+
+create or replace function foofunc()
+returns void as $$
+begin
+  -- should be ok
+  perform * from foo;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('foofunc');
