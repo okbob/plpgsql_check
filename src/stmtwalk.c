@@ -640,7 +640,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				break;
 
 			case PLPGSQL_STMT_PERFORM:
-				plpgsql_check_expr(cstate, ((PLpgSQL_stmt_perform *) stmt)->expr);
+				plpgsql_check_expr_as_sqlstmt(cstate, ((PLpgSQL_stmt_perform *) stmt)->expr);
 
 				/*
 				 * Note: if you want to raise warning when used expressions returns
