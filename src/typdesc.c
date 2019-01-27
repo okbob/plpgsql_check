@@ -334,15 +334,26 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 						{
 							FuncExpr   *fn = (FuncExpr *) tle->expr;
 							FmgrInfo	flinfo;
-							FunctionCallInfoData fcinfo;
+
+#if PG_VERSION_NUM >= 120000
+
+							LOCAL_FCINFO(fcinfo, 0);
+
+#else
+
+							FunctionCallInfoData fcinfo_data;
+							FunctionCallInfo fake_fcinfo = &fcinfo_data;
+
+#endif
+
 							TupleDesc	rd;
 							Oid			rt;
 
 							fmgr_info(fn->funcid, &flinfo);
 							flinfo.fn_expr = (Node *) fn;
-							fcinfo.flinfo = &flinfo;
+							fcinfo->flinfo = &flinfo;
 
-							get_call_result_type(&fcinfo, &rt, &rd);
+							get_call_result_type(fcinfo, &rt, &rd);
 							if (rd == NULL)
 								ereport(ERROR,
 										(errcode(ERRCODE_DATATYPE_MISMATCH),

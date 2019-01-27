@@ -55,7 +55,7 @@ static void release_exprs(List *exprs);
 static int load_configuration(HeapTuple procTuple, bool *reload_config);
 static void init_datum_dno(PLpgSQL_checkstate *cstate, int dno);
 static PLpgSQL_datum * copy_plpgsql_datum(PLpgSQL_checkstate *cstate, PLpgSQL_datum *datum);
-static void plpgsql_check_setup_fcinfo(HeapTuple procTuple, FmgrInfo *flinfo, FunctionCallInfoData *fcinfo,
+static void plpgsql_check_setup_fcinfo(HeapTuple procTuple, FmgrInfo *flinfo, FunctionCallInfo fcinfo,
 	ReturnSetInfo *rsinfo, TriggerData *trigdata, Oid relid, EventTriggerData *etrigdata, Oid funcoid,
 	Oid rettype, PLpgSQL_trigtype trigtype, Trigger *tg_trigger, bool *fake_rtd);
 static void plpgsql_check_setup_estate(PLpgSQL_execstate *estate, PLpgSQL_function *func, ReturnSetInfo *rsi);
@@ -74,7 +74,18 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 	PLpgSQL_function *volatile function = NULL;
 	int			save_nestlevel = 0;
 	bool		reload_config;
-	FunctionCallInfoData fake_fcinfo;
+
+#if PG_VERSION_NUM >= 120000
+
+	LOCAL_FCINFO(fake_fcinfo, 0);
+
+#else
+
+	FunctionCallInfoData fake_fcinfo_data;
+	FunctionCallInfo fake_fcinfo = &fake_fcinfo_data;
+
+#endif
+
 	FmgrInfo	flinfo;
 	TriggerData trigdata;
 	EventTriggerData etrigdata;
@@ -95,7 +106,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 
 	plpgsql_check_setup_fcinfo(cinfo->proctuple,
 							   &flinfo,
-							   &fake_fcinfo,
+							   fake_fcinfo,
 							   &rsinfo,
 							   &trigdata,
 							   cinfo->relid,
@@ -148,7 +159,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 		if (plpgsql_check_mode != PLPGSQL_CHECK_MODE_DISABLED)
 		{
 			/* Get a compiled function */
-			function = plpgsql_compile(&fake_fcinfo, false);
+			function = plpgsql_compile(fake_fcinfo, false);
 
 			/* Must save and restore prior value of cur_estate */
 			cur_estate = function->cur_estate;
@@ -157,7 +168,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 
 			Assert(function->fn_is_trigger == cinfo->trigtype);
 
-			plpgsql_check_setup_estate(&estate, function, (ReturnSetInfo *) fake_fcinfo.resultinfo);
+			plpgsql_check_setup_estate(&estate, function, (ReturnSetInfo *) fake_fcinfo->resultinfo);
 			cstate.estate = &estate;
 
 			/*
@@ -178,7 +189,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 					break;
 
 				case PLPGSQL_NOT_TRIGGER:
-					function_check(function, &fake_fcinfo, &estate, &cstate);
+					function_check(function, fake_fcinfo, &estate, &cstate);
 					break;
 			}
 
@@ -658,7 +669,7 @@ is_polymorphic_tupdesc(TupleDesc tupdesc)
 static void
 plpgsql_check_setup_fcinfo(HeapTuple procTuple,
 						  FmgrInfo *flinfo,
-						  FunctionCallInfoData *fcinfo,
+						  FunctionCallInfo fcinfo,
 						  ReturnSetInfo *rsinfo,
 						  TriggerData *trigdata,
 						  Oid relid,
@@ -674,7 +685,16 @@ plpgsql_check_setup_fcinfo(HeapTuple procTuple,
 	*fake_rtd = false;
 
 	/* clean structures */
+#if PG_VERSION_NUM >= 120000
+
+	MemSet(fcinfo, 0, SizeForFunctionCallInfo(0));
+
+#else
+
 	MemSet(fcinfo, 0, sizeof(FunctionCallInfoData));
+
+#endif
+
 	MemSet(flinfo, 0, sizeof(FmgrInfo));
 	MemSet(rsinfo, 0, sizeof(ReturnSetInfo));
 
