@@ -342,7 +342,7 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 #else
 
 							FunctionCallInfoData fcinfo_data;
-							FunctionCallInfo fake_fcinfo = &fcinfo_data;
+							FunctionCallInfo fcinfo = &fcinfo_data;
 
 #endif
 
