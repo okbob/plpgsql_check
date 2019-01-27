@@ -23,7 +23,8 @@ enum
 	PLPGSQL_CHECK_FORMAT_XML,
 	PLPGSQL_CHECK_FORMAT_JSON,
 	PLPGSQL_SHOW_DEPENDENCY_FORMAT_TABULAR,
-	PLPGSQL_SHOW_PROFILE_TABULAR
+	PLPGSQL_SHOW_PROFILE_TABULAR,
+	PLPGSQL_SHOW_PROFILE_STATEMENTS_TABULAR
 };
 
 enum
@@ -125,6 +126,8 @@ extern void plpgsql_check_put_error_edata(PLpgSQL_checkstate *cstate, ErrorData 
 extern void plpgsql_check_put_dependency(plpgsql_check_result_info *ri, char *type, Oid oid, char *schema, char *name, char *params);
 extern void plpgsql_check_put_profile(plpgsql_check_result_info *ri, int lineno, int stmt_lineno,
 	int cmds_on_row, int exec_count, int64 us_total, Datum max_time_array, Datum processed_rows_array, char *source_row);
+extern void plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri, int stmtid, int parent_stmtid, int lineno,
+	int64 exec_stmts, double total_time, double avg_time, double max_time, int64 processed_rows, char *stmtname);
 
 /*
  * function from catalog.c
@@ -140,6 +143,7 @@ extern Datum plpgsql_check_function(PG_FUNCTION_ARGS);
 extern Datum plpgsql_check_function_tb(PG_FUNCTION_ARGS);
 extern Datum plpgsql_show_dependency_tb(PG_FUNCTION_ARGS);
 extern Datum plpgsql_profiler_function_tb(PG_FUNCTION_ARGS);
+extern Datum plpgsql_profiler_function_statements_tb(PG_FUNCTION_ARGS);
 
 /*
  * functions from profiler.c
@@ -155,6 +159,10 @@ extern void plpgsql_check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_functi
 extern void plpgsql_check_HashTableInit(void);
 extern bool plpgsql_check_is_checked(PLpgSQL_function *func);
 extern void plpgsql_check_mark_as_checked(PLpgSQL_function *func);
+extern void plpgsql_check_setup_fcinfo(HeapTuple procTuple, FmgrInfo *flinfo, FunctionCallInfo fcinfo,
+	ReturnSetInfo *rsinfo, TriggerData *trigdata, Oid relid, EventTriggerData *etrigdata, Oid funcoid,
+	Oid rettype, PLpgSQL_trigtype trigtype, Trigger *tg_trigger, bool *fake_rtd);
+
 
 extern bool plpgsql_check_other_warnings;
 extern bool plpgsql_check_extra_warnings;
@@ -229,6 +237,9 @@ extern void plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_
 extern void plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func);
 extern void plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 extern void plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
+
+extern void plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo);
+extern void plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo);
 
 extern bool plpgsql_check_profiler;
 

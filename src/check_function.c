@@ -55,9 +55,6 @@ static void release_exprs(List *exprs);
 static int load_configuration(HeapTuple procTuple, bool *reload_config);
 static void init_datum_dno(PLpgSQL_checkstate *cstate, int dno);
 static PLpgSQL_datum * copy_plpgsql_datum(PLpgSQL_checkstate *cstate, PLpgSQL_datum *datum);
-static void plpgsql_check_setup_fcinfo(HeapTuple procTuple, FmgrInfo *flinfo, FunctionCallInfo fcinfo,
-	ReturnSetInfo *rsinfo, TriggerData *trigdata, Oid relid, EventTriggerData *etrigdata, Oid funcoid,
-	Oid rettype, PLpgSQL_trigtype trigtype, Trigger *tg_trigger, bool *fake_rtd);
 static void plpgsql_check_setup_estate(PLpgSQL_execstate *estate, PLpgSQL_function *func, ReturnSetInfo *rsi);
 static void plpgsql_check_setup_cstate(PLpgSQL_checkstate *cstate, plpgsql_check_result_info *result_info,
 	plpgsql_check_info *cinfo, bool is_active_mode, bool fake_rtd);
@@ -666,7 +663,7 @@ is_polymorphic_tupdesc(TupleDesc tupdesc)
  * When output fake_rtd is true, then we should to not compare result fields,
  * because we know nothing about expected result.
  */
-static void
+void
 plpgsql_check_setup_fcinfo(HeapTuple procTuple,
 						  FmgrInfo *flinfo,
 						  FunctionCallInfo fcinfo,

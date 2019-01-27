@@ -21,6 +21,7 @@ PG_FUNCTION_INFO_V1(plpgsql_check_function);
 PG_FUNCTION_INFO_V1(plpgsql_check_function_tb);
 PG_FUNCTION_INFO_V1(plpgsql_show_dependency_tb);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_function_tb);
+PG_FUNCTION_INFO_V1(plpgsql_profiler_function_statements_tb);
 
 /*
  * Validate function result description
@@ -264,3 +265,47 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 
 	return (Datum) 0;
 }
+
+/*
+ * Displaying a function profile
+ */
+Datum
+plpgsql_profiler_function_statements_tb(PG_FUNCTION_ARGS)
+{
+	plpgsql_check_info		cinfo;
+	plpgsql_check_result_info ri;
+	ReturnSetInfo *rsinfo;
+
+	if (PG_NARGS() != 1)
+		elog(ERROR, "unexpected number of parameters, you should to update extension");
+
+	/* check to see if caller supports us returning a tuplestore */
+	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	SetReturningFunctionCheck(rsinfo);
+
+	init_check_info(&cinfo, PG_GETARG_OID(0));
+	cinfo.show_profile = true;
+
+	cinfo.proctuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(cinfo.fn_oid));
+	if (!HeapTupleIsValid(cinfo.proctuple))
+		elog(ERROR, "cache lookup failed for function %u", cinfo.fn_oid);
+
+	plpgsql_check_get_function_info(cinfo.proctuple,
+									&cinfo.rettype,
+									&cinfo.volatility,
+									&cinfo.trigtype,
+									&cinfo.is_procedure);
+
+	plpgsql_check_precheck_conditions(&cinfo);
+
+	plpgsql_check_init_ri(&ri, PLPGSQL_SHOW_PROFILE_STATEMENTS_TABULAR, rsinfo);
+
+	plpgsql_check_profiler_show_profile_statements(&ri, &cinfo);
+
+	plpgsql_check_finalize_ri(&ri);
+
+	ReleaseSysCache(cinfo.proctuple);
+
+	return (Datum) 0;
+}
+

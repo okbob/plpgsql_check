@@ -83,6 +83,22 @@ static void put_error_tabular(plpgsql_check_result_info *ri, PLpgSQL_execstate *
 #define Anum_profiler_processed_rows	7
 #define Anum_profiler_source			8
 
+/*
+ * columns of plpgsql_profiler_function_statements_tb result
+ *
+ */
+#define Natts_profiler_statements					9
+
+#define Anum_profiler_statements_stmtid				0
+#define Anum_profiler_statements_parent_stmtid		1
+#define Anum_profiler_statements_lineno				2
+#define Anum_profiler_statements_exec_stmts			3
+#define Anum_profiler_statements_total_time			4
+#define Anum_profiler_statements_avg_time			5
+#define Anum_profiler_statements_max_time			6
+#define Anum_profiler_statements_processed_rows		7
+#define Anum_profiler_statements_stmtname			8
+
 
 #define SET_RESULT_NULL(anum) \
 	do { \
@@ -172,6 +188,9 @@ plpgsql_check_init_ri(plpgsql_check_result_info *ri,
 			break;
 		case PLPGSQL_SHOW_PROFILE_TABULAR:
 			natts = Natts_profiler;
+			break;
+		case PLPGSQL_SHOW_PROFILE_STATEMENTS_TABULAR:
+			natts = Natts_profiler_statements;
 			break;
 		default:
 			elog(ERROR, "unknown format %d", format);
@@ -834,6 +853,56 @@ plpgsql_check_put_profile(plpgsql_check_result_info *ri,
 		SET_RESULT(Anum_profiler_max_time, max_time_array);
 		SET_RESULT(Anum_profiler_processed_rows, processed_rows_array);
 	}
+
+	tuplestore_putvalues(ri->tuple_store, ri->tupdesc, values, nulls);
+}
+
+/*
+ * Store one output row of profiler to result tuplestore in statement 
+ * oriented format
+ *
+ */
+void
+plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri,
+									int stmtid,
+									int parent_stmtid,
+									int lineno,
+									int64 exec_stmts,
+									double total_time,
+									double avg_time,
+									double max_time,
+									int64 processed_rows,
+									char *stmtname)
+{
+	Datum	values[Natts_profiler_statements];
+	bool	nulls[Natts_profiler_statements];
+
+	Assert(ri->tuple_store);
+	Assert(ri->tupdesc);
+
+	/* ignore invisible statements */
+	if (lineno <= 0)
+		return;
+
+	SET_RESULT_INT32(Anum_profiler_statements_stmtid, stmtid);
+	SET_RESULT_INT32(Anum_profiler_statements_lineno, lineno);
+	SET_RESULT_INT64(Anum_profiler_statements_exec_stmts, exec_stmts);
+	SET_RESULT_INT64(Anum_profiler_statements_processed_rows, processed_rows);
+	SET_RESULT_FLOAT8(Anum_profiler_statements_total_time, total_time / 1000.0);
+	SET_RESULT_FLOAT8(Anum_profiler_statements_total_time, total_time / 1000.0);
+	SET_RESULT_FLOAT8(Anum_profiler_statements_max_time, max_time / 1000.0);
+	SET_RESULT_TEXT(Anum_profiler_statements_stmtname, stmtname);
+
+	/* set nullable field */
+	if (parent_stmtid == -1)
+		SET_RESULT_NULL(Anum_profiler_statements_parent_stmtid);
+	else
+		SET_RESULT_INT32(Anum_profiler_statements_parent_stmtid, parent_stmtid);
+
+	if (exec_stmts > 0)
+		SET_RESULT_FLOAT8(Anum_profiler_statements_avg_time, ceil(((float8) total_time) / exec_stmts) / 1000.0);
+	else
+		SET_RESULT_NULL(Anum_profiler_statements_avg_time);
 
 	tuplestore_putvalues(ri->tuple_store, ri->tupdesc, values, nulls);
 }

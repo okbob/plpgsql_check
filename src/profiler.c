@@ -134,11 +134,11 @@ bool plpgsql_check_profiler = true;
 PG_FUNCTION_INFO_V1(plpgsql_profiler_reset_all);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_reset);
 
-static void profiler_touch_stmt(profiler_info *pinfo, PLpgSQL_stmt *stmt, bool generate_map, bool finalize_profile, int64 *nested_us_total);
+static void profiler_touch_stmt(profiler_info *pinfo, PLpgSQL_stmt *stmt, PLpgSQL_stmt *parent_stmt, bool generate_map, bool finalize_profile, int64 *nested_us_total, plpgsql_check_result_info *ri);
 static void update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func);
 static void profiler_update_map(profiler_profile *profile, PLpgSQL_stmt *stmt);
 static int profiler_get_stmtid(profiler_profile *profile, PLpgSQL_stmt *stmt);
-static void profiler_touch_stmts(profiler_info *pinfo, List *stmts, bool generate_map, bool finalize_profile, int64 *nested_us_total);
+static void profiler_touch_stmts(profiler_info *pinfo, List *stmts, PLpgSQL_stmt *parent_stmt, bool generate_map, bool finalize_profile, int64 *nested_us_total, plpgsql_check_result_info *ri);
 
 /*
  * Calculate required size of shared memory for chunks
@@ -318,23 +318,44 @@ plpgsql_check_profiler_init_hash_tables(void)
  *      create statement -> id mapping
  *   b) iterate over all commends and finalize total time
  *      as measured total time substract child total time.
+ *   c) iterate over all commands and prepare result for
+ *      plpgsql_profiler_function_statements_tb function.
  *
  */
 static void
 profiler_touch_stmt(profiler_info *pinfo,
 					PLpgSQL_stmt *stmt,
+					PLpgSQL_stmt *parent_stmt,
 					bool generate_map,
 					bool finalize_profile,
-					int64 *nested_us_total)
+					int64 *nested_us_total,
+					plpgsql_check_result_info *ri)
 {
 	int64		us_total = 0;
 	profiler_profile *profile = pinfo->profile;
 	profiler_stmt *pstmt = NULL;
 
-	if (generate_map)
-		profiler_update_map(profile, stmt);
+	if (ri)
+	{
+		int		stmtid = profiler_get_stmtid(profile, stmt);
+		int		parent_stmtid = parent_stmt ? profiler_get_stmtid(profile, parent_stmt) : -1;
 
-	if (finalize_profile)
+		plpgsql_check_put_profile_statement(ri,
+											stmtid,
+											parent_stmtid,
+											stmt->lineno,
+											0,
+											0.0,
+											0.0,
+											0.0,
+											0,
+											(char *) plpgsql_stmt_typename(stmt));
+	}
+	else if (generate_map)
+	{
+		profiler_update_map(profile, stmt);
+	}
+	else if (finalize_profile)
 	{
 		int stmtid = profiler_get_stmtid(profile, stmt);
 
@@ -352,9 +373,11 @@ profiler_touch_stmt(profiler_info *pinfo,
 
 				profiler_touch_stmts(pinfo,
 									 stmt_block->body,
+									 stmt,
 									 generate_map,
 									 finalize_profile,
-									 &us_total);
+									 &us_total,
+									 ri);
 
 				if (finalize_profile)
 					*nested_us_total += us_total;
@@ -367,9 +390,11 @@ profiler_touch_stmt(profiler_info *pinfo,
 					{
 						profiler_touch_stmts(pinfo,
 											 ((PLpgSQL_exception *) lfirst(lc))->action,
+											 stmt,
 											 generate_map,
 											 finalize_profile,
-											 &us_total);
+											 &us_total,
+											 ri);
 
 						if (finalize_profile)
 							*nested_us_total += us_total;
@@ -401,9 +426,11 @@ profiler_touch_stmt(profiler_info *pinfo,
 
 				profiler_touch_stmts(pinfo,
 									 stmt_if->then_body,
+									 stmt,
 									 generate_map,
 									 finalize_profile,
-									 &us_total);
+									 &us_total,
+									 ri);
 
 				if (finalize_profile)
 					*nested_us_total += us_total;
@@ -412,9 +439,11 @@ profiler_touch_stmt(profiler_info *pinfo,
 				{
 					profiler_touch_stmts(pinfo,
 										 ((PLpgSQL_if_elsif *) lfirst(lc))->stmts,
+										 stmt,
 										 generate_map,
 										 finalize_profile,
-										 &us_total);
+										 &us_total,
+										 ri);
 
 					if (finalize_profile)
 						*nested_us_total += us_total;
@@ -422,9 +451,11 @@ profiler_touch_stmt(profiler_info *pinfo,
 
 				profiler_touch_stmts(pinfo,
 									 stmt_if->else_body,
+									 stmt,
 									 generate_map,
 									 finalize_profile,
-									 &us_total);
+									 &us_total,
+									 ri);
 
 				if (finalize_profile)
 					*nested_us_total += us_total;
@@ -456,20 +487,23 @@ profiler_touch_stmt(profiler_info *pinfo,
 				{
 					profiler_touch_stmts(pinfo,
 										 ((PLpgSQL_case_when *) lfirst(lc))->stmts,
+										 stmt,
 										 generate_map,
 										 finalize_profile,
-										 &us_total);
+										 &us_total,
+										 ri);
 
 					if (finalize_profile)
 						*nested_us_total += us_total;
-
 				}
 
 				profiler_touch_stmts(pinfo,
 									 stmt_case->else_stmts,
+									 stmt,
 									 generate_map,
 									 finalize_profile,
-									 &us_total);
+									 &us_total,
+									 ri);
 
 				if (finalize_profile)
 					*nested_us_total += us_total;
@@ -528,9 +562,11 @@ profiler_touch_stmt(profiler_info *pinfo,
 
 				profiler_touch_stmts(pinfo,
 								 stmts,
+								 stmt,
 								 generate_map,
 								 finalize_profile,
-								 &us_total);
+								 &us_total,
+								 ri);
 
 				if (finalize_profile)
 					*nested_us_total += us_total;
@@ -891,9 +927,11 @@ profiler_get_stmtid(profiler_profile *profile, PLpgSQL_stmt *stmt)
 static void
 profiler_touch_stmts(profiler_info *pinfo,
 					 List *stmts,
+					 PLpgSQL_stmt *parent_stmt,
 					 bool generate_map,
 					 bool finalize_profile,
-					 int64 *nested_us_total)
+					 int64 *nested_us_total,
+					 plpgsql_check_result_info *ri)
 {
 	ListCell *lc;
 
@@ -907,13 +945,93 @@ profiler_touch_stmts(profiler_info *pinfo,
 
 		profiler_touch_stmt(pinfo,
 							stmt,
+							parent_stmt,
 							generate_map,
 							finalize_profile,
-							&us_total);
+							&us_total,
+							ri);
 
 		if (finalize_profile)
 			*nested_us_total += us_total;
 	}
+}
+
+/*
+ * Prepare tuplestore with function profile
+ *
+ */
+void
+plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri,
+									plpgsql_check_info *cinfo)
+{
+
+	PLpgSQL_function *function = NULL;
+
+#if PG_VERSION_NUM >= 120000
+
+	LOCAL_FCINFO(fake_fcinfo, 0);
+
+#else
+
+	FunctionCallInfoData fake_fcinfo_data;
+	FunctionCallInfo fake_fcinfo = &fake_fcinfo_data;
+
+#endif
+
+	FmgrInfo	flinfo;
+	TriggerData trigdata;
+	EventTriggerData etrigdata;
+	Trigger tg_trigger;
+	ReturnSetInfo rsinfo;
+	bool		fake_rtd;
+	profiler_profile *profile;
+	profiler_hashkey hk;
+	bool		found;
+	profiler_info pinfo;
+
+	plpgsql_check_setup_fcinfo(cinfo->proctuple,
+							   &flinfo,
+							   fake_fcinfo,
+							   &rsinfo,
+							   &trigdata,
+							   cinfo->relid,
+							   &etrigdata,
+							   cinfo->fn_oid,
+							   cinfo->rettype,
+							   cinfo->trigtype,
+							   &tg_trigger,
+							   &fake_rtd);
+
+	/* Get a compiled function */
+	function = plpgsql_compile(fake_fcinfo, false);
+
+	profiler_init_hashkey(&hk, function);
+	profile = (profiler_profile *) hash_search(profiler_HashTable,
+											 (void *) &hk,
+											 HASH_ENTER,
+											 &found);
+
+	pinfo.profile = profile;
+
+	if (!found)
+	{
+		MemoryContext oldcxt;
+
+		profile->nstatements = 0;
+		profile->stmts_map_max_lineno = 200;
+
+		oldcxt = MemoryContextSwitchTo(profiler_mcxt);
+		profile->stmts_map = palloc0(profile->stmts_map_max_lineno * sizeof(profiler_map_entry));
+
+		profiler_touch_stmt(&pinfo, (PLpgSQL_stmt *) function->action, NULL, true, false, NULL, NULL);
+
+		/* entry statements is not visible for plugin functions */
+		profile->entry_stmt = (PLpgSQL_stmt *) function->action;
+
+		MemoryContextSwitchTo(oldcxt);
+	}
+
+	profiler_touch_stmt(&pinfo, (PLpgSQL_stmt *) function->action, NULL, false, false, NULL, ri);
 }
 
 /*
@@ -1113,6 +1231,15 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 		LWLockRelease(profiler_ss->lock);
 }
 
+
+
+
+
+
+
+
+
+
 /*
  * plpgsql plugin related functions
  */
@@ -1150,7 +1277,7 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 			oldcxt = MemoryContextSwitchTo(profiler_mcxt);
 			profile->stmts_map = palloc0(profile->stmts_map_max_lineno * sizeof(profiler_map_entry));
 
-			profiler_touch_stmt(pinfo, (PLpgSQL_stmt *) func->action, true, false, NULL);
+			profiler_touch_stmt(pinfo, (PLpgSQL_stmt *) func->action, NULL, true, false, NULL, NULL);
 
 			/* entry statements is not visible for plugin functions */
 			profile->entry_stmt = (PLpgSQL_stmt *) func->action;
@@ -1195,9 +1322,11 @@ plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *fun
 		/* finalize profile - get result profile */
 		profiler_touch_stmt(pinfo,
 						   profile->entry_stmt,
+						   NULL,
 						   false,
 						   true,
-						   &nested_us_total);
+						   &nested_us_total,
+						   NULL);
 
 		update_persistent_profile(pinfo, func);
 
