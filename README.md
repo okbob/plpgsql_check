@@ -404,6 +404,38 @@ The profile can be displayed by function `plpgsql_profiler_function_tb`:
     └────────┴──────────┴───────────────────────────────────────────────────────────────────┘
     (9 rows)
 
+The profile per statements (not per line) can be displayed by function plpgsql_profiler_function_statements_tb:
+
+            CREATE OR REPLACE FUNCTION public.fx1(a integer)
+             RETURNS integer
+             LANGUAGE plpgsql
+    1       AS $function$
+    2       begin
+    3         if a > 10 then
+    4           raise notice 'ahoj';
+    5           return -1;
+    6         else
+    7           raise notice 'nazdar';
+    8           return 1;
+    9         end if;
+    10      end;
+    11      $function$
+
+    postgres=# select stmtid, parent_stmtid, parent_note, lineno, exec_stmts, stmtname
+                 from plpgsql_profiler_function_statements_tb('fx1');
+    ┌────────┬───────────────┬─────────────┬────────┬────────────┬─────────────────┐
+    │ stmtid │ parent_stmtid │ parent_note │ lineno │ exec_stmts │    stmtname     │
+    ╞════════╪═══════════════╪═════════════╪════════╪════════════╪═════════════════╡
+    │      0 │             ∅ │ ∅           │      2 │          0 │ statement block │
+    │      1 │             0 │ body        │      3 │          0 │ IF              │
+    │      2 │             1 │ then body   │      4 │          0 │ RAISE           │
+    │      3 │             1 │ then body   │      5 │          0 │ RETURN          │
+    │      4 │             1 │ else body   │      7 │          0 │ RAISE           │
+    │      5 │             1 │ else body   │      8 │          0 │ RETURN          │
+    └────────┴───────────────┴─────────────┴────────┴────────────┴─────────────────┘
+    (6 rows)
+
+
 There are two functions for cleaning stored profiles: `plpgsql_profiler_reset_all()` and
 `plpgsql_profiler_reset(regprocedure)`.
 
