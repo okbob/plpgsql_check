@@ -126,8 +126,8 @@ extern void plpgsql_check_put_error_edata(PLpgSQL_checkstate *cstate, ErrorData 
 extern void plpgsql_check_put_dependency(plpgsql_check_result_info *ri, char *type, Oid oid, char *schema, char *name, char *params);
 extern void plpgsql_check_put_profile(plpgsql_check_result_info *ri, int lineno, int stmt_lineno,
 	int cmds_on_row, int exec_count, int64 us_total, Datum max_time_array, Datum processed_rows_array, char *source_row);
-extern void plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri, int stmtid, int parent_stmtid, int lineno,
-	int64 exec_stmts, double total_time, double avg_time, double max_time, int64 processed_rows, char *stmtname);
+extern void plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri, int stmtid, int parent_stmtid, const char *parent_note, int block_num, int lineno,
+	int64 exec_stmts, double total_time, double max_time, int64 processed_rows, char *stmtname);
 
 /*
  * function from catalog.c

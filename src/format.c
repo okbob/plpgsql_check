@@ -87,17 +87,19 @@ static void put_error_tabular(plpgsql_check_result_info *ri, PLpgSQL_execstate *
  * columns of plpgsql_profiler_function_statements_tb result
  *
  */
-#define Natts_profiler_statements					9
+#define Natts_profiler_statements					11
 
 #define Anum_profiler_statements_stmtid				0
 #define Anum_profiler_statements_parent_stmtid		1
-#define Anum_profiler_statements_lineno				2
-#define Anum_profiler_statements_exec_stmts			3
-#define Anum_profiler_statements_total_time			4
-#define Anum_profiler_statements_avg_time			5
-#define Anum_profiler_statements_max_time			6
-#define Anum_profiler_statements_processed_rows		7
-#define Anum_profiler_statements_stmtname			8
+#define Anum_profiler_statements_parent_note		2
+#define Anum_profiler_statements_block_num			3
+#define Anum_profiler_statements_lineno				4
+#define Anum_profiler_statements_exec_stmts			5
+#define Anum_profiler_statements_total_time			6
+#define Anum_profiler_statements_avg_time			7
+#define Anum_profiler_statements_max_time			8
+#define Anum_profiler_statements_processed_rows		9
+#define Anum_profiler_statements_stmtname			10
 
 
 #define SET_RESULT_NULL(anum) \
@@ -866,10 +868,11 @@ void
 plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri,
 									int stmtid,
 									int parent_stmtid,
+									const char *parent_note,
+									int block_num,
 									int lineno,
 									int64 exec_stmts,
 									double total_time,
-									double avg_time,
 									double max_time,
 									int64 processed_rows,
 									char *stmtname)
@@ -885,6 +888,7 @@ plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri,
 		return;
 
 	SET_RESULT_INT32(Anum_profiler_statements_stmtid, stmtid);
+	SET_RESULT_INT32(Anum_profiler_statements_block_num, block_num);
 	SET_RESULT_INT32(Anum_profiler_statements_lineno, lineno);
 	SET_RESULT_INT64(Anum_profiler_statements_exec_stmts, exec_stmts);
 	SET_RESULT_INT64(Anum_profiler_statements_processed_rows, processed_rows);
@@ -892,6 +896,11 @@ plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri,
 	SET_RESULT_FLOAT8(Anum_profiler_statements_total_time, total_time / 1000.0);
 	SET_RESULT_FLOAT8(Anum_profiler_statements_max_time, max_time / 1000.0);
 	SET_RESULT_TEXT(Anum_profiler_statements_stmtname, stmtname);
+
+	if (parent_note)
+		SET_RESULT_TEXT(Anum_profiler_statements_parent_note, parent_note);
+	else
+		SET_RESULT_NULL(Anum_profiler_statements_parent_note);
 
 	/* set nullable field */
 	if (parent_stmtid == -1)
