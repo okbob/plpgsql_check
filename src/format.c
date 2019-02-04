@@ -260,6 +260,10 @@ plpgsql_check_put_error(PLpgSQL_checkstate *cstate,
 	plpgsql_check_result_info *ri = cstate->result_info;
 	PLpgSQL_execstate *estate = cstate->estate;
 
+
+	if (context == NULL && estate->err_text)
+		context = estate->err_text;
+
 	/* ignore warnings when is not requested */
 	if ((level == PLPGSQL_CHECK_WARNING_PERFORMANCE && !cstate->cinfo->performance_warnings) ||
 			    (level == PLPGSQL_CHECK_WARNING_OTHERS && !cstate->cinfo->other_warnings) ||

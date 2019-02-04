@@ -17,6 +17,13 @@
 #include "catalog/pg_type.h"
 #include "executor/spi_priv.h"
 #include "optimizer/clauses.h"
+
+#if PG_VERSION_NUM >= 120000
+
+#include "optimizer/optimizer.h"
+
+#endif
+
 #include "tcop/utility.h"
 #include "utils/lsyscache.h"
 

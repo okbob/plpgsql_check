@@ -119,9 +119,34 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						if (d->dtype == PLPGSQL_DTYPE_VAR)
 						{
 							PLpgSQL_var *var = (PLpgSQL_var *) d;
+							StringInfoData str;
 
-							plpgsql_check_expr(cstate, var->default_val);
+							initStringInfo(&str);
+							appendStringInfo(&str, "during statement block local variable \"%s\" initialization on line %d",
+												 var->refname,
+												 var->lineno);
+
+							cstate->estate->err_text = str.data;
+
+							PG_TRY();
+							{
+								if (var->default_val)
+									plpgsql_check_assignment(cstate,
+															 var->default_val,
+															 NULL,
+															 NULL,
+															 var->dno);
+							}
+							PG_CATCH();
+							{
+								cstate->estate->err_text = NULL;
+							}
+							PG_END_TRY();
+
+							cstate->estate->err_text = NULL;
+							pfree(str.data);
 						}
+
 						refname = plpgsql_check_datum_get_refname(d);
 						if (refname != NULL)
 						{
