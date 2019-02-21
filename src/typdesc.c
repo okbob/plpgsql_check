@@ -17,6 +17,13 @@
 #include "executor/spi_priv.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
+
+#if PG_VERSION_NUM >= 120000
+
+#include "optimizer/optimizer.h"
+
+#endif
+
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
