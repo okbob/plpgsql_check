@@ -2512,3 +2512,24 @@ $$ language plpgsql;
 select bugfunc03();
 
 select * from plpgsql_check_function('bugfunc03');
+
+create or replace function f1(out cr refcursor)
+as $$
+begin
+end;
+$$ language plpgsql;
+
+-- should to raise warning
+select * from plpgsql_check_function('f1()');
+
+create or replace function f1(out cr refcursor)
+as $$
+begin
+  open cr for select 1;
+end;
+$$ language plpgsql;
+
+-- should not to raise warning, see issue #43
+select * from plpgsql_check_function('f1()');
+
+drop function f1();

@@ -1066,9 +1066,8 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						plpgsql_check_expr(cstate, (PLpgSQL_expr *) lfirst(l));
 					}
 
-					cstate->used_variables = bms_add_member(cstate->used_variables,
+					cstate->modif_variables = bms_add_member(cstate->used_variables,
 									 stmt_open->curvar);
-
 				}
 				break;
 

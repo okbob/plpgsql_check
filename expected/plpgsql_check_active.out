@@ -2250,10 +2250,9 @@ select * from plpgsql_check_function('fx(int)', performance_warnings := true, fa
 -----------------------------------------------------------------------------------------
  error:42703:12:RETURN NEXT:record "r" has no field "x"
  Context: SQL statement "SELECT r.x"
- warning extra:00000:4:DECLARE:never read variable "r"
  performance:00000:routine is marked as VOLATILE, should be STABLE
  Hint: When you fix this issue, please, recheck other functions that uses this function.
-(5 rows)
+(4 rows)
 
 drop function fx(int);
 drop table tab_1;
@@ -3454,3 +3453,28 @@ select * from plpgsql_check_function('bugfunc03');
  --                       ^
 (3 rows)
 
+create or replace function f1(out cr refcursor)
+as $$
+begin
+end;
+$$ language plpgsql;
+-- should to raise warning
+select * from plpgsql_check_function('f1()');
+              plpgsql_check_function              
+--------------------------------------------------
+ warning extra:00000:unmodified OUT variable "cr"
+(1 row)
+
+create or replace function f1(out cr refcursor)
+as $$
+begin
+  open cr for select 1;
+end;
+$$ language plpgsql;
+-- should not to raise warning, see issue #43
+select * from plpgsql_check_function('f1()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function f1();
