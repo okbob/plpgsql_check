@@ -278,6 +278,10 @@ plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 									bool isnull)
 {
 
+	/* the overhead UNKONWNOID --> TEXT is low */
+	if (target_typoid == TEXTOID && value_typoid == UNKNOWNOID)
+		return;
+
 #if PG_VERSION_NUM < 90500
 
 	/* any used typmod enforces IO cast - performance warning for older than 9.5*/
