@@ -13,6 +13,7 @@
 
 #include "access/tupconvert.h"
 #include "catalog/pg_type.h"
+#include "common/keywords.h"
 
 static void check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **exceptions);
 static PLpgSQL_stmt_stack_item * push_stmt_to_stmt_stack(PLpgSQL_checkstate *cstate);
@@ -70,6 +71,39 @@ check_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var)
 }
 
 #endif
+
+bool
+plpgsql_check_is_reserved_keyword(char *name)
+{
+	int		i;
+
+#if PG_VERSION_NUM <= 120000
+
+	for (i = 0; i < NumScanKeywords; i++)
+	{
+		if (ScanKeywords[i].category == RESERVED_KEYWORD &&
+				strcmp(name, ScanKeywords[i].name) == 0)
+			return true;
+	}
+
+#else
+
+	for (i = 0; i < ScanKeywords.num_keywords; i++)
+	{
+		if (ScanKeywordCategories[i] == RESERVED_KEYWORD)
+		{
+			char	   *value;
+
+			value = unconstify(char *, GetScanKeyword(i, &ScanKeywords));
+			if (strcmp(name, value) == 0)
+				return true;
+		}
+	}
+
+#endif
+
+	return false;
+}
 
 /*
  * walk over all plpgsql statements - search and check expressions
@@ -151,6 +185,24 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						if (refname != NULL)
 						{
 							ListCell   *l;
+
+							if (plpgsql_check_is_reserved_keyword(refname))
+							{
+								StringInfoData str;
+
+								initStringInfo(&str);
+								appendStringInfo(&str, "name of variable \"%s\" is reserved keyword",
+												 refname);
+
+								plpgsql_check_put_error(cstate,
+											  0, 0,
+											  str.data,
+											  "The reserved keyword was used as variable name.",
+											  NULL,
+											  PLPGSQL_CHECK_WARNING_OTHERS,
+											  0, NULL, NULL);
+								pfree(str.data);
+							}
 
 							foreach(l, cstate->argnames)
 							{

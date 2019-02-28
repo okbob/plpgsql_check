@@ -485,12 +485,39 @@ function_check(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 	int			i;
 	int closing = PLPGSQL_CHECK_UNCLOSED;
 	List	   *exceptions;
+	ListCell   *lc;
 
 	/*
 	 * Make local execution copies of all the datums
 	 */
 	for (i = 0; i < cstate->estate->ndatums; i++)
 		cstate->estate->datums[i] = copy_plpgsql_datum(cstate, func->datums[i]);
+
+	/*
+	 * check function's parameters to not be reserved keywords
+	 */
+	foreach(lc, cstate->argnames)
+	{
+		char	   *argname = (char *) lfirst(lc);
+
+		if (plpgsql_check_is_reserved_keyword(argname))
+		{
+			StringInfoData str;
+
+			initStringInfo(&str);
+			appendStringInfo(&str, "name of parameter \"%s\" is reserved keyword",
+						 argname);
+
+			plpgsql_check_put_error(cstate,
+						  0, 0,
+						  str.data,
+						  "The reserved keyword was used as parameter name.",
+						  NULL,
+						  PLPGSQL_CHECK_WARNING_OTHERS,
+						  0, NULL, NULL);
+			pfree(str.data);
+		}
+	}
 
 	/*
 	 * Store the actual call argument values (fake) into the appropriate

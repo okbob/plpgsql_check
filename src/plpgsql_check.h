@@ -213,6 +213,7 @@ extern void plpgsql_check_report_too_high_volatility(PLpgSQL_checkstate *cstate)
 /*
  * functions from stmtwalk.c
  */
+extern bool plpgsql_check_is_reserved_keyword(char *name);
 extern void plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **exceptions);
 
 /*
