@@ -257,8 +257,6 @@ prohibit_write_plan(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_s
 
 		PlannedStmt *pstmt = (PlannedStmt *) lfirst(lc);
 
-		Assert(IsA(pstmt, PlannedStmt));
-
 #else
 
 		Node *pstmt = (Node *) lfirst(lc);
@@ -343,7 +341,9 @@ check_fishy_qual(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str)
 		PlannedStmt *pstmt = (PlannedStmt *) lfirst(lc);
 		Plan *plan = NULL;
 
-		Assert(IsA(pstmt, PlannedStmt));
+		/* Only plans can contains fishy quals */
+		if(!IsA(pstmt, PlannedStmt))
+			continue;
 
 		plan = pstmt->planTree;
 

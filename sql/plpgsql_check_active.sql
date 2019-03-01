@@ -2533,3 +2533,35 @@ $$ language plpgsql;
 select * from plpgsql_check_function('f1()');
 
 drop function f1();
+
+create table testt(a int);
+
+create or replace function testt_trg_func()
+returns trigger as $$
+begin
+  return new;
+end;
+$$ language plpgsql;
+
+create trigger testt_trg
+  before insert or update
+  on testt
+  for each row execute procedure testt_trg_func();
+
+create or replace function maintaince_function()
+returns void as $$
+begin
+
+  alter table testt disable trigger testt_trg;
+  alter table testt enable trigger testt_trg;
+
+end;
+$$ language plpgsql;
+
+-- should not to crash
+select * from plpgsql_check_function_tb('maintaince_function()', 0, true, true, true);
+
+drop function maintaince_function();
+drop trigger testt_trg on testt;
+drop function testt_trg_func();
+drop table testt;
