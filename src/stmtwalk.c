@@ -77,7 +77,7 @@ plpgsql_check_is_reserved_keyword(char *name)
 {
 	int		i;
 
-#if PG_VERSION_NUM <= 120000
+#if PG_VERSION_NUM < 120000
 
 	for (i = 0; i < NumScanKeywords; i++)
 	{
