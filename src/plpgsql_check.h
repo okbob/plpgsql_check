@@ -140,11 +140,6 @@ extern char * plpgsql_check_get_src(HeapTuple procTuple);
 /*
  * functions from tablefunc.c
  */
-extern Datum plpgsql_check_function(PG_FUNCTION_ARGS);
-extern Datum plpgsql_check_function_tb(PG_FUNCTION_ARGS);
-extern Datum plpgsql_show_dependency_tb(PG_FUNCTION_ARGS);
-extern Datum plpgsql_profiler_function_tb(PG_FUNCTION_ARGS);
-extern Datum plpgsql_profiler_function_statements_tb(PG_FUNCTION_ARGS);
 
 /*
  * functions from profiler.c

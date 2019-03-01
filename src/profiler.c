@@ -10,6 +10,7 @@
  */
 
 #include "plpgsql_check.h"
+#include "plpgsql_check_builtins.h"
 
 #include "access/htup_details.h"
 #include "catalog/pg_type.h"

@@ -10,6 +10,7 @@
  */
 
 #include "plpgsql_check.h"
+#include "plpgsql_check_builtins.h"
 
 #include "utils/builtins.h"
 #include "utils/syscache.h"

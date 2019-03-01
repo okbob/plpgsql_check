@@ -24,6 +24,7 @@
  */
 
 #include "plpgsql_check.h"
+#include "plpgsql_check_builtins.h"
 
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
