@@ -1061,6 +1061,8 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				{
 					PLpgSQL_stmt_dynexecute *stmt_dynexecute = (PLpgSQL_stmt_dynexecute *) stmt;
 
+					cstate->has_execute_stmt = true;
+
 					plpgsql_check_expr(cstate, stmt_dynexecute->query);
 
 					foreach(l, stmt_dynexecute->params)

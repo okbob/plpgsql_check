@@ -921,6 +921,7 @@ plpgsql_check_setup_cstate(PLpgSQL_checkstate *cstate,
 			 bool fake_rtd)
 {
 	cstate->decl_volatility = cinfo->volatility;
+	cstate->has_execute_stmt = false;
 	cstate->volatility = PROVOLATILE_IMMUTABLE;
 	cstate->skip_volatility_check = (cinfo->rettype == TRIGGEROID ||
 									 cinfo->rettype == OPAQUEOID ||

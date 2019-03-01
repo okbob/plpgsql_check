@@ -82,6 +82,7 @@ typedef struct PLpgSQL_checkstate
 	List	    *argnames;					/* function arg names */
 	char		decl_volatility;			/* declared function volatility */
 	char		volatility;					/* detected function volatility */
+	bool		has_execute_stmt;			/* detected dynamic SQL, disable volatility check */
 	bool		skip_volatility_check;		/* don't do this test for trigger */
 	PLpgSQL_execstate	   *estate;			/* check state is estate extension */
 	MemoryContext			check_cxt;
