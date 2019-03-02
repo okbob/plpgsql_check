@@ -583,7 +583,8 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 		Oid			first_level_typ = InvalidOid;
 
 		prepare_plan(cstate, expr, 0);
-		/* record all variables used by the query */
+
+		/* record all variables used by the query, should be after prepare_plan */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
 		tupdesc = plpgsql_check_expr_get_desc(cstate, expr, false, true, is_expression, &first_level_typ);
