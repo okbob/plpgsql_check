@@ -94,6 +94,9 @@ typedef struct profiler_shared_state
 /*
  * It is used for fast mapping plpgsql stmt -> stmtid
  */
+
+#if PG_VERSION_NUM < 120000
+
 typedef struct profiler_map_entry
 {
 	PLpgSQL_stmt *stmt;
@@ -112,6 +115,18 @@ typedef struct profiler_profile
 	int			stmts_map_max_lineno;
 	profiler_map_entry *stmts_map;
 } profiler_profile;
+
+#else
+
+typedef struct profiler_profile
+{
+	profiler_hashkey key;
+	int			nstatements;
+	PLpgSQL_stmt *entry_stmt;
+	int		   *stmts_map;
+} profiler_profile;
+
+#endif
 
 /*
  * This structure is used as plpgsql extension parameter
@@ -910,10 +925,16 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
  * PLpgSQL statements has not unique id. We can assign some unique id
  * that can be used for statements counters. Fast access to this id
  * is implemented via map structure. It is a array of lists structure.
+ *
+ * From PostgreSQL 12 we can use stmtid, but still we need map table,
+ * because native stmtid has different order against lineno. But with
+ * native stmtid, a creating map and searching in map is much faster.
  */
 static void
 profiler_update_map(profiler_profile *profile, PLpgSQL_stmt *stmt)
 {
+#if PG_VERSION_NUM < 120000
+
 	int		lineno = stmt->lineno;
 	profiler_map_entry *pme;
 
@@ -958,6 +979,13 @@ profiler_update_map(profiler_profile *profile, PLpgSQL_stmt *stmt)
 
 		pme->next = new_pme;
 	}
+
+#else
+
+	profile->stmts_map[stmt->stmtid - 1] = profile->nstatements++;
+
+#endif
+
 }
 
 /*
@@ -967,6 +995,8 @@ profiler_update_map(profiler_profile *profile, PLpgSQL_stmt *stmt)
 static int
 profiler_get_stmtid(profiler_profile *profile, PLpgSQL_stmt *stmt)
 {
+#if PG_VERSION_NUM < 120000
+
 	int		lineno = stmt->lineno;
 	profiler_map_entry *pme;
 
@@ -987,6 +1017,12 @@ profiler_get_stmtid(profiler_profile *profile, PLpgSQL_stmt *stmt)
 		elog(ERROR, "broken statement map - cannot to find statement");
 
 	return pme->stmtid;
+
+#else
+
+	return profile->stmts_map[stmt->stmtid - 1];
+
+#endif
 }
 
 static void
@@ -1124,16 +1160,24 @@ plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri,
 		{
 			MemoryContext oldcxt;
 
+			oldcxt = MemoryContextSwitchTo(profiler_mcxt);
+
+#if PG_VERSION_NUM < 120000
+
 			profile->nstatements = 0;
 			profile->stmts_map_max_lineno = 200;
 
-			oldcxt = MemoryContextSwitchTo(profiler_mcxt);
 			profile->stmts_map = palloc0(profile->stmts_map_max_lineno * sizeof(profiler_map_entry));
 
-			profiler_touch_stmt(&pinfo, (PLpgSQL_stmt *) function->action, NULL, NULL, 1, true, false, NULL, NULL);
+#else
 
-			/* entry statements is not visible for plugin functions */
+			profile->nstatements = function->nstatements;
+			profile->stmts_map = palloc0(function->nstatements * sizeof(int));
+
+#endif
+
 			profile->entry_stmt = (PLpgSQL_stmt *) function->action;
+			profiler_touch_stmt(&pinfo, (PLpgSQL_stmt *) function->action, NULL, NULL, 1, true, false, NULL, NULL);
 
 			MemoryContextSwitchTo(oldcxt);
 		}
@@ -1385,16 +1429,26 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 		{
 			MemoryContext oldcxt;
 
+			oldcxt = MemoryContextSwitchTo(profiler_mcxt);
+
+#if PG_VERSION_NUM < 120000
+
 			profile->nstatements = 0;
 			profile->stmts_map_max_lineno = 200;
 
-			oldcxt = MemoryContextSwitchTo(profiler_mcxt);
 			profile->stmts_map = palloc0(profile->stmts_map_max_lineno * sizeof(profiler_map_entry));
 
+#else
+
+			profile->nstatements = func->nstatements;
+			profile->stmts_map = palloc0(func->nstatements * sizeof(int));
+
+#endif
+
+			profile->entry_stmt = (PLpgSQL_stmt *) func->action;
 			profiler_touch_stmt(pinfo, (PLpgSQL_stmt *) func->action, NULL, NULL, 1, true, false, NULL, NULL);
 
 			/* entry statements is not visible for plugin functions */
-			profile->entry_stmt = (PLpgSQL_stmt *) func->action;
 
 			MemoryContextSwitchTo(oldcxt);
 		}

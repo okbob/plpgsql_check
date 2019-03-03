@@ -2250,9 +2250,10 @@ select * from plpgsql_check_function('fx(int)', performance_warnings := true, fa
 -----------------------------------------------------------------------------------------
  error:42703:12:RETURN NEXT:record "r" has no field "x"
  Context: SQL statement "SELECT r.x"
+ warning extra:00000:4:DECLARE:never read variable "r"
  performance:00000:routine is marked as VOLATILE, should be STABLE
  Hint: When you fix this issue, please, recheck other functions that uses this function.
-(4 rows)
+(5 rows)
 
 drop function fx(int);
 drop table tab_1;
@@ -2809,9 +2810,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('test(varchar)');
- functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
-------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
-(0 rows)
+ functionid | lineno | statement | sqlstate |         message         | detail | hint |     level     | position | query | context 
+------------+--------+-----------+----------+-------------------------+--------+------+---------------+----------+-------+---------
+ test       |      2 | DECLARE   | 00000    | never read variable "x" |        |      | warning extra |          |       | 
+(1 row)
 
 drop function test(varchar);
 create or replace function test()
