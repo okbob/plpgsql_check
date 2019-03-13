@@ -261,7 +261,7 @@ plpgsql_check_put_error(PLpgSQL_checkstate *cstate,
 	PLpgSQL_execstate *estate = cstate->estate;
 
 
-	if (context == NULL && estate->err_text)
+	if (context == NULL && estate && estate->err_text)
 		context = estate->err_text;
 
 	/* ignore warnings when is not requested */
