@@ -174,6 +174,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 							PG_CATCH();
 							{
 								cstate->estate->err_text = NULL;
+								PG_RE_THROW();
 							}
 							PG_END_TRY();
 

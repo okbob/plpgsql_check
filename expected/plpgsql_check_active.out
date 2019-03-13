@@ -3510,3 +3510,36 @@ drop function maintaince_function();
 drop trigger testt_trg on testt;
 drop function testt_trg_func();
 drop table testt;
+create or replace function test_crash()
+returns void as $$
+declare
+  ec int default buggyfunc(10);
+begin
+  select * into ec from buggytab;
+end;
+$$ language plpgsql;
+-- should not to crash
+select * from plpgsql_check_function('test_crash', fatal_errors=>false);
+                                         plpgsql_check_function                                          
+---------------------------------------------------------------------------------------------------------
+ error:42883:4:statement block:function buggyfunc(integer) does not exist
+ Query: SELECT buggyfunc(10)
+ --            ^
+ Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+ Context: during statement block local variable "ec" initialization on line 3
+ error:42P01:5:SQL statement:relation "buggytab" does not exist
+ Query: select *         from buggytab
+ --                           ^
+ warning extra:00000:3:DECLARE:never read variable "ec"
+(9 rows)
+
+select * from plpgsql_check_function('test_crash', fatal_errors=>true);
+                                         plpgsql_check_function                                          
+---------------------------------------------------------------------------------------------------------
+ error:42883:4:statement block:function buggyfunc(integer) does not exist
+ Query: SELECT buggyfunc(10)
+ --            ^
+ Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+(4 rows)
+
+drop function test_crash();

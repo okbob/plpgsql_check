@@ -2565,3 +2565,18 @@ drop function maintaince_function();
 drop trigger testt_trg on testt;
 drop function testt_trg_func();
 drop table testt;
+
+create or replace function test_crash()
+returns void as $$
+declare
+  ec int default buggyfunc(10);
+begin
+  select * into ec from buggytab;
+end;
+$$ language plpgsql;
+
+-- should not to crash
+select * from plpgsql_check_function('test_crash', fatal_errors=>false);
+select * from plpgsql_check_function('test_crash', fatal_errors=>true);
+
+drop function test_crash();
