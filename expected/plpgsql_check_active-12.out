@@ -442,7 +442,8 @@ select * from plpgsql_check_function('test_field_assignment');
  warning:42804:5:assignment:target type is different type than source type
  Detail: cast "timestamp with time zone" value to "integer" type
  Hint: There are no possible explicit coercion between those types, possibly bug!
-(3 rows)
+ Context: at assignment to field "a" of variable "v" declared on line 2
+(4 rows)
 
 drop table foo;
 create table foo(a int, b int);

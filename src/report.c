@@ -115,7 +115,6 @@ datum_is_explicit(PLpgSQL_checkstate *cstate, int dno)
 	}
 }
 
-
 /*
  * returns true, when datum or some child is used
  */
@@ -189,8 +188,6 @@ datum_is_used(PLpgSQL_checkstate *cstate, int dno, bool write)
 
 	return false;
 }
-
-
 
 /*
  * Reports all unused variables explicitly DECLAREd by the user.  Ignores

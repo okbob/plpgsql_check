@@ -85,7 +85,7 @@ end;
 $$ language plpgsql;
 select f1();
 ERROR:  record "r" has no field "c"
-CONTEXT:  PL/pgSQL function f1() line 6 at assignment
+CONTEXT:  PL/pgSQL function f1() line 6 at assignment to field "c" of variable "r" declared on line 2
 drop function f1();
 drop function g1();
 create function f1()
@@ -103,7 +103,7 @@ ERROR:  column "a" does not exist
 LINE 1: SELECT a + b
                ^
 QUERY:  SELECT a + b
-CONTEXT:  PL/pgSQL function f1() line 5 at assignment
+CONTEXT:  PL/pgSQL function f1() line 5 at assignment to variable "r" declared on line 2
 drop function f1();
 create or replace function f1()
 returns void as $$
@@ -119,7 +119,7 @@ ERROR:  column "c" does not exist
 LINE 1: SELECT c+10
                ^
 QUERY:  SELECT c+10
-CONTEXT:  PL/pgSQL function f1() line 5 at assignment
+CONTEXT:  PL/pgSQL function f1() line 5 at assignment to element of variable "r" declared on line 2
 drop function f1();
 create or replace function f1()
 returns void as $$
@@ -132,7 +132,7 @@ end;
 $$ language plpgsql;
 select f1();
 ERROR:  subscripted object is not an array
-CONTEXT:  PL/pgSQL function f1() line 5 at assignment
+CONTEXT:  PL/pgSQL function f1() line 5 at assignment to element of variable "r" declared on line 2
 drop function f1();
 create or replace function f1()
 returns void as $$

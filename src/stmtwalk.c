@@ -150,9 +150,11 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 						d = func->datums[stmt_block->initvarnos[i]];
 
-						if (d->dtype == PLPGSQL_DTYPE_VAR)
+						if (d->dtype == PLPGSQL_DTYPE_VAR ||
+							d->dtype == PLPGSQL_DTYPE_ROW ||
+							d->dtype == PLPGSQL_DTYPE_REC)
 						{
-							PLpgSQL_var *var = (PLpgSQL_var *) d;
+							PLpgSQL_variable *var = (PLpgSQL_variable *) d;
 							StringInfoData str;
 
 							initStringInfo(&str);
@@ -162,21 +164,12 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 							cstate->estate->err_text = str.data;
 
-							PG_TRY();
-							{
-								if (var->default_val)
-									plpgsql_check_assignment(cstate,
-															 var->default_val,
-															 NULL,
-															 NULL,
-															 var->dno);
-							}
-							PG_CATCH();
-							{
-								cstate->estate->err_text = NULL;
-								PG_RE_THROW();
-							}
-							PG_END_TRY();
+							if (var->default_val)
+								plpgsql_check_assignment(cstate,
+														 var->default_val,
+														 NULL,
+														 NULL,
+														 var->dno);
 
 							cstate->estate->err_text = NULL;
 							pfree(str.data);
@@ -368,9 +361,52 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 			case PLPGSQL_STMT_ASSIGN:
 				{
 					PLpgSQL_stmt_assign *stmt_assign = (PLpgSQL_stmt_assign *) stmt;
+					PLpgSQL_datum *d = (PLpgSQL_datum *) cstate->estate->datums[stmt_assign->varno];
+					StringInfoData str;
+
+					initStringInfo(&str);
+
+					if (d->dtype == PLPGSQL_DTYPE_VAR ||
+						d->dtype == PLPGSQL_DTYPE_ROW ||
+						d->dtype == PLPGSQL_DTYPE_REC)
+					{
+						PLpgSQL_variable *var = (PLpgSQL_variable *) d;
+
+						appendStringInfo(&str, "at assignment to variable \"%s\" declared on line %d",
+										 var->refname,
+										 var->lineno);
+
+						cstate->estate->err_text = str.data;
+					}
+					else if (d->dtype == PLPGSQL_DTYPE_RECFIELD)
+					{
+						PLpgSQL_recfield *recfield = (PLpgSQL_recfield *) d;
+						PLpgSQL_variable *var = (PLpgSQL_variable *) cstate->estate->datums[recfield->recparentno];
+
+						appendStringInfo(&str, "at assignment to field \"%s\" of variable \"%s\" declared on line %d",
+										 recfield->fieldname,
+										 var->refname,
+										 var->lineno);
+
+						cstate->estate->err_text = str.data;
+					}
+					else if (d->dtype == PLPGSQL_DTYPE_ARRAYELEM)
+					{
+						PLpgSQL_arrayelem *elem = (PLpgSQL_arrayelem *) d;
+						PLpgSQL_variable *var = (PLpgSQL_variable *) cstate->estate->datums[elem->arrayparentno];
+
+						appendStringInfo(&str, "at assignment to element of variable \"%s\" declared on line %d",
+										 var->refname,
+										 var->lineno);
+
+						cstate->estate->err_text = str.data;
+					}
 
 					plpgsql_check_assignment(cstate, stmt_assign->expr, NULL, NULL,
-									 stmt_assign->varno);
+											 stmt_assign->varno);
+
+					pfree(str.data);
+					cstate->estate->err_text = NULL;
 				}
 				break;
 
