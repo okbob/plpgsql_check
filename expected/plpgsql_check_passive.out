@@ -252,8 +252,14 @@ begin
 end;
 $$ language plpgsql;
 select f1();
-ERROR:  too many parameters specified for RAISE
-CONTEXT:  compilation of PL/pgSQL function "f1" near line 4
+WARNING:  too many parameters specified for RAISE
+CONTEXT:  PL/pgSQL function f1() line 4 at RAISE
+PL/pgSQL function f1() line 4 at RAISE
+ f1 
+----
+ 
+(1 row)
+
 drop function f1();
 create or replace function f1()
 returns void as $$
@@ -264,6 +270,12 @@ begin
 end;
 $$ language plpgsql;
 select f1();
-ERROR:  too few parameters specified for RAISE
-CONTEXT:  compilation of PL/pgSQL function "f1" near line 4
+WARNING:  too few parameters specified for RAISE
+CONTEXT:  PL/pgSQL function f1() line 4 at RAISE
+PL/pgSQL function f1() line 4 at RAISE
+ f1 
+----
+ 
+(1 row)
+
 drop function f1();

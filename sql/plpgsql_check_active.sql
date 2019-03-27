@@ -2441,8 +2441,8 @@ begin
 end;
 $$ language plpgsql volatile;
 
-select * from plpgsql_check_function('flag_test1(int)', performance_warnings => true);
-select * from plpgsql_check_function('flag_test2(int)', performance_warnings => true);
+select * from plpgsql_check_function('flag_test1(int)', performance_warnings := true);
+select * from plpgsql_check_function('flag_test2(int)', performance_warnings := true);
 
 drop table fufu;
 drop function flag_test1(int);
@@ -2576,7 +2576,7 @@ end;
 $$ language plpgsql;
 
 -- should not to crash
-select * from plpgsql_check_function('test_crash', fatal_errors=>false);
-select * from plpgsql_check_function('test_crash', fatal_errors=>true);
+select * from plpgsql_check_function('test_crash', fatal_errors := false);
+select * from plpgsql_check_function('test_crash', fatal_errors := true);
 
 drop function test_crash();

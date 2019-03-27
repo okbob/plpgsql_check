@@ -13,7 +13,16 @@
 
 #include "access/tupconvert.h"
 #include "catalog/pg_type.h"
+
+#if PG_VERSION_NUM > 90500
+
 #include "common/keywords.h"
+
+#else
+
+#include "parser/keywords.h"
+
+#endif
 
 static void check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **exceptions);
 static PLpgSQL_stmt_stack_item * push_stmt_to_stmt_stack(PLpgSQL_checkstate *cstate);
@@ -164,12 +173,27 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 							cstate->estate->err_text = str.data;
 
+#if PG_VERSION_NUM >= 110000
+
 							if (var->default_val)
 								plpgsql_check_assignment(cstate,
 														 var->default_val,
 														 NULL,
 														 NULL,
 														 var->dno);
+
+#else
+
+							if (d->dtype == PLPGSQL_DTYPE_VAR &&
+									((PLpgSQL_var *) var)->default_val)
+								plpgsql_check_assignment(cstate,
+														 ((PLpgSQL_var *) var)->default_val,
+														 NULL,
+														 NULL,
+														 var->dno);
+
+
+#endif
 
 							cstate->estate->err_text = NULL;
 							pfree(str.data);

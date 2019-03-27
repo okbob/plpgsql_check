@@ -296,10 +296,11 @@ select * from plpgsql_check_function('fx2()', performance_warnings := true);
 -----------------------------------------------------------------------------------------
  performance:42804:5:assignment:target type has type modificator
  Hint: Usage of type modificator enforces slower IO casting.
+ Context: at assignment to variable "pa.pa_id" declared on line 0
  warning extra:00000:2:DECLARE:never read variable "_pa"
  performance:00000:routine is marked as VOLATILE, should be STABLE
  Hint: When you fix this issue, please, recheck other functions that uses this function.
-(5 rows)
+(6 rows)
 
 drop function fx2();
 create or replace function test_lab()
