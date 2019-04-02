@@ -3354,14 +3354,14 @@ begin
   return (select * from fufu limit 1);
 end;
 $$ language plpgsql volatile;
-select * from plpgsql_check_function('flag_test1(int)', performance_warnings => true);
+select * from plpgsql_check_function('flag_test1(int)', performance_warnings := true);
                                  plpgsql_check_function                                  
 -----------------------------------------------------------------------------------------
  performance:00000:routine is marked as STABLE, should be IMMUTABLE
  Hint: When you fix this issue, please, recheck other functions that uses this function.
 (2 rows)
 
-select * from plpgsql_check_function('flag_test2(int)', performance_warnings => true);
+select * from plpgsql_check_function('flag_test2(int)', performance_warnings := true);
                                  plpgsql_check_function                                  
 -----------------------------------------------------------------------------------------
  warning extra:00000:parameter "$1" is never read
@@ -3529,7 +3529,7 @@ begin
 end;
 $$ language plpgsql;
 -- should not to crash
-select * from plpgsql_check_function('test_crash', fatal_errors=>false);
+select * from plpgsql_check_function('test_crash', fatal_errors := false);
                                          plpgsql_check_function                                          
 ---------------------------------------------------------------------------------------------------------
  error:42883:4:statement block:function buggyfunc(integer) does not exist
@@ -3543,7 +3543,7 @@ select * from plpgsql_check_function('test_crash', fatal_errors=>false);
  warning extra:00000:3:DECLARE:never read variable "ec"
 (9 rows)
 
-select * from plpgsql_check_function('test_crash', fatal_errors=>true);
+select * from plpgsql_check_function('test_crash', fatal_errors := true);
                                          plpgsql_check_function                                          
 ---------------------------------------------------------------------------------------------------------
  error:42883:4:statement block:function buggyfunc(integer) does not exist
