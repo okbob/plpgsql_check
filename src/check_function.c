@@ -398,20 +398,22 @@ plpgsql_check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 
 			estate->err_stmt = NULL;
 
-			if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS &&
-				!is_procedure(estate))
-				plpgsql_check_put_error(&cstate,
-								  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
-								  "control reached end of function without RETURN",
-								  NULL,
-								  NULL,
-								  closing == PLPGSQL_CHECK_UNCLOSED ?
-										PLPGSQL_CHECK_ERROR : PLPGSQL_CHECK_WARNING_EXTRA,
-								  0, NULL, NULL);
+			if (!cstate.stop_check)
+			{
+				if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS &&
+					!is_procedure(estate))
+					plpgsql_check_put_error(&cstate,
+									  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
+									  "control reached end of function without RETURN",
+									  NULL,
+									  NULL,
+									  closing == PLPGSQL_CHECK_UNCLOSED ?
+											PLPGSQL_CHECK_ERROR : PLPGSQL_CHECK_WARNING_EXTRA,
+									  0, NULL, NULL);
 
-			plpgsql_check_report_unused_variables(&cstate);
-			plpgsql_check_report_too_high_volatility(&cstate);
-
+				plpgsql_check_report_unused_variables(&cstate);
+				plpgsql_check_report_too_high_volatility(&cstate);
+			}
 		}
 		PG_CATCH();
 		{
@@ -538,18 +540,21 @@ function_check(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 	/* clean state values - next errors are not related to any command */
 	cstate->estate->err_stmt = NULL;
 
-	if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS &&
-		!is_procedure(cstate->estate))
-		plpgsql_check_put_error(cstate,
-						  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
-						  "control reached end of function without RETURN",
-						  NULL,
-						  NULL,
-						  closing == PLPGSQL_CHECK_UNCLOSED ? PLPGSQL_CHECK_ERROR : PLPGSQL_CHECK_WARNING_EXTRA,
-						  0, NULL, NULL);
+	if (!cstate->stop_check)
+	{
+		if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS &&
+			!is_procedure(cstate->estate))
+			plpgsql_check_put_error(cstate,
+							  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
+							  "control reached end of function without RETURN",
+							  NULL,
+							  NULL,
+							  closing == PLPGSQL_CHECK_UNCLOSED ? PLPGSQL_CHECK_ERROR : PLPGSQL_CHECK_WARNING_EXTRA,
+							  0, NULL, NULL);
 
-	plpgsql_check_report_unused_variables(cstate);
-	plpgsql_check_report_too_high_volatility(cstate);
+		plpgsql_check_report_unused_variables(cstate);
+		plpgsql_check_report_too_high_volatility(cstate);
+	}
 }
 
 /*
@@ -655,18 +660,21 @@ trigger_check(PLpgSQL_function *func, Node *tdata,
 	/* clean state values - next errors are not related to any command */
 	cstate->estate->err_stmt = NULL;
 
-	if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS &&
-		!is_procedure(cstate->estate))
-		plpgsql_check_put_error(cstate,
-						  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
-						  "control reached end of function without RETURN",
-						  NULL,
-						  NULL,
-						  closing == PLPGSQL_CHECK_UNCLOSED ? PLPGSQL_CHECK_ERROR : PLPGSQL_CHECK_WARNING_EXTRA,
-						  0, NULL, NULL);
+	if (!cstate->stop_check)
+	{
+		if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS &&
+			!is_procedure(cstate->estate))
+			plpgsql_check_put_error(cstate,
+							  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
+							  "control reached end of function without RETURN",
+							  NULL,
+							  NULL,
+							  closing == PLPGSQL_CHECK_UNCLOSED ? PLPGSQL_CHECK_ERROR : PLPGSQL_CHECK_WARNING_EXTRA,
+							  0, NULL, NULL);
 
-	plpgsql_check_report_unused_variables(cstate);
-	plpgsql_check_report_too_high_volatility(cstate);
+		plpgsql_check_report_unused_variables(cstate);
+		plpgsql_check_report_too_high_volatility(cstate);
+	}
 }
 
 /*
@@ -999,6 +1007,11 @@ plpgsql_check_setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->found_return_query = false;
 
 	cstate->fake_rtd = fake_rtd;
+
+	cstate->safe_variables = NULL;
+	cstate->string_variables = NULL;
+
+	cstate->stop_check = false;
 }
 
 

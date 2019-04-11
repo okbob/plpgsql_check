@@ -111,7 +111,7 @@ prepare_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, int cursorOptions)
 	query = ExprGetQuery(expr);
 
 	/* there checks are common on every expr/query */
-	plpgsql_check_sequence_functions(cstate, query, expr->query);
+	plpgsql_check_funcexpr(cstate, query, expr->query);
 	collect_volatility(cstate, query);
 	plpgsql_check_detect_dependency(cstate, query);
 }

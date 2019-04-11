@@ -267,7 +267,8 @@ plpgsql_check_put_error(PLpgSQL_checkstate *cstate,
 	/* ignore warnings when is not requested */
 	if ((level == PLPGSQL_CHECK_WARNING_PERFORMANCE && !cstate->cinfo->performance_warnings) ||
 			    (level == PLPGSQL_CHECK_WARNING_OTHERS && !cstate->cinfo->other_warnings) ||
-			    (level == PLPGSQL_CHECK_WARNING_EXTRA && !cstate->cinfo->extra_warnings))
+			    (level == PLPGSQL_CHECK_WARNING_EXTRA && !cstate->cinfo->extra_warnings) ||
+			    (level == PLPGSQL_CHECK_WARNING_SECURITY && !cstate->cinfo->security_warnings))
 		return;
 
 	if (ri->init_tag)
@@ -304,6 +305,11 @@ plpgsql_check_put_error(PLpgSQL_checkstate *cstate,
 								  hint, level, position, query, context);
 			break;
 		}
+
+		/* stop checking if it is necessary */
+		if (level == PLPGSQL_CHECK_ERROR && cstate->cinfo->fatal_errors)
+			cstate->stop_check = true;
+
 	}
 	else
 	{
@@ -382,6 +388,8 @@ error_level_str(int level)
 			return "warning extra";
 		case PLPGSQL_CHECK_WARNING_PERFORMANCE:
 			return "performance";
+		case PLPGSQL_CHECK_WARNING_SECURITY:
+			return "security";
 		default:
 			return "???";
 	}
