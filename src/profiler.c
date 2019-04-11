@@ -1143,7 +1143,9 @@ plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri,
 								   cinfo->rettype,
 								   cinfo->trigtype,
 								   &tg_trigger,
-								   &fake_rtd);
+								   &fake_rtd,
+                                   cinfo->oldtable,
+                                   cinfo->newtable);
 
 		/* Get a compiled function */
 		function = plpgsql_compile(fake_fcinfo, false);

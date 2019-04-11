@@ -85,7 +85,8 @@ RETURNS TABLE(functionid regproc,
 AS $$
 BEGIN
   RETURN QUERY SELECT * FROM @extschema@.__plpgsql_check_function_tb(funcoid, relid,
-                                      fatal_errors, others_warnings, performance_warnings, extra_warnings);
+                                      fatal_errors, others_warnings, performance_warnings, extra_warnings,
+                                      sql_injection_check, oldtable, newtable);
   RETURN;
 END;
 $$ LANGUAGE plpgsql SET plpgsql_check.profiler TO off;
