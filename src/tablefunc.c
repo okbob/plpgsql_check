@@ -66,12 +66,29 @@ plpgsql_check_function(PG_FUNCTION_ARGS)
 	ErrorContextCallback *prev_errorcontext;
 	int	format;
 
-	if (PG_NARGS() != 7)
+	if (PG_NARGS() != 10)
 		elog(ERROR, "unexpected number of parameters, you should to update extension");
 
 	/* check to see if caller supports us returning a tuplestore */
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	SetReturningFunctionCheck(rsinfo);
+
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "argument should not be null");
+	if (PG_ARGISNULL(1))
+		elog(ERROR, "argument should not be null");
+	if (PG_ARGISNULL(2))
+		elog(ERROR, "argument should not be null");
+	if (PG_ARGISNULL(3))
+		elog(ERROR, "argument should not be null");
+	if (PG_ARGISNULL(4))
+		elog(ERROR, "argument should not be null");
+	if (PG_ARGISNULL(5))
+		elog(ERROR, "argument should not be null");
+	if (PG_ARGISNULL(6))
+		elog(ERROR, "argument should not be null");
+	if (PG_ARGISNULL(7))
+		elog(ERROR, "argument should not be null");
 
 	format = plpgsql_check_format_num(text_to_cstring(PG_GETARG_TEXT_PP(2)));
 
@@ -126,12 +143,28 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	ReturnSetInfo *rsinfo;
 	ErrorContextCallback *prev_errorcontext;
 
-	if (PG_NARGS() != 6)
+	if (PG_NARGS() != 9)
 		elog(ERROR, "unexpected number of parameters, you should to update extension");
 
 	/* check to see if caller supports us returning a tuplestore */
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	SetReturningFunctionCheck(rsinfo);
+
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "argument should not be null");
+	if (PG_ARGISNULL(1))
+		elog(ERROR, "argument should not be null");
+	if (PG_ARGISNULL(2))
+		elog(ERROR, "argument should not be null");
+	if (PG_ARGISNULL(3))
+		elog(ERROR, "argument should not be null");
+	if (PG_ARGISNULL(4))
+		elog(ERROR, "argument should not be null");
+	if (PG_ARGISNULL(5))
+		elog(ERROR, "argument should not be null");
+	if (PG_ARGISNULL(6))
+		elog(ERROR, "argument should not be null");
+
 
 	init_check_info(&cinfo, PG_GETARG_OID(0));
 
