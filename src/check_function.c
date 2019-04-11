@@ -55,7 +55,7 @@ static void release_exprs(List *exprs);
 static int load_configuration(HeapTuple procTuple, bool *reload_config);
 static void init_datum_dno(PLpgSQL_checkstate *cstate, int dno);
 static PLpgSQL_datum * copy_plpgsql_datum(PLpgSQL_checkstate *cstate, PLpgSQL_datum *datum);
-static void plpgsql_check_setup_estate(PLpgSQL_execstate *estate, PLpgSQL_function *func, ReturnSetInfo *rsi);
+static void plpgsql_check_setup_estate(PLpgSQL_execstate *estate, PLpgSQL_function *func, ReturnSetInfo *rsi, plpgsql_check_info *cinfo);
 static void plpgsql_check_setup_cstate(PLpgSQL_checkstate *cstate, plpgsql_check_result_info *result_info,
 	plpgsql_check_info *cinfo, bool is_active_mode, bool fake_rtd);
 
@@ -112,7 +112,9 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 								cinfo->rettype,
 								cinfo->trigtype,
 								&tg_trigger,
-								&fake_rtd);
+								&fake_rtd,
+								cinfo->oldtable,
+								cinfo->newtable);
 
 	plpgsql_check_setup_cstate(&cstate, ri, cinfo, true, fake_rtd);
 
@@ -165,7 +167,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 
 			Assert(function->fn_is_trigger == cinfo->trigtype);
 
-			plpgsql_check_setup_estate(&estate, function, (ReturnSetInfo *) fake_fcinfo->resultinfo);
+			plpgsql_check_setup_estate(&estate, function, (ReturnSetInfo *) fake_fcinfo->resultinfo, cinfo);
 			cstate.estate = &estate;
 
 			/*
@@ -702,7 +704,9 @@ plpgsql_check_setup_fcinfo(HeapTuple procTuple,
 						  Oid rettype,
 						  PLpgSQL_trigtype trigtype,
 						  Trigger *tg_trigger,
-						  bool *fake_rtd)
+						  bool *fake_rtd,
+						  char *oldtable,
+						  char *newtable)
 {
 	TupleDesc resultTupleDesc;
 
@@ -820,7 +824,8 @@ plpgsql_check_setup_fcinfo(HeapTuple procTuple,
 static void
 plpgsql_check_setup_estate(PLpgSQL_execstate *estate,
 					 PLpgSQL_function *func,
-					 ReturnSetInfo *rsi)
+					 ReturnSetInfo *rsi,
+					 plpgsql_check_info *cinfo)
 {
 	/* this link will be restored at exit from plpgsql_call_handler */
 	func->cur_estate = estate;
@@ -902,6 +907,41 @@ plpgsql_check_setup_estate(PLpgSQL_execstate *estate,
 
 #endif
 
+#if PG_VERSION_NUM > 100000
+
+	if (cinfo->oldtable)
+	{
+		EphemeralNamedRelation enr = palloc(sizeof(EphemeralNamedRelationData));
+		int rc PG_USED_FOR_ASSERTS_ONLY;
+
+		enr->md.name = cinfo->oldtable;
+		enr->md.reliddesc = cinfo->relid;
+		enr->md.tupdesc = NULL;
+		enr->md.enrtype = ENR_NAMED_TUPLESTORE;
+		enr->md.enrtuples = 0;
+		enr->reldata = NULL;
+
+		rc = SPI_register_relation(enr);
+		Assert(rc >= 0);
+	}
+
+	if (cinfo->newtable)
+	{
+		EphemeralNamedRelation enr = palloc(sizeof(EphemeralNamedRelationData));
+		int rc PG_USED_FOR_ASSERTS_ONLY;
+
+		enr->md.name = cinfo->newtable;
+		enr->md.reliddesc = cinfo->relid;
+		enr->md.tupdesc = NULL;
+		enr->md.enrtype = ENR_NAMED_TUPLESTORE;
+		enr->md.enrtuples = 0;
+		enr->reldata = NULL;
+
+		rc = SPI_register_relation(enr);
+		Assert(rc >= 0);
+	}
+
+#endif
 
 	estate->err_stmt = NULL;
 	estate->err_text = NULL;
