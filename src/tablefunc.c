@@ -74,21 +74,21 @@ plpgsql_check_function(PG_FUNCTION_ARGS)
 	SetReturningFunctionCheck(rsinfo);
 
 	if (PG_ARGISNULL(0))
-		elog(ERROR, "argument should not be null");
+		elog(ERROR, "the first argument should not be null");
 	if (PG_ARGISNULL(1))
-		elog(ERROR, "argument should not be null");
+		elog(ERROR, "the second argument should not be null");
 	if (PG_ARGISNULL(2))
-		elog(ERROR, "argument should not be null");
+		elog(ERROR, "the third argument should not be null");
 	if (PG_ARGISNULL(3))
-		elog(ERROR, "argument should not be null");
+		elog(ERROR, "the fourth argument should not be null");
 	if (PG_ARGISNULL(4))
-		elog(ERROR, "argument should not be null");
+		elog(ERROR, "the fifth argument should not be null");
 	if (PG_ARGISNULL(5))
-		elog(ERROR, "argument should not be null");
+		elog(ERROR, "the sixth argument should not be null");
 	if (PG_ARGISNULL(6))
-		elog(ERROR, "argument should not be null");
+		elog(ERROR, "the seventh argument should not be null");
 	if (PG_ARGISNULL(7))
-		elog(ERROR, "argument should not be null");
+		elog(ERROR, "the eighth argument should not be null");
 
 	format = plpgsql_check_format_num(text_to_cstring(PG_GETARG_TEXT_PP(2)));
 
@@ -99,7 +99,7 @@ plpgsql_check_function(PG_FUNCTION_ARGS)
 	cinfo.other_warnings = PG_GETARG_BOOL(4);
 	cinfo.performance_warnings = PG_GETARG_BOOL(5);
 	cinfo.extra_warnings = PG_GETARG_BOOL(6);
-	cinfo.sql_injection_check = PG_GETARG_BOOL(7);
+	cinfo.security_warnings = PG_GETARG_BOOL(7);
 
 	if (PG_ARGISNULL(8))
 		cinfo.oldtable = NULL;
@@ -168,20 +168,19 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	SetReturningFunctionCheck(rsinfo);
 
 	if (PG_ARGISNULL(0))
-		elog(ERROR, "argument should not be null");
+		elog(ERROR, "the first argument should not be null");
 	if (PG_ARGISNULL(1))
-		elog(ERROR, "argument should not be null");
+		elog(ERROR, "the second argument should not be null");
 	if (PG_ARGISNULL(2))
-		elog(ERROR, "argument should not be null");
+		elog(ERROR, "the third argument should not be null");
 	if (PG_ARGISNULL(3))
-		elog(ERROR, "argument should not be null");
+		elog(ERROR, "the fourth argument should not be null");
 	if (PG_ARGISNULL(4))
-		elog(ERROR, "argument should not be null");
+		elog(ERROR, "the fifth argument should not be null");
 	if (PG_ARGISNULL(5))
-		elog(ERROR, "argument should not be null");
+		elog(ERROR, "the sixth argument should not be null");
 	if (PG_ARGISNULL(6))
-		elog(ERROR, "argument should not be null");
-
+		elog(ERROR, "the seventh argument should not be null");
 
 	init_check_info(&cinfo, PG_GETARG_OID(0));
 
@@ -190,7 +189,7 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	cinfo.other_warnings = PG_GETARG_BOOL(3);
 	cinfo.performance_warnings = PG_GETARG_BOOL(4);
 	cinfo.extra_warnings = PG_GETARG_BOOL(5);
-	cinfo.sql_injection_check = PG_GETARG_BOOL(6);
+	cinfo.security_warnings = PG_GETARG_BOOL(6);
 
 	if (PG_ARGISNULL(7))
 		cinfo.oldtable = NULL;

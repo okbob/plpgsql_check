@@ -12,7 +12,8 @@ enum
 	PLPGSQL_CHECK_ERROR,
 	PLPGSQL_CHECK_WARNING_OTHERS,
 	PLPGSQL_CHECK_WARNING_EXTRA,					/* check shadowed variables */
-	PLPGSQL_CHECK_WARNING_PERFORMANCE
+	PLPGSQL_CHECK_WARNING_PERFORMANCE,				/* invisible cast check */
+	PLPGSQL_CHECK_WARNING_SECURITY					/* sql injection check */
 };
 
 enum
@@ -74,8 +75,8 @@ typedef struct plpgsql_check_info
 	bool		other_warnings;
 	bool		performance_warnings;
 	bool		extra_warnings;
+	bool		security_warnings;
 	bool		show_profile;
-	bool		sql_injection_check;
 	char	   *oldtable;
 	char	   *newtable;
 } plpgsql_check_info;
@@ -100,6 +101,9 @@ typedef struct PLpgSQL_checkstate
 	bool		fake_rtd;					/* true when functions returns record */
 	plpgsql_check_result_info *result_info;
 	plpgsql_check_info *cinfo;
+	Bitmapset	   *safe_variables;			/* track which variables are safe against sql injection */
+	Bitmapset	   *string_variables;		/* track which variables are possibly vulnerable to sql injection */
+	bool			stop_check;				/* true after error when fatal_errors option is active */
 } PLpgSQL_checkstate;
 
 
@@ -174,9 +178,9 @@ extern int plpgsql_check_mode;
  * functions from expr_walk.c
  */
 extern void plpgsql_check_detect_dependency(PLpgSQL_checkstate *cstate, Query *query);
-extern void plpgsql_check_sequence_functions(PLpgSQL_checkstate *cstate, Query *query, char *query_str);
 extern bool plpgsql_check_has_rtable(Query *query);
 extern bool plpgsql_check_qual_has_fishy_cast(PlannedStmt *plannedstmt, Plan *plan, Param **param);
+extern void plpgsql_check_funcexpr(PLpgSQL_checkstate *cstate, Query *query, char *query_str);
 
 /*
  * functions from check_expr.c
@@ -264,6 +268,7 @@ extern shmem_startup_hook_type prev_shmem_startup_hook;
 #define NEVER_READ_PARAMETER_TEXT		"parameter \"%s\" is never read"
 #define UNMODIFIED_VARIABLE_TEXT		"unmodified OUT variable \"%s\""
 #define OUT_COMPOSITE_IS_NOT_SINGLE_TEXT	"composite OUT variable \"%s\" is not single argument"
+#define UNSAFE_EXECUTE					"the expression used by EXECUTE command is possibly sql injection vulnerable"
 
 #ifndef TupleDescAttr
 #define TupleDescAttr(tupdesc, i) ((tupdesc)->attrs[(i)])

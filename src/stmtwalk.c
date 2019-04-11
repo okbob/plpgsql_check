@@ -131,6 +131,9 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 	if (stmt == NULL)
 		return;
 
+	if (cstate->stop_check)
+		return;
+
 	cstate->estate->err_stmt = stmt;
 	func = cstate->estate->func;
 
@@ -1121,6 +1124,18 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 			case PLPGSQL_STMT_DYNEXECUTE:
 				{
 					PLpgSQL_stmt_dynexecute *stmt_dynexecute = (PLpgSQL_stmt_dynexecute *) stmt;
+
+					/*
+					 * possible checks:
+					 *
+					 * 1. When expression is string literal, then we can check this query similary
+					 *    like cursor query with parameters. When this query has not a parameters,
+					 *    and it is not DDL, DML, then we can raise a performance warning'.
+					 *
+					 * 2. When expression is real expression, then we should to check any string
+					 *    kind parameters if are sanitized by functions quote_ident, qoute_literal,
+					 *    or format.
+					 */
 
 					cstate->has_execute_stmt = true;
 

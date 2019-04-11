@@ -1938,15 +1938,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx()', performance_warnings := true);
-                                 plpgsql_check_function                                  
------------------------------------------------------------------------------------------
+                        plpgsql_check_function                         
+-----------------------------------------------------------------------
  error:42804:7:assignment:cannot cast composite value to a scalar type
  Context: at assignment to variable "_txt" declared on line 3
- warning extra:00000:2:DECLARE:never read variable "_tt"
- warning extra:00000:3:DECLARE:never read variable "_txt"
- performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
- Hint: When you fix this issue, please, recheck other functions that uses this function.
-(6 rows)
+(2 rows)
 
 drop function fx();
 create or replace function fx()
@@ -2974,16 +2970,7 @@ select * from plpgsql_check_function('testseq()');
  error:42809:3:PERFORM:"test_table" is not a sequence
  Query: SELECT nextval('test_table')
  --                   ^
- error:42809:4:PERFORM:"test_table" is not a sequence
- Query: SELECT currval('test_table')
- --                   ^
- error:42809:5:PERFORM:"test_table" is not a sequence
- Query: SELECT setval('test_table', 10)
- --                  ^
- error:42809:6:PERFORM:"test_table" is not a sequence
- Query: SELECT setval('test_table', 10, true)
- --                  ^
-(12 rows)
+(3 rows)
 
 drop function testseq();
 drop table test_table;
@@ -3562,3 +3549,32 @@ select * from plpgsql_check_function('test_crash', fatal_errors := true);
 (5 rows)
 
 drop function test_crash();
+create or replace function foo_format(a text, b text)
+returns void as $$
+declare s text;
+begin
+  s := format('%s'); -- should to raise error
+  s := format('%s %10s', a, b); -- should be ok
+  s := format('%s %s', a, b, a); -- should to raise warning
+  s := format('%s %d', a, b); -- should to raise error
+  raise notice '%', s;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('foo_format', fatal_errors := false);
+                      plpgsql_check_function                       
+-------------------------------------------------------------------
+ error:22023:4:assignment:too few arguments for format()
+ Query: SELECT format('%s')
+ --                  ^
+ Context: at assignment to variable "s" declared on line 2
+ warning:00000:6:assignment:unused parameters of function "format"
+ Query: SELECT format('%s %s', a, b, a)
+ --                  ^
+ Context: at assignment to variable "s" declared on line 2
+ error:22023:7:assignment:unrecognized format() type specifier "d"
+ Query: SELECT format('%s %d', a, b)
+ --                  ^
+ Context: at assignment to variable "s" declared on line 2
+(12 rows)
+
+drop function foo_format(text, text);

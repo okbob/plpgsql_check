@@ -2580,3 +2580,20 @@ select * from plpgsql_check_function('test_crash', fatal_errors := false);
 select * from plpgsql_check_function('test_crash', fatal_errors := true);
 
 drop function test_crash();
+
+create or replace function foo_format(a text, b text)
+returns void as $$
+declare s text;
+begin
+  s := format('%s'); -- should to raise error
+  s := format('%s %10s', a, b); -- should be ok
+  s := format('%s %s', a, b, a); -- should to raise warning
+  s := format('%s %d', a, b); -- should to raise error
+  raise notice '%', s;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('foo_format', fatal_errors := false);
+
+drop function foo_format(text, text);
+

@@ -29,7 +29,7 @@ CREATE FUNCTION __plpgsql_check_function_tb(funcoid regprocedure,
                                        others_warnings boolean,
                                        performance_warnings boolean,
                                        extra_warnings boolean,
-                                       sql_injection_check boolean,
+                                       security_warnings boolean,
                                        oldtable name,
                                        newtable name)
 RETURNS TABLE(functionid regproc,
@@ -53,7 +53,7 @@ CREATE FUNCTION __plpgsql_check_function(funcoid regprocedure,
                                        others_warnings boolean,
                                        performance_warnings boolean,
                                        extra_warnings boolean,
-                                       sql_injection_check boolean,
+                                       security_warnings boolean,
                                        oldtable name,
                                        newtable name)
 
@@ -67,7 +67,7 @@ CREATE FUNCTION plpgsql_check_function_tb(funcoid regprocedure,
                                        others_warnings boolean DEFAULT true,
                                        performance_warnings boolean DEFAULT false,
                                        extra_warnings boolean DEFAULT true,
-                                       sql_injection_check boolean DEFAULT false,
+                                       security_warnings boolean DEFAULT false,
                                        oldtable name DEFAULT null,
                                        newtable name DEFAULT null)
 
@@ -86,7 +86,7 @@ AS $$
 BEGIN
   RETURN QUERY SELECT * FROM @extschema@.__plpgsql_check_function_tb(funcoid, relid,
                                       fatal_errors, others_warnings, performance_warnings, extra_warnings,
-                                      sql_injection_check, oldtable, newtable);
+                                      security_warnings, oldtable, newtable);
   RETURN;
 END;
 $$ LANGUAGE plpgsql SET plpgsql_check.profiler TO off;
@@ -98,7 +98,7 @@ CREATE FUNCTION plpgsql_check_function(funcoid regprocedure,
                                        others_warnings boolean DEFAULT true,
                                        performance_warnings boolean DEFAULT false,
                                        extra_warnings boolean DEFAULT true,
-                                       sql_injection_check boolean DEFAULT false,
+                                       security_warnings boolean DEFAULT false,
                                        oldtable name DEFAULT null,
                                        newtable name DEFAULT null)
 
@@ -108,7 +108,7 @@ BEGIN
   RETURN QUERY SELECT s FROM @extschema@.__plpgsql_check_function(funcoid, relid,
                                   format, fatal_errors, others_warnings,
                                   performance_warnings, extra_warnings,
-                                  sql_injection_check, oldtable, newtable) g(s);
+                                  security_warnings, oldtable, newtable) g(s);
   RETURN;
 END;
 $$ LANGUAGE plpgsql SET plpgsql_check.profiler TO off;
@@ -119,7 +119,7 @@ CREATE FUNCTION plpgsql_check_function_tb(name text,
                                        others_warnings boolean DEFAULT true,
                                        performance_warnings boolean DEFAULT false,
                                        extra_warnings boolean DEFAULT true,
-                                       sql_injection_check boolean DEFAULT false,
+                                       security_warnings boolean DEFAULT false,
                                        oldtable name DEFAULT null,
                                        newtable name DEFAULT null)
 
@@ -138,7 +138,7 @@ AS $$
 BEGIN
   RETURN QUERY SELECT * FROM @extschema@.__plpgsql_check_function_tb(@extschema@.__plpgsql_check_getfuncid(name), relid,
                                       fatal_errors, others_warnings, performance_warnings, extra_warnings,
-                                      sql_injection_check, oldtable, newtable);
+                                      security_warnings, oldtable, newtable);
   RETURN;
 END;
 $$ LANGUAGE plpgsql SET plpgsql_check.profiler TO off;
@@ -150,7 +150,7 @@ CREATE FUNCTION plpgsql_check_function(name text,
                                        others_warnings boolean DEFAULT true,
                                        performance_warnings boolean DEFAULT false,
                                        extra_warnings boolean DEFAULT true,
-                                       sql_injection_check boolean DEFAULT false,
+                                       security_warnings boolean DEFAULT false,
                                        oldtable name DEFAULT null,
                                        newtable name DEFAULT null)
 
@@ -160,7 +160,7 @@ BEGIN
   RETURN QUERY SELECT s FROM @extschema@.__plpgsql_check_function(@extschema@.__plpgsql_check_getfuncid(name), relid,
                                   format, fatal_errors, others_warnings,
                                   performance_warnings, extra_warnings,
-                                  sql_injection_check, oldtable, newtable) g(s);
+                                  security_warnings, oldtable, newtable) g(s);
   RETURN;
 END;
 $$ LANGUAGE plpgsql SET plpgsql_check.profiler TO off;
