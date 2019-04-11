@@ -99,6 +99,23 @@ plpgsql_check_function(PG_FUNCTION_ARGS)
 	cinfo.other_warnings = PG_GETARG_BOOL(4);
 	cinfo.performance_warnings = PG_GETARG_BOOL(5);
 	cinfo.extra_warnings = PG_GETARG_BOOL(6);
+	cinfo.sql_injection_check = PG_GETARG_BOOL(7);
+
+	if (PG_ARGISNULL(8))
+		cinfo.oldtable = NULL;
+	else
+		cinfo.oldtable = NameStr(*(PG_GETARG_NAME(8)));
+
+	if (PG_ARGISNULL(9))
+		cinfo.newtable = NULL;
+	else
+		cinfo.newtable = NameStr(*(PG_GETARG_NAME(9)));
+
+	if ((cinfo.oldtable || cinfo.newtable) && !OidIsValid(cinfo.relid))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("missing description of oldtable or newtable"),
+				 errhint("Parameter relid is a empty.")));
 
 	cinfo.proctuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(cinfo.fn_oid));
 	if (!HeapTupleIsValid(cinfo.proctuple))
@@ -173,6 +190,23 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	cinfo.other_warnings = PG_GETARG_BOOL(3);
 	cinfo.performance_warnings = PG_GETARG_BOOL(4);
 	cinfo.extra_warnings = PG_GETARG_BOOL(5);
+	cinfo.sql_injection_check = PG_GETARG_BOOL(6);
+
+	if (PG_ARGISNULL(7))
+		cinfo.oldtable = NULL;
+	else
+		cinfo.oldtable = NameStr(*(PG_GETARG_NAME(7)));
+
+	if (PG_ARGISNULL(8))
+		cinfo.newtable = NULL;
+	else
+		cinfo.newtable = NameStr(*(PG_GETARG_NAME(8)));
+
+	if ((cinfo.oldtable || cinfo.newtable) && !OidIsValid(cinfo.relid))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("missing description of oldtable or newtable"),
+				 errhint("Parameter relid is a empty.")));
 
 	cinfo.proctuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(cinfo.fn_oid));
 	if (!HeapTupleIsValid(cinfo.proctuple))

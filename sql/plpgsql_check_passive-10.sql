@@ -27,3 +27,31 @@ select f1();
 
 drop function f1();
 drop type _exception_type;
+
+
+create table footab(a int, b int, c int);
+
+create or replace function footab_trig_func()
+returns trigger as $$
+declare x int;
+begin
+  if false then
+    -- should be ok;
+    select count(*) from newtab into x; 
+
+    -- should fail;
+    select count(*) from newtab where d = 10 into x;
+  end if;
+  return null;
+end;
+$$ language plpgsql;
+
+create trigger footab_trigger
+  after insert on footab
+  referencing new table as newtab
+  for each statement execute procedure footab_trig_func();
+
+insert into footab values(1,2,3);
+
+drop table footab;
+drop function footab_trig_func();
