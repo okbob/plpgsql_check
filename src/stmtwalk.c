@@ -13,6 +13,7 @@
 
 #include "access/tupconvert.h"
 #include "catalog/pg_type.h"
+#include "utils/lsyscache.h"
 
 #if PG_VERSION_NUM > 90500
 
@@ -34,6 +35,139 @@ static int possibly_closed(int c);
 static int merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int err_code);
 static bool exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond);
 static bool found_shadowed_variable(char *varname, PLpgSQL_stmt_stack_item *current, PLpgSQL_checkstate *cstate);
+
+#define QUOTE_IDENT_OID			1282
+#define QUOTE_LITERAL_OID		1283
+#define QUOTE_NULLABLE_OID		1289
+#define QUOTE_FORMAT1_OID		3540
+#define QUOTE_FORMAT2_OID		3539
+
+/*
+ * Recursive iterate to deep and search extern params with typcategory "S", and check
+ * if this value is sanitized.
+ */
+static bool 
+is_sql_injection_vulnerable(Node *node, int *location)
+{
+	if (IsA(node, FuncExpr))
+	{
+		FuncExpr *fexpr = (FuncExpr *) node;
+		bool	is_vulnerable = false;
+		ListCell *lc;
+
+		foreach(lc, fexpr->args)
+		{
+			Node *arg = lfirst(lc);
+
+			if (is_sql_injection_vulnerable(arg, location))
+			{
+				is_vulnerable = true;
+				break;
+			}
+		}
+
+		if (is_vulnerable)
+		{
+			bool	typispreferred;
+			char 	typcategory;
+
+			get_type_category_preferred(fexpr->funcresulttype,
+										&typcategory,
+										&typispreferred);
+
+			if (typcategory == 'S')
+			{
+				switch (fexpr->funcid)
+				{
+					case QUOTE_IDENT_OID:
+					case QUOTE_LITERAL_OID:
+					case QUOTE_NULLABLE_OID:
+						return false;
+
+					case QUOTE_FORMAT1_OID:
+					case QUOTE_FORMAT2_OID:
+						return false; // ToDo
+				}
+
+				return true;
+			}
+		}
+
+		return false;
+	}
+	else if (IsA(node, OpExpr))
+	{
+		OpExpr *op = (OpExpr *) node;
+		bool	is_vulnerable = false;
+		ListCell *lc;
+
+		foreach(lc, op->args)
+		{
+			Node *arg = lfirst(lc);
+
+			if (is_sql_injection_vulnerable(arg, location))
+			{
+				is_vulnerable = true;
+				break;
+			}
+		}
+
+		if (is_vulnerable)
+		{
+			bool	typispreferred;
+			char 	typcategory;
+
+			get_type_category_preferred(op->opresulttype,
+										&typcategory,
+										&typispreferred);
+			if (typcategory == 'S')
+			{
+				char *opname = get_opname(op->opno);
+				bool	result = false;
+
+				if (opname)
+				{
+					result = strcmp(opname, "||") == 0;
+
+					pfree(opname);
+				}
+
+				return result;
+			}
+		}
+
+		return false;
+	}
+	else if (IsA(node, NamedArgExpr))
+	{
+		return is_sql_injection_vulnerable((Node *) ((NamedArgExpr *) node)->arg, location);
+	}
+	else if (IsA(node, RelabelType))
+	{
+		return is_sql_injection_vulnerable((Node *) ((RelabelType *) node)->arg, location);
+	}
+	else if (IsA(node, Param))
+	{
+		Param *p = (Param *) node;
+
+		if (p->paramkind == PARAM_EXTERN)
+		{
+			bool	typispreferred;
+			char 	typcategory;
+
+			get_type_category_preferred(p->paramtype, &typcategory, &typispreferred);
+			if (typcategory == 'S')
+			{
+				*location = p->location;
+				return true;
+			}
+		}
+
+		return false;
+	}
+	else
+		return false;
+}
 
 
 #if PG_VERSION_NUM >= 110000
@@ -1124,6 +1258,9 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 			case PLPGSQL_STMT_DYNEXECUTE:
 				{
 					PLpgSQL_stmt_dynexecute *stmt_dynexecute = (PLpgSQL_stmt_dynexecute *) stmt;
+					Node *expr_node;
+					bool prev_has_execute_stmt = cstate->has_execute_stmt;
+					int		loc = -1;
 
 					/*
 					 * possible checks:
@@ -1140,6 +1277,65 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					cstate->has_execute_stmt = true;
 
 					plpgsql_check_expr(cstate, stmt_dynexecute->query);
+					expr_node = plpgsql_check_expr_get_node(cstate, stmt_dynexecute->query, false);
+
+					if (IsA(expr_node, Const))
+					{
+						char *query = plpgsql_check_const_to_string((Const *) expr_node);
+						PLpgSQL_expr	dynexpr;
+
+						if (!stmt_dynexecute->params)
+						{
+
+							/* probably useless dynamic command */
+							plpgsql_check_put_error(cstate,
+													0, 0,
+										"immutable expression without parameters found",
+										"the EXECUTE command is not necessary",
+										"Don't use dynamic SQL when you can use static SQL.",
+													PLPGSQL_CHECK_WARNING_PERFORMANCE,
+													0,
+													NULL,
+													NULL);
+						}
+
+						memset(&dynexpr, 0, sizeof(PLpgSQL_expr));
+						dynexpr.dtype = PLPGSQL_DTYPE_EXPR;
+						dynexpr.dno = -1;
+						dynexpr.rwparam = -1;
+						dynexpr.query = query;
+
+						plpgsql_check_expr_as_sqlstmt_nodata(cstate, &dynexpr);
+
+						if (dynexpr.plan)
+						{
+							SPI_freeplan(dynexpr.plan);
+							cstate->exprs = list_delete_ptr(cstate->exprs, &dynexpr);
+						}
+
+						/* this is not real dynamic SQL statement */
+						cstate->has_execute_stmt =  prev_has_execute_stmt;
+					}
+					else
+					{
+						/*
+						 * execute string is not constant (is not safe),
+						 * but we can check sanitize parameters.
+						 */
+						if (cstate->cinfo->security_warnings &&
+							is_sql_injection_vulnerable(expr_node, &loc))
+						{
+							plpgsql_check_put_error(cstate,
+													0, 0,
+										"text type variable is not sanitized",
+										"The EXECUTE expression is SQL injection vulnerable.",
+										"Use quote_ident, quote_literal or format function to secure variable.",
+													PLPGSQL_CHECK_WARNING_SECURITY,
+													loc,
+													stmt_dynexecute->query->query,
+													NULL);
+						}
+					}
 
 					foreach(l, stmt_dynexecute->params)
 					{

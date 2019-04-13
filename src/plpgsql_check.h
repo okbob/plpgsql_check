@@ -199,6 +199,8 @@ extern bool plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_ex
 extern void plpgsql_check_assignment(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 	PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow, int targetdno);
 extern void plpgsql_check_expr_generic(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
+extern Node *plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool force_plan_checks);
+extern char *plpgsql_check_const_to_string(Const *c);
 
 #if PG_VERSION_NUM >= 110000
 

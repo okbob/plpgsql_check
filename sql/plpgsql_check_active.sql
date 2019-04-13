@@ -2597,3 +2597,18 @@ select * from plpgsql_check_function('foo_format', fatal_errors := false);
 
 drop function foo_format(text, text);
 
+create or replace function dyn_sql_1()
+returns void as $$
+declare
+  v varchar;
+  n int;
+begin
+  execute 'select ' || n; -- ok
+  execute 'select ' || quote_literal(v); -- ok
+  execute 'select ' || v; -- vulnerable
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('dyn_sql_1', security_warnings := true);
+
+drop function dyn_sql_1();
