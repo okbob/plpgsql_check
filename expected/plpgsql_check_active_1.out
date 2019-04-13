@@ -3578,3 +3578,25 @@ select * from plpgsql_check_function('foo_format', fatal_errors := false);
 (12 rows)
 
 drop function foo_format(text, text);
+create or replace function dyn_sql_1()
+returns void as $$
+declare
+  v varchar;
+  n int;
+begin
+  execute 'select ' || n; -- ok
+  execute 'select ' || quote_literal(v); -- ok
+  execute 'select ' || v; -- vulnerable
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('dyn_sql_1', security_warnings := true);
+                           plpgsql_check_function                            
+-----------------------------------------------------------------------------
+ security:00000:8:EXECUTE:text type variable is not sanitized
+ Query: SELECT 'select ' || v
+ --                        ^
+ Detail: The EXECUTE expression is SQL injection vulnerable.
+ Hint: Use quote_ident, quote_literal or format function to secure variable.
+(5 rows)
+
+drop function dyn_sql_1();

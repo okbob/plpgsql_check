@@ -361,18 +361,12 @@ check_fishy_qual(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str)
 	}
 }
 
-/*
- * Returns Const Value from expression if it is possible.
- *
- * Ensure all plan related checks on expression.
- *
- */
-static Const *
-expr_get_const(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+Node *
+plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool force_plan_checks)
 {
 	PlannedStmt *_stmt;
 	CachedPlan *cplan;
-	Const	   *result = NULL;
+	Node	   *result = NULL;
 	bool		has_result_desc;
 
 	cplan = get_cached_plan(expr, &has_result_desc);
@@ -380,7 +374,8 @@ expr_get_const(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 		elog(ERROR, "expression does not return data");
 
 	/* do all checks for this plan, reduce a access to plan cache */
-	plan_checks(cstate, cplan, expr->query);
+	if (force_plan_checks)
+		plan_checks(cstate, cplan, expr->query);
 
 	_stmt = (PlannedStmt *) linitial(cplan->stmt_list);
 
@@ -393,14 +388,30 @@ expr_get_const(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 		if (IsA(_plan, Result) &&list_length(_plan->targetlist) == 1)
 		{
 			tle = (TargetEntry *) linitial(_plan->targetlist);
-			if (((Node *) tle->expr)->type == T_Const)
-				result = (Const *) tle->expr;
+			result = (Node *) tle->expr;
 		}
 	}
 
 	ReleaseCachedPlan(cplan, true);
 
 	return result;
+}
+
+/*
+ * Returns Const Value from expression if it is possible.
+ *
+ * Ensure all plan related checks on expression.
+ *
+ */
+static Const *
+expr_get_const(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+{
+	Node *node = plpgsql_check_expr_get_node(cstate, expr, true);
+
+	if (node && node->type == T_Const)
+		return (Const *) node;
+
+	return NULL;
 }
 
 /*
@@ -417,6 +428,25 @@ is_const_null_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 	return c && c->constisnull ? true : false;
 }
 
+char *
+plpgsql_check_const_to_string(Const *c)
+{
+	if (IsA((Node *) c, Const))
+	{
+		if (!c->constisnull)
+		{
+			Oid		typoutput;
+			bool	typisvarlena;
+
+			getTypeOutputInfo(c->consttype, &typoutput, &typisvarlena);
+
+			return OidOutputFunctionCall(typoutput, c->constvalue);
+		}
+	}
+
+	return NULL;
+}
+
 /*
  * Returns string for any not null constant. isnull is true,
  * when constant is null.
@@ -430,17 +460,7 @@ plpgsql_check_expr_get_string(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bo
 	c = expr_get_const(cstate, expr);
 	*isnull = c && c->constisnull;
 
-	if (c && !c->constisnull)
-	{
-		Oid		typoutput;
-		bool	typisvarlena;
-
-		getTypeOutputInfo(c->consttype, &typoutput, &typisvarlena);
-
-		return OidOutputFunctionCall(typoutput, c->constvalue);
-	}
-
-	return NULL;
+	return plpgsql_check_const_to_string(c);
 }
 
 static void
