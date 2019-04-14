@@ -32,6 +32,8 @@ end;
 $$ language plpgsql stable;
 select f1();
 ERROR:  INSERT is not allowed in a non volatile function
+LINE 1: insert into t1 values(10,20)
+        ^
 QUERY:  insert into t1 values(10,20)
 CONTEXT:  PL/pgSQL function f1() line 4 at SQL statement
 drop function f1();
