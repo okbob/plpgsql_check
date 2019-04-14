@@ -2606,6 +2606,8 @@ begin
   execute 'select ' || n; -- ok
   execute 'select ' || quote_literal(v); -- ok
   execute 'select ' || v; -- vulnerable
+  execute format('select * from %I', v); -- ok
+  execute format('select * from %s', v); -- vulnerable
 end;
 $$ language plpgsql;
 

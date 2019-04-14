@@ -181,6 +181,7 @@ extern void plpgsql_check_detect_dependency(PLpgSQL_checkstate *cstate, Query *q
 extern bool plpgsql_check_has_rtable(Query *query);
 extern bool plpgsql_check_qual_has_fishy_cast(PlannedStmt *plannedstmt, Plan *plan, Param **param);
 extern void plpgsql_check_funcexpr(PLpgSQL_checkstate *cstate, Query *query, char *query_str);
+extern bool plpgsql_check_is_sql_injection_vulnerable(Node *node, int *location);
 
 /*
  * functions from check_expr.c
