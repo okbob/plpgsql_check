@@ -13,7 +13,6 @@
 
 #include "access/tupconvert.h"
 #include "catalog/pg_type.h"
-#include "utils/lsyscache.h"
 
 #if PG_VERSION_NUM > 90500
 
@@ -35,139 +34,6 @@ static int possibly_closed(int c);
 static int merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int err_code);
 static bool exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond);
 static bool found_shadowed_variable(char *varname, PLpgSQL_stmt_stack_item *current, PLpgSQL_checkstate *cstate);
-
-#define QUOTE_IDENT_OID			1282
-#define QUOTE_LITERAL_OID		1283
-#define QUOTE_NULLABLE_OID		1289
-#define QUOTE_FORMAT1_OID		3540
-#define QUOTE_FORMAT2_OID		3539
-
-/*
- * Recursive iterate to deep and search extern params with typcategory "S", and check
- * if this value is sanitized.
- */
-static bool 
-is_sql_injection_vulnerable(Node *node, int *location)
-{
-	if (IsA(node, FuncExpr))
-	{
-		FuncExpr *fexpr = (FuncExpr *) node;
-		bool	is_vulnerable = false;
-		ListCell *lc;
-
-		foreach(lc, fexpr->args)
-		{
-			Node *arg = lfirst(lc);
-
-			if (is_sql_injection_vulnerable(arg, location))
-			{
-				is_vulnerable = true;
-				break;
-			}
-		}
-
-		if (is_vulnerable)
-		{
-			bool	typispreferred;
-			char 	typcategory;
-
-			get_type_category_preferred(fexpr->funcresulttype,
-										&typcategory,
-										&typispreferred);
-
-			if (typcategory == 'S')
-			{
-				switch (fexpr->funcid)
-				{
-					case QUOTE_IDENT_OID:
-					case QUOTE_LITERAL_OID:
-					case QUOTE_NULLABLE_OID:
-						return false;
-
-					case QUOTE_FORMAT1_OID:
-					case QUOTE_FORMAT2_OID:
-						return false; // ToDo
-				}
-
-				return true;
-			}
-		}
-
-		return false;
-	}
-	else if (IsA(node, OpExpr))
-	{
-		OpExpr *op = (OpExpr *) node;
-		bool	is_vulnerable = false;
-		ListCell *lc;
-
-		foreach(lc, op->args)
-		{
-			Node *arg = lfirst(lc);
-
-			if (is_sql_injection_vulnerable(arg, location))
-			{
-				is_vulnerable = true;
-				break;
-			}
-		}
-
-		if (is_vulnerable)
-		{
-			bool	typispreferred;
-			char 	typcategory;
-
-			get_type_category_preferred(op->opresulttype,
-										&typcategory,
-										&typispreferred);
-			if (typcategory == 'S')
-			{
-				char *opname = get_opname(op->opno);
-				bool	result = false;
-
-				if (opname)
-				{
-					result = strcmp(opname, "||") == 0;
-
-					pfree(opname);
-				}
-
-				return result;
-			}
-		}
-
-		return false;
-	}
-	else if (IsA(node, NamedArgExpr))
-	{
-		return is_sql_injection_vulnerable((Node *) ((NamedArgExpr *) node)->arg, location);
-	}
-	else if (IsA(node, RelabelType))
-	{
-		return is_sql_injection_vulnerable((Node *) ((RelabelType *) node)->arg, location);
-	}
-	else if (IsA(node, Param))
-	{
-		Param *p = (Param *) node;
-
-		if (p->paramkind == PARAM_EXTERN)
-		{
-			bool	typispreferred;
-			char 	typcategory;
-
-			get_type_category_preferred(p->paramtype, &typcategory, &typispreferred);
-			if (typcategory == 'S')
-			{
-				*location = p->location;
-				return true;
-			}
-		}
-
-		return false;
-	}
-	else
-		return false;
-}
 
 
 #if PG_VERSION_NUM >= 110000
@@ -1323,7 +1189,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						 * but we can check sanitize parameters.
 						 */
 						if (cstate->cinfo->security_warnings &&
-							is_sql_injection_vulnerable(expr_node, &loc))
+							plpgsql_check_is_sql_injection_vulnerable(expr_node, &loc))
 						{
 							plpgsql_check_put_error(cstate,
 													0, 0,

@@ -3587,6 +3587,8 @@ begin
   execute 'select ' || n; -- ok
   execute 'select ' || quote_literal(v); -- ok
   execute 'select ' || v; -- vulnerable
+  execute format('select * from %I', v); -- ok
+  execute format('select * from %s', v); -- vulnerable
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('dyn_sql_1', security_warnings := true);
@@ -3597,6 +3599,11 @@ select * from plpgsql_check_function('dyn_sql_1', security_warnings := true);
  --                        ^
  Detail: The EXECUTE expression is SQL injection vulnerable.
  Hint: Use quote_ident, quote_literal or format function to secure variable.
-(5 rows)
+ security:00000:10:EXECUTE:text type variable is not sanitized
+ Query: SELECT format('select * from %s', v)
+ --                                      ^
+ Detail: The EXECUTE expression is SQL injection vulnerable.
+ Hint: Use quote_ident, quote_literal or format function to secure variable.
+(10 rows)
 
 drop function dyn_sql_1();
