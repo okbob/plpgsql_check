@@ -2175,7 +2175,7 @@ $$ language plpgsql;
 -- should to fail
 select testseq();
 
-select * from plpgsql_check_function('testseq()');
+select * from plpgsql_check_function('testseq()', fatal_errors := false);
 
 drop function testseq();
 drop table test_table;
@@ -2608,9 +2608,33 @@ begin
   execute 'select ' || v; -- vulnerable
   execute format('select * from %I', v); -- ok
   execute format('select * from %s', v); -- vulnerable
+  execute 'select $1' using v; -- ok
+  execute 'select 1'; -- ok
+  execute 'select 1' using v; -- warning
+  execute 'select $1'; -- error
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_function('dyn_sql_1', security_warnings := true);
+select * from plpgsql_check_function('dyn_sql_1', security_warnings := true, fatal_errors := false);
 
 drop function dyn_sql_1();
+
+create type tp as (a int, b int);
+
+create or replace function dyn_sql_2()
+returns void as $$
+declare
+  r tp;
+  result int;
+begin
+  select 10 a, 20 b into r;
+  raise notice '%', r.a;
+  execute 'select $1.a + $1.b' into result using r;
+  execute 'select $1.c' into result using r; -- error
+  raise notice '%', result;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('dyn_sql_2', security_warnings := true);
+
+drop function dyn_sql_2();

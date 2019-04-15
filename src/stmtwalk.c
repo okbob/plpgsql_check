@@ -14,6 +14,8 @@
 #include "access/tupconvert.h"
 #include "catalog/pg_type.h"
 
+#include "nodes/nodeFuncs.h"
+
 #if PG_VERSION_NUM > 90500
 
 #include "common/keywords.h"
@@ -35,6 +37,63 @@ static int merge_closing(int c, int c_local, List **exceptions, List *exceptions
 static bool exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond);
 static bool found_shadowed_variable(char *varname, PLpgSQL_stmt_stack_item *current, PLpgSQL_checkstate *cstate);
 
+typedef struct
+{
+	List			   *args;
+	PLpgSQL_checkstate *cstate;
+	bool	use_params;
+} DynSQLParams;
+
+static Node *
+dynsql_param_ref(ParseState *pstate, ParamRef *pref)
+{
+	DynSQLParams *params = (DynSQLParams *) pstate->p_ref_hook_state;
+	List	   *args = params->args;
+	int			nargs = list_length(args);
+	Param	   *param;
+	PLpgSQL_expr *expr;
+	TupleDesc	tupdesc;
+
+	if (pref->number < 1 || pref->number > nargs)
+		elog(ERROR, "there is no parameter $%d", pref->number);
+
+	expr = (PLpgSQL_expr *) list_nth(args, pref->number - 1);
+
+	tupdesc = plpgsql_check_expr_get_desc(params->cstate,
+										  expr,
+										  false,
+										  false,
+										  true,
+										  NULL);
+
+	if (tupdesc)
+	{
+		param = makeNode(Param);
+		param->paramkind = PARAM_EXTERN;
+		param->paramid = pref->number;
+		param->paramtype = TupleDescAttr(tupdesc, 0)->atttypid;
+		param->paramtypmod = TupleDescAttr(tupdesc, 0)->atttypmod;
+		param->paramcollid = TupleDescAttr(tupdesc, 0)->attcollation;
+
+		ReleaseTupleDesc(tupdesc);
+	}
+	else
+		elog(ERROR, "cannot to detect type of $%d parameter", pref->number);
+
+	params->use_params = true;
+
+	return (Node *) param;
+}
+
+
+static void
+dynsql_parser_setup(struct ParseState *pstate, DynSQLParams *params)
+{
+	pstate->p_pre_columnref_hook = NULL;
+	pstate->p_post_columnref_hook = NULL;
+	pstate->p_paramref_hook = dynsql_param_ref;
+	pstate->p_ref_hook_state = (void *) params;
+}
 
 #if PG_VERSION_NUM >= 110000
 
@@ -1142,6 +1201,11 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 					cstate->has_execute_stmt = true;
 
+					foreach(l, stmt_dynexecute->params)
+					{
+						plpgsql_check_expr(cstate, (PLpgSQL_expr *) lfirst(l));
+					}
+
 					plpgsql_check_expr(cstate, stmt_dynexecute->query);
 					expr_node = plpgsql_check_expr_get_node(cstate, stmt_dynexecute->query, false);
 
@@ -1149,15 +1213,37 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					{
 						char *query = plpgsql_check_const_to_string((Const *) expr_node);
 						PLpgSQL_expr	dynexpr;
+						DynSQLParams	params;
 
-						if (!stmt_dynexecute->params)
+						memset(&dynexpr, 0, sizeof(PLpgSQL_expr));
+
+#if PG_VERSION_NUM < 120000
+
+						dynexpr.dtype = PLPGSQL_DTYPE_EXPR;
+						dynexpr.dno = -1;
+
+#endif
+
+						dynexpr.rwparam = -1;
+						dynexpr.query = query;
+
+						params.args = stmt_dynexecute->params;
+						params.cstate = cstate;
+						params.use_params = false;
+
+						plpgsql_check_expr_generic_with_parser_setup(cstate,
+																	 &dynexpr,
+																	 (ParserSetupHook) dynsql_parser_setup,
+																	 &params);
+
+						if (!stmt_dynexecute->params || !params.use_params)
 						{
 
 							/* probably useless dynamic command */
 							plpgsql_check_put_error(cstate,
 													0, 0,
 										"immutable expression without parameters found",
-										"the EXECUTE command is not necessary",
+										"the EXECUTE command is not necessary probably",
 										"Don't use dynamic SQL when you can use static SQL.",
 													PLPGSQL_CHECK_WARNING_PERFORMANCE,
 													0,
@@ -1165,13 +1251,16 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 													NULL);
 						}
 
-						memset(&dynexpr, 0, sizeof(PLpgSQL_expr));
-						dynexpr.dtype = PLPGSQL_DTYPE_EXPR;
-						dynexpr.dno = -1;
-						dynexpr.rwparam = -1;
-						dynexpr.query = query;
-
-						plpgsql_check_expr_as_sqlstmt_nodata(cstate, &dynexpr);
+						if (stmt_dynexecute->params && !params.use_params)
+						{
+							plpgsql_check_put_error(cstate,
+										  0, 0,
+										  "values passed to EXECUTE statement by USING clause was not used",
+										  NULL,
+										  NULL,
+										  PLPGSQL_CHECK_WARNING_OTHERS,
+										  0, NULL, NULL);
+						}
 
 						if (dynexpr.plan)
 						{
@@ -1203,10 +1292,6 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						}
 					}
 
-					foreach(l, stmt_dynexecute->params)
-					{
-						plpgsql_check_expr(cstate, (PLpgSQL_expr *) lfirst(l));
-					}
 
 					if (stmt_dynexecute->into)
 					{

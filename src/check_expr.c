@@ -50,7 +50,11 @@ static int TupleDescNVatts(TupleDesc tupdesc);
  * succesfully prepared.
  */
 static void
-prepare_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, int cursorOptions)
+prepare_plan(PLpgSQL_checkstate *cstate,
+			 PLpgSQL_expr *expr,
+			 int cursorOptions,
+			 ParserSetupHook parser_setup,
+			 void *arg)
 {
 	SPIPlanPtr	plan;
 	Query	   *query;
@@ -67,8 +71,8 @@ prepare_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, int cursorOptions)
 		 * Generate and save the plan
 		 */
 		plan = SPI_prepare_params(expr->query,
-								  (ParserSetupHook) plpgsql_parser_setup,
-								  (void *) expr,
+								  parser_setup ? parser_setup : (ParserSetupHook) plpgsql_parser_setup,
+								  arg ? arg : (void *) expr,
 								  cursorOptions);
 
 		if (plan == NULL)
@@ -483,7 +487,17 @@ force_plan_checks(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 void
 plpgsql_check_expr_generic(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 {
-	prepare_plan(cstate, expr, 0);
+	prepare_plan(cstate, expr, 0, NULL, NULL);
+	force_plan_checks(cstate, expr);
+}
+
+void
+plpgsql_check_expr_generic_with_parser_setup(PLpgSQL_checkstate *cstate,
+											 PLpgSQL_expr *expr,
+											 ParserSetupHook parser_setup,
+											 void *arg)
+{
+	prepare_plan(cstate, expr, 0, parser_setup, arg);
 	force_plan_checks(cstate, expr);
 }
 
@@ -524,7 +538,7 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
 		TupleDesc	tupdesc;
 		bool		is_immutable_null;
 
-		prepare_plan(cstate, expr, 0);
+		prepare_plan(cstate, expr, 0, NULL, NULL);
 		/* record all variables used by the query */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
@@ -602,7 +616,7 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 		bool		is_immutable_null;
 		Oid			first_level_typ = InvalidOid;
 
-		prepare_plan(cstate, expr, 0);
+		prepare_plan(cstate, expr, 0, NULL, NULL);
 
 		/* record all variables used by the query, should be after prepare_plan */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
@@ -731,7 +745,7 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 
 	PG_TRY();
 	{
-		prepare_plan(cstate, expr, 0);
+		prepare_plan(cstate, expr, 0, NULL, NULL);
 		/* record all variables used by the query */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
@@ -874,7 +888,7 @@ plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 
 	PG_TRY();
 	{
-		prepare_plan(cstate, expr, 0);
+		prepare_plan(cstate, expr, 0, NULL, NULL);
 		/* record all variables used by the query */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 		force_plan_checks(cstate, expr);
