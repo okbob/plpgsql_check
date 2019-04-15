@@ -3610,9 +3610,10 @@ select * from plpgsql_check_function('dyn_sql_1', security_warnings := true, fat
  Detail: The EXECUTE expression is SQL injection vulnerable.
  Hint: Use quote_ident, quote_literal or format function to secure variable.
  warning:00000:13:EXECUTE:values passed to EXECUTE statement by USING clause was not used
- error:XX000:14:EXECUTE:there is no parameter $1
- Context: SQL statement "select $1"
-(13 rows)
+ error:42P02:14:EXECUTE:there is no parameter $1
+ Query: select $1
+ --            ^
+(14 rows)
 
 drop function dyn_sql_1();
 create type tp as (a int, b int);
@@ -3644,3 +3645,34 @@ select * from plpgsql_check_function('dyn_sql_2', security_warnings := true);
 
 drop function dyn_sql_2();
 drop type tp;
+/*
+ * Should not to work
+ */
+create or replace function dyn_sql_2()
+returns void as $$
+declare
+  r record; 
+  result int;
+begin
+  select 10 a, 20 b into r;
+  raise notice '%', r.a;
+  execute 'select $1.a + $1.b' into result using r;
+  raise notice '%', result;
+end;
+$$ language plpgsql;
+select dyn_sql_2(); --should to fail
+NOTICE:  10
+ERROR:  could not identify column "a" in record data type
+LINE 1: select $1.a + $1.b
+               ^
+QUERY:  select $1.a + $1.b
+CONTEXT:  PL/pgSQL function dyn_sql_2() line 8 at EXECUTE
+select * from plpgsql_check_function('dyn_sql_2', security_warnings := true);
+                         plpgsql_check_function                          
+-------------------------------------------------------------------------
+ error:42703:8:EXECUTE:could not identify column "a" in record data type
+ Query: select $1.a + $1.b
+ --     ^
+(3 rows)
+
+drop function dyn_sql_2();

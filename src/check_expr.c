@@ -462,9 +462,14 @@ plpgsql_check_expr_get_string(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bo
 	Const	   *c;
 
 	c = expr_get_const(cstate, expr);
-	*isnull = c && c->constisnull;
+	if (c)
+	{
+		*isnull = c->constisnull;
 
-	return plpgsql_check_const_to_string(c);
+		return plpgsql_check_const_to_string(c);
+	}
+
+	return NULL;
 }
 
 static void
