@@ -3590,11 +3590,15 @@ begin
   execute 'select ' || v; -- vulnerable
   execute format('select * from %I', v); -- ok
   execute format('select * from %s', v); -- vulnerable
+  execute 'select $1' using v; -- ok
+  execute 'select 1'; -- ok
+  execute 'select 1' using v; -- warning
+  execute 'select $1'; -- error
 end;
 $$ language plpgsql;
-select * from plpgsql_check_function('dyn_sql_1', security_warnings := true);
-                           plpgsql_check_function                            
------------------------------------------------------------------------------
+select * from plpgsql_check_function('dyn_sql_1', security_warnings := true, fatal_errors := false);
+                                  plpgsql_check_function                                  
+------------------------------------------------------------------------------------------
  security:00000:8:EXECUTE:text type variable is not sanitized
  Query: SELECT 'select ' || v
  --                         ^
@@ -3605,6 +3609,32 @@ select * from plpgsql_check_function('dyn_sql_1', security_warnings := true);
  --                                       ^
  Detail: The EXECUTE expression is SQL injection vulnerable.
  Hint: Use quote_ident, quote_literal or format function to secure variable.
-(10 rows)
+ warning:00000:13:EXECUTE:values passed to EXECUTE statement by USING clause was not used
+ error:XX000:14:EXECUTE:there is no parameter $1
+ Context: SQL statement "select $1"
+(13 rows)
 
 drop function dyn_sql_1();
+create type tp as (a int, b int);
+create or replace function dyn_sql_2()
+returns void as $$
+declare
+  r tp;
+  result int;
+begin
+  select 10 a, 20 b into r;
+  raise notice '%', r.a;
+  execute 'select $1.a + $1.b' into result using r;
+  execute 'select $1.c' into result using r; -- error
+  raise notice '%', result;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('dyn_sql_2', security_warnings := true);
+                   plpgsql_check_function                   
+------------------------------------------------------------
+ error:42703:9:EXECUTE:column "c" not found in data type tp
+ Query: select $1.c
+ --     ^
+(3 rows)
+
+drop function dyn_sql_2();
