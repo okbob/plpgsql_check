@@ -12,6 +12,7 @@
 #include "plpgsql_check.h"
 
 #include "access/tupconvert.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
 
 #include "nodes/nodeFuncs.h"
@@ -55,7 +56,10 @@ dynsql_param_ref(ParseState *pstate, ParamRef *pref)
 	TupleDesc	tupdesc;
 
 	if (pref->number < 1 || pref->number > nargs)
-		elog(ERROR, "there is no parameter $%d", pref->number);
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_PARAMETER),
+				 errmsg("there is no parameter $%d", pref->number),
+				 parser_errposition(pstate, pref->location)));
 
 	expr = (PLpgSQL_expr *) list_nth(args, pref->number - 1);
 
@@ -72,8 +76,12 @@ dynsql_param_ref(ParseState *pstate, ParamRef *pref)
 		param->paramkind = PARAM_EXTERN;
 		param->paramid = pref->number;
 		param->paramtype = TupleDescAttr(tupdesc, 0)->atttypid;
-		param->paramtypmod = TupleDescAttr(tupdesc, 0)->atttypmod;
-		param->paramcollid = TupleDescAttr(tupdesc, 0)->attcollation;
+
+		/*
+		 * SPI_execute_with_args doesn't allow pass typmod.
+		 */
+		param->paramtypmod = -1;
+		param->paramcollid = DEFAULT_COLLATION_OID;
 
 		ReleaseTupleDesc(tupdesc);
 	}

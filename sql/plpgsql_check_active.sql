@@ -2693,3 +2693,24 @@ select * from plpgsql_check_function('dyn_sql_2', security_warnings := true);
 drop function dyn_sql_2();
 
 drop type tp;
+
+/*
+ * Should not to work
+ */
+create or replace function dyn_sql_2()
+returns void as $$
+declare
+  r record; 
+  result int;
+begin
+  select 10 a, 20 b into r;
+  raise notice '%', r.a;
+  execute 'select $1.a + $1.b' into result using r;
+  raise notice '%', result;
+end;
+$$ language plpgsql;
+
+select dyn_sql_2(); --should to fail
+select * from plpgsql_check_function('dyn_sql_2', security_warnings := true);
+
+drop function dyn_sql_2();
