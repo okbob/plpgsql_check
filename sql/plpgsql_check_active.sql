@@ -2672,7 +2672,12 @@ create type tp as (a int, b int);
 create or replace function dyn_sql_2()
 returns void as $$
 declare
-  r tp;
+/*
+ * note: plpgsql doesn't support passing some necessary details for record
+ * type. The parser setup for dynamic SQL column doesn't use ref hooks, and
+ * then it cannot to pass TupleDesc info to query.
+ */
+  r tp; 
   result int;
 begin
   select 10 a, 20 b into r;
@@ -2686,3 +2691,5 @@ $$ language plpgsql;
 select * from plpgsql_check_function('dyn_sql_2', security_warnings := true);
 
 drop function dyn_sql_2();
+
+drop type tp;
