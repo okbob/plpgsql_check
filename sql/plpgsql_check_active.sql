@@ -2713,3 +2713,57 @@ select dyn_sql_2(); --should to fail
 select * from plpgsql_check_function('dyn_sql_2', security_warnings := true);
 
 drop function dyn_sql_2();
+
+create or replace function dyn_sql_3()
+returns void as $$
+declare r int;
+begin
+  execute 'select $1' into r using 1;
+  raise notice '%', r;
+end
+$$ language plpgsql;
+
+select dyn_sql_3();
+
+-- should be ok
+select * from plpgsql_check_function('dyn_sql_3');
+
+create or replace function dyn_sql_3()
+returns void as $$
+declare r record;
+begin
+  execute 'select $1 as a, $2 as b' into r using 1, 2;
+  raise notice '% %', r.a, r.b;
+end
+$$ language plpgsql;
+
+select dyn_sql_3();
+
+-- should be ok
+select * from plpgsql_check_function('dyn_sql_3');
+
+create or replace function dyn_sql_3()
+returns void as $$
+declare r record;
+begin
+  execute 'create table foo(a int)' into r using 1, 2;
+  raise notice '% %', r.a, r.b;
+end
+$$ language plpgsql;
+
+-- raise a error
+select * from plpgsql_check_function('dyn_sql_3');
+
+create or replace function dyn_sql_3()
+returns void as $$
+declare r1 int; r2 int;
+begin
+  execute 'select 1' into r1, r2 using 1, 2;
+  raise notice '% %', r1, r2;
+end
+$$ language plpgsql;
+
+-- raise a error
+select * from plpgsql_check_function('dyn_sql_3');
+
+drop function dyn_sql_3();

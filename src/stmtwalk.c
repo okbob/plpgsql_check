@@ -104,6 +104,22 @@ dynsql_parser_setup(struct ParseState *pstate, DynSQLParams *params)
 	pstate->p_ref_hook_state = (void *) params;
 }
 
+/*
+ * Returns true if record variable has assigned some type
+ */
+static bool
+has_assigned_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec)
+{
+	PLpgSQL_rec *target = (PLpgSQL_rec *) (cstate->estate->datums[rec->dno]);
+
+	Assert(rec->dtype == PLPGSQL_DTYPE_REC);
+
+	if (recvar_tupdesc(target))
+		return true;
+
+	return false;
+}
+
 #if PG_VERSION_NUM >= 110000
 
 static void
@@ -1273,6 +1289,28 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 						if (dynexpr.plan)
 						{
+							if (stmt_dynexecute->into)
+							{
+
+#if PG_VERSION_NUM >= 110000
+
+								check_variable(cstate, stmt_dynexecute->target);
+								plpgsql_check_assignment_to_variable(cstate,
+																	 &dynexpr,
+																	 stmt_dynexecute->target, -1);
+
+#else
+
+								plpgsql_check_row_or_rec(cstate, stmt_dynexecute->row, stmt_dynexecute->rec);
+								plpgsql_check_assignment(cstate,
+														 &dynexpr,
+														 stmt_dynexecute->rec,
+														 stmt_dynexecute, -1);
+
+#endif
+
+							}
+
 							SPI_freeplan(dynexpr.plan);
 							cstate->exprs = list_delete_ptr(cstate->exprs, &dynexpr);
 						}
@@ -1309,13 +1347,14 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 						check_variable(cstate, stmt_dynexecute->target);
 
-						if (stmt_dynexecute->target->dtype == PLPGSQL_DTYPE_REC)
+						if (stmt_dynexecute->target->dtype == PLPGSQL_DTYPE_REC &&
+								!has_assigned_tupdesc(cstate, (PLpgSQL_rec *) stmt_dynexecute->target))
 
 #else
 
 						plpgsql_check_row_or_rec(cstate, stmt_dynexecute->row, stmt_dynexecute->rec);
 
-						if (stmt_dynexecute->rec != NULL)
+						if (stmt_dynexecute->rec != NULL && !has_assigned_tupdesc(stmt_dynexecute->rec))
 
 #endif
 
