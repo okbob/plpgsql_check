@@ -76,12 +76,13 @@ dynsql_param_ref(ParseState *pstate, ParamRef *pref)
 		param->paramkind = PARAM_EXTERN;
 		param->paramid = pref->number;
 		param->paramtype = TupleDescAttr(tupdesc, 0)->atttypid;
+		param->location = pref->location;
 
 		/*
 		 * SPI_execute_with_args doesn't allow pass typmod.
 		 */
 		param->paramtypmod = -1;
-		param->paramcollid = DEFAULT_COLLATION_OID;
+		param->paramcollid = InvalidOid;
 
 		ReleaseTupleDesc(tupdesc);
 	}

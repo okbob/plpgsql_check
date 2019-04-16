@@ -2699,7 +2699,7 @@ drop type tp;
 create or replace function dyn_sql_2()
 returns void as $$
 declare
-  r record; 
+  r record;
   result int;
 begin
   select 10 a, 20 b into r;
