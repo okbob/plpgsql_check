@@ -3554,3 +3554,57 @@ select * from plpgsql_check_function('test_crash', fatal_errors := true);
 (5 rows)
 
 drop function test_crash();
+-- fix false alarm reported by Piotr Stepniewski
+create or replace function public.fx()
+returns void
+language plpgsql
+as $function$
+begin
+  raise exception 'xxx';
+end;
+$function$;
+-- show raise nothing
+select * from plpgsql_check_function('fx()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create table errtab(
+  message text,
+  code character(5)
+);
+create or replace function public.fx()
+returns void
+language plpgsql
+as $function$
+declare
+  var errtab%rowtype;
+begin
+  raise exception using message = var.message, errcode = var.code;
+end;
+$function$;
+-- should not to crash
+select * from plpgsql_check_function('fx()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function public.fx()
+returns void
+language plpgsql
+as $function$
+declare
+  var errtab%rowtype;
+begin
+  raise exception using message = var.message, errcode = var.code, hint = var.hint;
+end;
+$function$;
+-- should not to crash
+select * from plpgsql_check_function('fx()');
+                plpgsql_check_function                
+------------------------------------------------------
+ error:42703:5:RAISE:record "var" has no field "hint"
+ Context: SQL statement "SELECT var.hint"
+(2 rows)
+
+drop function fx();

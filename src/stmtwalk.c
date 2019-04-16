@@ -1347,7 +1347,8 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 		exceptions_local = NIL;
 		plpgsql_check_stmt(cstate, stmt, &closing_local, &exceptions_local);
 
-		if (dead_code_alert)
+		/* raise dead_code_alert only for visible statements */
+		if (dead_code_alert && stmt->lineno > 0)
 		{
 			plpgsql_check_put_error(cstate,
 						  0, stmt->lineno,

@@ -2580,3 +2580,53 @@ select * from plpgsql_check_function('test_crash', fatal_errors := false);
 select * from plpgsql_check_function('test_crash', fatal_errors := true);
 
 drop function test_crash();
+
+-- fix false alarm reported by Piotr Stepniewski
+create or replace function public.fx()
+returns void
+language plpgsql
+as $function$
+begin
+  raise exception 'xxx';
+end;
+$function$;
+
+-- show raise nothing
+select * from plpgsql_check_function('fx()');
+
+create table errtab(
+  message text,
+  code character(5)
+);
+
+create or replace function public.fx()
+returns void
+language plpgsql
+as $function$
+declare
+  var errtab%rowtype;
+begin
+  raise exception using message = var.message, errcode = var.code;
+end;
+$function$;
+
+-- should not to crash
+select * from plpgsql_check_function('fx()');
+
+create or replace function public.fx()
+returns void
+language plpgsql
+as $function$
+declare
+  var errtab%rowtype;
+begin
+  raise exception using message = var.message, errcode = var.code, hint = var.hint;
+end;
+$function$;
+
+-- should not to crash
+select * from plpgsql_check_function('fx()');
+
+drop function fx();
+
+
