@@ -3550,6 +3550,7 @@ select * from plpgsql_check_function('test_crash', fatal_errors := true);
 (5 rows)
 
 drop function test_crash();
+<<<<<<< HEAD
 -- fix false alarm reported by Piotr Stepniewski
 create or replace function public.fx()
 returns void
@@ -3604,6 +3605,8 @@ select * from plpgsql_check_function('fx()');
 (2 rows)
 
 drop function fx();
+=======
+>>>>>>> 4c5b5703551fc485a52f6f4f2dca7fc6bfb01dcf
 create or replace function foo_format(a text, b text)
 returns void as $$
 declare s text;
@@ -3685,9 +3688,15 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('dyn_sql_2', security_warnings := true);
+<<<<<<< HEAD
                    plpgsql_check_function                   
 ------------------------------------------------------------
  error:42703:9:EXECUTE:column "c" not found in data type tp
+=======
+                   plpgsql_check_function                    
+-------------------------------------------------------------
+ error:42703:14:EXECUTE:column "c" not found in data type tp
+>>>>>>> 4c5b5703551fc485a52f6f4f2dca7fc6bfb01dcf
  Query: select $1.c
  --     ^
 (3 rows)

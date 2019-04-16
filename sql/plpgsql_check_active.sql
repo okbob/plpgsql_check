@@ -2581,6 +2581,7 @@ select * from plpgsql_check_function('test_crash', fatal_errors := true);
 
 drop function test_crash();
 
+<<<<<<< HEAD
 -- fix false alarm reported by Piotr Stepniewski
 create or replace function public.fx()
 returns void
@@ -2629,6 +2630,8 @@ select * from plpgsql_check_function('fx()');
 
 drop function fx();
 
+=======
+>>>>>>> 4c5b5703551fc485a52f6f4f2dca7fc6bfb01dcf
 create or replace function foo_format(a text, b text)
 returns void as $$
 declare s text;
