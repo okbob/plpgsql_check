@@ -3550,7 +3550,6 @@ select * from plpgsql_check_function('test_crash', fatal_errors := true);
 (5 rows)
 
 drop function test_crash();
-
 -- fix false alarm reported by Piotr Stepniewski
 create or replace function public.fx()
 returns void
@@ -3605,7 +3604,6 @@ select * from plpgsql_check_function('fx()');
 (2 rows)
 
 drop function fx();
-
 create or replace function foo_format(a text, b text)
 returns void as $$
 declare s text;
@@ -3676,11 +3674,6 @@ create type tp as (a int, b int);
 create or replace function dyn_sql_2()
 returns void as $$
 declare
-/*
- * note: plpgsql doesn't support passing some necessary details for record
- * type. The parser setup for dynamic SQL column doesn't use ref hooks, and
- * then it cannot to pass TupleDesc info to query.
- */
   r tp; 
   result int;
 begin
@@ -3692,9 +3685,9 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('dyn_sql_2', security_warnings := true);
-                   plpgsql_check_function                    
--------------------------------------------------------------
- error:42703:14:EXECUTE:column "c" not found in data type tp
+                   plpgsql_check_function                   
+------------------------------------------------------------
+ error:42703:9:EXECUTE:column "c" not found in data type tp
  Query: select $1.c
  --     ^
 (3 rows)
@@ -3703,6 +3696,10 @@ drop function dyn_sql_2();
 drop type tp;
 /*
  * Should not to work
+ *
+ * note: plpgsql doesn't support passing some necessary details for record
+ * type. The parser setup for dynamic SQL column doesn't use ref hooks, and
+ * then it cannot to pass TupleDesc info to query anyway.
  */
 create or replace function dyn_sql_2()
 returns void as $$
