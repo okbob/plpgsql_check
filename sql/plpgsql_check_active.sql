@@ -2767,3 +2767,61 @@ $$ language plpgsql;
 select * from plpgsql_check_function('dyn_sql_3');
 
 drop function dyn_sql_3();
+
+create or replace function dyn_sql_3()
+returns void as $$
+declare r record;
+begin
+  for r in execute 'select 1 as a, 2 as b'
+  loop
+    raise notice '%', r.a;
+  end loop;
+end
+$$ language plpgsql;
+
+-- should be ok
+select * from plpgsql_check_function('dyn_sql_3');
+
+drop function dyn_sql_3();
+
+create or replace function dyn_sql_3()
+returns void as $$
+declare r record;
+begin
+  for r in execute 'select 1 as a, 2 as b'
+  loop
+    raise notice '%', r.c;
+  end loop;
+end
+$$ language plpgsql;
+
+-- should be error
+select * from plpgsql_check_function('dyn_sql_3');
+
+drop function dyn_sql_3();
+
+create or replace function dyn_sql_4()
+returns table(ax int, bx int) as $$
+begin
+  return query execute 'select 10, 20';
+  return;
+end;
+$$ language plpgsql;
+
+-- should be ok
+select * from plpgsql_check_function('dyn_sql_4()');
+
+create or replace function dyn_sql_4()
+returns table(ax int, bx int) as $$
+begin
+  return query execute 'select 10, 20, 30';
+  return;
+end;
+$$ language plpgsql;
+
+select * from dyn_sql_4();
+
+-- should be error
+select * from plpgsql_check_function('dyn_sql_4()');
+
+drop function dyn_sql_4();
