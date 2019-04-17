@@ -16,6 +16,7 @@
 #include "catalog/pg_type.h"
 
 #include "nodes/nodeFuncs.h"
+#include "parser/parse_node.h" // 9.4
 
 #if PG_VERSION_NUM > 90500
 
@@ -699,8 +700,8 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 #else
 
-									  stmt_dynfors->rec,
 									  stmt_dynfors->row,
+									  stmt_dynfors->rec,
 
 #endif
 
@@ -1142,8 +1143,8 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 #else
 
-									  stmt_dynexecute->rec,
 									  stmt_dynexecute->row,
+									  stmt_dynexecute->rec,
 
 #endif
 
@@ -1804,7 +1805,12 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 #endif
 
+#if PG_VERSION_NUM >= 90500
+
 		dynexpr.rwparam = -1;
+
+#endif
+
 		dynexpr.query = query;
 
 		dsp.args = params;
@@ -1907,7 +1913,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 		plpgsql_check_row_or_rec(cstate, row, rec);
 
-		if (rec != NULL && !has_assigned_tupdesc(rec))
+		if (rec != NULL && !has_assigned_tupdesc(cstate, rec))
 
 #endif
 
