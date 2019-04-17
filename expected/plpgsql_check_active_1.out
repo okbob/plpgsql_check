@@ -2965,13 +2965,22 @@ select testseq();
 ERROR:  "test_table" is not a sequence
 CONTEXT:  SQL statement "SELECT nextval('test_table')"
 PL/pgSQL function testseq() line 3 at PERFORM
-select * from plpgsql_check_function('testseq()');
+select * from plpgsql_check_function('testseq()', fatal_errors := false);
                 plpgsql_check_function                
 ------------------------------------------------------
  error:42809:3:PERFORM:"test_table" is not a sequence
  Query: SELECT nextval('test_table')
  --                    ^
-(3 rows)
+ error:42809:4:PERFORM:"test_table" is not a sequence
+ Query: SELECT currval('test_table')
+ --                    ^
+ error:42809:5:PERFORM:"test_table" is not a sequence
+ Query: SELECT setval('test_table', 10)
+ --                   ^
+ error:42809:6:PERFORM:"test_table" is not a sequence
+ Query: SELECT setval('test_table', 10, true)
+ --                   ^
+(12 rows)
 
 drop function testseq();
 drop table test_table;
@@ -3550,6 +3559,61 @@ select * from plpgsql_check_function('test_crash', fatal_errors := true);
 (5 rows)
 
 drop function test_crash();
+-- fix false alarm reported by Piotr Stepniewski
+create or replace function public.fx()
+returns void
+language plpgsql
+as $function$
+begin
+  raise exception 'xxx';
+end;
+$function$;
+-- show raise nothing
+select * from plpgsql_check_function('fx()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create table errtab(
+  message text,
+  code character(5)
+);
+create or replace function public.fx()
+returns void
+language plpgsql
+as $function$
+declare
+  var errtab%rowtype;
+begin
+  raise exception using message = var.message, errcode = var.code;
+end;
+$function$;
+-- should not to crash
+select * from plpgsql_check_function('fx()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function public.fx()
+returns void
+language plpgsql
+as $function$
+declare
+  var errtab%rowtype;
+begin
+  raise exception using message = var.message, errcode = var.code, hint = var.hint;
+end;
+$function$;
+-- should not to crash
+select * from plpgsql_check_function('fx()');
+                plpgsql_check_function                
+------------------------------------------------------
+ error:42703:5:RAISE:record "var" has no field "hint"
+ Query: SELECT var.hint
+ --            ^
+(3 rows)
+
+drop function fx();
 create or replace function foo_format(a text, b text)
 returns void as $$
 declare s text;
@@ -3610,16 +3674,17 @@ select * from plpgsql_check_function('dyn_sql_1', security_warnings := true, fat
  Detail: The EXECUTE expression is SQL injection vulnerable.
  Hint: Use quote_ident, quote_literal or format function to secure variable.
  warning:00000:13:EXECUTE:values passed to EXECUTE statement by USING clause was not used
- error:XX000:14:EXECUTE:there is no parameter $1
- Context: SQL statement "select $1"
-(13 rows)
+ error:42P02:14:EXECUTE:there is no parameter $1
+ Query: select $1
+ --            ^
+(14 rows)
 
 drop function dyn_sql_1();
 create type tp as (a int, b int);
 create or replace function dyn_sql_2()
 returns void as $$
 declare
-  r tp;
+  r tp; 
   result int;
 begin
   select 10 a, 20 b into r;
@@ -3634,7 +3699,189 @@ select * from plpgsql_check_function('dyn_sql_2', security_warnings := true);
 ------------------------------------------------------------
  error:42703:9:EXECUTE:column "c" not found in data type tp
  Query: select $1.c
- --     ^
+ --            ^
 (3 rows)
 
 drop function dyn_sql_2();
+drop type tp;
+/*
+ * Should not to work
+ *
+ * note: plpgsql doesn't support passing some necessary details for record
+ * type. The parser setup for dynamic SQL column doesn't use ref hooks, and
+ * then it cannot to pass TupleDesc info to query anyway.
+ */
+create or replace function dyn_sql_2()
+returns void as $$
+declare
+  r record;
+  result int;
+begin
+  select 10 a, 20 b into r;
+  raise notice '%', r.a;
+  execute 'select $1.a + $1.b' into result using r;
+  raise notice '%', result;
+end;
+$$ language plpgsql;
+select dyn_sql_2(); --should to fail
+NOTICE:  10
+ERROR:  could not identify column "a" in record data type
+LINE 1: select $1.a + $1.b
+               ^
+QUERY:  select $1.a + $1.b
+CONTEXT:  PL/pgSQL function dyn_sql_2() line 8 at EXECUTE
+select * from plpgsql_check_function('dyn_sql_2', security_warnings := true);
+                         plpgsql_check_function                          
+-------------------------------------------------------------------------
+ error:42703:8:EXECUTE:could not identify column "a" in record data type
+ Query: select $1.a + $1.b
+ --            ^
+(3 rows)
+
+drop function dyn_sql_2();
+create or replace function dyn_sql_3()
+returns void as $$
+declare r int;
+begin
+  execute 'select $1' into r using 1;
+  raise notice '%', r;
+end
+$$ language plpgsql;
+select dyn_sql_3();
+NOTICE:  1
+ dyn_sql_3 
+-----------
+ 
+(1 row)
+
+-- should be ok
+select * from plpgsql_check_function('dyn_sql_3');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function dyn_sql_3()
+returns void as $$
+declare r record;
+begin
+  execute 'select $1 as a, $2 as b' into r using 1, 2;
+  raise notice '% %', r.a, r.b;
+end
+$$ language plpgsql;
+select dyn_sql_3();
+NOTICE:  1 2
+ dyn_sql_3 
+-----------
+ 
+(1 row)
+
+-- should be ok
+select * from plpgsql_check_function('dyn_sql_3');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function dyn_sql_3()
+returns void as $$
+declare r record;
+begin
+  execute 'create table foo(a int)' into r using 1, 2;
+  raise notice '% %', r.a, r.b;
+end
+$$ language plpgsql;
+-- raise a error
+select * from plpgsql_check_function('dyn_sql_3');
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ warning:00000:4:EXECUTE:values passed to EXECUTE statement by USING clause was not used
+ error:XX000:4:EXECUTE:expression does not return data
+(2 rows)
+
+create or replace function dyn_sql_3()
+returns void as $$
+declare r1 int; r2 int;
+begin
+  execute 'select 1' into r1, r2 using 1, 2;
+  raise notice '% %', r1, r2;
+end
+$$ language plpgsql;
+-- raise a error
+select * from plpgsql_check_function('dyn_sql_3');
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ warning:00000:4:EXECUTE:values passed to EXECUTE statement by USING clause was not used
+ warning:00000:4:EXECUTE:too few attributes for target variables
+ Detail: There are more target variables than output columns in query.
+ Hint: Check target variables in SELECT INTO statement.
+(4 rows)
+
+drop function dyn_sql_3();
+create or replace function dyn_sql_3()
+returns void as $$
+declare r record;
+begin
+  for r in execute 'select 1 as a, 2 as b'
+  loop
+    raise notice '%', r.a;
+  end loop;
+end
+$$ language plpgsql;
+-- should be ok
+select * from plpgsql_check_function('dyn_sql_3');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function dyn_sql_3();
+create or replace function dyn_sql_3()
+returns void as $$
+declare r record;
+begin
+  for r in execute 'select 1 as a, 2 as b'
+  loop
+    raise notice '%', r.c;
+  end loop;
+end
+$$ language plpgsql;
+-- should be error
+select * from plpgsql_check_function('dyn_sql_3');
+             plpgsql_check_function              
+-------------------------------------------------
+ error:42703:6:RAISE:record "r" has no field "c"
+ Context: SQL statement "SELECT r.c"
+(2 rows)
+
+drop function dyn_sql_3();
+create or replace function dyn_sql_4()
+returns table(ax int, bx int) as $$
+begin
+  return query execute 'select 10, 20';
+  return;
+end;
+$$ language plpgsql;
+-- should be ok
+select * from plpgsql_check_function('dyn_sql_4()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function dyn_sql_4()
+returns table(ax int, bx int) as $$
+begin
+  return query execute 'select 10, 20, 30';
+  return;
+end;
+$$ language plpgsql;
+select * from dyn_sql_4();
+ERROR:  structure of query does not match function result type
+DETAIL:  Number of returned columns (3) does not match expected column count (2).
+CONTEXT:  PL/pgSQL function dyn_sql_4() line 3 at RETURN QUERY
+-- should be error
+select * from plpgsql_check_function('dyn_sql_4()');
+                              plpgsql_check_function                               
+-----------------------------------------------------------------------------------
+ error:42804:3:RETURN QUERY:structure of query does not match function result type
+ Detail: Number of returned columns (3) does not match expected column count (2).
+(2 rows)
+
+drop function dyn_sql_4();

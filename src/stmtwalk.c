@@ -16,15 +16,15 @@
 #include "catalog/pg_type.h"
 
 #include "nodes/nodeFuncs.h"
-#include "parser/parse_node.h" // 9.4
+#include "parser/parse_node.h"
 
-#if PG_VERSION_NUM > 90500
+#if PG_VERSION_NUM < 90600
 
-#include "common/keywords.h"
+#include "parser/keywords.h"
 
 #else
 
-#include "parser/keywords.h"
+#include "common/keywords.h"
 
 #endif
 
@@ -1798,7 +1798,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 		memset(&dynexpr, 0, sizeof(PLpgSQL_expr));
 
-#if PG_VERSION_NUM < 120000
+#if PG_VERSION_NUM < 110000
 
 		dynexpr.dtype = PLPGSQL_DTYPE_EXPR;
 		dynexpr.dno = -1;
