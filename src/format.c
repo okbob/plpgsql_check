@@ -245,8 +245,8 @@ plpgsql_check_finalize_ri(plpgsql_check_result_info *ri)
 /*
  * error message processing router
  */
-void
-plpgsql_check_put_error(PLpgSQL_checkstate *cstate,
+static void
+plpgsql_check_put_error_internal(PLpgSQL_checkstate *cstate,
 					  int sqlerrcode,
 					  int lineno,
 					  const char *message,
@@ -260,14 +260,14 @@ plpgsql_check_put_error(PLpgSQL_checkstate *cstate,
 	plpgsql_check_result_info *ri = cstate->result_info;
 	PLpgSQL_execstate *estate = cstate->estate;
 
-
 	if (context == NULL && estate && estate->err_text)
 		context = estate->err_text;
 
 	/* ignore warnings when is not requested */
 	if ((level == PLPGSQL_CHECK_WARNING_PERFORMANCE && !cstate->cinfo->performance_warnings) ||
 			    (level == PLPGSQL_CHECK_WARNING_OTHERS && !cstate->cinfo->other_warnings) ||
-			    (level == PLPGSQL_CHECK_WARNING_EXTRA && !cstate->cinfo->extra_warnings))
+			    (level == PLPGSQL_CHECK_WARNING_EXTRA && !cstate->cinfo->extra_warnings) ||
+			    (level == PLPGSQL_CHECK_WARNING_SECURITY && !cstate->cinfo->security_warnings))
 		return;
 
 	if (ri->init_tag)
@@ -304,6 +304,11 @@ plpgsql_check_put_error(PLpgSQL_checkstate *cstate,
 								  hint, level, position, query, context);
 			break;
 		}
+
+		/* stop checking if it is necessary */
+		if (level == PLPGSQL_CHECK_ERROR && cstate->cinfo->fatal_errors)
+			cstate->stop_check = true;
+
 	}
 	else
 	{
@@ -337,16 +342,48 @@ void
 plpgsql_check_put_error_edata(PLpgSQL_checkstate *cstate,
 							  ErrorData *edata)
 {
-	plpgsql_check_put_error(cstate,
-						    edata->sqlerrcode,
-						    edata->lineno,
-						    edata->message,
-						    edata->detail,
-						    edata->hint,
-						    PLPGSQL_CHECK_ERROR,
-						    edata->internalpos,
-						    edata->internalquery,
-						    edata->context);
+	plpgsql_check_put_error_internal(cstate,
+									 edata->sqlerrcode,
+									 edata->lineno,
+									 edata->message,
+									 edata->detail,
+									 edata->hint,
+									 PLPGSQL_CHECK_ERROR,
+									 edata->internalpos,
+									 edata->internalquery,
+									 edata->context);
+}
+
+void
+plpgsql_check_put_error(PLpgSQL_checkstate *cstate,
+					  int sqlerrcode,
+					  int lineno,
+					  const char *message,
+					  const char *detail,
+					  const char *hint,
+					  int level,
+					  int position,
+					  const char *query,
+					  const char *context)
+{
+	/*
+	 * Trapped internal errors has transformed position. The plpgsql_check
+	 * errors (and warnings) have to have same transformation for position
+	 * to correct display caret (for trapped and reraised, and raised errors)
+	 */
+	if (position != -1 && query)
+		position = pg_mbstrlen_with_len(query, position) + 1;
+
+	plpgsql_check_put_error_internal(cstate,
+							sqlerrcode,
+							lineno,
+							message,
+							detail,
+							hint,
+							level,
+							position,
+							query,
+							context);
 }
 
 /*
@@ -382,6 +419,8 @@ error_level_str(int level)
 			return "warning extra";
 		case PLPGSQL_CHECK_WARNING_PERFORMANCE:
 			return "performance";
+		case PLPGSQL_CHECK_WARNING_SECURITY:
+			return "security";
 		default:
 			return "???";
 	}

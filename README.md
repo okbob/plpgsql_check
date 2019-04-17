@@ -21,6 +21,7 @@ google group.
 * detection of missing RETURN command in function
 * try to identify unwanted hidden casts, that can be performance issue like unused indexes
 * possibility to collect relations and functions used by function
+* possibility to check EXECUTE stmt agaist SQL injection vulnerability
 
 I invite any ideas, patches, bugreports
 
@@ -151,6 +152,9 @@ You can set level of warnings via function's parameters:
   declared type with type modificator, casting, implicit casts in where clause (can be
   reason why index is not used), ..
 
+* `security_warnings boolean DEFAULT false` - security related checks like SQL injection
+  vulnerability detection
+
 ## Triggers
 
 When you want to check any trigger, you have to enter a relation that will be
@@ -182,6 +186,26 @@ Correct trigger checking (with specified relation)
     --------------------------------------------------------
      error:42703:3:assignment:record "new" has no field "c"
     (1 row)
+
+For triggers with transitive tables you can set a `oldtable` or `newtable` parameters:
+
+    create or replace function footab_trig_func()
+    returns trigger as $$
+    declare x int;
+    begin
+      if false then
+        -- should be ok;
+        select count(*) from newtab into x; 
+
+        -- should fail;
+        select count(*) from newtab where d = 10 into x;
+      end if;
+      return null;
+    end;
+    $$ language plpgsql;
+
+    select * from plpgsql_check_function('footab_trig_func','footab', newtable := 'newtab');
+
 
 ## Mass check
 

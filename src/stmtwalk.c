@@ -12,15 +12,19 @@
 #include "plpgsql_check.h"
 
 #include "access/tupconvert.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
 
-#if PG_VERSION_NUM > 90500
+#include "nodes/nodeFuncs.h"
+#include "parser/parse_node.h"
 
-#include "common/keywords.h"
+#if PG_VERSION_NUM < 90600
+
+#include "parser/keywords.h"
 
 #else
 
-#include "parser/keywords.h"
+#include "common/keywords.h"
 
 #endif
 
@@ -35,6 +39,15 @@ static int merge_closing(int c, int c_local, List **exceptions, List *exceptions
 static bool exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond);
 static bool found_shadowed_variable(char *varname, PLpgSQL_stmt_stack_item *current, PLpgSQL_checkstate *cstate);
 
+#if PG_VERSION_NUM >= 110000
+
+static void check_dynamic_sql(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, PLpgSQL_expr *query, bool into, PLpgSQL_variable *target, List *params);
+
+#else
+
+static void check_dynamic_sql(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, PLpgSQL_expr *query, bool into, PLpgSQL_row *row, PLpgSQL_rec *rec, List *params);
+
+#endif
 
 #if PG_VERSION_NUM >= 110000
 
@@ -129,6 +142,9 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 	PLpgSQL_stmt_stack_item *outer_stmt;
 
 	if (stmt == NULL)
+		return;
+
+	if (cstate->stop_check)
 		return;
 
 	cstate->estate->err_stmt = stmt;
@@ -673,42 +689,23 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					int		closing_local;
 					List   *exceptions_local;
 
-#if PG_VERSION_NUM >= 110000
-
-					check_variable(cstate, stmt_dynfors->var);
-
-#else
-
-					plpgsql_check_row_or_rec(cstate, stmt_dynfors->row, stmt_dynfors->rec);
-
-#endif
-
-					plpgsql_check_expr(cstate, stmt_dynfors->query);
-
-					foreach(l, stmt_dynfors->params)
-					{
-						plpgsql_check_expr(cstate, (PLpgSQL_expr *) lfirst(l));
-					}
+					check_dynamic_sql(cstate,
+									  stmt,
+									  stmt_dynfors->query,
+									  true,
 
 #if PG_VERSION_NUM >= 110000
 
-					if (stmt_dynfors->var->dtype == PLPGSQL_DTYPE_REC)
+									  stmt_dynfors->var,
 
 #else
 
-					if (stmt_dynfors->rec != NULL)
+									  stmt_dynfors->row,
+									  stmt_dynfors->rec,
 
 #endif
 
-					{
-						plpgsql_check_put_error(cstate,
-									  0, 0,
-								"cannot determinate a result of dynamic SQL",
-									  "Cannot to contine in check.",
-					  "Don't use dynamic SQL and record type together, when you would check function.",
-									  PLPGSQL_CHECK_WARNING_OTHERS,
-									  0, NULL, NULL);
-					}
+									  stmt_dynfors->params);
 
 					check_stmts(cstate, stmt_dynfors->body, &closing_local, &exceptions_local);
 					*closing = possibly_closed(closing_local);
@@ -992,17 +989,30 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				{
 					PLpgSQL_stmt_return_query *stmt_rq = (PLpgSQL_stmt_return_query *) stmt;
 
-					plpgsql_check_expr(cstate, stmt_rq->dynquery);
-
 					if (stmt_rq->query)
 					{
 						plpgsql_check_returned_expr(cstate, stmt_rq->query, false);
 						cstate->found_return_query = true;
 					}
 
-					foreach(l, stmt_rq->params)
+					if (stmt_rq->dynquery)
 					{
-						plpgsql_check_expr(cstate, (PLpgSQL_expr *) lfirst(l));
+						check_dynamic_sql(cstate,
+										  stmt,
+										  stmt_rq->dynquery,
+										  false,
+
+#if PG_VERSION_NUM >= 110000
+
+										  NULL,
+
+#else
+
+										  NULL, NULL,
+
+#endif
+
+										  stmt_rq->params);
 					}
 				}
 				break;
@@ -1122,45 +1132,25 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				{
 					PLpgSQL_stmt_dynexecute *stmt_dynexecute = (PLpgSQL_stmt_dynexecute *) stmt;
 
-					cstate->has_execute_stmt = true;
-
-					plpgsql_check_expr(cstate, stmt_dynexecute->query);
-
-					foreach(l, stmt_dynexecute->params)
-					{
-						plpgsql_check_expr(cstate, (PLpgSQL_expr *) lfirst(l));
-					}
-
-					if (stmt_dynexecute->into)
-					{
+					check_dynamic_sql(cstate,
+									  stmt,
+									  stmt_dynexecute->query,
+									  stmt_dynexecute->into,
 
 #if PG_VERSION_NUM >= 110000
 
-						check_variable(cstate, stmt_dynexecute->target);
-
-						if (stmt_dynexecute->target->dtype == PLPGSQL_DTYPE_REC)
+									  stmt_dynexecute->target,
 
 #else
 
-						plpgsql_check_row_or_rec(cstate, stmt_dynexecute->row, stmt_dynexecute->rec);
-
-						if (stmt_dynexecute->rec != NULL)
+									  stmt_dynexecute->row,
+									  stmt_dynexecute->rec,
 
 #endif
 
-						{
-							plpgsql_check_put_error(cstate,
-										  0, 0,
-								"cannot determinate a result of dynamic SQL",
-										  "Cannot to contine in check.",
-						  "Don't use dynamic SQL and record type together, when you would check function.",
-										  PLPGSQL_CHECK_WARNING_OTHERS,
-										  0, NULL, NULL);
-						}
-					}
+									  stmt_dynexecute->params);
 				}
 				break;
-
 			case PLPGSQL_STMT_OPEN:
 				{
 					PLpgSQL_stmt_open *stmt_open = (PLpgSQL_stmt_open *) stmt;
@@ -1658,4 +1648,283 @@ exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond)
 			return true;
 	}
 	return false;
+}
+
+/*
+ * Dynamic SQL processing.
+ *
+ * When dynamic query is constant, we can do same work like with
+ * static SQL.
+ */
+
+typedef struct
+{
+	List			   *args;
+	PLpgSQL_checkstate *cstate;
+	bool	use_params;
+} DynSQLParams;
+
+static Node *
+dynsql_param_ref(ParseState *pstate, ParamRef *pref)
+{
+	DynSQLParams *params = (DynSQLParams *) pstate->p_ref_hook_state;
+	List	   *args = params->args;
+	int			nargs = list_length(args);
+	Param	   *param;
+	PLpgSQL_expr *expr;
+	TupleDesc	tupdesc;
+
+	if (pref->number < 1 || pref->number > nargs)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_PARAMETER),
+				 errmsg("there is no parameter $%d", pref->number),
+				 parser_errposition(pstate, pref->location)));
+
+	expr = (PLpgSQL_expr *) list_nth(args, pref->number - 1);
+
+	tupdesc = plpgsql_check_expr_get_desc(params->cstate,
+										  expr,
+										  false,
+										  false,
+										  true,
+										  NULL);
+
+	if (tupdesc)
+	{
+		param = makeNode(Param);
+		param->paramkind = PARAM_EXTERN;
+		param->paramid = pref->number;
+		param->paramtype = TupleDescAttr(tupdesc, 0)->atttypid;
+		param->location = pref->location;
+
+		/*
+		 * SPI_execute_with_args doesn't allow pass typmod.
+		 */
+		param->paramtypmod = -1;
+		param->paramcollid = InvalidOid;
+
+		ReleaseTupleDesc(tupdesc);
+	}
+	else
+		elog(ERROR, "cannot to detect type of $%d parameter", pref->number);
+
+	params->use_params = true;
+
+	return (Node *) param;
+}
+
+/*
+ * Dynamic query requires own setup. In reality it is executed by
+ * different SPI, here we need to emulate different environment.
+ * Parameters are not mapped to function parameters, but to USING
+ * clause expressions.
+ */
+static void
+dynsql_parser_setup(struct ParseState *pstate, DynSQLParams *params)
+{
+	pstate->p_pre_columnref_hook = NULL;
+	pstate->p_post_columnref_hook = NULL;
+	pstate->p_paramref_hook = dynsql_param_ref;
+	pstate->p_ref_hook_state = (void *) params;
+}
+
+/*
+ * Returns true if record variable has assigned some type
+ */
+static bool
+has_assigned_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec)
+{
+	PLpgSQL_rec *target = (PLpgSQL_rec *) (cstate->estate->datums[rec->dno]);
+
+	Assert(rec->dtype == PLPGSQL_DTYPE_REC);
+
+	if (recvar_tupdesc(target))
+		return true;
+
+	return false;
+}
+
+static void
+check_dynamic_sql(PLpgSQL_checkstate *cstate,
+				  PLpgSQL_stmt *stmt,
+				  PLpgSQL_expr *query,
+				  bool into,
+
+#if PG_VERSION_NUM >= 110000
+
+				  PLpgSQL_variable *target,
+
+#else
+
+				  PLpgSQL_row *row,
+				  PLpgSQL_rec *rec,
+
+#endif
+
+				  List *params)
+{
+	bool		prev_has_execute_stmt = cstate->has_execute_stmt;
+	Node	   *expr_node;
+	ListCell   *l;
+	int			loc = -1;
+
+	/*
+	 * possible checks:
+	 *
+	 * 1. When expression is string literal, then we can check this query similary
+	 *    like cursor query with parameters. When this query has not a parameters,
+	 *    and it is not DDL, DML, then we can raise a performance warning'.
+	 *
+	 * 2. When expression is real expression, then we should to check any string
+	 *    kind parameters if are sanitized by functions quote_ident, qoute_literal,
+	 *    or format.
+	 */
+
+	cstate->has_execute_stmt = true;
+
+	foreach(l, params)
+	{
+		plpgsql_check_expr(cstate, (PLpgSQL_expr *) lfirst(l));
+	}
+
+	plpgsql_check_expr(cstate, query);
+	expr_node = plpgsql_check_expr_get_node(cstate, query, false);
+
+	if (IsA(expr_node, Const))
+	{
+		char *query = plpgsql_check_const_to_string((Const *) expr_node);
+		PLpgSQL_expr		dynexpr;
+		DynSQLParams		dsp;
+
+		memset(&dynexpr, 0, sizeof(PLpgSQL_expr));
+
+#if PG_VERSION_NUM < 110000
+
+		dynexpr.dtype = PLPGSQL_DTYPE_EXPR;
+		dynexpr.dno = -1;
+
+#endif
+
+#if PG_VERSION_NUM >= 90500
+
+		dynexpr.rwparam = -1;
+
+#endif
+
+		dynexpr.query = query;
+
+		dsp.args = params;
+		dsp.cstate = cstate;
+		dsp.use_params = false;
+
+		plpgsql_check_expr_generic_with_parser_setup(cstate,
+													 &dynexpr,
+													 (ParserSetupHook) dynsql_parser_setup,
+													 &dsp);
+
+		if (!params || !dsp.use_params)
+		{
+
+			/* probably useless dynamic command */
+			plpgsql_check_put_error(cstate,
+									0, 0,
+									"immutable expression without parameters found",
+									"the EXECUTE command is not necessary probably",
+									"Don't use dynamic SQL when you can use static SQL.",
+									PLPGSQL_CHECK_WARNING_PERFORMANCE,
+									0, NULL, NULL);
+		}
+
+		if (params && !dsp.use_params)
+		{
+			plpgsql_check_put_error(cstate,
+									0, 0,
+						  "values passed to EXECUTE statement by USING clause was not used",
+									NULL,
+									NULL,
+									PLPGSQL_CHECK_WARNING_OTHERS,
+									0, NULL, NULL);
+		}
+
+		if (dynexpr.plan)
+		{
+			if (stmt->cmd_type == PLPGSQL_STMT_RETURN_QUERY)
+			{
+				plpgsql_check_returned_expr(cstate, &dynexpr, false);
+				cstate->found_return_query = true;
+			}
+			else if (into)
+			{
+
+#if PG_VERSION_NUM >= 110000
+
+				check_variable(cstate, target);
+				plpgsql_check_assignment_to_variable(cstate, &dynexpr, target, -1);
+
+#else
+
+				plpgsql_check_row_or_rec(cstate, row, rec);
+				plpgsql_check_assignment(cstate, &dynexpr, rec, row, -1);
+
+#endif
+
+			}
+
+			SPI_freeplan(dynexpr.plan);
+			cstate->exprs = list_delete_ptr(cstate->exprs, &dynexpr);
+		}
+
+		/* this is not real dynamic SQL statement */
+		cstate->has_execute_stmt =  prev_has_execute_stmt;
+	}
+	else
+	{
+		/*
+		 * execute string is not constant (is not safe),
+		 * but we can check sanitize parameters.
+		 */
+		if (cstate->cinfo->security_warnings &&
+			plpgsql_check_is_sql_injection_vulnerable(expr_node, &loc))
+		{
+			plpgsql_check_put_error(cstate,
+									0, 0,
+						"text type variable is not sanitized",
+						"The EXECUTE expression is SQL injection vulnerable.",
+						"Use quote_ident, quote_literal or format function to secure variable.",
+									PLPGSQL_CHECK_WARNING_SECURITY,
+									loc,
+									query->query,
+									NULL);
+		}
+	}
+
+	/* recheck if target rec var has assigned tupdesc */
+	if (into)
+	{
+
+#if PG_VERSION_NUM >= 110000
+
+		check_variable(cstate, target);
+
+		if (target->dtype == PLPGSQL_DTYPE_REC &&
+			!has_assigned_tupdesc(cstate, (PLpgSQL_rec *) target))
+
+#else
+
+		plpgsql_check_row_or_rec(cstate, row, rec);
+
+		if (rec != NULL && !has_assigned_tupdesc(cstate, rec))
+
+#endif
+
+		{
+			plpgsql_check_put_error(cstate,
+									0, 0,
+									"cannot determinate a result of dynamic SQL",
+									"Cannot to contine in check.",
+						  "Don't use dynamic SQL and record type together, when you would check function.",
+									PLPGSQL_CHECK_WARNING_OTHERS,
+									0, NULL, NULL);
+		}
+	}
 }

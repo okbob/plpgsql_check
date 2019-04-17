@@ -42,15 +42,14 @@ rm -rf %{buildroot}
 %defattr(644,root,root,755)
 %doc README.md
 %{pginstdir}/lib/plpgsql_check.so
-%{pginstdir}/share/extension/plpgsql_check--1.4.sql
-%{pginstdir}/share/extension/plpgsql_check--1.0--1.1.sql
-%{pginstdir}/share/extension/plpgsql_check--1.1--1.2.sql
-%{pginstdir}/share/extension/plpgsql_check--1.2--1.3.sql
-%{pginstdir}/share/extension/plpgsql_check--1.3--1.4.sql
+%{pginstdir}/share/extension/plpgsql_check--1.7.sql
 %{pginstdir}/share/extension/plpgsql_check.control
 
 %changelog
-
+* Wed Apr 17 2019 - Pavel STEHULE <pavel.stehule@gmail.com> 1.7.0
+- check of format of fmt string of "format" function
+- better check of dynamic SQL when it is const string
+- check of SQL injection vulnerability of stmt expression at EXECUTE stmt
 
 * Fri Dec 23 2018 - Pavel STEHULE <pavel.stehule@gmail.com> 1.4.2-1
 - metada fix

@@ -12,7 +12,8 @@ enum
 	PLPGSQL_CHECK_ERROR,
 	PLPGSQL_CHECK_WARNING_OTHERS,
 	PLPGSQL_CHECK_WARNING_EXTRA,					/* check shadowed variables */
-	PLPGSQL_CHECK_WARNING_PERFORMANCE
+	PLPGSQL_CHECK_WARNING_PERFORMANCE,				/* invisible cast check */
+	PLPGSQL_CHECK_WARNING_SECURITY					/* sql injection check */
 };
 
 enum
@@ -69,12 +70,15 @@ typedef struct plpgsql_check_info
 	char		volatility;
 	Oid			relid;
 	PLpgSQL_trigtype trigtype;
-	char		*src;
+	char	   *src;
 	bool		fatal_errors;
 	bool		other_warnings;
 	bool		performance_warnings;
 	bool		extra_warnings;
+	bool		security_warnings;
 	bool		show_profile;
+	char	   *oldtable;
+	char	   *newtable;
 } plpgsql_check_info;
 
 typedef struct PLpgSQL_checkstate
@@ -97,6 +101,9 @@ typedef struct PLpgSQL_checkstate
 	bool		fake_rtd;					/* true when functions returns record */
 	plpgsql_check_result_info *result_info;
 	plpgsql_check_info *cinfo;
+	Bitmapset	   *safe_variables;			/* track which variables are safe against sql injection */
+	Bitmapset	   *string_variables;		/* track which variables are possibly vulnerable to sql injection */
+	bool			stop_check;				/* true after error when fatal_errors option is active */
 } PLpgSQL_checkstate;
 
 
@@ -157,7 +164,8 @@ extern bool plpgsql_check_is_checked(PLpgSQL_function *func);
 extern void plpgsql_check_mark_as_checked(PLpgSQL_function *func);
 extern void plpgsql_check_setup_fcinfo(HeapTuple procTuple, FmgrInfo *flinfo, FunctionCallInfo fcinfo,
 	ReturnSetInfo *rsinfo, TriggerData *trigdata, Oid relid, EventTriggerData *etrigdata, Oid funcoid,
-	Oid rettype, PLpgSQL_trigtype trigtype, Trigger *tg_trigger, bool *fake_rtd);
+	Oid rettype, PLpgSQL_trigtype trigtype, Trigger *tg_trigger, bool *fake_rtd,
+	char *oldtable, char *newtable);
 
 
 extern bool plpgsql_check_other_warnings;
@@ -170,9 +178,10 @@ extern int plpgsql_check_mode;
  * functions from expr_walk.c
  */
 extern void plpgsql_check_detect_dependency(PLpgSQL_checkstate *cstate, Query *query);
-extern void plpgsql_check_sequence_functions(PLpgSQL_checkstate *cstate, Query *query, char *query_str);
 extern bool plpgsql_check_has_rtable(Query *query);
 extern bool plpgsql_check_qual_has_fishy_cast(PlannedStmt *plannedstmt, Plan *plan, Param **param);
+extern void plpgsql_check_funcexpr(PLpgSQL_checkstate *cstate, Query *query, char *query_str);
+extern bool plpgsql_check_is_sql_injection_vulnerable(Node *node, int *location);
 
 /*
  * functions from check_expr.c
@@ -191,6 +200,11 @@ extern bool plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_ex
 extern void plpgsql_check_assignment(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 	PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow, int targetdno);
 extern void plpgsql_check_expr_generic(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
+extern void plpgsql_check_expr_generic_with_parser_setup(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
+	ParserSetupHook parser_setup, void *arg);
+
+extern Node *plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool force_plan_checks);
+extern char *plpgsql_check_const_to_string(Const *c);
 
 #if PG_VERSION_NUM >= 110000
 
@@ -260,6 +274,7 @@ extern shmem_startup_hook_type prev_shmem_startup_hook;
 #define NEVER_READ_PARAMETER_TEXT		"parameter \"%s\" is never read"
 #define UNMODIFIED_VARIABLE_TEXT		"unmodified OUT variable \"%s\""
 #define OUT_COMPOSITE_IS_NOT_SINGLE_TEXT	"composite OUT variable \"%s\" is not single argument"
+#define UNSAFE_EXECUTE					"the expression used by EXECUTE command is possibly sql injection vulnerable"
 
 #ifndef TupleDescAttr
 #define TupleDescAttr(tupdesc, i) ((tupdesc)->attrs[(i)])

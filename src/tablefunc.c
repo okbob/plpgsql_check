@@ -66,12 +66,29 @@ plpgsql_check_function(PG_FUNCTION_ARGS)
 	ErrorContextCallback *prev_errorcontext;
 	int	format;
 
-	if (PG_NARGS() != 7)
+	if (PG_NARGS() != 10)
 		elog(ERROR, "unexpected number of parameters, you should to update extension");
 
 	/* check to see if caller supports us returning a tuplestore */
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	SetReturningFunctionCheck(rsinfo);
+
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "the first argument should not be null");
+	if (PG_ARGISNULL(1))
+		elog(ERROR, "the second argument should not be null");
+	if (PG_ARGISNULL(2))
+		elog(ERROR, "the third argument should not be null");
+	if (PG_ARGISNULL(3))
+		elog(ERROR, "the fourth argument should not be null");
+	if (PG_ARGISNULL(4))
+		elog(ERROR, "the fifth argument should not be null");
+	if (PG_ARGISNULL(5))
+		elog(ERROR, "the sixth argument should not be null");
+	if (PG_ARGISNULL(6))
+		elog(ERROR, "the seventh argument should not be null");
+	if (PG_ARGISNULL(7))
+		elog(ERROR, "the eighth argument should not be null");
 
 	format = plpgsql_check_format_num(text_to_cstring(PG_GETARG_TEXT_PP(2)));
 
@@ -82,6 +99,23 @@ plpgsql_check_function(PG_FUNCTION_ARGS)
 	cinfo.other_warnings = PG_GETARG_BOOL(4);
 	cinfo.performance_warnings = PG_GETARG_BOOL(5);
 	cinfo.extra_warnings = PG_GETARG_BOOL(6);
+	cinfo.security_warnings = PG_GETARG_BOOL(7);
+
+	if (PG_ARGISNULL(8))
+		cinfo.oldtable = NULL;
+	else
+		cinfo.oldtable = NameStr(*(PG_GETARG_NAME(8)));
+
+	if (PG_ARGISNULL(9))
+		cinfo.newtable = NULL;
+	else
+		cinfo.newtable = NameStr(*(PG_GETARG_NAME(9)));
+
+	if ((cinfo.oldtable || cinfo.newtable) && !OidIsValid(cinfo.relid))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("missing description of oldtable or newtable"),
+				 errhint("Parameter relid is a empty.")));
 
 	cinfo.proctuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(cinfo.fn_oid));
 	if (!HeapTupleIsValid(cinfo.proctuple))
@@ -126,12 +160,27 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	ReturnSetInfo *rsinfo;
 	ErrorContextCallback *prev_errorcontext;
 
-	if (PG_NARGS() != 6)
+	if (PG_NARGS() != 9)
 		elog(ERROR, "unexpected number of parameters, you should to update extension");
 
 	/* check to see if caller supports us returning a tuplestore */
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	SetReturningFunctionCheck(rsinfo);
+
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "the first argument should not be null");
+	if (PG_ARGISNULL(1))
+		elog(ERROR, "the second argument should not be null");
+	if (PG_ARGISNULL(2))
+		elog(ERROR, "the third argument should not be null");
+	if (PG_ARGISNULL(3))
+		elog(ERROR, "the fourth argument should not be null");
+	if (PG_ARGISNULL(4))
+		elog(ERROR, "the fifth argument should not be null");
+	if (PG_ARGISNULL(5))
+		elog(ERROR, "the sixth argument should not be null");
+	if (PG_ARGISNULL(6))
+		elog(ERROR, "the seventh argument should not be null");
 
 	init_check_info(&cinfo, PG_GETARG_OID(0));
 
@@ -140,6 +189,23 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	cinfo.other_warnings = PG_GETARG_BOOL(3);
 	cinfo.performance_warnings = PG_GETARG_BOOL(4);
 	cinfo.extra_warnings = PG_GETARG_BOOL(5);
+	cinfo.security_warnings = PG_GETARG_BOOL(6);
+
+	if (PG_ARGISNULL(7))
+		cinfo.oldtable = NULL;
+	else
+		cinfo.oldtable = NameStr(*(PG_GETARG_NAME(7)));
+
+	if (PG_ARGISNULL(8))
+		cinfo.newtable = NULL;
+	else
+		cinfo.newtable = NameStr(*(PG_GETARG_NAME(8)));
+
+	if ((cinfo.oldtable || cinfo.newtable) && !OidIsValid(cinfo.relid))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("missing description of oldtable or newtable"),
+				 errhint("Parameter relid is a empty.")));
 
 	cinfo.proctuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(cinfo.fn_oid));
 	if (!HeapTupleIsValid(cinfo.proctuple))

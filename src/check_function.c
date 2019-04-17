@@ -55,7 +55,7 @@ static void release_exprs(List *exprs);
 static int load_configuration(HeapTuple procTuple, bool *reload_config);
 static void init_datum_dno(PLpgSQL_checkstate *cstate, int dno);
 static PLpgSQL_datum * copy_plpgsql_datum(PLpgSQL_checkstate *cstate, PLpgSQL_datum *datum);
-static void plpgsql_check_setup_estate(PLpgSQL_execstate *estate, PLpgSQL_function *func, ReturnSetInfo *rsi);
+static void plpgsql_check_setup_estate(PLpgSQL_execstate *estate, PLpgSQL_function *func, ReturnSetInfo *rsi, plpgsql_check_info *cinfo);
 static void plpgsql_check_setup_cstate(PLpgSQL_checkstate *cstate, plpgsql_check_result_info *result_info,
 	plpgsql_check_info *cinfo, bool is_active_mode, bool fake_rtd);
 
@@ -112,7 +112,9 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 								cinfo->rettype,
 								cinfo->trigtype,
 								&tg_trigger,
-								&fake_rtd);
+								&fake_rtd,
+								cinfo->oldtable,
+								cinfo->newtable);
 
 	plpgsql_check_setup_cstate(&cstate, ri, cinfo, true, fake_rtd);
 
@@ -165,7 +167,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 
 			Assert(function->fn_is_trigger == cinfo->trigtype);
 
-			plpgsql_check_setup_estate(&estate, function, (ReturnSetInfo *) fake_fcinfo->resultinfo);
+			plpgsql_check_setup_estate(&estate, function, (ReturnSetInfo *) fake_fcinfo->resultinfo, cinfo);
 			cstate.estate = &estate;
 
 			/*
@@ -396,20 +398,22 @@ plpgsql_check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 
 			estate->err_stmt = NULL;
 
-			if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS &&
-				!is_procedure(estate))
-				plpgsql_check_put_error(&cstate,
-								  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
-								  "control reached end of function without RETURN",
-								  NULL,
-								  NULL,
-								  closing == PLPGSQL_CHECK_UNCLOSED ?
-										PLPGSQL_CHECK_ERROR : PLPGSQL_CHECK_WARNING_EXTRA,
-								  0, NULL, NULL);
+			if (!cstate.stop_check)
+			{
+				if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS &&
+					!is_procedure(estate))
+					plpgsql_check_put_error(&cstate,
+									  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
+									  "control reached end of function without RETURN",
+									  NULL,
+									  NULL,
+									  closing == PLPGSQL_CHECK_UNCLOSED ?
+											PLPGSQL_CHECK_ERROR : PLPGSQL_CHECK_WARNING_EXTRA,
+									  0, NULL, NULL);
 
-			plpgsql_check_report_unused_variables(&cstate);
-			plpgsql_check_report_too_high_volatility(&cstate);
-
+				plpgsql_check_report_unused_variables(&cstate);
+				plpgsql_check_report_too_high_volatility(&cstate);
+			}
 		}
 		PG_CATCH();
 		{
@@ -536,18 +540,21 @@ function_check(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 	/* clean state values - next errors are not related to any command */
 	cstate->estate->err_stmt = NULL;
 
-	if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS &&
-		!is_procedure(cstate->estate))
-		plpgsql_check_put_error(cstate,
-						  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
-						  "control reached end of function without RETURN",
-						  NULL,
-						  NULL,
-						  closing == PLPGSQL_CHECK_UNCLOSED ? PLPGSQL_CHECK_ERROR : PLPGSQL_CHECK_WARNING_EXTRA,
-						  0, NULL, NULL);
+	if (!cstate->stop_check)
+	{
+		if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS &&
+			!is_procedure(cstate->estate))
+			plpgsql_check_put_error(cstate,
+							  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
+							  "control reached end of function without RETURN",
+							  NULL,
+							  NULL,
+							  closing == PLPGSQL_CHECK_UNCLOSED ? PLPGSQL_CHECK_ERROR : PLPGSQL_CHECK_WARNING_EXTRA,
+							  0, NULL, NULL);
 
-	plpgsql_check_report_unused_variables(cstate);
-	plpgsql_check_report_too_high_volatility(cstate);
+		plpgsql_check_report_unused_variables(cstate);
+		plpgsql_check_report_too_high_volatility(cstate);
+	}
 }
 
 /*
@@ -653,18 +660,21 @@ trigger_check(PLpgSQL_function *func, Node *tdata,
 	/* clean state values - next errors are not related to any command */
 	cstate->estate->err_stmt = NULL;
 
-	if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS &&
-		!is_procedure(cstate->estate))
-		plpgsql_check_put_error(cstate,
-						  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
-						  "control reached end of function without RETURN",
-						  NULL,
-						  NULL,
-						  closing == PLPGSQL_CHECK_UNCLOSED ? PLPGSQL_CHECK_ERROR : PLPGSQL_CHECK_WARNING_EXTRA,
-						  0, NULL, NULL);
+	if (!cstate->stop_check)
+	{
+		if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS &&
+			!is_procedure(cstate->estate))
+			plpgsql_check_put_error(cstate,
+							  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
+							  "control reached end of function without RETURN",
+							  NULL,
+							  NULL,
+							  closing == PLPGSQL_CHECK_UNCLOSED ? PLPGSQL_CHECK_ERROR : PLPGSQL_CHECK_WARNING_EXTRA,
+							  0, NULL, NULL);
 
-	plpgsql_check_report_unused_variables(cstate);
-	plpgsql_check_report_too_high_volatility(cstate);
+		plpgsql_check_report_unused_variables(cstate);
+		plpgsql_check_report_too_high_volatility(cstate);
+	}
 }
 
 /*
@@ -702,7 +712,9 @@ plpgsql_check_setup_fcinfo(HeapTuple procTuple,
 						  Oid rettype,
 						  PLpgSQL_trigtype trigtype,
 						  Trigger *tg_trigger,
-						  bool *fake_rtd)
+						  bool *fake_rtd,
+						  char *oldtable,
+						  char *newtable)
 {
 	TupleDesc resultTupleDesc;
 
@@ -820,7 +832,8 @@ plpgsql_check_setup_fcinfo(HeapTuple procTuple,
 static void
 plpgsql_check_setup_estate(PLpgSQL_execstate *estate,
 					 PLpgSQL_function *func,
-					 ReturnSetInfo *rsi)
+					 ReturnSetInfo *rsi,
+					 plpgsql_check_info *cinfo)
 {
 	/* this link will be restored at exit from plpgsql_call_handler */
 	func->cur_estate = estate;
@@ -902,6 +915,41 @@ plpgsql_check_setup_estate(PLpgSQL_execstate *estate,
 
 #endif
 
+#if PG_VERSION_NUM > 100000
+
+	if (cinfo->oldtable)
+	{
+		EphemeralNamedRelation enr = palloc(sizeof(EphemeralNamedRelationData));
+		int rc PG_USED_FOR_ASSERTS_ONLY;
+
+		enr->md.name = cinfo->oldtable;
+		enr->md.reliddesc = cinfo->relid;
+		enr->md.tupdesc = NULL;
+		enr->md.enrtype = ENR_NAMED_TUPLESTORE;
+		enr->md.enrtuples = 0;
+		enr->reldata = NULL;
+
+		rc = SPI_register_relation(enr);
+		Assert(rc >= 0);
+	}
+
+	if (cinfo->newtable)
+	{
+		EphemeralNamedRelation enr = palloc(sizeof(EphemeralNamedRelationData));
+		int rc PG_USED_FOR_ASSERTS_ONLY;
+
+		enr->md.name = cinfo->newtable;
+		enr->md.reliddesc = cinfo->relid;
+		enr->md.tupdesc = NULL;
+		enr->md.enrtype = ENR_NAMED_TUPLESTORE;
+		enr->md.enrtuples = 0;
+		enr->reldata = NULL;
+
+		rc = SPI_register_relation(enr);
+		Assert(rc >= 0);
+	}
+
+#endif
 
 	estate->err_stmt = NULL;
 	estate->err_text = NULL;
@@ -959,6 +1007,11 @@ plpgsql_check_setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->found_return_query = false;
 
 	cstate->fake_rtd = fake_rtd;
+
+	cstate->safe_variables = NULL;
+	cstate->string_variables = NULL;
+
+	cstate->stop_check = false;
 }
 
 

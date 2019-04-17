@@ -2175,7 +2175,7 @@ $$ language plpgsql;
 -- should to fail
 select testseq();
 
-select * from plpgsql_check_function('testseq()');
+select * from plpgsql_check_function('testseq()', fatal_errors := false);
 
 drop function testseq();
 drop table test_table;
@@ -2629,4 +2629,199 @@ select * from plpgsql_check_function('fx()');
 
 drop function fx();
 
+create or replace function foo_format(a text, b text)
+returns void as $$
+declare s text;
+begin
+  s := format('%s'); -- should to raise error
+  s := format('%s %10s', a, b); -- should be ok
+  s := format('%s %s', a, b, a); -- should to raise warning
+  s := format('%s %d', a, b); -- should to raise error
+  raise notice '%', s;
+end;
+$$ language plpgsql;
 
+select * from plpgsql_check_function('foo_format', fatal_errors := false);
+
+drop function foo_format(text, text);
+
+create or replace function dyn_sql_1()
+returns void as $$
+declare
+  v varchar;
+  n int;
+begin
+  execute 'select ' || n; -- ok
+  execute 'select ' || quote_literal(v); -- ok
+  execute 'select ' || v; -- vulnerable
+  execute format('select * from %I', v); -- ok
+  execute format('select * from %s', v); -- vulnerable
+  execute 'select $1' using v; -- ok
+  execute 'select 1'; -- ok
+  execute 'select 1' using v; -- warning
+  execute 'select $1'; -- error
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('dyn_sql_1', security_warnings := true, fatal_errors := false);
+
+drop function dyn_sql_1();
+
+create type tp as (a int, b int);
+
+create or replace function dyn_sql_2()
+returns void as $$
+declare
+  r tp; 
+  result int;
+begin
+  select 10 a, 20 b into r;
+  raise notice '%', r.a;
+  execute 'select $1.a + $1.b' into result using r;
+  execute 'select $1.c' into result using r; -- error
+  raise notice '%', result;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('dyn_sql_2', security_warnings := true);
+
+drop function dyn_sql_2();
+
+drop type tp;
+
+/*
+ * Should not to work
+ *
+ * note: plpgsql doesn't support passing some necessary details for record
+ * type. The parser setup for dynamic SQL column doesn't use ref hooks, and
+ * then it cannot to pass TupleDesc info to query anyway.
+ */
+create or replace function dyn_sql_2()
+returns void as $$
+declare
+  r record;
+  result int;
+begin
+  select 10 a, 20 b into r;
+  raise notice '%', r.a;
+  execute 'select $1.a + $1.b' into result using r;
+  raise notice '%', result;
+end;
+$$ language plpgsql;
+
+select dyn_sql_2(); --should to fail
+select * from plpgsql_check_function('dyn_sql_2', security_warnings := true);
+
+drop function dyn_sql_2();
+
+create or replace function dyn_sql_3()
+returns void as $$
+declare r int;
+begin
+  execute 'select $1' into r using 1;
+  raise notice '%', r;
+end
+$$ language plpgsql;
+
+select dyn_sql_3();
+
+-- should be ok
+select * from plpgsql_check_function('dyn_sql_3');
+
+create or replace function dyn_sql_3()
+returns void as $$
+declare r record;
+begin
+  execute 'select $1 as a, $2 as b' into r using 1, 2;
+  raise notice '% %', r.a, r.b;
+end
+$$ language plpgsql;
+
+select dyn_sql_3();
+
+-- should be ok
+select * from plpgsql_check_function('dyn_sql_3');
+
+create or replace function dyn_sql_3()
+returns void as $$
+declare r record;
+begin
+  execute 'create table foo(a int)' into r using 1, 2;
+  raise notice '% %', r.a, r.b;
+end
+$$ language plpgsql;
+
+-- raise a error
+select * from plpgsql_check_function('dyn_sql_3');
+
+create or replace function dyn_sql_3()
+returns void as $$
+declare r1 int; r2 int;
+begin
+  execute 'select 1' into r1, r2 using 1, 2;
+  raise notice '% %', r1, r2;
+end
+$$ language plpgsql;
+
+-- raise a error
+select * from plpgsql_check_function('dyn_sql_3');
+
+drop function dyn_sql_3();
+
+create or replace function dyn_sql_3()
+returns void as $$
+declare r record;
+begin
+  for r in execute 'select 1 as a, 2 as b'
+  loop
+    raise notice '%', r.a;
+  end loop;
+end
+$$ language plpgsql;
+
+-- should be ok
+select * from plpgsql_check_function('dyn_sql_3');
+
+drop function dyn_sql_3();
+
+create or replace function dyn_sql_3()
+returns void as $$
+declare r record;
+begin
+  for r in execute 'select 1 as a, 2 as b'
+  loop
+    raise notice '%', r.c;
+  end loop;
+end
+$$ language plpgsql;
+
+-- should be error
+select * from plpgsql_check_function('dyn_sql_3');
+
+drop function dyn_sql_3();
+
+create or replace function dyn_sql_4()
+returns table(ax int, bx int) as $$
+begin
+  return query execute 'select 10, 20';
+  return;
+end;
+$$ language plpgsql;
+
+-- should be ok
+select * from plpgsql_check_function('dyn_sql_4()');
+
+create or replace function dyn_sql_4()
+returns table(ax int, bx int) as $$
+begin
+  return query execute 'select 10, 20, 30';
+  return;
+end;
+$$ language plpgsql;
+
+select * from dyn_sql_4();
+
+-- should be error
+select * from plpgsql_check_function('dyn_sql_4()');
+
+drop function dyn_sql_4();

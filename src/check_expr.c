@@ -50,7 +50,11 @@ static int TupleDescNVatts(TupleDesc tupdesc);
  * succesfully prepared.
  */
 static void
-prepare_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, int cursorOptions)
+prepare_plan(PLpgSQL_checkstate *cstate,
+			 PLpgSQL_expr *expr,
+			 int cursorOptions,
+			 ParserSetupHook parser_setup,
+			 void *arg)
 {
 	SPIPlanPtr	plan;
 	Query	   *query;
@@ -67,8 +71,8 @@ prepare_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, int cursorOptions)
 		 * Generate and save the plan
 		 */
 		plan = SPI_prepare_params(expr->query,
-								  (ParserSetupHook) plpgsql_parser_setup,
-								  (void *) expr,
+								  parser_setup ? parser_setup : (ParserSetupHook) plpgsql_parser_setup,
+								  arg ? arg : (void *) expr,
 								  cursorOptions);
 
 		if (plan == NULL)
@@ -111,7 +115,7 @@ prepare_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, int cursorOptions)
 	query = ExprGetQuery(expr);
 
 	/* there checks are common on every expr/query */
-	plpgsql_check_sequence_functions(cstate, query, expr->query);
+	plpgsql_check_funcexpr(cstate, query, expr->query);
 	collect_volatility(cstate, query);
 	plpgsql_check_detect_dependency(cstate, query);
 }
@@ -361,18 +365,12 @@ check_fishy_qual(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str)
 	}
 }
 
-/*
- * Returns Const Value from expression if it is possible.
- *
- * Ensure all plan related checks on expression.
- *
- */
-static Const *
-expr_get_const(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+Node *
+plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool force_plan_checks)
 {
 	PlannedStmt *_stmt;
 	CachedPlan *cplan;
-	Const	   *result = NULL;
+	Node	   *result = NULL;
 	bool		has_result_desc;
 
 	cplan = get_cached_plan(expr, &has_result_desc);
@@ -380,7 +378,8 @@ expr_get_const(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 		elog(ERROR, "expression does not return data");
 
 	/* do all checks for this plan, reduce a access to plan cache */
-	plan_checks(cstate, cplan, expr->query);
+	if (force_plan_checks)
+		plan_checks(cstate, cplan, expr->query);
 
 	_stmt = (PlannedStmt *) linitial(cplan->stmt_list);
 
@@ -393,14 +392,30 @@ expr_get_const(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 		if (IsA(_plan, Result) &&list_length(_plan->targetlist) == 1)
 		{
 			tle = (TargetEntry *) linitial(_plan->targetlist);
-			if (((Node *) tle->expr)->type == T_Const)
-				result = (Const *) tle->expr;
+			result = (Node *) tle->expr;
 		}
 	}
 
 	ReleaseCachedPlan(cplan, true);
 
 	return result;
+}
+
+/*
+ * Returns Const Value from expression if it is possible.
+ *
+ * Ensure all plan related checks on expression.
+ *
+ */
+static Const *
+expr_get_const(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+{
+	Node *node = plpgsql_check_expr_get_node(cstate, expr, true);
+
+	if (node && node->type == T_Const)
+		return (Const *) node;
+
+	return NULL;
 }
 
 /*
@@ -417,6 +432,25 @@ is_const_null_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 	return c && c->constisnull ? true : false;
 }
 
+char *
+plpgsql_check_const_to_string(Const *c)
+{
+	if (IsA((Node *) c, Const))
+	{
+		if (!c->constisnull)
+		{
+			Oid		typoutput;
+			bool	typisvarlena;
+
+			getTypeOutputInfo(c->consttype, &typoutput, &typisvarlena);
+
+			return OidOutputFunctionCall(typoutput, c->constvalue);
+		}
+	}
+
+	return NULL;
+}
+
 /*
  * Returns string for any not null constant. isnull is true,
  * when constant is null.
@@ -428,16 +462,11 @@ plpgsql_check_expr_get_string(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bo
 	Const	   *c;
 
 	c = expr_get_const(cstate, expr);
-	*isnull = c && c->constisnull;
-
-	if (c && !c->constisnull)
+	if (c)
 	{
-		Oid		typoutput;
-		bool	typisvarlena;
+		*isnull = c->constisnull;
 
-		getTypeOutputInfo(c->consttype, &typoutput, &typisvarlena);
-
-		return OidOutputFunctionCall(typoutput, c->constvalue);
+		return plpgsql_check_const_to_string(c);
 	}
 
 	return NULL;
@@ -463,7 +492,17 @@ force_plan_checks(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 void
 plpgsql_check_expr_generic(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 {
-	prepare_plan(cstate, expr, 0);
+	prepare_plan(cstate, expr, 0, NULL, NULL);
+	force_plan_checks(cstate, expr);
+}
+
+void
+plpgsql_check_expr_generic_with_parser_setup(PLpgSQL_checkstate *cstate,
+											 PLpgSQL_expr *expr,
+											 ParserSetupHook parser_setup,
+											 void *arg)
+{
+	prepare_plan(cstate, expr, 0, parser_setup, arg);
 	force_plan_checks(cstate, expr);
 }
 
@@ -504,7 +543,7 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
 		TupleDesc	tupdesc;
 		bool		is_immutable_null;
 
-		prepare_plan(cstate, expr, 0);
+		prepare_plan(cstate, expr, 0, NULL, NULL);
 		/* record all variables used by the query */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
@@ -582,7 +621,7 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 		bool		is_immutable_null;
 		Oid			first_level_typ = InvalidOid;
 
-		prepare_plan(cstate, expr, 0);
+		prepare_plan(cstate, expr, 0, NULL, NULL);
 
 		/* record all variables used by the query, should be after prepare_plan */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
@@ -711,7 +750,7 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 
 	PG_TRY();
 	{
-		prepare_plan(cstate, expr, 0);
+		prepare_plan(cstate, expr, 0, NULL, NULL);
 		/* record all variables used by the query */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
@@ -854,7 +893,7 @@ plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 
 	PG_TRY();
 	{
-		prepare_plan(cstate, expr, 0);
+		prepare_plan(cstate, expr, 0, NULL, NULL);
 		/* record all variables used by the query */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 		force_plan_checks(cstate, expr);
