@@ -349,6 +349,8 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						}
 						else
 						{
+							closing_handlers = *closing;
+
 							foreach(l, stmt_block->exceptions->exc_list)
 							{
 								PLpgSQL_exception *exception = (PLpgSQL_exception *) lfirst(l);
@@ -362,8 +364,12 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 																 -1);
 							}
 
-							if (closing_handlers != *closing)
-								*closing = PLPGSQL_CHECK_POSSIBLY_CLOSED;
+							*closing = closing_handlers;
+
+							if (closing_handlers == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
+								*exceptions = exceptions_transformed;
+							else
+								*exceptions = NIL;
 						}
 
 						/*
@@ -1151,6 +1157,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 									  stmt_dynexecute->params);
 				}
 				break;
+
 			case PLPGSQL_STMT_OPEN:
 				{
 					PLpgSQL_stmt_open *stmt_open = (PLpgSQL_stmt_open *) stmt;

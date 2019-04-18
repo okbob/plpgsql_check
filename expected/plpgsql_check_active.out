@@ -3875,3 +3875,58 @@ select * from plpgsql_check_function('dyn_sql_4()');
 (2 rows)
 
 drop function dyn_sql_4();
+create or replace function test_bug(text)
+returns regproc as $$
+begin
+  return $1::regproc;
+  exception when undefined_function or invalid_name then
+    raise;
+end;
+$$ language plpgsql;
+-- should not raise a exception
+select * from plpgsql_check_function('test_bug');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function test_bug(text)
+returns regproc as $$
+begin
+  return $1::regproc;
+  exception when undefined_function or invalid_name then
+    raise notice '%', $1; -- bug
+end;
+$$ language plpgsql;
+select test_bug('kuku'); -- should to fail
+NOTICE:  kuku
+ERROR:  control reached end of function without RETURN
+CONTEXT:  PL/pgSQL function test_bug(text)
+select * from plpgsql_check_function('test_bug');
+                       plpgsql_check_function                       
+--------------------------------------------------------------------
+ warning extra:2F005:control reached end of function without RETURN
+(1 row)
+
+drop function test_bug(text);
+create or replace function test_bug(text)
+returns regproc as $$
+begin
+  return $1::regproc;
+  exception when undefined_function or invalid_name then
+    raise notice '%', $1;
+    return NULL;
+end;
+$$ language plpgsql;
+select test_bug('kuku'); -- should be ok
+NOTICE:  kuku
+ test_bug 
+----------
+ 
+(1 row)
+
+select * from plpgsql_check_function('test_bug');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function test_bug(text);

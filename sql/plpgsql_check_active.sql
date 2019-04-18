@@ -2825,3 +2825,45 @@ select * from dyn_sql_4();
 select * from plpgsql_check_function('dyn_sql_4()');
 
 drop function dyn_sql_4();
+
+create or replace function test_bug(text)
+returns regproc as $$
+begin
+  return $1::regproc;
+  exception when undefined_function or invalid_name then
+    raise;
+end;
+$$ language plpgsql;
+
+-- should not raise a exception
+select * from plpgsql_check_function('test_bug');
+
+create or replace function test_bug(text)
+returns regproc as $$
+begin
+  return $1::regproc;
+  exception when undefined_function or invalid_name then
+    raise notice '%', $1; -- bug
+end;
+$$ language plpgsql;
+
+select test_bug('kuku'); -- should to fail
+
+select * from plpgsql_check_function('test_bug');
+
+drop function test_bug(text);
+
+create or replace function test_bug(text)
+returns regproc as $$
+begin
+  return $1::regproc;
+  exception when undefined_function or invalid_name then
+    raise notice '%', $1;
+    return NULL;
+end;
+$$ language plpgsql;
+
+select test_bug('kuku'); -- should be ok
+select * from plpgsql_check_function('test_bug');
+
+drop function test_bug(text);
