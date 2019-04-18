@@ -1774,6 +1774,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	Node	   *expr_node;
 	ListCell   *l;
 	int			loc = -1;
+	bool		raise_unknown_rec_warning = false;
 
 	/*
 	 * possible checks:
@@ -1903,6 +1904,27 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 									query->query,
 									NULL);
 		}
+
+		/*
+		 * In this case, we don't know a result type, and we should
+		 * to raise warning about this situation.
+		 */
+		if (into)
+		{
+
+#if PG_VERSION_NUM >= 110000
+
+			if (target->dtype == PLPGSQL_DTYPE_REC)
+				raise_unknown_rec_warning = true;
+
+#else
+
+			if (rec)
+				raise_unknown_rec_warning = true;
+
+#endif
+
+		}
 	}
 
 	/* recheck if target rec var has assigned tupdesc */
@@ -1913,14 +1935,15 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 		check_variable(cstate, target);
 
-		if (target->dtype == PLPGSQL_DTYPE_REC &&
-			!has_assigned_tupdesc(cstate, (PLpgSQL_rec *) target))
+		if (raise_unknown_rec_warning ||
+			(target->dtype == PLPGSQL_DTYPE_REC &&
+			 !has_assigned_tupdesc(cstate, (PLpgSQL_rec *) target)))
 
 #else
 
 		plpgsql_check_row_or_rec(cstate, row, rec);
 
-		if (rec != NULL && !has_assigned_tupdesc(cstate, rec))
+		if (raise_unknown_rec_warning || (rec != NULL && !has_assigned_tupdesc(cstate, rec)))
 
 #endif
 
@@ -1928,7 +1951,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 			plpgsql_check_put_error(cstate,
 									0, 0,
 									"cannot determinate a result of dynamic SQL",
-									"Cannot to contine in check.",
+									"There is a risk of related false alarms.",
 						  "Don't use dynamic SQL and record type together, when you would check function.",
 									PLPGSQL_CHECK_WARNING_OTHERS,
 									0, NULL, NULL);

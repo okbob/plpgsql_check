@@ -2800,6 +2800,25 @@ select * from plpgsql_check_function('dyn_sql_3');
 
 drop function dyn_sql_3();
 
+create or replace function dyn_sql_3()
+returns void as $$
+declare
+  r record;
+  v text = 'select 10 a, 20 b't;
+begin
+  select 10 a, 20 b into r;
+  for r in execute v
+  loop
+    raise notice '%', r.a;
+  end loop;
+end
+$$ language plpgsql;
+
+-- should be warning
+select * from plpgsql_check_function('dyn_sql_3');
+
+drop function dyn_sql_3();
+
 create or replace function dyn_sql_4()
 returns table(ax int, bx int) as $$
 begin
