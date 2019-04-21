@@ -1892,17 +1892,28 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		 * but we can check sanitize parameters.
 		 */
 		if (cstate->cinfo->security_warnings &&
-			plpgsql_check_is_sql_injection_vulnerable(expr_node, &loc))
+			plpgsql_check_is_sql_injection_vulnerable(cstate, query, expr_node, &loc))
 		{
-			plpgsql_check_put_error(cstate,
-									0, 0,
-						"text type variable is not sanitized",
-						"The EXECUTE expression is SQL injection vulnerable.",
-						"Use quote_ident, quote_literal or format function to secure variable.",
-									PLPGSQL_CHECK_WARNING_SECURITY,
-									loc,
-									query->query,
-									NULL);
+			if (loc != -1)
+				plpgsql_check_put_error(cstate,
+										0, 0,
+							"text type variable is not sanitized",
+							"The EXECUTE expression is SQL injection vulnerable.",
+							"Use quote_ident, quote_literal or format function to secure variable.",
+										PLPGSQL_CHECK_WARNING_SECURITY,
+										loc,
+										query->query,
+										NULL);
+			else
+				plpgsql_check_put_error(cstate,
+										0, 0,
+							"the expression is not SQL injection safe",
+							"Cannot ensure so dynamic EXECUTE statement is SQL injection secure.",
+							"Use quote_ident, quote_literal or format function to secure variable.",
+										PLPGSQL_CHECK_WARNING_SECURITY,
+										-1,
+										query->query,
+										NULL);
 		}
 
 		/*

@@ -102,7 +102,6 @@ typedef struct PLpgSQL_checkstate
 	plpgsql_check_result_info *result_info;
 	plpgsql_check_info *cinfo;
 	Bitmapset	   *safe_variables;			/* track which variables are safe against sql injection */
-	Bitmapset	   *string_variables;		/* track which variables are possibly vulnerable to sql injection */
 	bool			stop_check;				/* true after error when fatal_errors option is active */
 } PLpgSQL_checkstate;
 
@@ -181,7 +180,7 @@ extern void plpgsql_check_detect_dependency(PLpgSQL_checkstate *cstate, Query *q
 extern bool plpgsql_check_has_rtable(Query *query);
 extern bool plpgsql_check_qual_has_fishy_cast(PlannedStmt *plannedstmt, Plan *plan, Param **param);
 extern void plpgsql_check_funcexpr(PLpgSQL_checkstate *cstate, Query *query, char *query_str);
-extern bool plpgsql_check_is_sql_injection_vulnerable(Node *node, int *location);
+extern bool plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, Node *node, int *location);
 
 /*
  * functions from check_expr.c

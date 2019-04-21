@@ -1009,7 +1009,6 @@ plpgsql_check_setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->fake_rtd = fake_rtd;
 
 	cstate->safe_variables = NULL;
-	cstate->string_variables = NULL;
 
 	cstate->stop_check = false;
 }

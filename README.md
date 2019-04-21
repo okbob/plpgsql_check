@@ -297,6 +297,13 @@ should be redesigned or plpgsql_check should be disabled for this function.
 <i>A usage of plpgsql_check adds a small overhead (in enabled passive mode) and you should use
 it only in develop or preprod environments.</i>
 
+<aside class="warning">
+Attention: The SQL injection check can detect only some SQL injection vulnerabilities. This tool
+cannot be used for security audit! Some issues should not be detected. This check can raise false
+alarms too - probably when variable is sanitized by other command or when value is of some compose
+type.
+</aside>
+
 ## Dynamic SQL
 
 This module doesn't check queries that are assembled in runtime. It is not possible

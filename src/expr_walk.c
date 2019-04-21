@@ -21,6 +21,7 @@
 typedef struct 
 {
 	PLpgSQL_checkstate *cstate;
+	PLpgSQL_expr *expr;
 	char *query_str;
 } check_funcexpr_walker_params;
 
@@ -29,7 +30,8 @@ static int check_fmt_string(const char *fmt,
 							int location,
 							check_funcexpr_walker_params *wp,
 							bool *is_error,
-							int *unsafe_expr_location);
+							int *unsafe_expr_location,
+							bool no_error);
 
 /*
  * Send to ouput all not yet displayed relations and functions.
@@ -223,7 +225,7 @@ check_funcexpr_walker(Node *node, void *context)
 
 							wp = (check_funcexpr_walker_params *) context;
 
-							required_nargs = check_fmt_string(fmt, fexpr->args, c->location, wp, &is_error, NULL);
+							required_nargs = check_fmt_string(fmt, fexpr->args, c->location, wp, &is_error, NULL, false);
 							if (!is_error && required_nargs != -1)
 							{
 								if (required_nargs + 1 != list_length(fexpr->args))
@@ -251,6 +253,7 @@ plpgsql_check_funcexpr(PLpgSQL_checkstate *cstate, Query *query, char *query_str
 
 	wp.cstate = cstate;
 	wp.query_str = query_str;
+	wp.expr = NULL;
 
 	check_funcexpr_walker((Node *) query, &wp);
 }
@@ -480,7 +483,8 @@ text_format_parse_format(const char *start_ptr,
 	}
 
 /*
- * Returns number of rquired arguments or -1 when we cannot detect this number
+ * Returns number of rquired arguments or -1 when we cannot detect this number.
+ * When no_error is true, then this function doesn't raise a error or warning.
  */
 static int
 check_fmt_string(const char *fmt,
@@ -488,7 +492,8 @@ check_fmt_string(const char *fmt,
 				 int location,
 				 check_funcexpr_walker_params *wp,
 				 bool *is_error,
-				 int *unsafe_expr_location)
+				 int *unsafe_expr_location,
+				 bool no_error)
 {
 	const char	   *cp;
 	const char	   *end_ptr = fmt + strlen(fmt);
@@ -535,7 +540,7 @@ check_fmt_string(const char *fmt,
 			appendStringInfo(&sinfo,
 					"unrecognized format() type specifier \"%c\"", *cp);
 
-			if (wp)
+			if (!no_error)
 				plpgsql_check_put_error(wp->cstate,
 										ERRCODE_INVALID_PARAMETER_VALUE, 0,
 										sinfo.data,
@@ -578,7 +583,7 @@ check_fmt_string(const char *fmt,
 				{
 					Node *arg = list_nth(args, argn - 1);
 
-					if (plpgsql_check_is_sql_injection_vulnerable(arg, unsafe_expr_location))
+					if (plpgsql_check_is_sql_injection_vulnerable(wp->cstate, wp->expr, arg, unsafe_expr_location))
 					{
 						/* found vulnerability, stop */
 						*is_error = false;
@@ -740,10 +745,13 @@ plpgsql_check_qual_has_fishy_cast(PlannedStmt *plannedstmt, Plan *plan, Param **
 
 /*
  * Recursive iterate to deep and search extern params with typcategory "S", and check
- * if this value is sanitized.
+ * if this value is sanitized. Flag is_safe is true, when result is safe.
  */
 bool
-plpgsql_check_is_sql_injection_vulnerable(Node *node, int *location)
+plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
+										  PLpgSQL_expr *expr,
+										  Node *node,
+										  int *location)
 {
 	if (IsA(node, FuncExpr))
 	{
@@ -755,7 +763,7 @@ plpgsql_check_is_sql_injection_vulnerable(Node *node, int *location)
 		{
 			Node *arg = lfirst(lc);
 
-			if (plpgsql_check_is_sql_injection_vulnerable(arg, location))
+			if (plpgsql_check_is_sql_injection_vulnerable(cstate, expr, arg, location))
 			{
 				is_vulnerable = true;
 				break;
@@ -793,10 +801,15 @@ plpgsql_check_is_sql_injection_vulnerable(Node *node, int *location)
 								if (c->consttype == TEXTOID && !c->constisnull)
 								{
 									char *fmt = TextDatumGetCString(c->constvalue);
+									check_funcexpr_walker_params wp;
 									bool	is_error;
 
+									wp.cstate = cstate;
+									wp.expr = expr;
+									wp.query_str = expr->query;
+
 									*location = -1;
-									check_fmt_string(fmt, fexpr->args, c->location, NULL, &is_error, location);
+									check_fmt_string(fmt, fexpr->args, c->location, &wp, &is_error, location, true);
 
 									/* only in this case, "format" function obviously sanitize parameters */
 									if (!is_error)
@@ -826,7 +839,7 @@ plpgsql_check_is_sql_injection_vulnerable(Node *node, int *location)
 		{
 			Node *arg = lfirst(lc);
 
-			if (plpgsql_check_is_sql_injection_vulnerable(arg, location))
+			if (plpgsql_check_is_sql_injection_vulnerable(cstate, expr, arg, location))
 			{
 				is_vulnerable = true;
 				break;
@@ -861,17 +874,17 @@ plpgsql_check_is_sql_injection_vulnerable(Node *node, int *location)
 	}
 	else if (IsA(node, NamedArgExpr))
 	{
-		return plpgsql_check_is_sql_injection_vulnerable((Node *) ((NamedArgExpr *) node)->arg, location);
+		return plpgsql_check_is_sql_injection_vulnerable(cstate, expr, (Node *) ((NamedArgExpr *) node)->arg, location);
 	}
 	else if (IsA(node, RelabelType))
 	{
-		return plpgsql_check_is_sql_injection_vulnerable((Node *) ((RelabelType *) node)->arg, location);
+		return plpgsql_check_is_sql_injection_vulnerable(cstate, expr, (Node *) ((RelabelType *) node)->arg, location);
 	}
 	else if (IsA(node, Param))
 	{
 		Param *p = (Param *) node;
 
-		if (p->paramkind == PARAM_EXTERN)
+		if (p->paramkind == PARAM_EXTERN || p->paramkind == PARAM_EXEC)
 		{
 			bool	typispreferred;
 			char 	typcategory;
@@ -879,6 +892,30 @@ plpgsql_check_is_sql_injection_vulnerable(Node *node, int *location)
 			get_type_category_preferred(p->paramtype, &typcategory, &typispreferred);
 			if (typcategory == 'S')
 			{
+				if (p->paramkind == PARAM_EXTERN && p->paramid > 0 && p->location != -1)
+				{
+					int			dno = p->paramid - 1;
+
+					/*
+					 * When paramid looks well and related datum is variable with same
+					 * type, then we can check, if this variable has sanitized content
+					 * already.
+					 */
+					if (expr && bms_is_member(dno, expr->paramnos))
+					{
+						PLpgSQL_var *var = (PLpgSQL_var *) cstate->estate->datums[dno];
+
+						if (var->dtype == PLPGSQL_DTYPE_VAR)
+						{
+							if (var->datatype->typoid == p->paramtype)
+							{
+								if (bms_is_member(dno, cstate->safe_variables))
+									return false;
+							}
+						}
+					}
+				}
+
 				*location = p->location;
 				return true;
 			}

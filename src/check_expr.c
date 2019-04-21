@@ -757,6 +757,28 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 		tupdesc = plpgsql_check_expr_get_desc(cstate, expr, use_element_type, expand, is_expression, &first_level_typoid);
 		is_immutable_null = is_const_null_expr(cstate, expr);
 
+		/* try to detect safe variables */
+		if (cstate->cinfo->security_warnings && targetdno != -1)
+		{
+			PLpgSQL_var *var = (PLpgSQL_var *) cstate->estate->datums[targetdno];
+
+			if (var->dtype == PLPGSQL_DTYPE_VAR)
+			{
+				bool	typispreferred;
+				char 	typcategory;
+
+				get_type_category_preferred(var->datatype->typoid, &typcategory, &typispreferred);
+				if (typcategory == 'S')
+				{
+					Node *node = plpgsql_check_expr_get_node(cstate, expr, false);
+					int		location;
+
+					if (!plpgsql_check_is_sql_injection_vulnerable(cstate, expr, node, &location))
+						cstate->safe_variables = bms_add_member(cstate->safe_variables, targetdno);
+				}
+			}
+		}
+
 		if (expected_typoid != InvalidOid && type_is_rowtype(expected_typoid) && first_level_typoid != InvalidOid)
 		{
 			/* simple error, scalar source to composite target */
