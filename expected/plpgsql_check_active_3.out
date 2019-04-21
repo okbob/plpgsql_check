@@ -3802,6 +3802,29 @@ select * from plpgsql_check_function('dyn_sql_3');
 (2 rows)
 
 drop function dyn_sql_3();
+create or replace function dyn_sql_3()
+returns void as $$
+declare
+  r record;
+  v text = 'select 10 a, 20 b't;
+begin
+  select 10 a, 20 b into r;
+  for r in execute v
+  loop
+    raise notice '%', r.a;
+  end loop;
+end
+$$ language plpgsql;
+-- should be warning
+select * from plpgsql_check_function('dyn_sql_3');
+                                plpgsql_check_function                                 
+---------------------------------------------------------------------------------------
+ warning:00000:7:FOR over EXECUTE statement:cannot determinate a result of dynamic SQL
+ Detail: There is a risk of related false alarms.
+ Hint: Don't use dynamic SQL and record type together, when you would check function.
+(3 rows)
+
+drop function dyn_sql_3();
 create or replace function dyn_sql_4()
 returns table(ax int, bx int) as $$
 begin
@@ -3835,3 +3858,100 @@ select * from plpgsql_check_function('dyn_sql_4()');
 (2 rows)
 
 drop function dyn_sql_4();
+create or replace function test_bug(text)
+returns regproc as $$
+begin
+  return $1::regproc;
+  exception when undefined_function or invalid_name then
+    raise;
+end;
+$$ language plpgsql;
+-- should not raise a exception
+select * from plpgsql_check_function('test_bug');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function test_bug(text)
+returns regproc as $$
+begin
+  return $1::regproc;
+  exception when undefined_function or invalid_name then
+    raise notice '%', $1; -- bug
+end;
+$$ language plpgsql;
+select test_bug('kuku'); -- should to fail
+NOTICE:  kuku
+ERROR:  control reached end of function without RETURN
+CONTEXT:  PL/pgSQL function test_bug(text)
+select * from plpgsql_check_function('test_bug');
+                       plpgsql_check_function                       
+--------------------------------------------------------------------
+ warning extra:2F005:control reached end of function without RETURN
+(1 row)
+
+drop function test_bug(text);
+create or replace function test_bug(text)
+returns regproc as $$
+begin
+  return $1::regproc;
+  exception when undefined_function or invalid_name then
+    raise notice '%', $1;
+    return NULL;
+end;
+$$ language plpgsql;
+select test_bug('kuku'); -- should be ok
+NOTICE:  kuku
+ test_bug 
+----------
+ 
+(1 row)
+
+select * from plpgsql_check_function('test_bug');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function test_bug(text);
+create or replace function foo(a text, b text)
+returns void as $$
+begin
+  -- unsecure
+  execute 'select ' || a;
+  a := quote_literal(a); -- is safe now
+  execute 'select ' || a;
+  a := a || b; -- it is unsecure again
+  execute 'select ' || a;
+end;
+$$ language plpgsql;
+\sf+ foo(text, text)
+        CREATE OR REPLACE FUNCTION public.foo(a text, b text)
+         RETURNS void
+         LANGUAGE plpgsql
+1       AS $function$
+2       begin
+3         -- unsecure
+4         execute 'select ' || a;
+5         a := quote_literal(a); -- is safe now
+6         execute 'select ' || a;
+7         a := a || b; -- it is unsecure again
+8         execute 'select ' || a;
+9       end;
+10      $function$
+-- should to raise two warnings
+select * from plpgsql_check_function('foo', security_warnings := true);
+                           plpgsql_check_function                            
+-----------------------------------------------------------------------------
+ security:00000:4:EXECUTE:text type variable is not sanitized
+ Query: SELECT 'select ' || a
+ --                         ^
+ Detail: The EXECUTE expression is SQL injection vulnerable.
+ Hint: Use quote_ident, quote_literal or format function to secure variable.
+ security:00000:8:EXECUTE:text type variable is not sanitized
+ Query: SELECT 'select ' || a
+ --                         ^
+ Detail: The EXECUTE expression is SQL injection vulnerable.
+ Hint: Use quote_ident, quote_literal or format function to secure variable.
+(10 rows)
+
+drop function foo(text, text);
