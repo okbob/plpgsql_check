@@ -2886,3 +2886,22 @@ select test_bug('kuku'); -- should be ok
 select * from plpgsql_check_function('test_bug');
 
 drop function test_bug(text);
+
+create or replace function foo(a text, b text)
+returns void as $$
+begin
+  -- unsecure
+  execute 'select ' || a;
+  a := quote_literal(a); -- is safe now
+  execute 'select ' || a;
+  a := a || b; -- it is unsecure again
+  execute 'select ' || a;
+end;
+$$ language plpgsql;
+
+\sf+ foo(text, text)
+
+-- should to raise two warnings
+select * from plpgsql_check_function('foo', security_warnings := true);
+
+drop function foo(text, text);

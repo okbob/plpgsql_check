@@ -773,7 +773,9 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 					Node *node = plpgsql_check_expr_get_node(cstate, expr, false);
 					int		location;
 
-					if (!plpgsql_check_is_sql_injection_vulnerable(cstate, expr, node, &location))
+					if (plpgsql_check_is_sql_injection_vulnerable(cstate, expr, node, &location))
+						cstate->safe_variables = bms_del_member(cstate->safe_variables, targetdno);
+					else
 						cstate->safe_variables = bms_add_member(cstate->safe_variables, targetdno);
 				}
 			}

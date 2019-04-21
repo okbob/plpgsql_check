@@ -3953,3 +3953,45 @@ select * from plpgsql_check_function('test_bug');
 (0 rows)
 
 drop function test_bug(text);
+create or replace function foo(a text, b text)
+returns void as $$
+begin
+  -- unsecure
+  execute 'select ' || a;
+  a := quote_literal(a); -- is safe now
+  execute 'select ' || a;
+  a := a || b; -- it is unsecure again
+  execute 'select ' || a;
+end;
+$$ language plpgsql;
+\sf+ foo(text, text)
+        CREATE OR REPLACE FUNCTION public.foo(a text, b text)
+         RETURNS void
+         LANGUAGE plpgsql
+1       AS $function$
+2       begin
+3         -- unsecure
+4         execute 'select ' || a;
+5         a := quote_literal(a); -- is safe now
+6         execute 'select ' || a;
+7         a := a || b; -- it is unsecure again
+8         execute 'select ' || a;
+9       end;
+10      $function$
+-- should to raise two warnings
+select * from plpgsql_check_function('foo', security_warnings := true);
+                           plpgsql_check_function                            
+-----------------------------------------------------------------------------
+ security:00000:4:EXECUTE:text type variable is not sanitized
+ Query: SELECT 'select ' || a
+ --                         ^
+ Detail: The EXECUTE expression is SQL injection vulnerable.
+ Hint: Use quote_ident, quote_literal or format function to secure variable.
+ security:00000:8:EXECUTE:text type variable is not sanitized
+ Query: SELECT 'select ' || a
+ --                         ^
+ Detail: The EXECUTE expression is SQL injection vulnerable.
+ Hint: Use quote_ident, quote_literal or format function to secure variable.
+(10 rows)
+
+drop function foo(text, text);
