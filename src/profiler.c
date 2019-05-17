@@ -181,7 +181,7 @@ get_stmt_profile_next(profiler_iterator *pi)
 														 HASH_FIND,
 														 &found);
 
-			if (found)
+			if (!found)
 				elog(ERROR, "broken consistency of plpgsql_check profiler chunks");
 
 			pi->current_statement = 0;
@@ -820,13 +820,13 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 		else
 			stmt_counter = -1;
 
+		hk.chunk_num = 0;
+
 		/* we should to enter empty chunks first */
 		for (i = 0; i < profile->nstatements; i++)
 		{
 			profiler_stmt_reduced *prstmt;
 			profiler_stmt *pstmt = &pinfo->stmts[i];
-
-			hk.chunk_num = 0;
 
 			if (stmt_counter == -1 || stmt_counter >= STATEMENTS_PER_CHUNK)
 			{
@@ -944,17 +944,17 @@ profiler_update_map(profiler_profile *profile, PLpgSQL_stmt *stmt)
 		int		i;
 
 		/* calculate new size of map */
-		for (lines = profile->stmts_map_max_lineno; stmt->lineno < lines;)
+		for (lines = profile->stmts_map_max_lineno; lineno > lines;)
 			if (lines < 10000)
 				lines *= 2;
 			else
 				lines += 10000;
 
-		profile->stmts_map = realloc(profile->stmts_map,
+		profile->stmts_map = repalloc(profile->stmts_map,
 									 lines * sizeof(profiler_map_entry));
 
 		for (i = profile->stmts_map_max_lineno; i < lines; i++)
-			profile->stmts_map[i].stmt = NULL;
+			memset(&profile->stmts_map[i], 0, sizeof(profiler_map_entry));
 
 		profile->stmts_map_max_lineno = lines;
 	}
