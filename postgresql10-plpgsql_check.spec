@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	1.7.1
+Version:	1.7.2
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -46,6 +46,9 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/plpgsql_check.control
 
 %changelog
+* Tue May 21 2019 - Pavel STEHULE <pavel.stehule@gmail.com> 1.7.2
+- profiler bugfixes
+
 * Fri Apr 26 2019 - Pavel STEHULE <pavel.stehule@gmail.com> 1.7.1
 - bugfixes
 
