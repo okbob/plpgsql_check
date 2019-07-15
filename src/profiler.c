@@ -1011,14 +1011,14 @@ profiler_get_stmtid(profiler_profile *profile, PLpgSQL_stmt *stmt)
 
 	/* pme->stmt should not be null */
 	if (!pme->stmt)
-		elog(ERROR, "broken statement map - broken format");
+		elog(ERROR, "broken statement map - broken format on line: %d", lineno);
 
 	while (pme && pme->stmt != stmt)
 		pme = pme->next;
 
 	/* we should to find statement */
 	if (!pme)
-		elog(ERROR, "broken statement map - cannot to find statement");
+		elog(ERROR, "broken statement map - cannot to find statement on line: %d", lineno);
 
 	return pme->stmtid;
 
