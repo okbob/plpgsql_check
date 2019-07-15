@@ -611,13 +611,17 @@ profiler_touch_stmt(profiler_info *pinfo,
 		case PLPGSQL_STMT_FORC:
 		case PLPGSQL_STMT_DYNFORS:
 		case PLPGSQL_STMT_FOREACH_A:
+		case PLPGSQL_STMT_WHILE:
 			{
 				List   *stmts;
 
 				switch (PLPGSQL_STMT_TYPES stmt->cmd_type)
 				{
-					case PLPGSQL_STMT_LOOP:
+					case PLPGSQL_STMT_WHILE:
 						stmts = ((PLpgSQL_stmt_while *) stmt)->body;
+						break;
+					case PLPGSQL_STMT_LOOP:
+						stmts = ((PLpgSQL_stmt_loop *) stmt)->body;
 						break;
 					case PLPGSQL_STMT_FORI:
 						stmts = ((PLpgSQL_stmt_fori *) stmt)->body;
