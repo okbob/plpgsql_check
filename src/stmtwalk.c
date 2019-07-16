@@ -1077,7 +1077,16 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 											(errcode(ERRCODE_SYNTAX_ERROR),
 											 errmsg("too few parameters specified for RAISE")));
 
+#if PG_VERSION_NUM >= 130000
+
+								current_param = lnext(stmt_raise->params, current_param);
+
+#else
+
 								current_param = lnext(current_param);
+
+#endif
+
 							}
 						}
 					}
