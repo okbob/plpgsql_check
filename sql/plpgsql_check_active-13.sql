@@ -333,32 +333,29 @@ call testproc(10);
 
 select * from plpgsql_check_function('testproc(int)');
 
--- check assignement to recfield
+drop procedure testproc(int);
 
-create table foo(a int);
-
-create or replace function test_field_assignment()
-returns void as $$
-declare v foo;
+-- should to raise warnings
+create or replace procedure testproc2(in p1 int, inout p2 int, in p3 int, inout p4 int)
+as $$
 begin
-  v.a := 10;
-  v.a := current_timestamp;
-  raise notice '%', v;
+  raise notice '% %', p1, p3;
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_function('test_field_assignment');
+select * from plpgsql_check_function('testproc2');
 
-drop table foo;
+drop procedure testproc2;
 
-create table foo(a int, b int);
-
-create or replace function foofunc()
-returns void as $$
+-- should be ok
+create or replace procedure testproc3(in p1 int, inout p2 int, in p3 int, inout p4 int)
+as $$
 begin
-  -- should be ok
-  perform * from foo;
+  p2 := p1;
+  p4 := p3;
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_function('foofunc');
+select * from plpgsql_check_function('testproc3');
+
+drop procedure testproc3;

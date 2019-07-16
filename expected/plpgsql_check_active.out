@@ -1042,7 +1042,7 @@ select * from plpgsql_check_function('f1(int)');
  warning extra:00000:6:DECLARE:never read variable "_f4"
  warning extra:00000:8:DECLARE:never read variable "_r"
  warning extra:00000:9:DECLARE:never read variable "_tbl"
- warning extra:00000:parameter "_input1" is never read
+ warning extra:00000:unused parameter "_input1"
  warning extra:00000:unmodified OUT variable "_output1"
  warning extra:00000:unmodified OUT variable "_output2"
 (9 rows)
@@ -2314,7 +2314,7 @@ $$ language plpgsql;
 select * from plpgsql_check_function('fxx(int, int)');
              plpgsql_check_function              
 -------------------------------------------------
- warning extra:00000:parameter "b" is never read
+ warning extra:00000:unused parameter "b"
  warning extra:00000:unmodified OUT variable "d"
 (2 rows)
 
@@ -2327,8 +2327,8 @@ $$ language plpgsql;
 select * from plpgsql_check_function('fxx(int, int)');
              plpgsql_check_function              
 -------------------------------------------------
- warning extra:00000:parameter "a" is never read
- warning extra:00000:parameter "b" is never read
+ warning extra:00000:unused parameter "a"
+ warning extra:00000:unused parameter "b"
  warning extra:00000:unmodified OUT variable "d"
 (3 rows)
 
@@ -2342,7 +2342,7 @@ $$ language plpgsql;
 select * from plpgsql_check_function('fxx(ct, ct)');
                         plpgsql_check_function                         
 -----------------------------------------------------------------------
- warning extra:00000:parameter "b" is never read
+ warning extra:00000:unused parameter "b"
  warning extra:00000:composite OUT variable "c" is not single argument
  warning extra:00000:composite OUT variable "d" is not single argument
  warning extra:00000:unmodified OUT variable "d"
@@ -2357,8 +2357,8 @@ $$ language plpgsql;
 select * from plpgsql_check_function('fxx(ct, ct)');
                         plpgsql_check_function                         
 -----------------------------------------------------------------------
- warning extra:00000:parameter "a" is never read
- warning extra:00000:parameter "b" is never read
+ warning extra:00000:unused parameter "a"
+ warning extra:00000:unused parameter "b"
  warning extra:00000:composite OUT variable "c" is not single argument
  warning extra:00000:composite OUT variable "d" is not single argument
  warning extra:00000:unmodified OUT variable "d"
@@ -2386,7 +2386,7 @@ select * from plpgsql_check_function('tx(int)');
  warning:00000:2:DECLARE:unused variable "ax"
  warning extra:00000:2:DECLARE:never read variable "a"
  warning extra:00000:4:DECLARE:never read variable "ax"
- warning extra:00000:parameter "a" is never read
+ warning extra:00000:unused parameter "a"
 (8 rows)
 
 create type xt as (a int, b int, c int);
@@ -3360,7 +3360,7 @@ select * from plpgsql_check_function('flag_test1(int)', performance_warnings := 
 select * from plpgsql_check_function('flag_test2(int)', performance_warnings := true);
                                  plpgsql_check_function                                  
 -----------------------------------------------------------------------------------------
- warning extra:00000:parameter "$1" is never read
+ warning extra:00000:unused parameter "$1"
  performance:00000:routine is marked as VOLATILE, should be STABLE
  Hint: When you fix this issue, please, recheck other functions that uses this function.
 (3 rows)

@@ -332,3 +332,30 @@ $$ language plpgsql;
 call testproc(10);
 
 select * from plpgsql_check_function('testproc(int)');
+
+drop procedure testproc(int);
+
+-- should to raise warnings
+create or replace procedure testproc2(in p1 int, inout p2 int, in p3 int, inout p4 int)
+as $$
+begin
+  raise notice '% %', p1, p3;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('testproc2');
+
+drop procedure testproc2;
+
+-- should be ok
+create or replace procedure testproc3(in p1 int, inout p2 int, in p3 int, inout p4 int)
+as $$
+begin
+  p2 := p1;
+  p4 := p3;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('testproc3');
+
+drop procedure testproc3;

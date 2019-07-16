@@ -60,6 +60,33 @@ static void plpgsql_check_setup_cstate(PLpgSQL_checkstate *cstate, plpgsql_check
 	plpgsql_check_info *cinfo, bool is_active_mode, bool fake_rtd);
 
 /*
+ * Prepare list of OUT variables for later report
+ */
+static void
+collect_out_variables(PLpgSQL_function *func, PLpgSQL_checkstate *cstate)
+{
+	cstate->out_variables = NULL;
+
+	if (func->out_param_varno != -1)
+	{
+		int		varno = func->out_param_varno;
+		PLpgSQL_variable *var = (PLpgSQL_variable *) func->datums[varno];
+
+		if (var->dtype == PLPGSQL_DTYPE_ROW && is_internal_variable(var))
+		{
+			/* this function has more OUT parameters */
+			PLpgSQL_row *row = (PLpgSQL_row*) var;
+			int		fnum;
+
+			for (fnum = 0; fnum < row->nfields; fnum++)
+				cstate->out_variables = bms_add_member(cstate->out_variables, row->varnos[fnum]);
+		}
+		else
+			cstate->out_variables = bms_add_member(cstate->out_variables, varno);
+	}
+}
+
+/*
  * own implementation - active mode
  *
  */
@@ -159,6 +186,8 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 		{
 			/* Get a compiled function */
 			function = plpgsql_compile(fake_fcinfo, false);
+
+			collect_out_variables(function, &cstate);
 
 			/* Must save and restore prior value of cur_estate */
 			cur_estate = function->cur_estate;
@@ -323,8 +352,9 @@ plpgsql_check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 
 		ri.format = PLPGSQL_CHECK_FORMAT_ELOG;
 
-
 		plpgsql_check_setup_cstate(&cstate, &ri, &cinfo, false, false);
+
+		collect_out_variables(func, &cstate);
 
 		/* use real estate */
 		cstate.estate = estate;
@@ -981,6 +1011,7 @@ plpgsql_check_setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->exprs = NIL;
 	cstate->used_variables = NULL;
 	cstate->modif_variables = NULL;
+	cstate->out_variables = NULL;
 	cstate->top_stmt_stack = NULL;
 
 	cstate->is_active_mode = is_active_mode;

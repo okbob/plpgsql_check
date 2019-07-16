@@ -102,6 +102,7 @@ typedef struct PLpgSQL_checkstate
 	plpgsql_check_result_info *result_info;
 	plpgsql_check_info *cinfo;
 	Bitmapset	   *safe_variables;			/* track which variables are safe against sql injection */
+	Bitmapset	   *out_variables;			/* what variables are used as OUT variables */
 	bool			stop_check;				/* true after error when fatal_errors option is active */
 } PLpgSQL_checkstate;
 
@@ -218,6 +219,7 @@ extern void plpgsql_check_assignment_to_variable(PLpgSQL_checkstate *cstate, PLp
 extern char * plpgsql_check_datum_get_refname(PLpgSQL_datum *d);
 extern void plpgsql_check_report_unused_variables(PLpgSQL_checkstate *cstate);
 extern void plpgsql_check_report_too_high_volatility(PLpgSQL_checkstate *cstate);
+extern bool is_internal_variable(PLpgSQL_variable *var);
 
 /*
  * functions from stmtwalk.c

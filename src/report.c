@@ -34,7 +34,7 @@ is_internal(char *refname, int lineno)
 	return false;
 }
 
-static bool
+bool
 is_internal_variable(PLpgSQL_variable *var)
 {
 	return is_internal(var->refname, var->lineno);
@@ -262,25 +262,7 @@ plpgsql_check_report_unused_variables(PLpgSQL_checkstate *cstate)
 			bool	is_read = datum_is_used(cstate, varno, false);
 			bool	is_write = datum_is_used(cstate, varno, true);
 
-			if (!is_read)
-			{
-				PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[varno];
-				StringInfoData message;
-
-				initStringInfo(&message);
-
-				appendStringInfo(&message, NEVER_READ_PARAMETER_TEXT, var->refname);
-				plpgsql_check_put_error(cstate,
-						  0, 0,
-						  message.data,
-						  NULL,
-						  NULL,
-						  PLPGSQL_CHECK_WARNING_EXTRA,
-						  0, NULL, NULL);
-
-				pfree(message.data); message.data = NULL;
-			}
-			else if (!(is_read || is_write))
+			if (!is_read && !is_write)
 			{
 				PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[varno];
 				StringInfoData message;
@@ -296,7 +278,39 @@ plpgsql_check_report_unused_variables(PLpgSQL_checkstate *cstate)
 						  PLPGSQL_CHECK_WARNING_EXTRA,
 						  0, NULL, NULL);
 
-				pfree(message.data); message.data = NULL;
+				pfree(message.data);
+				message.data = NULL;
+			}
+			else if (!is_read)
+			{
+				bool	is_inout_procedure_param = false;
+
+				/*
+				 * procedure doesn't support only OUT parameters. Don't raise
+				 * warning if INOUT parameter is just modified in procedures.
+				 */
+				is_inout_procedure_param = cstate->cinfo->is_procedure
+											&& bms_is_member(varno, cstate->out_variables);
+
+				if (!is_inout_procedure_param)
+				{
+					PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[varno];
+					StringInfoData message;
+
+					initStringInfo(&message);
+
+					appendStringInfo(&message, NEVER_READ_PARAMETER_TEXT, var->refname);
+					plpgsql_check_put_error(cstate,
+							  0, 0,
+							  message.data,
+							  NULL,
+							  NULL,
+							  PLPGSQL_CHECK_WARNING_EXTRA,
+							  0, NULL, NULL);
+
+					pfree(message.data);
+					message.data = NULL;
+				}
 			}
 		}
 
