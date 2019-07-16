@@ -766,15 +766,13 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 {
 	profiler_profile *profile = pinfo->profile;
 	profiler_hashkey hk;
-	profiler_stmt_chunk *chunk;
-	profiler_stmt_chunk *first_chunk = NULL;
+	profiler_stmt_chunk *chunk = NULL;
+	volatile profiler_stmt_chunk *chunk_with_mutex = NULL;
 	bool		found;
 	int			i;
 	int			stmt_counter = 0;
 	HTAB	   *chunks;
 	bool		shared_chunks;
-	bool		exclusive_lock = false;
-	volatile bool unlock_mutex = false;
 
 	if (shared_profiler_chunks_HashTable)
 	{
@@ -801,29 +799,19 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 	{
 		LWLockRelease(profiler_ss->lock);
 		LWLockAcquire(profiler_ss->lock, LW_EXCLUSIVE);
-		exclusive_lock = true;
 
+		/* repeat searching under exclusive lock */
 		chunk = (profiler_stmt_chunk *) hash_search(chunks,
 												 (void *) &hk,
-												 HASH_ENTER,
+												 HASH_FIND,
 												 &found);
 	}
 
 	if (!found)
 	{
 		int		i;
-		int		stmt_counter;
 
-		/* first shared chunk is prepared already. local chunk should be done */
-		if (shared_chunks)
-		{
-			/* for first chunk we need to initialize mutex */
-			SpinLockInit(&chunk->mutex);
-			stmt_counter = 0;
-		}
-		else
-			stmt_counter = -1;
-
+		/* aftre increment first chunk will be created with chunk number 1 */
 		hk.chunk_num = 0;
 
 		/* we should to enter empty chunks first */
@@ -832,7 +820,7 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 			profiler_stmt_reduced *prstmt;
 			profiler_stmt *pstmt = &pinfo->stmts[i];
 
-			if (stmt_counter == -1 || stmt_counter >= STATEMENTS_PER_CHUNK)
+			if (hk.chunk_num == 0 || stmt_counter >= STATEMENTS_PER_CHUNK)
 			{
 				hk.chunk_num += 1;
 
@@ -843,6 +831,9 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 
 				if (found)
 					elog(ERROR, "broken consistency of plpgsql_check profiler chunks");
+
+				if (hk.chunk_num == 1 && shared_chunks)
+					SpinLockInit(&chunk->mutex);
 
 				stmt_counter = 0;
 			}
@@ -869,12 +860,14 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 	/* if we have not exclusive lock, we should to lock first chunk */
 	PG_TRY();
 	{
-		if (shared_chunks && !exclusive_lock)
+		if (shared_chunks)
 		{
-			first_chunk = chunk;
-			SpinLockAcquire(&first_chunk->mutex);
-			unlock_mutex = true;
+			chunk_with_mutex = chunk;
+			SpinLockAcquire(&chunk_with_mutex->mutex);
 		}
+
+		hk.chunk_num = 1;
+		stmt_counter = 0;
 
 		/* there is a profiler chunk already */
 		for (i = 0; i < profile->nstatements; i++)
@@ -900,7 +893,7 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 			prstmt = &chunk->stmts[stmt_counter++];
 
 			if (prstmt->lineno != pstmt->lineno)
-				elog(ERROR, "broken consistency of plpgsql_check profiler chunks");
+				elog(ERROR, "broken consistency of plpgsql_check profiler chunks %d %d", prstmt->lineno, pstmt->lineno);
 
 			if (prstmt->us_max < pstmt->us_max)
 				prstmt->us_max = pstmt->us_max;
@@ -912,14 +905,14 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 	}
 	PG_CATCH();
 	{
-		if (unlock_mutex)
-			SpinLockRelease(&first_chunk->mutex);
+		if (chunk_with_mutex)
+			SpinLockRelease(&chunk_with_mutex->mutex);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 
-	if (unlock_mutex)
-		SpinLockRelease(&first_chunk->mutex);
+	if (chunk_with_mutex)
+		SpinLockRelease(&chunk_with_mutex->mutex);
 
 	if (shared_chunks)
 		LWLockRelease(profiler_ss->lock);
