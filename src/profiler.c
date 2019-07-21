@@ -948,9 +948,9 @@ profiler_update_map(profiler_profile *profile, PLpgSQL_stmt *stmt)
 				lines += 10000;
 
 		profile->stmts_map = repalloc(profile->stmts_map,
-									 lines * sizeof(profiler_map_entry));
+									 (lines + 1) * sizeof(profiler_map_entry));
 
-		for (i = profile->stmts_map_max_lineno; i < lines; i++)
+		for (i = profile->stmts_map_max_lineno + 1; i <= lines; i++)
 			memset(&profile->stmts_map[i], 0, sizeof(profiler_map_entry));
 
 		profile->stmts_map_max_lineno = lines;
@@ -1166,7 +1166,7 @@ plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri,
 			profile->nstatements = 0;
 			profile->stmts_map_max_lineno = 200;
 
-			profile->stmts_map = palloc0(profile->stmts_map_max_lineno * sizeof(profiler_map_entry));
+			profile->stmts_map = palloc0((profile->stmts_map_max_lineno + 1) * sizeof(profiler_map_entry));
 
 #else
 
@@ -1435,7 +1435,7 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 			profile->nstatements = 0;
 			profile->stmts_map_max_lineno = 200;
 
-			profile->stmts_map = palloc0(profile->stmts_map_max_lineno * sizeof(profiler_map_entry));
+			profile->stmts_map = palloc0((profile->stmts_map_max_lineno + 1) * sizeof(profiler_map_entry));
 
 #else
 
