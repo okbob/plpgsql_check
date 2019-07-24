@@ -786,7 +786,7 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 		shared_chunks = false;
 	}
 
-	profiler_init_hashkey(&hk, func);
+	profiler_init_hashkey(&hk, func) ;
 
 	/* don't need too strong lock for shared memory */
 	chunk = (profiler_stmt_chunk *) hash_search(chunks,
@@ -1279,11 +1279,20 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 
 			if (chunk)
 			{
-				/* skip invisible statements if any */
-				while (chunk->stmts[current_statement].lineno < lineno)
-				{
-					current_statement += 1;
+				ArrayBuildState *max_time_abs = NULL;
+				ArrayBuildState *processed_rows_abs = NULL;
 
+#if PG_VERSION_NUM >= 90500
+
+				max_time_abs = initArrayResult(FLOAT8OID, CurrentMemoryContext, true);
+				processed_rows_abs = initArrayResult(INT8OID, CurrentMemoryContext, true);
+
+#endif
+
+				/* process all statements on this line */
+				for(;;)
+				{
+					/* ensure so  access to chunks is correct */
 					if (current_statement >= STATEMENTS_PER_CHUNK)
 					{
 						hk.chunk_num += 1;
@@ -1301,54 +1310,23 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 
 						current_statement = 0;
 					}
-				}
 
-				if (chunk && chunk->stmts[current_statement].lineno == lineno)
-				{
-					ArrayBuildState *max_time_abs = NULL;
-					ArrayBuildState *processed_rows_abs = NULL;
+					Assert(chunk != NULL);
 
-#if PG_VERSION_NUM >= 90500
-
-					max_time_abs = initArrayResult(FLOAT8OID, CurrentMemoryContext, true);
-					processed_rows_abs = initArrayResult(INT8OID, CurrentMemoryContext, true);
-
-#endif
-
-					stmt_lineno = lineno;
-
-					/* try to collect all statements on the line */
-					while (chunk->stmts[current_statement].lineno == lineno)
+					/* skip invisible statements if any */
+					if (chunk->stmts[current_statement].lineno < lineno)
 					{
-						profiler_stmt_reduced *prstmt;
-
-						if (current_statement >= STATEMENTS_PER_CHUNK)
-						{
-							hk.chunk_num += 1;
-
-							chunk = (profiler_stmt_chunk *) hash_search(chunks,
-															 (void *) &hk,
-															 HASH_FIND,
-															 &found);
-
-							if (!found)
-							{
-								chunk = NULL;
-								break;
-							}
-
-							current_statement = 0;
-						}
-
-						if (!chunk)
-							break;
-
-						prstmt = &chunk->stmts[current_statement];
+						current_statement += 1;
+						continue;
+					}
+					else if (chunk->stmts[current_statement].lineno == lineno)
+					{
+						profiler_stmt_reduced *prstmt = &chunk->stmts[current_statement];
 
 						us_total += prstmt->us_total;
 						exec_count += prstmt->exec_count;
 
-						cmds_on_row += 1;
+						stmt_lineno = lineno;
 
 						max_time_abs = accumArrayResult(max_time_abs,
 														Float8GetDatum(prstmt->us_max / 1000.0), false,
@@ -1359,10 +1337,18 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 															 Int64GetDatum(prstmt->rows), false,
 															 INT8OID,
 															 CurrentMemoryContext);
+						cmds_on_row += 1;
+
 
 						current_statement += 1;
+						continue;
 					}
+					else
+						break;
+				}
 
+				if (cmds_on_row > 0)
+				{
 					max_time_array = makeArrayResult(max_time_abs, CurrentMemoryContext);
 					processed_rows_array = makeArrayResult(processed_rows_abs, CurrentMemoryContext);
 				}
