@@ -49,6 +49,13 @@ static void check_dynamic_sql(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, PL
 
 #endif
 
+
+#if PG_VERSION_NUM > 110005
+
+#define PLPGSQL_BUILD_DATATYPE_4		1
+
+#endif
+
 #if PG_VERSION_NUM >= 110000
 
 static void
@@ -543,9 +550,22 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						 * affect the originally stored function parse tree.
 						 */
 						if (t_var->datatype->typoid != result_oid)
+
+#ifdef PLPGSQL_BUILD_DATATYPE_4
+
+							t_var->datatype = plpgsql_build_datatype(result_oid,
+																	 -1,
+								   cstate->estate->func->fn_input_collation,
+								   t_var->datatype->origtypname);
+
+#else
+
 							t_var->datatype = plpgsql_build_datatype(result_oid,
 																	 -1,
 								   cstate->estate->func->fn_input_collation);
+
+#endif
+
 						ReleaseTupleDesc(tupdesc);
 					}
 					foreach(l, stmt_case->case_when_list)
