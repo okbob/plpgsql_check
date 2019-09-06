@@ -23,6 +23,7 @@
 
 #endif
 
+#include "utils/array.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 
