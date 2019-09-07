@@ -3969,3 +3969,21 @@ set plpgsql_check.profiler = off;
 select longfx(10);
 
 select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('longfx');
+
+create table testr(a int);
+create rule testr_rule as on insert to testr do nothing;
+
+create or replace function fx_testr()
+returns void as $$
+begin
+  insert into testr values(20);
+end;
+$$ language plpgsql;
+
+-- allow some rules on tables
+select fx_testr();
+select * from plpgsql_check_function_tb('fx_testr');
+
+drop function fx_testr();
+drop table testr;
+

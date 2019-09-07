@@ -169,8 +169,8 @@ static Query *
 ExprGetQuery(PLpgSQL_expr *expr)
 {
 	CachedPlanSource *plansource;
-	Query *result;
 	SPIPlanPtr	plan = expr->plan;
+	Query *result = NULL;
 
 	if (plan == NULL || plan->magic != _SPI_PLAN_MAGIC)
 		elog(ERROR, "cached plan is not valid plan");
@@ -180,10 +180,47 @@ ExprGetQuery(PLpgSQL_expr *expr)
 
 	plansource = (CachedPlanSource *) linitial(plan->plancache_list);
 
-	if (list_length(plansource->query_list) != 1)
-		elog(ERROR, "there is not single query");
+	/*
+	 * query_list has more fields, when rules are used. There
+	 * can be combination INSERT; NOTIFY
+	 */
+	if (list_length(plansource->query_list) > 1)
+	{
+		ListCell   *lc;
+		CmdType		first_ctype = CMD_UNKNOWN;
+		bool		first = true;
 
-	result = linitial(plansource->query_list);
+		foreach (lc, plansource->query_list)
+		{
+			Query	   *query = (Query *) lfirst(lc);
+
+			if (first)
+			{
+				first = false;
+				first_ctype = query->commandType;
+				result = query;
+			}
+			else
+			{
+				/*
+				 * When current command is SELECT, then first command
+				 * should be SELECT too
+				 */
+				if (query->commandType == CMD_SELECT)
+				{
+					if (first_ctype != CMD_SELECT)
+						ereport(ERROR,
+								(errmsg("there is not single query"),
+								 errdetail("plpgsql_check cannot detect result type"),
+								 errhint("Probably there are some unsupported (by plpgsql_check) rules on related tables")));
+
+					result = query;
+				}
+			}
+		}
+	}
+	else
+		result = linitial(plansource->query_list);
 
 	return result;
 }
