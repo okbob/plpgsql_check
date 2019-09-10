@@ -7145,3 +7145,25 @@ select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb
    1046 |             |            | end;
 (1046 rows)
 
+create table testr(a int);
+create rule testr_rule as on insert to testr do nothing;
+create or replace function fx_testr()
+returns void as $$
+begin
+  insert into testr values(20);
+end;
+$$ language plpgsql;
+-- allow some rules on tables
+select fx_testr();
+ fx_testr 
+----------
+ 
+(1 row)
+
+select * from plpgsql_check_function_tb('fx_testr');
+ functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
+(0 rows)
+
+drop function fx_testr();
+drop table testr;
