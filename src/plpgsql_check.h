@@ -104,6 +104,8 @@ typedef struct PLpgSQL_checkstate
 	Bitmapset	   *safe_variables;			/* track which variables are safe against sql injection */
 	Bitmapset	   *out_variables;			/* what variables are used as OUT variables */
 	bool			stop_check;				/* true after error when fatal_errors option is active */
+	bool			allow_mp;				/* true, when multiple plans in plancache are allowed */
+	bool			has_mp;					/* true, when multiple plan was used */
 } PLpgSQL_checkstate;
 
 
@@ -205,6 +207,7 @@ extern void plpgsql_check_expr_generic_with_parser_setup(PLpgSQL_checkstate *cst
 
 extern Node *plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool force_plan_checks);
 extern char *plpgsql_check_const_to_string(Const *c);
+extern CachedPlanSource *plpgsql_check_get_plan_source(PLpgSQL_checkstate *cstate, SPIPlanPtr plan);
 
 #if PG_VERSION_NUM >= 110000
 

@@ -45,7 +45,7 @@ plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *Cal
 	if (CallExpr->plan != NULL)
 	{
 		PLpgSQL_row *row;
-		SPIPlanPtr	plan = CallExpr->plan;
+		CachedPlanSource *plansource;
 		HeapTuple		tuple;
 		List	   *funcargs;
 		Oid		   *argtypes;
@@ -55,16 +55,12 @@ plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *Cal
 		int			i;
 		int			nfields = 0;
 
-		if (plan == NULL || plan->magic != _SPI_PLAN_MAGIC)
-			elog(ERROR, "cached plan is not valid plan");
-
-		if (list_length(plan->plancache_list) != 1)
-			elog(ERROR, "plan is not single execution plan");
+		plansource = plpgsql_check_get_plan_source(cstate, CallExpr->plan);
 
 		/*
 		 * Get the original CallStmt
 		 */
-		node = linitial_node(Query, ((CachedPlanSource *) linitial(plan->plancache_list))->query_list)->utilityStmt;
+		node = linitial_node(Query, plansource->query_list)->utilityStmt;
 		if (!IsA(node, CallStmt))
 			elog(ERROR, "returned row from not a CallStmt");
 
@@ -168,15 +164,7 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 
 	if (query->plan != NULL)
 	{
-		SPIPlanPtr	plan = query->plan;
-
-		if (plan == NULL || plan->magic != _SPI_PLAN_MAGIC)
-			elog(ERROR, "cached plan is not valid plan");
-
-		if (list_length(plan->plancache_list) != 1)
-			elog(ERROR, "plan is not single execution plan");
-
-		plansource = (CachedPlanSource *) linitial(plan->plancache_list);
+		plansource = plpgsql_check_get_plan_source(cstate, query->plan);
 
 		if (!plansource->resultDesc)
 		{

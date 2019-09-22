@@ -1832,6 +1832,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		char *query = plpgsql_check_const_to_string((Const *) expr_node);
 		PLpgSQL_expr		dynexpr;
 		DynSQLParams		dsp;
+		bool				is_mp;
 
 		memset(&dynexpr, 0, sizeof(PLpgSQL_expr));
 
@@ -1854,12 +1855,28 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		dsp.cstate = cstate;
 		dsp.use_params = false;
 
-		plpgsql_check_expr_generic_with_parser_setup(cstate,
+		PG_TRY();
+		{
+			cstate->allow_mp = true;
+
+			plpgsql_check_expr_generic_with_parser_setup(cstate,
 													 &dynexpr,
 													 (ParserSetupHook) dynsql_parser_setup,
 													 &dsp);
 
-		if (!params || !dsp.use_params)
+			is_mp = cstate->has_mp;
+			cstate->has_mp = false;
+		}
+		PG_CATCH();
+		{
+			cstate->allow_mp = false;
+			cstate->has_mp = false;
+
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+
+		if (!is_mp && (!params || !dsp.use_params))
 		{
 
 			/* probably useless dynamic command */
@@ -1912,7 +1929,8 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		}
 
 		/* this is not real dynamic SQL statement */
-		cstate->has_execute_stmt =  prev_has_execute_stmt;
+		if (!is_mp)
+			cstate->has_execute_stmt = prev_has_execute_stmt;
 	}
 	else
 	{

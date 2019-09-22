@@ -1042,6 +1042,7 @@ plpgsql_check_setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->safe_variables = NULL;
 
 	cstate->stop_check = false;
+	cstate->allow_mp = false;
 }
 
 

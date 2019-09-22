@@ -28,9 +28,9 @@
 #include "utils/lsyscache.h"
 
 static void collect_volatility(PLpgSQL_checkstate *cstate, Query *query);
-static Query * ExprGetQuery(PLpgSQL_expr *expr);
+static Query * ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 
-static CachedPlan * get_cached_plan(PLpgSQL_expr *expr, bool *has_result_desc);
+static CachedPlan * get_cached_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *has_result_desc);
 static void plan_checks(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str);
 static void prohibit_write_plan(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str);
 static void prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str);
@@ -112,7 +112,7 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 		SPI_freeplan(plan);
 	}
 
-	query = ExprGetQuery(expr);
+	query = ExprGetQuery(cstate, expr);
 
 	/* there checks are common on every expr/query */
 	plpgsql_check_funcexpr(cstate, query, expr->query);
@@ -162,23 +162,51 @@ collect_volatility(PLpgSQL_checkstate *cstate, Query *query)
 }
 
 /*
- * Returns Query node for expression
- *
+ * Validate plan and returns related node.
  */
-static Query *
-ExprGetQuery(PLpgSQL_expr *expr)
+CachedPlanSource *
+plpgsql_check_get_plan_source(PLpgSQL_checkstate *cstate, SPIPlanPtr plan)
 {
 	CachedPlanSource *plansource;
-	SPIPlanPtr	plan = expr->plan;
-	Query *result = NULL;
 
 	if (plan == NULL || plan->magic != _SPI_PLAN_MAGIC)
 		elog(ERROR, "cached plan is not valid plan");
 
-	if (list_length(plan->plancache_list) != 1)
-		elog(ERROR, "plan is not single execution plan");
+	cstate->has_mp = false;
 
-	plansource = (CachedPlanSource *) linitial(plan->plancache_list);
+	if (list_length(plan->plancache_list) != 1)
+	{
+		/*
+		 * We can allow multiple plans for commands executed by
+		 * EXECUTE command. Result of last plan is result. But
+		 * it can be allowed only in main query - not in parameters.
+		 */
+		if (cstate->allow_mp)
+		{
+			/* take last */
+			plansource = (CachedPlanSource *) llast(plan->plancache_list);
+			cstate->has_mp = true;
+		}
+		else
+			elog(ERROR, "plan is not single execution planyy");
+	}
+	else
+		plansource = (CachedPlanSource *) linitial(plan->plancache_list);
+
+	return plansource;
+}
+
+/*
+ * Returns Query node for expression
+ *
+ */
+static Query *
+ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+{
+	CachedPlanSource *plansource;
+	Query *result = NULL;
+
+	plansource = plpgsql_check_get_plan_source(cstate, expr->plan);
 
 	/*
 	 * query_list has more fields, when rules are used. There
@@ -235,19 +263,13 @@ ExprGetQuery(PLpgSQL_expr *expr)
  *
  */
 static CachedPlan *
-get_cached_plan(PLpgSQL_expr *expr, bool *has_result_desc)
+get_cached_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *has_result_desc)
 {
 	CachedPlanSource *plansource = NULL;
-	SPIPlanPtr	 plan = expr->plan;
 	CachedPlan	*cplan;
 
-	if (plan == NULL || plan->magic != _SPI_PLAN_MAGIC)
-		elog(ERROR, "cached plan is not valid plan");
+	plansource = plpgsql_check_get_plan_source(cstate, expr->plan);
 
-	if (list_length(plan->plancache_list) != 1)
-		elog(ERROR, "plan is not single execution plan");
-
-	plansource = (CachedPlanSource *) linitial(plan->plancache_list);
 	*has_result_desc = plansource->resultDesc ? true : false;
 
 #if PG_VERSION_NUM >= 100000
@@ -410,7 +432,7 @@ plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 	Node	   *result = NULL;
 	bool		has_result_desc;
 
-	cplan = get_cached_plan(expr, &has_result_desc);
+	cplan = get_cached_plan(cstate, expr, &has_result_desc);
 	if (!has_result_desc)
 		elog(ERROR, "expression does not return data");
 
@@ -515,7 +537,7 @@ force_plan_checks(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 	CachedPlan *cplan;
 	bool		has_result_desc;
 
-	cplan = get_cached_plan(expr, &has_result_desc);
+	cplan = get_cached_plan(cstate, expr, &has_result_desc);
 
 	/* do all checks for this plan, reduce a access to plan cache */
 	plan_checks(cstate, cplan, expr->query);

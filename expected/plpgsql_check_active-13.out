@@ -456,3 +456,31 @@ select * from plpgsql_check_function('testproc3');
 (0 rows)
 
 drop procedure testproc3;
+-- should be moved to generic test
+create or replace function dyntest()
+returns void as $$
+begin
+  execute 'drop table if exists xxx; create table xxx(a int)';
+end;
+$$ language plpgsql;
+-- should be ok
+select * from plpgsql_check_function('dyntest');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function dyntest()
+returns void as $$
+declare x int;
+begin
+  execute 'drop table if exists xxx; create table xxx(a int)' into x;
+end;
+$$ language plpgsql;
+-- should to report error
+select * from plpgsql_check_function('dyntest');
+                plpgsql_check_function                 
+-------------------------------------------------------
+ error:XX000:4:EXECUTE:expression does not return data
+(1 row)
+
+drop function dyntest();

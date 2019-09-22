@@ -359,3 +359,27 @@ $$ language plpgsql;
 select * from plpgsql_check_function('testproc3');
 
 drop procedure testproc3;
+
+-- should be moved to generic test
+create or replace function dyntest()
+returns void as $$
+begin
+  execute 'drop table if exists xxx; create table xxx(a int)';
+end;
+$$ language plpgsql;
+
+-- should be ok
+select * from plpgsql_check_function('dyntest');
+
+create or replace function dyntest()
+returns void as $$
+declare x int;
+begin
+  execute 'drop table if exists xxx; create table xxx(a int)' into x;
+end;
+$$ language plpgsql;
+
+-- should to report error
+select * from plpgsql_check_function('dyntest');
+
+drop function dyntest();
