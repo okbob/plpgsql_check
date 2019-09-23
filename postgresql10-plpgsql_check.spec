@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	1.7.5
+Version:	1.7.6
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -46,6 +46,9 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/plpgsql_check.control
 
 %changelog
+* Mon Sep 23 2019 - Pavel STEHULE <pavel.stehule@gmail.com> 1.7.6
+- fix false alarm - multiple plans in EXECUTE statement, and possible crash
+
 * Tue Sep 10 2019 - Pavel STEHULE <pavel.stehule@gmail.com> 1.7.5
 - allow some work on tables with rules
 
