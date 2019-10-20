@@ -1706,7 +1706,7 @@ dynsql_param_ref(ParseState *pstate, ParamRef *pref)
 	DynSQLParams *params = (DynSQLParams *) pstate->p_ref_hook_state;
 	List	   *args = params->args;
 	int			nargs = list_length(args);
-	Param	   *param;
+	Param	   *param = NULL;
 	PLpgSQL_expr *expr;
 	TupleDesc	tupdesc;
 

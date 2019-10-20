@@ -402,8 +402,8 @@ plpgsql_check_report_too_high_volatility(PLpgSQL_checkstate *cstate)
 {
 	if (cstate->cinfo->performance_warnings && !cstate->skip_volatility_check)
 	{
-		char	   *current;
-		char	   *should_be;
+		char	   *current = NULL;
+		char	   *should_be = NULL;
 		bool 		raise_warning;
 
 		if (cstate->volatility == PROVOLATILE_IMMUTABLE &&
