@@ -470,6 +470,11 @@ The profile per statements (not per line) can be displayed by function plpgsql_p
 There are two functions for cleaning stored profiles: `plpgsql_profiler_reset_all()` and
 `plpgsql_profiler_reset(regprocedure)`.
 
+## Update, upgrade
+
+`plpgsql_check` doesn't supports update or upgrade. Before these operations drop this
+extension first and after upgrade install (`CREATE EXTENSION`) `plpgsql_check` again.
+
 ## Note
 
 There is another very good PLpgSQL profiler - https://bitbucket.org/openscg/plprofiler
