@@ -94,7 +94,7 @@ can be found by plpgsql_check_function:
     9       $function$
 
 
-Function plpgsql_check_function() has two possible formats: text or xml
+Function plpgsql_check_function() has three possible formats: text, json or xml
 
     select * from plpgsql_check_function('f1()', fatal_errors := false);
                              plpgsql_check_function                         
