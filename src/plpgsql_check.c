@@ -101,9 +101,19 @@ _PG_init(void)
 	plpgsql_check__stmt_typename_p = (plpgsql_check__stmt_typename_t)
 		load_external_function("$libdir/plpgsql", "plpgsql_stmt_typename", true, NULL);
 
+#if PG_VERSION_NUM >= 90500
+
 	AssertVariableIsOfType(&plpgsql_exec_get_datum_type, plpgsql_check__exec_get_datum_type_t);
 	plpgsql_check__exec_get_datum_type_p = (plpgsql_check__exec_get_datum_type_t)
 		load_external_function("$libdir/plpgsql", "plpgsql_exec_get_datum_type", true, NULL);
+
+#else
+
+	AssertVariableIsOfType(&exec_get_datum_type, plpgsql_check__exec_get_datum_type_t);
+	plpgsql_check__exec_get_datum_type_p = (plpgsql_check__exec_get_datum_type_t)
+		load_external_function("$libdir/plpgsql", "exec_get_datum_type", true, NULL);
+
+#endif
 
 	AssertVariableIsOfType(&plpgsql_recognize_err_condition, plpgsql_check__recognize_err_condition_t);
 	plpgsql_check__recognize_err_condition_p = (plpgsql_check__recognize_err_condition_t)

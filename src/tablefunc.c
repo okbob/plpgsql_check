@@ -16,7 +16,6 @@
 #include "utils/builtins.h"
 #include "utils/regproc.h"
 #include "utils/syscache.h"
-#include "utils/varlena.h"
 
 static void SetReturningFunctionCheck(ReturnSetInfo *rsinfo);
 static void init_check_info(plpgsql_check_info *cinfo, Oid fn_oid);
