@@ -17,6 +17,12 @@
 #include "utils/regproc.h"
 #include "utils/syscache.h"
 
+#if PG_VERSION_NUM >= 100000
+
+#include "utils/varlena.h"
+
+#endif
+
 static void SetReturningFunctionCheck(ReturnSetInfo *rsinfo);
 static void init_check_info(plpgsql_check_info *cinfo, Oid fn_oid);
 
