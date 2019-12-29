@@ -5,7 +5,7 @@
  *			  routines for enforce plans for every expr/query and
  *			  related checks over these plans.
  *
- * by Pavel Stehule 2013-2018
+ * by Pavel Stehule 2013-2019
  *
  *-------------------------------------------------------------------------
  */
