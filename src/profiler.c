@@ -408,7 +408,7 @@ profiler_touch_stmt(profiler_info *pinfo,
 											pstmt ? pstmt->us_total : 0.0,
 											pstmt ? pstmt->us_max : 0.0,
 											pstmt ? pstmt->rows : 0,
-											(char *) plpgsql_stmt_typename(stmt));
+											(char *) plpgsql_check__stmt_typename_p(stmt));
 
 		parent_note = NULL;
 	}
@@ -1146,7 +1146,7 @@ plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri,
 								   NULL);
 
 		/* Get a compiled function */
-		function = plpgsql_compile(fake_fcinfo, false);
+		function = plpgsql_check__compile_p(fake_fcinfo, false);
 
 		profiler_init_hashkey(&hk_function, function);
 		profile = (profiler_profile *) hash_search(profiler_HashTable,

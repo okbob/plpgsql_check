@@ -264,6 +264,39 @@ extern bool plpgsql_check_profiler;
 
 extern shmem_startup_hook_type prev_shmem_startup_hook;
 
+#if PG_VERSION_NUM > 110005
+
+#define PLPGSQL_BUILD_DATATYPE_4		1
+
+#endif
+
+
+/*
+ * Linkage to function in plpgsql module
+ */
+
+#ifdef PLPGSQL_BUILD_DATATYPE_4
+
+typedef PLpgSQL_type *(*plpgsql_check__build_datatype_t) (Oid typeOid, int32 typmod, Oid collation, TypeName *origtypname);
+
+#else
+
+typedef PLpgSQL_type *(*plpgsql_check__build_datatype_t) (Oid typeOid, int32 typmod, Oid collation);
+
+#endif
+
+extern plpgsql_check__build_datatype_t plpgsql_check__build_datatype_p;
+typedef PLpgSQL_function *(*plpgsql_check__compile_t) (FunctionCallInfo fcinfo, bool forValidator);
+extern plpgsql_check__compile_t plpgsql_check__compile_p;
+typedef void (*plpgsql_check__parser_setup_t) (struct ParseState *pstate, PLpgSQL_expr *expr);
+extern plpgsql_check__parser_setup_t plpgsql_check__parser_setup_p;
+typedef const char *(*plpgsql_check__stmt_typename_t) (PLpgSQL_stmt *stmt);
+extern plpgsql_check__stmt_typename_t plpgsql_check__stmt_typename_p;
+typedef Oid (*plpgsql_check__exec_get_datum_type_t) (PLpgSQL_execstate *estate, PLpgSQL_datum *datum);
+extern plpgsql_check__exec_get_datum_type_t plpgsql_check__exec_get_datum_type_p;
+typedef int (*plpgsql_check__recognize_err_condition_t) (const char *condname, bool allow_sqlstate);
+extern plpgsql_check__recognize_err_condition_t plpgsql_check__recognize_err_condition_p;
+
 #define NEVER_READ_VARIABLE_TEXT		"never read variable \"%s\""
 #define NEVER_READ_VARIABLE_TEXT_CHECK_LENGTH		19
 #define UNUSED_PARAMETER_TEXT			"unused parameter \"%s\""

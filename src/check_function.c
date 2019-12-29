@@ -185,7 +185,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 		if (plpgsql_check_mode != PLPGSQL_CHECK_MODE_DISABLED)
 		{
 			/* Get a compiled function */
-			function = plpgsql_compile(fake_fcinfo, false);
+			function = plpgsql_check__compile_p(fake_fcinfo, false);
 
 			collect_out_variables(function, &cstate);
 

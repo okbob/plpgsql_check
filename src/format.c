@@ -455,7 +455,7 @@ put_error_text(plpgsql_check_result_info *ri,
 				 level_str,
 				 unpack_sql_state(sqlerrcode),
 				 estate->err_stmt->lineno,
-				 plpgsql_stmt_typename(estate->err_stmt),
+				 plpgsql_check__stmt_typename_p(estate->err_stmt),
 				 message);
 	else if (strncmp(message, UNUSED_VARIABLE_TEXT, UNUSED_VARIABLE_TEXT_CHECK_LENGTH) == 0)
 	{
@@ -668,7 +668,7 @@ format_error_xml(StringInfo str,
 	if (estate != NULL && estate->err_stmt != NULL)
 		appendStringInfo(str, "    <Stmt lineno=\"%d\">%s</Stmt>\n",
 				 estate->err_stmt->lineno,
-			   plpgsql_stmt_typename(estate->err_stmt));
+			   plpgsql_check__stmt_typename_p(estate->err_stmt));
 
 	else if (strcmp(message, "unused declared variable") == 0)
 		appendStringInfo(str, "    <Stmt lineno=\"%d\">DECLARE</Stmt>\n",
@@ -724,7 +724,7 @@ format_error_json(StringInfo str,
 	if (estate != NULL && estate->err_stmt != NULL)
 		appendStringInfo(str, "    \"statement\":{\n\"lineNumber\":\"%d\",\n\"text\":\"%s\"\n},\n",
 			estate->err_stmt->lineno,
-			plpgsql_stmt_typename(estate->err_stmt));
+			plpgsql_check__stmt_typename_p(estate->err_stmt));
 
 	else if (strcmp(message, "unused declared variable") == 0)
 		appendStringInfo(str, "    \"statement\":{\n\"lineNumber\":\"%d\",\n\"text\":\"DECLARE\"\n},",
@@ -792,7 +792,7 @@ put_error_tabular(plpgsql_check_result_info *ri,
 	{
 		/* use lineno based on err_stmt */
 		SET_RESULT_INT32(Anum_result_lineno, estate->err_stmt->lineno);
-		SET_RESULT_TEXT(Anum_result_statement, plpgsql_stmt_typename(estate->err_stmt));
+		SET_RESULT_TEXT(Anum_result_statement, plpgsql_check__stmt_typename_p(estate->err_stmt));
 	}
 	else if (strncmp(message, UNUSED_VARIABLE_TEXT, UNUSED_VARIABLE_TEXT_CHECK_LENGTH) == 0)
 	{

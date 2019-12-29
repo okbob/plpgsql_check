@@ -71,7 +71,7 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 		 * Generate and save the plan
 		 */
 		plan = SPI_prepare_params(expr->query,
-								  parser_setup ? parser_setup : (ParserSetupHook) plpgsql_parser_setup,
+								  parser_setup ? parser_setup : (ParserSetupHook) plpgsql_check__parser_setup_p,
 								  arg ? arg : (void *) expr,
 								  cursorOptions);
 

@@ -235,7 +235,7 @@ plpgsql_check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid
 
 #if PG_VERSION_NUM >= 90600
 
-				arraytypeid = plpgsql_exec_get_datum_type(cstate->estate, target);
+				arraytypeid = plpgsql_check__exec_get_datum_type_p(cstate->estate, target);
 
 #else
 

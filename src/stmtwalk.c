@@ -49,13 +49,6 @@ static void check_dynamic_sql(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, PL
 
 #endif
 
-
-#if PG_VERSION_NUM > 110005
-
-#define PLPGSQL_BUILD_DATATYPE_4		1
-
-#endif
-
 #if PG_VERSION_NUM >= 110000
 
 static void
@@ -553,14 +546,14 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 #ifdef PLPGSQL_BUILD_DATATYPE_4
 
-							t_var->datatype = plpgsql_build_datatype(result_oid,
+							t_var->datatype = plpgsql_check__build_datatype_p(result_oid,
 																	 -1,
 								   cstate->estate->func->fn_input_collation,
 								   t_var->datatype->origtypname);
 
 #else
 
-							t_var->datatype = plpgsql_build_datatype(result_oid,
+							t_var->datatype = plpgsql_check__build_datatype_p(result_oid,
 																	 -1,
 								   cstate->estate->func->fn_input_collation);
 
@@ -795,7 +788,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 							ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("%s cannot be used outside a loop",
-								 plpgsql_stmt_typename((PLpgSQL_stmt *) stmt_exit))));
+								 plpgsql_check__stmt_typename_p((PLpgSQL_stmt *) stmt_exit))));
 					}
 				}
 				break;
@@ -1051,7 +1044,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					int			err_code = 0;
 
 					if (stmt_raise->condname != NULL)
-						err_code = plpgsql_recognize_err_condition(stmt_raise->condname, true);
+						err_code = plpgsql_check__recognize_err_condition_p(stmt_raise->condname, true);
 
 					foreach(l, stmt_raise->params)
 					{
@@ -1072,7 +1065,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 							value = plpgsql_check_expr_get_string(cstate, opt->expr, &isnull);
 
 							if (value != NULL)
-								err_code = plpgsql_recognize_err_condition(value, true);
+								err_code = plpgsql_check__recognize_err_condition_p(value, true);
 							else
 								err_code = -1;		/* cannot be calculated now */
 						}

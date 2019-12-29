@@ -53,12 +53,20 @@ static const struct config_enum_entry plpgsql_check_mode_options[] = {
 	{NULL, 0, false}
 };
 
-
 void			_PG_init(void);
 void			_PG_fini(void);
 
 shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 
+/*
+ * Linkage to function in plpgsql module
+ */
+plpgsql_check__build_datatype_t plpgsql_check__build_datatype_p;
+plpgsql_check__compile_t plpgsql_check__compile_p;
+plpgsql_check__parser_setup_t plpgsql_check__parser_setup_p;
+plpgsql_check__stmt_typename_t plpgsql_check__stmt_typename_p;
+plpgsql_check__exec_get_datum_type_t plpgsql_check__exec_get_datum_type_p;
+plpgsql_check__recognize_err_condition_t plpgsql_check__recognize_err_condition_p;
 
 /*
  * Module initialization
@@ -76,6 +84,30 @@ _PG_init(void)
 
 	if (inited)
 		return;
+
+	AssertVariableIsOfType(&plpgsql_build_datatype, plpgsql_check__build_datatype_t);
+	plpgsql_check__build_datatype_p = (plpgsql_check__build_datatype_t)
+		load_external_function("$libdir/plpgsql", "plpgsql_build_datatype", true, NULL);
+
+	AssertVariableIsOfType(&plpgsql_compile, plpgsql_check__compile_t);
+	plpgsql_check__compile_p = (plpgsql_check__compile_t)
+		load_external_function("$libdir/plpgsql", "plpgsql_compile", true, NULL);
+
+	AssertVariableIsOfType(&plpgsql_parser_setup, plpgsql_check__parser_setup_t);
+	plpgsql_check__parser_setup_p = (plpgsql_check__parser_setup_t)
+		load_external_function("$libdir/plpgsql", "plpgsql_parser_setup", true, NULL);
+
+	AssertVariableIsOfType(&plpgsql_stmt_typename, plpgsql_check__stmt_typename_t);
+	plpgsql_check__stmt_typename_p = (plpgsql_check__stmt_typename_t)
+		load_external_function("$libdir/plpgsql", "plpgsql_stmt_typename", true, NULL);
+
+	AssertVariableIsOfType(&plpgsql_exec_get_datum_type, plpgsql_check__exec_get_datum_type_t);
+	plpgsql_check__exec_get_datum_type_p = (plpgsql_check__exec_get_datum_type_t)
+		load_external_function("$libdir/plpgsql", "plpgsql_exec_get_datum_type", true, NULL);
+
+	AssertVariableIsOfType(&plpgsql_recognize_err_condition, plpgsql_check__recognize_err_condition_t);
+	plpgsql_check__recognize_err_condition_p = (plpgsql_check__recognize_err_condition_t)
+		load_external_function("$libdir/plpgsql", "plpgsql_recognize_err_condition", true, NULL);
 
 	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable( "PLpgSQL_plugin" );
 	*var_ptr = &plugin_funcs;
