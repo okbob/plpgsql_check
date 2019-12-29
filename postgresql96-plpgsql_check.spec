@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	1.7.6
+Version:	1.8.0
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -47,6 +47,10 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/plpgsql_check.control
 
 %changelog
+* Sun Dec 29 2019 - Pavel STEHULE <pavel.stehule@gmail.com> 1.8.0
+- use Postgres tool for calling functions from plpgsql library instead dynamic linking
+- it solve issues related to dependency plpgsq_check on plpgsql
+
 * Mon Sep 23 2019 - Pavel STEHULE <pavel.stehule@gmail.com> 1.7.6
 - fix false alarm - multiple plans in EXECUTE statement, and possible crash
 
