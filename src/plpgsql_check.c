@@ -101,7 +101,7 @@ _PG_init(void)
 	plpgsql_check__stmt_typename_p = (plpgsql_check__stmt_typename_t)
 		load_external_function("$libdir/plpgsql", "plpgsql_stmt_typename", true, NULL);
 
-#if PG_VERSION_NUM >= 90500
+#if PG_VERSION_NUM >= 90600
 
 	AssertVariableIsOfType(&plpgsql_exec_get_datum_type, plpgsql_check__exec_get_datum_type_t);
 	plpgsql_check__exec_get_datum_type_p = (plpgsql_check__exec_get_datum_type_t)
