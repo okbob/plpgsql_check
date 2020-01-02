@@ -243,6 +243,11 @@ extern PLpgSQL_row * plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *csta
 #endif
 
 /*
+ * functions from parse_name.c
+ */
+extern Oid plpgsql_check_parse_name_or_signature(char *name_or_signature);
+
+/*
  * functions from profiler.c
  */
 extern Size plpgsql_check_shmem_size(void);

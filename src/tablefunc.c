@@ -12,16 +12,9 @@
 #include "plpgsql_check.h"
 #include "plpgsql_check_builtins.h"
 
-#include "catalog/namespace.h"
 #include "utils/builtins.h"
 #include "utils/regproc.h"
 #include "utils/syscache.h"
-
-#if PG_VERSION_NUM >= 100000
-
-#include "utils/varlena.h"
-
-#endif
 
 static void SetReturningFunctionCheck(ReturnSetInfo *rsinfo);
 static void init_check_info(plpgsql_check_info *cinfo, Oid fn_oid);
@@ -453,84 +446,17 @@ plpgsql_profiler_function_statements_tb(PG_FUNCTION_ARGS)
 	return profiler_function_statements_tb_internal(fnoid, fcinfo);
 }
 
-/*
- * Given a C string, parse it into a qualified-name list.
- * Code is comming from varlena.c.
- */
-static List *
-stringToQualifiedNameListNoError(const char *string)
-{
-	char	   *rawname;
-	List	   *result = NIL;
-	List	   *namelist;
-	ListCell   *l;
-
-	/* We need a modifiable copy of the input string. */
-	rawname = pstrdup(string);
-
-	if (SplitIdentifierString(rawname, '.', &namelist))
-	{
-		if (namelist)
-		{
-			foreach(l, namelist)
-			{
-				char	   *curname = (char *) lfirst(l);
-
-				result = lappend(result, makeString(pstrdup(curname)));
-			}
-
-			list_free(namelist);
-		}
-	}
-
-	pfree(rawname);
-
-	return result;
-}
-
-/*
- * code from regproc.c. This code can raise messy error messages,
- * but it is easy, and for almost all use cases good enough.
- */
-static Oid
-get_function_oid(char *proname)
-{
-	List	   *names;
-	FuncCandidateList clist;
-
-	/*
-	 * Parse the name into components and see if it matches any pg_proc
-	 * entries in the current search path. We should to use own copy of
-	 * stringToQualifiedNameListNoError. Original raise a exceptions when
-	 * input string has parameters.
-	 */
-	names = stringToQualifiedNameListNoError(proname);
-	if (names)
-	{
-		clist = FuncnameGetCandidates(names, -1, NIL, false, false, true);
-
-		if (clist && clist->next)
-			ereport(ERROR,
-					(errcode(ERRCODE_AMBIGUOUS_FUNCTION),
-					 errmsg("more than one function named \"%s\"",
-							proname)));
-		else if (clist)
-			return clist->oid;
-	}
-
-	return DatumGetObjectId(DirectFunctionCall1(regprocedurein,
-												CStringGetDatum(proname)));
-}
-
 Datum
 plpgsql_check_function_name(PG_FUNCTION_ARGS)
 {
-	Oid fnoid;
+	Oid 	fnoid;
+	char   *name_or_signature;
 
 	if (PG_ARGISNULL(0))
 		elog(ERROR, "the first argument should not be null");
 
-	fnoid = get_function_oid(text_to_cstring(PG_GETARG_TEXT_PP(0)));
+	name_or_signature = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	fnoid = plpgsql_check_parse_name_or_signature(name_or_signature);
 
 	return check_function_internal(fnoid, fcinfo);
 }
@@ -538,12 +464,14 @@ plpgsql_check_function_name(PG_FUNCTION_ARGS)
 Datum
 plpgsql_check_function_tb_name(PG_FUNCTION_ARGS)
 {
-	Oid fnoid;
+	Oid		fnoid;
+	char   *name_or_signature;
 
 	if (PG_ARGISNULL(0))
 		elog(ERROR, "the first argument should not be null");
 
-	fnoid = get_function_oid(text_to_cstring(PG_GETARG_TEXT_PP(0)));
+	name_or_signature = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	fnoid = plpgsql_check_parse_name_or_signature(name_or_signature);
 
 	return check_function_tb_internal(fnoid, fcinfo);
 }
@@ -551,12 +479,14 @@ plpgsql_check_function_tb_name(PG_FUNCTION_ARGS)
 Datum
 plpgsql_show_dependency_tb_name(PG_FUNCTION_ARGS)
 {
-	Oid fnoid;
+	Oid		fnoid;
+	char   *name_or_signature;
 
 	if (PG_ARGISNULL(0))
 		elog(ERROR, "the first argument should not be null");
 
-	fnoid = get_function_oid(text_to_cstring(PG_GETARG_TEXT_PP(0)));
+	name_or_signature = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	fnoid = plpgsql_check_parse_name_or_signature(name_or_signature);
 
 	return show_dependency_tb_internal(fnoid, fcinfo);
 }
@@ -564,12 +494,14 @@ plpgsql_show_dependency_tb_name(PG_FUNCTION_ARGS)
 Datum
 plpgsql_profiler_function_tb_name(PG_FUNCTION_ARGS)
 {
-	Oid fnoid;
+	Oid		fnoid;
+	char   *name_or_signature;
 
 	if (PG_ARGISNULL(0))
 		elog(ERROR, "the first argument should not be null");
 
-	fnoid = get_function_oid(text_to_cstring(PG_GETARG_TEXT_PP(0)));
+	name_or_signature = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	fnoid = plpgsql_check_parse_name_or_signature(name_or_signature);
 
 	return profiler_function_tb_internal(fnoid, fcinfo);
 }
@@ -577,12 +509,14 @@ plpgsql_profiler_function_tb_name(PG_FUNCTION_ARGS)
 Datum
 plpgsql_profiler_function_statements_tb_name(PG_FUNCTION_ARGS)
 {
-	Oid fnoid;
+	Oid		fnoid;
+	char   *name_or_signature;
 
 	if (PG_ARGISNULL(0))
 		elog(ERROR, "the first argument should not be null");
 
-	fnoid = get_function_oid(text_to_cstring(PG_GETARG_TEXT_PP(0)));
+	name_or_signature = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	fnoid = plpgsql_check_parse_name_or_signature(name_or_signature);
 
 	return profiler_function_statements_tb_internal(fnoid, fcinfo);
 }
