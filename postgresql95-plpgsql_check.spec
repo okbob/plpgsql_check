@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	1.8.0
+Version:	1.8.1
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -47,6 +47,9 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/plpgsql_check.control
 
 %changelog
+* Sun Jan 05 2020 - Pavel STEHULE <pavel.stehule@gmail.com> 1.8.1
+- cleaner detection function oid from name or signature
+
 * Sun Dec 29 2019 - Pavel STEHULE <pavel.stehule@gmail.com> 1.8.0
 - use Postgres tool for calling functions from plpgsql library instead dynamic linking
 - it solve issues related to dependency plpgsq_check on plpgsql
