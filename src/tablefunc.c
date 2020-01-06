@@ -13,7 +13,6 @@
 #include "plpgsql_check_builtins.h"
 
 #include "utils/builtins.h"
-#include "utils/regproc.h"
 #include "utils/syscache.h"
 
 static void SetReturningFunctionCheck(ReturnSetInfo *rsinfo);
