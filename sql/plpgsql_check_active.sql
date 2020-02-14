@@ -3987,3 +3987,36 @@ select * from plpgsql_check_function_tb('fx_testr');
 drop function fx_testr();
 drop table testr;
 
+-- coverage tests
+set plpgsql_check.profiler to on;
+
+create or replace function covtest(int)
+returns int as $$
+declare a int = $1;
+begin
+  a := a + 1;
+  if a < 10 then
+    a := a + 1;
+  end if;
+  a := a + 1;
+  return a;
+end;
+$$ language plpgsql;
+
+set plpgsql_check.profiler to on;
+
+select covtest(10);
+
+select stmtid, exec_stmts, stmtname from plpgsql_profiler_function_statements_tb('covtest');
+
+select plpgsql_coverage_statements('covtest');
+select plpgsql_coverage_branches('covtest');
+
+select covtest(1);
+
+select stmtid, exec_stmts, stmtname from plpgsql_profiler_function_statements_tb('covtest');
+
+select plpgsql_coverage_statements('covtest');
+select plpgsql_coverage_branches('covtest');
+
+set plpgsql_check.profiler to on;

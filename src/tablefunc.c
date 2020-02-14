@@ -16,7 +16,6 @@
 #include "utils/syscache.h"
 
 static void SetReturningFunctionCheck(ReturnSetInfo *rsinfo);
-static void init_check_info(plpgsql_check_info *cinfo, Oid fn_oid);
 
 PG_FUNCTION_INFO_V1(plpgsql_check_function);
 PG_FUNCTION_INFO_V1(plpgsql_check_function_tb);
@@ -48,8 +47,8 @@ SetReturningFunctionCheck(ReturnSetInfo *rsinfo)
 				 errmsg("materialize mode required, but it is not allowed in this context")));
 }
 
-static void
-init_check_info(plpgsql_check_info *cinfo, Oid fn_oid)
+void
+plpgsql_check_info_init(plpgsql_check_info *cinfo, Oid fn_oid)
 {
 	memset(cinfo, 0, sizeof(*cinfo));
 
@@ -95,7 +94,7 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 
 	format = plpgsql_check_format_num(text_to_cstring(PG_GETARG_TEXT_PP(2)));
 
-	init_check_info(&cinfo, fnoid);
+	plpgsql_check_info_init(&cinfo, fnoid);
 
 	cinfo.relid = PG_GETARG_OID(1);
 	cinfo.fatal_errors = PG_GETARG_BOOL(3);
@@ -183,7 +182,7 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	if (PG_ARGISNULL(6))
 		elog(ERROR, "the seventh argument should not be null");
 
-	init_check_info(&cinfo, fnoid);
+	plpgsql_check_info_init(&cinfo, fnoid);
 
 	cinfo.relid = PG_GETARG_OID(1);
 	cinfo.fatal_errors = PG_GETARG_BOOL(2);
@@ -257,7 +256,7 @@ show_dependency_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	SetReturningFunctionCheck(rsinfo);
 
-	init_check_info(&cinfo, fnoid);
+	plpgsql_check_info_init(&cinfo, fnoid);
 
 	cinfo.relid = PG_GETARG_OID(1);
 	cinfo.fatal_errors = false;
@@ -305,7 +304,7 @@ profiler_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	SetReturningFunctionCheck(rsinfo);
 
-	init_check_info(&cinfo, fnoid);
+	plpgsql_check_info_init(&cinfo, fnoid);
 	cinfo.show_profile = true;
 
 	cinfo.proctuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(cinfo.fn_oid));
@@ -351,7 +350,7 @@ profiler_function_statements_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	SetReturningFunctionCheck(rsinfo);
 
-	init_check_info(&cinfo, fnoid);
+	plpgsql_check_info_init(&cinfo, fnoid);
 	cinfo.show_profile = true;
 
 	cinfo.proctuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(cinfo.fn_oid));
@@ -368,7 +367,7 @@ profiler_function_statements_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 
 	plpgsql_check_init_ri(&ri, PLPGSQL_SHOW_PROFILE_STATEMENTS_TABULAR, rsinfo);
 
-	plpgsql_check_profiler_show_profile_statements(&ri, &cinfo);
+	plpgsql_check_profiler_show_profile_statements(&ri, &cinfo, NULL);
 
 	plpgsql_check_finalize_ri(&ri);
 

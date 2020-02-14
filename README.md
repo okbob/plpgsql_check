@@ -468,6 +468,13 @@ The profile per statements (not per line) can be displayed by function plpgsql_p
 There are two functions for cleaning stored profiles: `plpgsql_profiler_reset_all()` and
 `plpgsql_profiler_reset(regprocedure)`.
 
+## Coverage metrics
+
+plpgsql_check provides two functions:
+
+* `plpgsql_coverage_statements(name)`
+* `plpgsql_coverage_branches(name)`
+
 ## Note
 
 There is another very good PLpgSQL profiler - https://bitbucket.org/openscg/plprofiler

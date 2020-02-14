@@ -182,3 +182,20 @@ LANGUAGE C STRICT;
 CREATE FUNCTION plpgsql_profiler_reset(funcoid regprocedure)
 RETURNS void AS 'MODULE_PATHNAME','plpgsql_profiler_reset'
 LANGUAGE C STRICT;
+
+CREATE OR REPLACE FUNCTION plpgsql_coverage_statements(funcoid regprocedure)
+RETURNS double precision AS 'MODULE_PATHNAME', 'plpgsql_coverage_statements'
+LANGUAGE C;
+
+CREATE OR REPLACE FUNCTION plpgsql_coverage_statements(name text)
+RETURNS double precision AS 'MODULE_PATHNAME', 'plpgsql_coverage_statements_name'
+LANGUAGE C;
+
+CREATE OR REPLACE FUNCTION plpgsql_coverage_branches(funcoid regprocedure)
+RETURNS double precision AS 'MODULE_PATHNAME', 'plpgsql_coverage_branches'
+LANGUAGE C;
+
+CREATE OR REPLACE FUNCTION plpgsql_coverage_branches(name text)
+RETURNS double precision AS 'MODULE_PATHNAME', 'plpgsql_coverage_branches_name'
+LANGUAGE C;
+

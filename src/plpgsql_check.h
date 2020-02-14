@@ -108,6 +108,13 @@ typedef struct PLpgSQL_checkstate
 	bool			has_mp;					/* true, when multiple plan was used */
 } PLpgSQL_checkstate;
 
+typedef struct
+{
+	int		statements;
+	int		branches;
+	int		executed_statements;
+	int		executed_branches;
+} coverage_state;
 
 /*
  * function from assign.c
@@ -149,6 +156,8 @@ extern char * plpgsql_check_get_src(HeapTuple procTuple);
 /*
  * functions from tablefunc.c
  */
+extern void plpgsql_check_info_init(plpgsql_check_info *cinfo, Oid fn_oid);
+
 
 /*
  * functions from profiler.c
@@ -259,7 +268,7 @@ extern void plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_s
 extern void plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 
 extern void plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo);
-extern void plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo);
+extern void plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo, coverage_state *cs);
 
 extern bool plpgsql_check_profiler;
 

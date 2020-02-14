@@ -68,5 +68,9 @@ extern PGDLLEXPORT Datum plpgsql_profiler_function_tb(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plpgsql_profiler_function_statements_tb(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plpgsql_profiler_function_tb_name(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plpgsql_profiler_function_statements_tb_name(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum plpgsql_coverage_statements(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum plpgsql_coverage_branches(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum plpgsql_coverage_statements_name(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum plpgsql_coverage_branches_name(PG_FUNCTION_ARGS);
 
 #endif
