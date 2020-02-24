@@ -61,6 +61,8 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 
 	if (expr->plan == NULL)
 	{
+		MemoryContext old_cxt;
+
 		/*
 		 * The grammar can't conveniently set expr->func while building the parse
 		 * tree, so make sure it's set before parser hooks need it.
@@ -99,15 +101,14 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 			}
 		}
 
-		/*
-		 * We would to check all plans, but when plan exists, then don't 
-		 * overwrite existing plan.
-		 */
-		if (expr->plan == NULL)
-		{
-			expr->plan = SPI_saveplan(plan);
-			cstate->exprs = lappend(cstate->exprs, expr);
-		}
+		/* Save prepared to persistent memory */
+		old_cxt = MemoryContextSwitchTo(cstate->check_cxt);
+		expr->plan = SPI_saveplan(plan);
+
+		/* This plan should be released later */
+		cstate->exprs = lappend(cstate->exprs, expr);
+
+		MemoryContextSwitchTo(old_cxt);
 
 		SPI_freeplan(plan);
 	}
