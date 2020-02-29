@@ -23,6 +23,12 @@
 
 #endif
 
+#if PG_VERSION_NUM >= 130000
+
+#include "utils/hashutils.h"
+
+#endif
+
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"

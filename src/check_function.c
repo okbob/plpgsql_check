@@ -27,6 +27,13 @@
 
 #endif
 
+#if PG_VERSION_NUM >= 130000
+
+#include "utils/hashutils.h"
+
+#endif
+
+
 static HTAB *plpgsql_check_HashTable = NULL;
 
 bool plpgsql_check_other_warnings = false;
