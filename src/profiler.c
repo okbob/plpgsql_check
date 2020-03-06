@@ -23,12 +23,6 @@
 
 #endif
 
-#if PG_VERSION_NUM >= 130000
-
-#include "utils/hashutils.h"
-
-#endif
-
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
@@ -272,27 +266,12 @@ plpgsql_check_profiler_shmem_startup(void)
 	memset(&info, 0, sizeof(info));
 	info.keysize = sizeof(profiler_hashkey);
 	info.entrysize = sizeof(profiler_stmt_chunk);
-	info.hash = tag_hash;
-
-#if PG_VERSION_NUM >= 90500
 
 	shared_profiler_chunks_HashTable = ShmemInitHash("plpgsql_check profiler chunks",
 													MAX_SHARED_CHUNKS,
 													MAX_SHARED_CHUNKS,
 													&info,
 													HASH_ELEM | HASH_BLOBS);
-
-#else
-
-	info.hash = tag_hash;
-
-	shared_profiler_chunks_HashTable = ShmemInitHash("plpgsql_check profiler chunks",
-													MAX_SHARED_CHUNKS,
-													MAX_SHARED_CHUNKS,
-													&info,
-													HASH_ELEM | HASH_FUNCTION);
-
-#endif
 
 	LWLockRelease(AddinShmemInitLock);
 }
@@ -327,11 +306,11 @@ profiler_localHashTableInit(void)
 	ctl.keysize = sizeof(profiler_hashkey);
 	ctl.entrysize = sizeof(profiler_profile);
 	ctl.hcxt = profiler_mcxt;
-	ctl.hash = tag_hash;
+
 	profiler_HashTable = hash_create("plpgsql_check function profiler local cache",
 									FUNCS_PER_USER,
 									&ctl,
-									HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+									HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 }
 
 /*
@@ -350,11 +329,10 @@ profiler_chunks_HashTableInit(void)
 	ctl.keysize = sizeof(profiler_hashkey);
 	ctl.entrysize = sizeof(profiler_stmt_chunk);
 	ctl.hcxt = profiler_mcxt;
-	ctl.hash = tag_hash;
 	profiler_chunks_HashTable = hash_create("plpgsql_check function profiler local chunks",
 									FUNCS_PER_USER,
 									&ctl,
-									HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+									HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 }
 
 void

@@ -332,9 +332,20 @@ prohibit_write_plan(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_s
 			StringInfoData message;
 
 			initStringInfo(&message);
+
+#if PG_VERSION_NUM >= 130000
+
+			appendStringInfo(&message,
+					"%s is not allowed in a non volatile function",
+							GetCommandTagName(CreateCommandTag((Node *) pstmt)));
+
+#else
+
 			appendStringInfo(&message,
 					"%s is not allowed in a non volatile function",
 							CreateCommandTag((Node *) pstmt));
+
+#endif
 
 			plpgsql_check_put_error(cstate,
 					  ERRCODE_FEATURE_NOT_SUPPORTED, 0,

@@ -27,13 +27,6 @@
 
 #endif
 
-#if PG_VERSION_NUM >= 130000
-
-#include "utils/hashutils.h"
-
-#endif
-
-
 static HTAB *plpgsql_check_HashTable = NULL;
 
 bool plpgsql_check_other_warnings = false;
@@ -813,7 +806,15 @@ plpgsql_check_setup_fcinfo(HeapTuple procTuple,
 			resultTupleDesc = NULL;
 		}
 	}
-	else if (rettype == TRIGGEROID || rettype == OPAQUEOID)
+	else if (rettype == TRIGGEROID
+
+#if PG_VERSION_NUM < 130000
+
+			|| rettype == OPAQUEOID
+
+#endif
+
+			)
 	{
 		/* trigger - return value should be ROW or RECORD based on relid */
 		if (trigdata->tg_relation)
@@ -943,13 +944,6 @@ plpgsql_check_setup_estate(PLpgSQL_execstate *estate,
 
 	estate->eval_lastoid = InvalidOid;
 
-
-#if PG_VERSION_NUM < 90500
-
-	estate->cur_expr = NULL;
-
-#endif
-
 #endif
 
 #if PG_VERSION_NUM > 100000
@@ -1009,7 +1003,13 @@ plpgsql_check_setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->has_execute_stmt = false;
 	cstate->volatility = PROVOLATILE_IMMUTABLE;
 	cstate->skip_volatility_check = (cinfo->rettype == TRIGGEROID ||
+
+#if PG_VERSION_NUM < 130000
+
 									 cinfo->rettype == OPAQUEOID ||
+
+#endif
+
 									 cinfo->rettype == EVTTRIGGEROID);
 	cstate->estate = NULL;
 	cstate->result_info = result_info;
@@ -1246,11 +1246,10 @@ plpgsql_check_HashTableInit(void)
 	memset(&ctl, 0, sizeof(ctl));
 	ctl.keysize = sizeof(PLpgSQL_func_hashkey);
 	ctl.entrysize = sizeof(plpgsql_check_HashEnt);
-	ctl.hash = tag_hash;
 	plpgsql_check_HashTable = hash_create("plpgsql_check function cache",
 									FUNCS_PER_USER,
 									&ctl,
-									HASH_ELEM | HASH_FUNCTION);
+									HASH_ELEM | HASH_BLOBS);
 }
 
 /*

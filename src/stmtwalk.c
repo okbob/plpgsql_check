@@ -384,8 +384,6 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				}
 				break;
 
-#if PG_VERSION_NUM >= 90500
-
 			case PLPGSQL_STMT_ASSERT:
 				{
 					PLpgSQL_stmt_assert *stmt_assert = (PLpgSQL_stmt_assert *) stmt;
@@ -401,8 +399,6 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						plpgsql_check_expr(cstate, stmt_assert->message);
 				}
 				break;
-
-#endif
 
 			case PLPGSQL_STMT_ASSIGN:
 				{

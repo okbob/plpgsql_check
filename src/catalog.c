@@ -68,8 +68,15 @@ plpgsql_check_get_function_info(HeapTuple procTuple,
 	if (functyptype == TYPTYPE_PSEUDO)
 	{
 		/* we assume OPAQUE with no arguments means a trigger */
-		if (proc->prorettype == TRIGGEROID ||
-			(proc->prorettype == OPAQUEOID && proc->pronargs == 0))
+		if (proc->prorettype == TRIGGEROID
+
+#if PG_VERSION_NUM < 130000
+
+			|| (proc->prorettype == OPAQUEOID && proc->pronargs == 0)
+
+#endif
+
+			)
 			*trigtype = PLPGSQL_DML_TRIGGER;
 		else if (proc->prorettype == EVTTRIGGEROID)
 			*trigtype = PLPGSQL_EVENT_TRIGGER;

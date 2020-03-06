@@ -274,20 +274,6 @@ plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 	if (target_typoid == TEXTOID && value_typoid == UNKNOWNOID)
 		return;
 
-#if PG_VERSION_NUM < 90500
-
-	/* any used typmod enforces IO cast - performance warning for older than 9.5*/
-	if (target_typmod != -1)
-		plpgsql_check_put_error(cstate,
-					  ERRCODE_DATATYPE_MISMATCH, 0,
-					  "target type has type modificator",
-					  NULL,
-					  "Usage of type modificator enforces slower IO casting.",
-					  PLPGSQL_CHECK_WARNING_PERFORMANCE,
-					  0, NULL, NULL);
-
-#endif
-
 	if (type_is_rowtype(value_typoid))
 		plpgsql_check_put_error(cstate,
 					  ERRCODE_DATATYPE_MISMATCH, 0,
