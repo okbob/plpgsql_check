@@ -101,7 +101,10 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 			}
 		}
 
-		/* Save prepared to persistent memory */
+		/*
+		 * Save prepared plan to plpgsql_check state context. It will be
+		 * released on end of check, and it should be valid to this time.
+		 */
 		old_cxt = MemoryContextSwitchTo(cstate->check_cxt);
 		expr->plan = SPI_saveplan(plan);
 
