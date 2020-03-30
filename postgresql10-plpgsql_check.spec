@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	1.8.2
+Version:	1.9.0
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -46,6 +46,10 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/plpgsql_check.control
 
 %changelog
+* Mon Mar 30 2020 - Pavel STEHULE <pavel.stehule@gmail.com> 1.9.0
+- statement and branch coverage metrics
+- remove support for Postgres 9.4
+
 * Mon Jan 06 2020 - Pavel STEHULE <pavel.stehule@gmail.com> 1.8.2
 - fix of compilation issue
 
