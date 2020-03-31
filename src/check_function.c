@@ -49,8 +49,8 @@ typedef struct plpgsql_hashent
 } plpgsql_check_HashEnt;
 
 
-static void function_check(PLpgSQL_function *func, FunctionCallInfo fcinfo, PLpgSQL_execstate *estate, PLpgSQL_checkstate *cstate);
-static void trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_execstate *estate, PLpgSQL_checkstate *cstate);
+static void function_check(PLpgSQL_function *func, PLpgSQL_checkstate *cstate);
+static void trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate);
 static void release_exprs(List *exprs);
 static int load_configuration(HeapTuple procTuple, bool *reload_config);
 static void init_datum_dno(PLpgSQL_checkstate *cstate, int dno);
@@ -209,15 +209,15 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 			switch (cinfo->trigtype)
 			{
 				case PLPGSQL_DML_TRIGGER:
-					trigger_check(function, (Node *) &trigdata, &estate, &cstate);
+					trigger_check(function, (Node *) &trigdata, &cstate);
 					break;
 
 				case PLPGSQL_EVENT_TRIGGER:
-					trigger_check(function, (Node *) &etrigdata, &estate, &cstate);
+					trigger_check(function, (Node *) &etrigdata, &cstate);
 					break;
 
 				case PLPGSQL_NOT_TRIGGER:
-					function_check(function, fake_fcinfo, &estate, &cstate);
+					function_check(function, &cstate);
 					break;
 			}
 
@@ -513,8 +513,7 @@ plpgsql_check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
  *
  */
 static void
-function_check(PLpgSQL_function *func, FunctionCallInfo fcinfo,
-			   PLpgSQL_execstate *estate, PLpgSQL_checkstate *cstate)
+function_check(PLpgSQL_function *func, PLpgSQL_checkstate *cstate)
 {
 	int			i;
 	int closing = PLPGSQL_CHECK_UNCLOSED;
@@ -592,8 +591,7 @@ function_check(PLpgSQL_function *func, FunctionCallInfo fcinfo,
  *
  */
 static void
-trigger_check(PLpgSQL_function *func, Node *tdata,
-			  PLpgSQL_execstate *estate, PLpgSQL_checkstate *cstate)
+trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate)
 {
 	PLpgSQL_rec *rec_new,
 			   *rec_old;
@@ -749,6 +747,10 @@ plpgsql_check_setup_fcinfo(HeapTuple procTuple,
 	TupleDesc resultTupleDesc;
 
 	*fake_rtd = false;
+
+	/* ToDo */
+	(void) oldtable;
+	(void) newtable;
 
 	/* clean structures */
 #if PG_VERSION_NUM >= 120000

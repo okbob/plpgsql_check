@@ -269,6 +269,8 @@ plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 									Oid value_typoid,
 									bool isnull)
 {
+	/* not used yet */
+	(void) target_typmod;
 
 	/* the overhead UNKONWNOID --> TEXT is low */
 	if (target_typoid == TEXTOID && value_typoid == UNKNOWNOID)

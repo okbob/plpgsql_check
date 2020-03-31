@@ -1792,7 +1792,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	Node	   *expr_node;
 	ListCell   *l;
 	int			loc = -1;
-	bool		raise_unknown_rec_warning = false;
+	volatile bool raise_unknown_rec_warning = false;
 
 	/*
 	 * possible checks:

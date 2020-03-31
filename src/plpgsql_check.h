@@ -243,7 +243,7 @@ extern void plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, i
  * functions from typdesc.c
  */
 extern TupleDesc plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query,
-	bool use_element_type, bool expand_record, bool is_expression, Oid *first_level_typoid);;
+	bool use_element_type, bool expand_record, bool is_expression, Oid *first_level_typoid);
 
 #if PG_VERSION_NUM >= 110000
 

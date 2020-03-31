@@ -69,6 +69,13 @@ plpgsql_check__exec_get_datum_type_t plpgsql_check__exec_get_datum_type_p;
 plpgsql_check__recognize_err_condition_t plpgsql_check__recognize_err_condition_p;
 
 /*
+ * load_external_function retursn PGFunctions - we need generic function, so
+ * it is not 100% correct, but in used context it is not a problem.
+ */
+#define LOAD_EXTERNAL_FUNCTION(file, funcname)	((void *) (load_external_function(file, funcname, true, NULL)))
+
+
+/*
  * Module initialization
  *
  * join to PLpgSQL executor
@@ -87,39 +94,39 @@ _PG_init(void)
 
 	AssertVariableIsOfType(&plpgsql_build_datatype, plpgsql_check__build_datatype_t);
 	plpgsql_check__build_datatype_p = (plpgsql_check__build_datatype_t)
-		load_external_function("$libdir/plpgsql", "plpgsql_build_datatype", true, NULL);
+		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_build_datatype");
 
 	AssertVariableIsOfType(&plpgsql_compile, plpgsql_check__compile_t);
 	plpgsql_check__compile_p = (plpgsql_check__compile_t)
-		load_external_function("$libdir/plpgsql", "plpgsql_compile", true, NULL);
+		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_compile");
 
 	AssertVariableIsOfType(&plpgsql_parser_setup, plpgsql_check__parser_setup_t);
 	plpgsql_check__parser_setup_p = (plpgsql_check__parser_setup_t)
-		load_external_function("$libdir/plpgsql", "plpgsql_parser_setup", true, NULL);
+		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_parser_setup");
 
 	AssertVariableIsOfType(&plpgsql_stmt_typename, plpgsql_check__stmt_typename_t);
 	plpgsql_check__stmt_typename_p = (plpgsql_check__stmt_typename_t)
-		load_external_function("$libdir/plpgsql", "plpgsql_stmt_typename", true, NULL);
+		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_stmt_typename");
 
 #if PG_VERSION_NUM >= 90600
 
 	AssertVariableIsOfType(&plpgsql_exec_get_datum_type, plpgsql_check__exec_get_datum_type_t);
 	plpgsql_check__exec_get_datum_type_p = (plpgsql_check__exec_get_datum_type_t)
-		load_external_function("$libdir/plpgsql", "plpgsql_exec_get_datum_type", true, NULL);
+		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_exec_get_datum_type");
 
 #else
 
 	AssertVariableIsOfType(&exec_get_datum_type, plpgsql_check__exec_get_datum_type_t);
 	plpgsql_check__exec_get_datum_type_p = (plpgsql_check__exec_get_datum_type_t)
-		load_external_function("$libdir/plpgsql", "exec_get_datum_type", true, NULL);
+		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "exec_get_datum_type");
 
 #endif
 
 	AssertVariableIsOfType(&plpgsql_recognize_err_condition, plpgsql_check__recognize_err_condition_t);
 	plpgsql_check__recognize_err_condition_p = (plpgsql_check__recognize_err_condition_t)
-		load_external_function("$libdir/plpgsql", "plpgsql_recognize_err_condition", true, NULL);
+		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_recognize_err_condition");
 
-	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable( "PLpgSQL_plugin" );
+	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable( "PLpgSQL_plugin");
 	*var_ptr = &plugin_funcs;
 
 	DefineCustomEnumVariable("plpgsql_check.mode",

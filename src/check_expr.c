@@ -801,7 +801,7 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 	MemoryContext oldCxt = CurrentMemoryContext;
 	TupleDesc	tupdesc;
 	bool is_immutable_null;
-	bool			expand = true;
+	volatile bool expand = true;
 	Oid			first_level_typoid;
 	Oid expected_typoid = InvalidOid;
 	int expected_typmod = InvalidOid;
