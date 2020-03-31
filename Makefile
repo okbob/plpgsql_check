@@ -12,7 +12,7 @@ endif
 REGRESS_OPTS = --dbname=$(PL_TESTDB)
 REGRESS = plpgsql_check_passive plpgsql_check_active plpgsql_check_active-$(MAJORVERSION) plpgsql_check_passive-$(MAJORVERSION)
 
-override CFLAGS += -O2 -Wextra
+override CFLAGS += -Wextra -g
 
 ifdef NO_PGXS
 subdir = contrib/plpgsql_check

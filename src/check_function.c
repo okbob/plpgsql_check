@@ -139,9 +139,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 								cinfo->rettype,
 								cinfo->trigtype,
 								&tg_trigger,
-								&fake_rtd,
-								cinfo->oldtable,
-								cinfo->newtable);
+								&fake_rtd);
 
 	plpgsql_check_setup_cstate(&cstate, ri, cinfo, true, fake_rtd);
 
@@ -376,13 +374,13 @@ plpgsql_check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 
 #if PG_VERSION_NUM >= 110000
 
+				memcpy(&saved_records[i], rec, sizeof(PLpgSQL_rec));
+
 				if (rec->erh)
-					expanded_record_set_tuple(saved_records[i].erh,
-											  expanded_record_get_tuple(rec->erh),
-											  true,
-											  true);
-				else
-					saved_records[i].erh = NULL;
+				{
+					/* work with dummy copy */
+					rec->erh = make_expanded_record_from_exprecord(rec->erh, cstate.check_cxt);
+				}
 
 #else
 
@@ -474,10 +472,7 @@ plpgsql_check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
 
 #if PG_VERSION_NUM >= 110000
 
-				expanded_record_set_tuple(rec->erh,
-										  expanded_record_get_tuple(saved_records[i].erh),
-										  false,
-										  false);
+				memcpy(rec, &saved_records[i], sizeof(PLpgSQL_rec));
 
 #else
 
@@ -740,17 +735,11 @@ plpgsql_check_setup_fcinfo(HeapTuple procTuple,
 						  Oid rettype,
 						  PLpgSQL_trigtype trigtype,
 						  Trigger *tg_trigger,
-						  bool *fake_rtd,
-						  char *oldtable,
-						  char *newtable)
+						  bool *fake_rtd)
 {
 	TupleDesc resultTupleDesc;
 
 	*fake_rtd = false;
-
-	/* ToDo */
-	(void) oldtable;
-	(void) newtable;
 
 	/* clean structures */
 #if PG_VERSION_NUM >= 120000

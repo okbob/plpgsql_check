@@ -175,9 +175,7 @@ extern bool plpgsql_check_is_checked(PLpgSQL_function *func);
 extern void plpgsql_check_mark_as_checked(PLpgSQL_function *func);
 extern void plpgsql_check_setup_fcinfo(HeapTuple procTuple, FmgrInfo *flinfo, FunctionCallInfo fcinfo,
 	ReturnSetInfo *rsinfo, TriggerData *trigdata, Oid relid, EventTriggerData *etrigdata, Oid funcoid,
-	Oid rettype, PLpgSQL_trigtype trigtype, Trigger *tg_trigger, bool *fake_rtd,
-	char *oldtable, char *newtable);
-
+	Oid rettype, PLpgSQL_trigtype trigtype, Trigger *tg_trigger, bool *fake_rtd);
 
 extern bool plpgsql_check_other_warnings;
 extern bool plpgsql_check_extra_warnings;

@@ -56,13 +56,28 @@ begin
 end;
 $$ language plpgsql;
 
-/*
 create trigger footab_trigger
   after insert on footab
   referencing new table as newtab
   for each statement execute procedure footab_trig_func();
 
+-- should to fail
 insert into footab values(1,2,3);
-*/
+
+create or replace function footab_trig_func()
+returns trigger as $$
+declare x int;
+begin
+  if false then
+    -- should be ok;
+    select count(*) from newtab into x;
+  end if;
+  return null;
+end;
+$$ language plpgsql;
+
+-- should be ok
+insert into footab values(1,2,3);
+
 drop table footab;
 drop function footab_trig_func();
