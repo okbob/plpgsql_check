@@ -696,6 +696,9 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 	bool	   *nulls;
 	HeapTuple	tup;
 
+	(void) cstate;
+	(void) is_null;
+
 	plpgsql_check_recval_release(rec);
 
 	if (!tupdesc)

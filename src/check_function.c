@@ -971,6 +971,10 @@ plpgsql_check_setup_estate(PLpgSQL_execstate *estate,
 		Assert(rc >= 0);
 	}
 
+#else
+
+		(void) cinfo;
+
 #endif
 
 	estate->err_stmt = NULL;
