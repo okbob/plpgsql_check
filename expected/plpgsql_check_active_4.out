@@ -7197,3 +7197,77 @@ select * from plpgsql_check_function_tb('fx_testr');
 
 drop function fx_testr();
 drop table testr;
+-- coverage tests
+set plpgsql_check.profiler to on;
+create or replace function covtest(int)
+returns int as $$
+declare a int = $1;
+begin
+  a := a + 1;
+  if a < 10 then
+    a := a + 1;
+  end if;
+  a := a + 1;
+  return a;
+end;
+$$ language plpgsql;
+set plpgsql_check.profiler to on;
+select covtest(10);
+ covtest 
+---------
+      12
+(1 row)
+
+select stmtid, exec_stmts, stmtname from plpgsql_profiler_function_statements_tb('covtest');
+ stmtid | exec_stmts |    stmtname     
+--------+------------+-----------------
+      0 |          1 | statement block
+      1 |          1 | assignment
+      2 |          1 | IF
+      3 |          0 | assignment
+      4 |          1 | assignment
+      5 |          1 | RETURN
+(6 rows)
+
+select plpgsql_coverage_statements('covtest');
+ plpgsql_coverage_statements 
+-----------------------------
+           0.833333333333333
+(1 row)
+
+select plpgsql_coverage_branches('covtest');
+ plpgsql_coverage_branches 
+---------------------------
+                       0.5
+(1 row)
+
+select covtest(1);
+ covtest 
+---------
+       4
+(1 row)
+
+select stmtid, exec_stmts, stmtname from plpgsql_profiler_function_statements_tb('covtest');
+ stmtid | exec_stmts |    stmtname     
+--------+------------+-----------------
+      0 |          2 | statement block
+      1 |          2 | assignment
+      2 |          2 | IF
+      3 |          1 | assignment
+      4 |          2 | assignment
+      5 |          2 | RETURN
+(6 rows)
+
+select plpgsql_coverage_statements('covtest');
+ plpgsql_coverage_statements 
+-----------------------------
+                           1
+(1 row)
+
+select plpgsql_coverage_branches('covtest');
+ plpgsql_coverage_branches 
+---------------------------
+                         1
+(1 row)
+
+set plpgsql_check.profiler to on;
