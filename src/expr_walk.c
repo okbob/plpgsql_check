@@ -576,7 +576,7 @@ check_fmt_string(const char *fmt,
 		{
 			if (*cp == 's')
 			{
-				int		argn = argpos > 1 ? argpos : arg + 1;
+				int		argn = argpos >= 1 ? argpos : arg + 1;
 
 				/* this is usually called after format check, but better be safe*/
 				if (argn <= nargs)
