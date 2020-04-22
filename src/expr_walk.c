@@ -593,7 +593,7 @@ check_fmt_string(const char *fmt,
 			}
 		}
 
-		if (argpos > 1)
+		if (argpos >= 1)
 		{
 			TOO_FEW_ARGUMENTS_CHECK(argpos, nargs);
 			required_nargs = -1;
