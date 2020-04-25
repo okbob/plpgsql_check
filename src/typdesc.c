@@ -84,6 +84,8 @@ plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *Cal
 
 		row = palloc0(sizeof(PLpgSQL_row));
 		row->dtype = PLPGSQL_DTYPE_ROW;
+		row->dno = -1;
+		row->refname = NULL;
 		row->lineno = 0;
 		row->varnos = palloc(sizeof(int) * list_length(funcargs));
 

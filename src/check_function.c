@@ -53,7 +53,7 @@ static void function_check(PLpgSQL_function *func, PLpgSQL_checkstate *cstate);
 static void trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate);
 static void release_exprs(List *exprs);
 static int load_configuration(HeapTuple procTuple, bool *reload_config);
-static void init_datum_dno(PLpgSQL_checkstate *cstate, int dno);
+static void init_datum_dno(PLpgSQL_checkstate *cstate, int dno, bool is_auto, bool is_protected);
 static PLpgSQL_datum * copy_plpgsql_datum(PLpgSQL_checkstate *cstate, PLpgSQL_datum *datum);
 static void plpgsql_check_setup_estate(PLpgSQL_execstate *estate, PLpgSQL_function *func, ReturnSetInfo *rsi, plpgsql_check_info *cinfo);
 static void plpgsql_check_setup_cstate(PLpgSQL_checkstate *cstate, plpgsql_check_result_info *result_info,
@@ -72,7 +72,7 @@ collect_out_variables(PLpgSQL_function *func, PLpgSQL_checkstate *cstate)
 		int		varno = func->out_param_varno;
 		PLpgSQL_variable *var = (PLpgSQL_variable *) func->datums[varno];
 
-		if (var->dtype == PLPGSQL_DTYPE_ROW && is_internal_variable(var))
+		if (var->dtype == PLPGSQL_DTYPE_ROW && is_internal_variable(cstate, var))
 		{
 			/* this function has more OUT parameters */
 			PLpgSQL_row *row = (PLpgSQL_row*) var;
@@ -521,6 +521,8 @@ function_check(PLpgSQL_function *func, PLpgSQL_checkstate *cstate)
 	for (i = 0; i < cstate->estate->ndatums; i++)
 		cstate->estate->datums[i] = copy_plpgsql_datum(cstate, func->datums[i]);
 
+	init_datum_dno(cstate, cstate->estate->found_varno, true, true);
+
 	/*
 	 * check function's parameters to not be reserved keywords
 	 */
@@ -553,7 +555,7 @@ function_check(PLpgSQL_function *func, PLpgSQL_checkstate *cstate)
 	 */
 	for (i = 0; i < func->fn_nargs; i++)
 	{
-		init_datum_dno(cstate, func->fn_argvarnos[i]);
+		init_datum_dno(cstate, func->fn_argvarnos[i], false, false);
 	}
 
 	/*
@@ -600,6 +602,8 @@ trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate)
 	for (i = 0; i < cstate->estate->ndatums; i++)
 		cstate->estate->datums[i] = copy_plpgsql_datum(cstate, func->datums[i]);
 
+	init_datum_dno(cstate, cstate->estate->found_varno, true, true);
+
 	if (IsA(tdata, TriggerData))
 	{
 		TriggerData *trigdata = (TriggerData *) tdata;
@@ -624,7 +628,7 @@ trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate)
 			PLpgSQL_datum *datum = func->datums[i];
 
 			if (datum->dtype == PLPGSQL_DTYPE_PROMISE)
-				init_datum_dno(cstate, datum->dno);
+				init_datum_dno(cstate, datum->dno, true, datum->dno != func->new_varno && datum->dno != func->old_varno);
 		}
 
 		rec_new = (PLpgSQL_rec *) (cstate->estate->datums[func->new_varno]);
@@ -647,16 +651,16 @@ trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate)
 		/*
 		 * Assign the special tg_ variables
 		 */
-		init_datum_dno(cstate, func->tg_op_varno);
-		init_datum_dno(cstate, func->tg_name_varno);
-		init_datum_dno(cstate, func->tg_when_varno);
-		init_datum_dno(cstate, func->tg_level_varno);
-		init_datum_dno(cstate, func->tg_relid_varno);
-		init_datum_dno(cstate, func->tg_relname_varno);
-		init_datum_dno(cstate, func->tg_table_name_varno);
-		init_datum_dno(cstate, func->tg_table_schema_varno);
-		init_datum_dno(cstate, func->tg_nargs_varno);
-		init_datum_dno(cstate, func->tg_argv_varno);
+		init_datum_dno(cstate, func->tg_op_varno, true, true);
+		init_datum_dno(cstate, func->tg_name_varno, true, true);
+		init_datum_dno(cstate, func->tg_when_varno, true, true);
+		init_datum_dno(cstate, func->tg_level_varno, true, true);
+		init_datum_dno(cstate, func->tg_relid_varno, true, true);
+		init_datum_dno(cstate, func->tg_relname_varno, true, true);
+		init_datum_dno(cstate, func->tg_table_name_varno, true, true);
+		init_datum_dno(cstate, func->tg_table_schema_varno, true, true);
+		init_datum_dno(cstate, func->tg_nargs_varno, true, true);
+		init_datum_dno(cstate, func->tg_argv_varno, true, true);
 
 #endif
 
@@ -666,8 +670,8 @@ trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate)
 
 #if PG_VERSION_NUM < 110000
 
-		init_datum_dno(cstate, func->tg_event_varno);
-		init_datum_dno(cstate, func->tg_tag_varno);
+		init_datum_dno(cstate, func->tg_event_varno, true, true);
+		init_datum_dno(cstate, func->tg_tag_varno, true, true);
 
 #endif
 
@@ -1042,6 +1046,8 @@ plpgsql_check_setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->fake_rtd = fake_rtd;
 
 	cstate->safe_variables = NULL;
+	cstate->protected_variables = NULL;
+	cstate->auto_variables = NULL;
 
 	cstate->stop_check = false;
 	cstate->allow_mp = false;
@@ -1109,7 +1115,7 @@ release_exprs(List *exprs)
  *
  */
 static void
-init_datum_dno(PLpgSQL_checkstate *cstate, int dno)
+init_datum_dno(PLpgSQL_checkstate *cstate, int dno, bool is_auto, bool is_protected)
 {
 	switch (cstate->estate->datums[dno]->dtype)
 	{
@@ -1153,7 +1159,7 @@ init_datum_dno(PLpgSQL_checkstate *cstate, int dno)
 					if (row->varnos[fnum] < 0)
 						continue;		/* skip dropped column in row struct */
 
-					init_datum_dno(cstate, row->varnos[fnum]);
+					init_datum_dno(cstate, row->varnos[fnum], is_auto, is_protected);
 				}
 			}
 			break;
@@ -1161,6 +1167,11 @@ init_datum_dno(PLpgSQL_checkstate *cstate, int dno)
 		default:
 			elog(ERROR, "unexpected dtype: %d", cstate->estate->datums[dno]->dtype);
 	}
+
+	if (is_protected)
+		cstate->protected_variables = bms_add_member(cstate->protected_variables, dno);
+	if (is_auto)
+		cstate->auto_variables = bms_add_member(cstate->auto_variables, dno);
 }
 
 /*

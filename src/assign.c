@@ -42,7 +42,28 @@ plpgsql_check_record_variable_usage(PLpgSQL_checkstate *cstate, int dno, bool wr
 		if (!write)
 			cstate->used_variables = bms_add_member(cstate->used_variables, dno);
 		else
+		{
 			cstate->modif_variables = bms_add_member(cstate->modif_variables, dno);
+
+			/* raise extra warning when protected variable is modified */
+			if (bms_is_member(dno, cstate->protected_variables))
+			{
+				PLpgSQL_variable *var = (PLpgSQL_variable *) cstate->estate->datums[dno];
+				StringInfoData message;
+
+				initStringInfo(&message);
+
+				appendStringInfo(&message, "auto varible \"%s\" should not be modified by user", var->refname);
+				plpgsql_check_put_error(cstate,
+						  0, var->lineno,
+						  message.data,
+						  NULL,
+						  NULL,
+						  PLPGSQL_CHECK_WARNING_EXTRA,
+						  0, NULL, NULL);
+				pfree(message.data);
+			}
+		}
 	}
 }
 

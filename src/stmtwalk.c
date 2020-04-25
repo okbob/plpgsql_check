@@ -623,6 +623,10 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					if (stmt_fori->step)
 						plpgsql_check_assignment(cstate, stmt_fori->step, NULL, NULL, dno);
 
+					/* this variable should not be updated */
+					cstate->protected_variables = bms_add_member(cstate->protected_variables, dno);
+					cstate->auto_variables = bms_add_member(cstate->auto_variables, dno);
+
 					check_stmts(cstate, stmt_fori->body, &closing_local, &exceptions_local);
 					*closing = possibly_closed(closing_local);
 				}

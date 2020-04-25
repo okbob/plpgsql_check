@@ -144,7 +144,7 @@ You can set level of warnings via function's parameters:
 
 * `extra_warnings boolean DEFAULT true` - show warnings like missing `RETURN`,
   shadowed variables, dead code, never read (unused) function's parameter,
-  unmodified variables, ..
+  unmodified variables, modified auto variables, ..
 
 * `performance_warnings boolean DEFAULT false` - performance related warnings like
   declared type with type modificator, casting, implicit casts in where clause (can be

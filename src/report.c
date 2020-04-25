@@ -35,8 +35,11 @@ is_internal(char *refname, int lineno)
 }
 
 bool
-is_internal_variable(PLpgSQL_variable *var)
+is_internal_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var)
 {
+	if (bms_is_member(var->dno, cstate->auto_variables))
+		return true;
+
 	return is_internal(var->refname, var->lineno);
 }
 
@@ -90,6 +93,9 @@ static bool
 datum_is_explicit(PLpgSQL_checkstate *cstate, int dno)
 {
 	PLpgSQL_execstate *estate = cstate->estate;
+
+	if (bms_is_member(dno, cstate->auto_variables))
+		return false;
 
 	switch (estate->datums[dno]->dtype)
 	{
@@ -229,7 +235,6 @@ plpgsql_check_report_unused_variables(PLpgSQL_checkstate *cstate)
 		PLpgSQL_function *func = estate->func;
 
 		/* check never read variables */
-
 		for (i = 0; i < estate->ndatums; i++)
 		{
 			if (datum_is_explicit(cstate, i)
@@ -320,7 +325,7 @@ plpgsql_check_report_unused_variables(PLpgSQL_checkstate *cstate)
 			int		varno = func->out_param_varno;
 			PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[varno];
 
-			if (var->dtype == PLPGSQL_DTYPE_ROW && is_internal_variable(var))
+			if (var->dtype == PLPGSQL_DTYPE_ROW && is_internal_variable(cstate, var))
 			{
 				/* this function has more OUT parameters */
 				PLpgSQL_row *row = (PLpgSQL_row*) var;
