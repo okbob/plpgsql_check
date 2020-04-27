@@ -1032,6 +1032,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 #endif
 
 										  stmt_rq->params);
+						cstate->found_return_query = true;
 					}
 				}
 				break;
