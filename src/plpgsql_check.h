@@ -96,6 +96,7 @@ typedef struct PLpgSQL_checkstate
 	Bitmapset  *modif_variables;			/* track which variables had been changed; bit per varno */
 	PLpgSQL_stmt_stack_item *top_stmt_stack;	/* list of known labels + related command */
 	bool		found_return_query;			/* true, when code contains RETURN query */
+	bool		found_return_dyn_query;		/* true, when code contains RETURN QUERY EXECUTE */
 	Bitmapset	   *func_oids;				/* list of used (and displayed) functions */
 	Bitmapset	   *rel_oids;				/* list of used (and displayed) relations */
 	bool		fake_rtd;					/* true when functions returns record */
@@ -324,6 +325,7 @@ extern plpgsql_check__recognize_err_condition_t plpgsql_check__recognize_err_con
 #define UNUSED_PARAMETER_TEXT			"unused parameter \"%s\""
 #define NEVER_READ_PARAMETER_TEXT		"parameter \"%s\" is never read"
 #define UNMODIFIED_VARIABLE_TEXT		"unmodified OUT variable \"%s\""
+#define MAYBE_UNMODIFIED_VARIABLE_TEXT	"OUT variable \"%s\" is maybe unmodified"
 #define OUT_COMPOSITE_IS_NOT_SINGLE_TEXT	"composite OUT variable \"%s\" is not single argument"
 #define UNSAFE_EXECUTE					"the expression used by EXECUTE command is possibly sql injection vulnerable"
 

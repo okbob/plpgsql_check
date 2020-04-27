@@ -357,12 +357,18 @@ plpgsql_check_report_unused_variables(PLpgSQL_checkstate *cstate)
 
 					if (!datum_is_used(cstate, varno2, true))
 					{
+						const char *fmt = cstate->found_return_dyn_query ?
+								  MAYBE_UNMODIFIED_VARIABLE_TEXT : UNMODIFIED_VARIABLE_TEXT;
+
+						const char *detail = cstate->found_return_dyn_query ?
+								  "cannot to determine result of dynamic SQL" : NULL;
+
 						initStringInfo(&message);
-						appendStringInfo(&message, UNMODIFIED_VARIABLE_TEXT, var->refname);
+						appendStringInfo(&message, fmt, var->refname);
 						plpgsql_check_put_error(cstate,
 								  0, 0,
 								  message.data,
-								  NULL,
+								  detail,
 								  NULL,
 								  PLPGSQL_CHECK_WARNING_EXTRA,
 								  0, NULL, NULL);
@@ -379,13 +385,19 @@ plpgsql_check_report_unused_variables(PLpgSQL_checkstate *cstate)
 					PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[varno];
 					StringInfoData message;
 
+					const char *fmt = cstate->found_return_dyn_query ?
+							  MAYBE_UNMODIFIED_VARIABLE_TEXT : UNMODIFIED_VARIABLE_TEXT;
+
+					const char *detail = cstate->found_return_dyn_query ?
+							  "cannot to determine result of dynamic SQL" : NULL;
+
 					initStringInfo(&message);
 
-					appendStringInfo(&message, UNMODIFIED_VARIABLE_TEXT, var->refname);
+					appendStringInfo(&message, fmt, var->refname);
 					plpgsql_check_put_error(cstate,
 							  0, 0,
 							  message.data,
-							  NULL,
+							  detail,
 							  NULL,
 							  PLPGSQL_CHECK_WARNING_EXTRA,
 							  0, NULL, NULL);

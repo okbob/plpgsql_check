@@ -1042,6 +1042,7 @@ plpgsql_check_setup_cstate(PLpgSQL_checkstate *cstate,
 #endif
 
 	cstate->found_return_query = false;
+	cstate->found_return_dyn_query = false;
 
 	cstate->fake_rtd = fake_rtd;
 

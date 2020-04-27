@@ -1956,6 +1956,12 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 										NULL);
 		}
 
+		/* in this case we don't know number of output columns */
+		if (stmt->cmd_type == PLPGSQL_STMT_RETURN_QUERY)
+		{
+			cstate->found_return_dyn_query = true;
+		}
+
 		/*
 		 * In this case, we don't know a result type, and we should
 		 * to raise warning about this situation.
