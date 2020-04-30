@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.com/okbob/plpgsql_check.svg?branch=master)](https://travis-ci.com/okbob/plpgsql_check)
+
 plpgsql_check
 =============
 
