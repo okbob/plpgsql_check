@@ -140,7 +140,7 @@ You can set level of warnings via function's parameters:
 
 * `fatal_errors boolean DEFAULT true` - stop on first error
 
-* `others_warnings boolean DEFAULT true` - show warnings like different attributes number
+* `other_warnings boolean DEFAULT true` - show warnings like different attributes number
   in assignmenet on left and right side, variable overlaps function's parameter, unused
   variables, unwanted casting, ..
 
