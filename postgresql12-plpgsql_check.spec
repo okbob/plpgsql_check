@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	1.9.2
+Version:	1.10.0
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -47,6 +47,9 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/plpgsql_check.control
 
 %changelog
+* Fri Jun 05 2020 - Pavel STEHULE <pavel.stehule@gmail.com> 1.10.0
+- deduction record type struction from result of polymorphic function
+
 * Mon Apr 27 2020 - Pavel STEHULE <pavel.stehule@gmail.com> 1.9.1
 - minor bugfixes
 
