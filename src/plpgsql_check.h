@@ -246,6 +246,8 @@ extern void plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, i
 extern TupleDesc plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query,
 	bool use_element_type, bool expand_record, bool is_expression, Oid *first_level_typoid);
 
+extern void plpgsql_check_recvar_info(PLpgSQL_rec *rec, Oid *typoid, int32 *typmod);
+
 #if PG_VERSION_NUM >= 110000
 
 extern PLpgSQL_row * plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr);

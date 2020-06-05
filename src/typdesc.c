@@ -149,6 +149,209 @@ plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *Cal
 #endif
 
 /*
+ * Returns typoid, typmod associated with record variable
+ */
+void
+plpgsql_check_recvar_info(PLpgSQL_rec *rec, Oid *typoid, int32 *typmod)
+{
+	if (rec->dtype != PLPGSQL_DTYPE_REC)
+		elog(ERROR, "variable is not record type");
+
+#if PG_VERSION_NUM >= 110000
+
+	if (rec->rectypeid != RECORDOID)
+	{
+		if (typoid != NULL)
+			*typoid = rec->rectypeid;
+		if (typmod != NULL)
+			*typmod = -1;
+	}
+	else
+
+#endif
+
+	if (recvar_tupdesc(rec) != NULL)
+	{
+		TupleDesc tdesc = recvar_tupdesc(rec);
+
+		BlessTupleDesc(tdesc);
+
+		if (typoid != NULL)
+			*typoid = tdesc->tdtypeid;
+		if (typmod != NULL)
+			*typmod = tdesc->tdtypmod;
+	}
+	else
+	{
+		if (typoid != NULL)
+			*typoid = RECORDOID;
+		if (typmod != NULL)
+			*typmod = -1;
+	}
+}
+
+static TupleDesc
+param_get_desc(PLpgSQL_checkstate *cstate, Param *p)
+{
+	TupleDesc rettupdesc = NULL;
+
+	if (!type_is_rowtype(p->paramtype))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+		 errmsg("function does not return composite type, is not possible to identify composite type")));
+
+	if (p->paramkind == PARAM_EXTERN && p->paramid > 0 && p->location != -1)
+	{
+		int		dno;
+		PLpgSQL_var *var;
+
+		/*
+		 * When paramid looks well and related datum is variable with same
+		 * type, then we can check, if this variable has sanitized content
+		 * already.
+		 */
+		dno = p->paramid - 1;
+		var = (PLpgSQL_var *) cstate->estate->datums[dno];
+
+		if (!var->datatype ||
+			!OidIsValid(var->datatype->typoid) ||
+			var->datatype->typoid == p->paramtype)
+		{
+			TupleDesc	rectupdesc;
+
+			if (var->dtype == PLPGSQL_DTYPE_REC)
+			{
+				PLpgSQL_rec *rec = (PLpgSQL_rec *) var;
+				Oid		typoid;
+				int32	typmod;
+
+				plpgsql_check_recvar_info(rec, &typoid, &typmod);
+
+				rectupdesc = lookup_rowtype_tupdesc_noerror(typoid, typmod, true);
+				if (rectupdesc)
+				{
+					rettupdesc = CreateTupleDescCopy(rectupdesc);
+					ReleaseTupleDesc(rectupdesc);
+				}
+			}
+			else
+			{
+				rectupdesc = lookup_rowtype_tupdesc_noerror(p->paramtype, p->paramtypmod, true);
+
+				if (rectupdesc != NULL)
+				{
+					rettupdesc = CreateTupleDescCopy(rectupdesc);
+					ReleaseTupleDesc(rectupdesc);
+				}
+			}
+		}
+	}
+
+	return rettupdesc;
+}
+
+
+/*
+ * Try to deduce result tuple descriptor from polymorphic function
+ * like fce(.., anyelement, ..) returns anyelement
+ */
+static TupleDesc
+pofce_get_desc(PLpgSQL_checkstate *cstate,
+			   PLpgSQL_expr *expr,
+			   FuncExpr *fn)
+{
+	HeapTuple	func_tuple;
+	Form_pg_proc procStruct;
+	Oid			fnoid = fn->funcid;
+	TupleDesc	result = NULL;
+
+	func_tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(fnoid));
+	if (!HeapTupleIsValid(func_tuple))
+		elog(ERROR, "cache lookup failed for function %u", fnoid);
+
+	procStruct = (Form_pg_proc) GETSTRUCT(func_tuple);
+
+	if (procStruct->prorettype == ANYELEMENTOID)
+	{
+		Oid		   *argtypes;
+		char	   *argmodes;
+		char	  **argnames;
+		int			pronallargs;
+		int			i;
+
+		pronallargs = get_func_arg_info(func_tuple, &argtypes, &argnames, &argmodes);
+
+		for (i = 0; i < pronallargs; i++)
+		{
+			if (argmodes &&
+				(argmodes[i] != PROARGMODE_IN &&
+				 argmodes[i] != PROARGMODE_INOUT))
+				continue;
+
+			if (argtypes[i] == ANYELEMENTOID)
+			{
+				if (IsA(list_nth(fn->args, i), Param))
+				{
+					Param *p = (Param *) list_nth(fn->args, i);
+
+					if (p->paramkind == PARAM_EXTERN && p->paramid > 0 && p->location != -1)
+					{
+						int		dno = p->paramid - 1;
+
+						/*
+						 * When paramid looks well and related datum is variable with same
+						 * type, then we can check, if this variable has sanitized content
+						 * already.
+						 */
+						if (expr && bms_is_member(dno, expr->paramnos))
+						{
+							PLpgSQL_var *var = (PLpgSQL_var *) cstate->estate->datums[dno];
+
+							/*
+							 * Postgres 9.5 and older has not valid typoid for record
+							 * variables.
+							 */
+							if (var->dtype == PLPGSQL_DTYPE_REC &&
+								(!var->datatype ||
+								 !OidIsValid(var->datatype->typoid) ||
+								 var->datatype->typoid == p->paramtype))
+							{
+								PLpgSQL_rec *rec = (PLpgSQL_rec *) var;
+								Oid		typoid;
+								int32	typmod;
+								TupleDesc	rectupdesc;
+
+								plpgsql_check_recvar_info(rec, &typoid, &typmod);
+
+								rectupdesc = lookup_rowtype_tupdesc_noerror(typoid, typmod, true);
+								if (rectupdesc)
+								{
+									result = CreateTupleDescCopy(rectupdesc);
+									ReleaseTupleDesc(rectupdesc);
+
+									break;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if (argtypes)
+			pfree(argtypes);
+		if (argnames)
+			pfree(argnames);
+		if (argmodes)
+			pfree(argmodes);
+	}
+
+	ReleaseSysCache(func_tuple);
+
+	return result;
+}
+
+/*
  * Returns a tuple descriptor based on existing plan, When error is detected
  * returns null. Does hardwork when result is based on record type.
  *
@@ -345,21 +548,35 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 
 							TupleDesc	rd;
 							Oid			rt;
+							TypeFuncClass	tfc;
 
 							fmgr_info(fn->funcid, &flinfo);
 							flinfo.fn_expr = (Node *) fn;
 							fcinfo->flinfo = &flinfo;
 
-							get_call_result_type(fcinfo, &rt, &rd);
-							if (rd == NULL)
+							fcinfo->resultinfo = NULL;
+
+							tfc = get_call_result_type(fcinfo, &rt, &rd);
+							if (tfc == TYPEFUNC_SCALAR || tfc == TYPEFUNC_OTHER)
 								ereport(ERROR,
 										(errcode(ERRCODE_DATATYPE_MISMATCH),
 								 errmsg("function does not return composite type, is not possible to identify composite type")));
 
 							FreeTupleDesc(tupdesc);
-							BlessTupleDesc(rd);
 
-							tupdesc = rd;
+							if (rd)
+							{
+								BlessTupleDesc(rd);
+								tupdesc = rd;
+							}
+							else
+							{
+								/*
+								 * for polymorphic function we can determine record typmod (and tupdesc)
+								 * from arguments.
+								 */
+								tupdesc = pofce_get_desc(cstate, query, fn);
+							}
 						}
 						break;
 
@@ -404,7 +621,9 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 					case T_Const:
 						{
 							Const *c = (Const *) tle->expr;
-						
+
+							FreeTupleDesc(tupdesc);
+
 							if (c->consttype == RECORDOID && c->consttypmod == -1)
 							{
 								Oid		tupType;
@@ -420,8 +639,23 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 						}
 						break;
 
+					case T_Param:
+						{
+							Param *p = (Param *) tle->expr;
+
+							if (!type_is_rowtype(p->paramtype))
+								ereport(ERROR,
+										(errcode(ERRCODE_DATATYPE_MISMATCH),
+								 errmsg("function does not return composite type, is not possible to identify composite type")));
+
+							FreeTupleDesc(tupdesc);
+							tupdesc = param_get_desc(cstate, p);
+						}
+						break;
+
 					default:
 							/* cannot to take tupdesc */
+							FreeTupleDesc(tupdesc);
 							tupdesc = NULL;
 				}
 			}

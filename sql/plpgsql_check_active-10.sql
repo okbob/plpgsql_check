@@ -266,3 +266,112 @@ select * from plpgsql_check_function('footab_trig_func','footab', newtable := 'n
 
 drop table footab;
 drop function footab_trig_func();
+
+/*
+ * These function's cannot be executed in Postgres 9.5, because
+ * Postgres there doesn't support plpgsql functions with record
+ * type arguments.
+ */
+create or replace function df1(anyelement)
+returns anyelement as $$
+begin
+  return $1;
+end;
+$$ language plpgsql;
+
+create or replace function df2(anyelement, jsonb)
+returns anyelement as $$
+begin
+  return $1;
+end;
+$$ language plpgsql;
+
+create or replace function t1()
+returns void as $$
+declare
+  r record;
+begin
+  r := df1(r);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('t1()');
+
+create or replace function t1()
+returns void as $$
+declare
+  r record;
+begin
+  r := df2(r, '{}');
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('t1()');
+
+create or replace function t1()
+returns void as $$
+declare
+  r1 record;
+  r2 record;
+begin
+  select 10 as a, 20 as b into r1;
+  r2 := df1(r1);
+  raise notice '%', r2.a;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('t1()');
+
+create or replace function t1()
+returns void as $$
+declare
+  r1 record;
+  r2 record;
+begin
+  select 10 as a, 20 as b into r1;
+  r2 := df2(r1, '{}');
+  raise notice '%', r2.a;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('t1()');
+
+
+create or replace function df1(anyelement)
+returns anyelement as $$ select $1 $$ language sql;
+
+create or replace function df22(jsonb, anyelement)
+returns anyelement as $$ select $2; $$ language sql;
+
+create or replace function t1()
+returns void as $$
+declare
+  r1 record;
+  r2 record;
+begin
+  select 10 as a, 20 as b into r1;
+  r2 := df1(r1);
+  raise notice '%', r2.a;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('t1()');
+
+create or replace function t1()
+returns void as $$
+declare
+  r1 record;
+  r2 record;
+begin
+  select 10 as a, 20 as b into r1;
+  r2 := df22('{}', r1);
+  raise notice '%', r2.a;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('t1()');
+
+drop function df1(anyelement);
+drop function df2(anyelement, jsonb);
+drop function df22(jsonb, anyelement);
+drop function t1();

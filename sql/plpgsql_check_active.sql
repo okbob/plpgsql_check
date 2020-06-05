@@ -4019,4 +4019,17 @@ select stmtid, exec_stmts, stmtname from plpgsql_profiler_function_statements_tb
 select plpgsql_coverage_statements('covtest');
 select plpgsql_coverage_branches('covtest');
 
-set plpgsql_check.profiler to on;
+set plpgsql_check.profiler to off;
+
+create or replace function f() returns void as $$
+declare
+  r1 record;
+  r2 record;
+begin
+  select 10 as a, 20 as b into r1;
+  r2 := json_populate_record(r1, '{}');
+  raise notice '%', r2.a;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('f');

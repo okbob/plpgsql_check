@@ -124,33 +124,7 @@ plpgsql_check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid
 			{
 				PLpgSQL_rec *rec = (PLpgSQL_rec *) target;
 
-#if PG_VERSION_NUM >= 110000
-
-				if (rec->rectypeid != RECORDOID)
-				{
-					if (expected_typoid != NULL)
-						*expected_typoid = rec->rectypeid;
-					if (expected_typmod != NULL)
-						*expected_typmod = -1;
-				}
-				else
-
-#endif
-
-				if (recvar_tupdesc(rec) != NULL)
-				{
-					if (expected_typoid != NULL)
-						*expected_typoid = recvar_tupdesc(rec)->tdtypeid;
-					if (expected_typmod != NULL)
-						*expected_typmod = recvar_tupdesc(rec)->tdtypmod;
-				}
-				else
-				{
-					if (expected_typoid != NULL)
-						*expected_typoid = RECORDOID;
-					if (expected_typmod != NULL)
-						*expected_typmod = -1;
-				}
+				plpgsql_check_recvar_info(rec, expected_typoid, expected_typmod);
 			}
 			break;
 
