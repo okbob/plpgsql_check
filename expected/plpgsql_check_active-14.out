@@ -1,0 +1,601 @@
+LOAD 'plpgsql';
+CREATE EXTENSION  IF NOT EXISTS plpgsql_check;
+NOTICE:  extension "plpgsql_check" already exists, skipping
+-- check event trigger function 
+create or replace function f1() returns event_trigger as $$
+BEGIN
+    RAISE NOTICE 'test_event_trigger: % %', tg_event, tg_tag;
+END
+$$ language plpgsql;
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
+(0 rows)
+
+-- should fail
+create or replace function f1() returns event_trigger as $$
+BEGIN
+    RAISE NOTICE 'test_event_trigger: % %', tg_event, tg_tagX;
+END
+$$ language plpgsql;
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement | sqlstate |             message             | detail | hint | level | position |     query      | context 
+------------+--------+-----------+----------+---------------------------------+--------+------+-------+----------+----------------+---------
+ f1         |      3 | RAISE     | 42703    | column "tg_tagx" does not exist |        |      | error |        8 | SELECT tg_tagX | 
+(1 row)
+
+drop function f1();
+-- check event trigger function 
+create or replace function f1() returns event_trigger as $$
+BEGIN
+    RAISE NOTICE 'test_event_trigger: % %', tg_event, tg_tag;
+END
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+-- should fail
+create or replace function f1() returns event_trigger as $$
+BEGIN
+    RAISE NOTICE 'test_event_trigger: % %', tg_event, tg_tagX;
+END
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()');
+               plpgsql_check_function                
+-----------------------------------------------------
+ error:42703:3:RAISE:column "tg_tagx" does not exist
+ Query: SELECT tg_tagX
+ --            ^
+(3 rows)
+
+drop function f1();
+create table t1tab(a int, b int);
+create or replace function f1()
+returns setof t1tab as $$
+begin
+  return next (10,20);
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings => true);
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
+
+create or replace function f1()
+returns setof t1tab as $$
+begin
+  return next (10::numeric,20);
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings => true);
+                               plpgsql_check_function                               
+------------------------------------------------------------------------------------
+ error:42804:3:RETURN NEXT:returned record type does not match expected record type
+ Detail: Returned type numeric does not match expected type integer in column 1.
+(2 rows)
+
+create or replace function f1()
+returns setof t1tab as $$
+declare a int; b int;
+begin
+  return next (a,b);
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings => true);
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
+
+create or replace function f1()
+returns setof t1tab as $$
+declare a numeric; b int;
+begin
+  return next (a,b::numeric);
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('f1()', performance_warnings => true);
+                               plpgsql_check_function                               
+------------------------------------------------------------------------------------
+ error:42804:4:RETURN NEXT:returned record type does not match expected record type
+ Detail: Returned type numeric does not match expected type integer in column 1.
+(2 rows)
+
+drop function f1();
+create table t1(a int, b int);
+create or replace function fx()
+returns t2 as $$
+begin
+  return (10,20,30)::t1;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx()', performance_warnings => true);
+               plpgsql_check_function               
+----------------------------------------------------
+ error:42846:3:RETURN:cannot cast type record to t1
+ Query: SELECT (10,20,30)::t1
+ --                      ^
+ Detail: Input has too many columns.
+(4 rows)
+
+drop function fx();
+drop table t1tab;
+drop table t1;
+create or replace function fx()
+returns void as $$
+begin
+  assert exists(select * from foo);
+  assert false, (select boo from boo limit 1);
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx()', fatal_errors => false);
+               plpgsql_check_function               
+----------------------------------------------------
+ error:42P01:3:ASSERT:relation "foo" does not exist
+ Query: SELECT exists(select * from foo)
+ --                                 ^
+ error:42P01:4:ASSERT:relation "boo" does not exist
+ Query: SELECT (select boo from boo limit 1)
+ --                             ^
+(6 rows)
+
+create or replace function ml_trg()
+returns trigger as $$
+#option dump
+declare
+begin
+  if TG_OP = 'INSERT' then
+    if NEW.status_from IS NULL then
+      begin
+        -- performance issue only
+        select status into NEW.status_from
+           from pa
+          where pa_id = NEW.pa_id;
+        -- nonexist target value
+        select status into NEW.status_from_xxx
+           from pa
+          where pa_id = NEW.pa_id;
+      exception
+        when DATA_EXCEPTION then
+          new.status_from := 'DE';
+      end;
+    end if;
+  end if;
+  if TG_OP = 'DELETE' then return OLD; else return NEW; end if;
+exception
+  when OTHERS then
+    NULL;
+    if TG_OP = 'DELETE' then return OLD; else return NEW; end if;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('ml_trg()', 'ml', performance_warnings := true);
+                          plpgsql_check_function                          
+--------------------------------------------------------------------------
+ error:42703:13:SQL statement:record "new" has no field "status_from_xxx"
+(1 row)
+
+create or replace function fx2()
+returns void as $$
+declare _pa pa;
+begin
+  select pa.id into _pa.id from pa limit 1;
+  select pa.pa_id into _pa.pa_id from pa limit 1;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx2()', performance_warnings := true);
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ warning extra:00000:2:DECLARE:never read variable "_pa"
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(3 rows)
+
+drop function fx2();
+create or replace function fx2()
+returns void as $$
+declare _pa pa;
+begin
+  _pa.id := (select pa.id from pa limit 1);
+  _pa.pa_id := (select pa.pa_id from pa limit 1);
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx2()', performance_warnings := true);
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ warning extra:00000:2:DECLARE:never read variable "_pa"
+ performance:00000:routine is marked as VOLATILE, should be STABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(3 rows)
+
+drop function fx2();
+create type _exception_type as (
+  state text,
+  message text,
+  detail text);
+create or replace function f1()
+returns void as $$
+declare
+  _exception record;
+begin
+  _exception := NULL::_exception_type;
+exception when others then
+  get stacked diagnostics
+        _exception.state = RETURNED_SQLSTATE,
+        _exception.message = MESSAGE_TEXT,
+        _exception.detail = PG_EXCEPTION_DETAIL,
+        _exception.hint = PG_EXCEPTION_HINT;
+end;
+$$ language plpgsql;
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno |        statement        | sqlstate |                 message                 | detail | hint | level | position | query | context 
+------------+--------+-------------------------+----------+-----------------------------------------+--------+------+-------+----------+-------+---------
+ f1         |      7 | GET STACKED DIAGNOSTICS | 42703    | record "_exception" has no field "hint" |        |      | error |          |       | 
+(1 row)
+
+create or replace function f1()
+returns void as $$
+declare
+  _exception _exception_type;
+begin
+  _exception := NULL::_exception_type;
+exception when others then
+  get stacked diagnostics
+        _exception.state = RETURNED_SQLSTATE,
+        _exception.message = MESSAGE_TEXT,
+        _exception.detail = PG_EXCEPTION_DETAIL;
+end;
+$$ language plpgsql;
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select * from plpgsql_check_function_tb('f1()');
+ functionid | lineno | statement | sqlstate |             message              | detail | hint |     level     | position | query | context 
+------------+--------+-----------+----------+----------------------------------+--------+------+---------------+----------+-------+---------
+ f1         |      3 | DECLARE   | 00000    | never read variable "_exception" |        |      | warning extra |          |       | 
+(1 row)
+
+drop function f1();
+drop type _exception_type;
+create type _exception_type as (
+  state text,
+  message text,
+  detail text);
+create or replace function f1()
+returns void as $$
+declare
+  _exception record;
+begin
+  _exception := NULL::_exception_type;
+exception when others then
+  get stacked diagnostics
+        _exception.state = RETURNED_SQLSTATE,
+        _exception.message = MESSAGE_TEXT,
+        _exception.detail = PG_EXCEPTION_DETAIL,
+        _exception.hint = PG_EXCEPTION_HINT;
+end;
+$$ language plpgsql;
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select * from plpgsql_check_function('f1()');
+                            plpgsql_check_function                             
+-------------------------------------------------------------------------------
+ error:42703:7:GET STACKED DIAGNOSTICS:record "_exception" has no field "hint"
+(1 row)
+
+drop function f1();
+drop type _exception_type;
+create or replace procedure proc(a int)
+as $$
+begin
+end;
+$$ language plpgsql;
+call proc(10);
+select * from plpgsql_check_function('proc(int)');
+          plpgsql_check_function          
+------------------------------------------
+ warning extra:00000:unused parameter "a"
+(1 row)
+
+create or replace procedure testproc()
+as $$
+begin
+  call proc(10);
+end;
+$$ language plpgsql;
+call testproc();
+select * from plpgsql_check_function('testproc()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+-- should to fail
+create or replace procedure testproc()
+as $$
+begin
+  call proc((select count(*) from pg_class));
+end;
+$$ language plpgsql;
+call testproc();
+ERROR:  cannot use subquery in CALL argument
+LINE 1: CALL proc((select count(*) from pg_class))
+                  ^
+QUERY:  CALL proc((select count(*) from pg_class))
+CONTEXT:  PL/pgSQL function testproc() line 3 at CALL
+select * from plpgsql_check_function('testproc()');
+                 plpgsql_check_function                  
+---------------------------------------------------------
+ error:0A000:3:CALL:cannot use subquery in CALL argument
+ Query: CALL proc((select count(*) from pg_class))
+ --               ^
+(3 rows)
+
+drop procedure proc(int);
+create procedure proc(in a int, inout b int, in c int)
+as $$
+begin
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('proc(int,int, int)');
+             plpgsql_check_function              
+-------------------------------------------------
+ warning extra:00000:unused parameter "a"
+ warning extra:00000:unused parameter "b"
+ warning extra:00000:unused parameter "c"
+ warning extra:00000:unmodified OUT variable "b"
+(4 rows)
+
+create or replace procedure proc(in a int, inout b int, in c int)
+as $$
+begin
+  b := a + c;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('proc(int,int, int)');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace procedure testproc()
+as $$
+declare r int;
+begin
+  call proc(10, r, 20);
+end;
+$$ language plpgsql;
+call testproc();
+select * from plpgsql_check_function('testproc()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+-- should to fail
+create or replace procedure testproc()
+as $$
+declare r int;
+begin
+  call proc(10, r + 10, 20);
+end;
+$$ language plpgsql;
+call testproc();
+ERROR:  procedure parameter "b" is an output parameter but corresponding argument is not writable
+CONTEXT:  PL/pgSQL function testproc() line 4 at CALL
+select * from plpgsql_check_function('testproc()');
+                                            plpgsql_check_function                                            
+--------------------------------------------------------------------------------------------------------------
+ error:42601:4:CALL:procedure parameter "b" is an output parameter but corresponding argument is not writable
+(1 row)
+
+create or replace procedure testproc(inout r int)
+as $$
+begin
+  call proc(10, r, 20);
+end;
+$$ language plpgsql;
+call testproc(10);
+ r  
+----
+ 30
+(1 row)
+
+select * from plpgsql_check_function('testproc(int)');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop procedure testproc(int);
+-- should to raise warnings
+create or replace procedure testproc2(in p1 int, inout p2 int, in p3 int, inout p4 int)
+as $$
+begin
+  raise notice '% %', p1, p3;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('testproc2');
+              plpgsql_check_function              
+--------------------------------------------------
+ warning extra:00000:unused parameter "p2"
+ warning extra:00000:unused parameter "p4"
+ warning extra:00000:unmodified OUT variable "p2"
+ warning extra:00000:unmodified OUT variable "p4"
+(4 rows)
+
+drop procedure testproc2;
+-- should be ok
+create or replace procedure testproc3(in p1 int, inout p2 int, in p3 int, inout p4 int)
+as $$
+begin
+  p2 := p1;
+  p4 := p3;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('testproc3');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop procedure testproc3;
+-- should be moved to generic test
+create or replace function dyntest()
+returns void as $$
+begin
+  execute 'drop table if exists xxx; create table xxx(a int)';
+end;
+$$ language plpgsql;
+-- should be ok
+select * from plpgsql_check_function('dyntest');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function dyntest()
+returns void as $$
+declare x int;
+begin
+  execute 'drop table if exists xxx; create table xxx(a int)' into x;
+end;
+$$ language plpgsql;
+-- should to report error
+select * from plpgsql_check_function('dyntest');
+                plpgsql_check_function                 
+-------------------------------------------------------
+ error:XX000:4:EXECUTE:expression does not return data
+(1 row)
+
+drop function dyntest();
+/*
+ * These function's cannot be executed in Postgres 9.5, because
+ * Postgres there doesn't support plpgsql functions with record
+ * type arguments.
+ */
+create or replace function df1(anyelement)
+returns anyelement as $$
+begin
+  return $1;
+end;
+$$ language plpgsql;
+create or replace function df2(anyelement, jsonb)
+returns anyelement as $$
+begin
+  return $1;
+end;
+$$ language plpgsql;
+create or replace function t1()
+returns void as $$
+declare
+  r record;
+begin
+  r := df1(r);
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('t1()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function t1()
+returns void as $$
+declare
+  r record;
+begin
+  r := df2(r, '{}');
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('t1()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function t1()
+returns void as $$
+declare
+  r1 record;
+  r2 record;
+begin
+  select 10 as a, 20 as b into r1;
+  r2 := df1(r1);
+  raise notice '%', r2.a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('t1()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function t1()
+returns void as $$
+declare
+  r1 record;
+  r2 record;
+begin
+  select 10 as a, 20 as b into r1;
+  r2 := df2(r1, '{}');
+  raise notice '%', r2.a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('t1()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function df1(anyelement)
+returns anyelement as $$ select $1 $$ language sql;
+create or replace function df22(jsonb, anyelement)
+returns anyelement as $$ select $2; $$ language sql;
+create or replace function t1()
+returns void as $$
+declare
+  r1 record;
+  r2 record;
+begin
+  select 10 as a, 20 as b into r1;
+  r2 := df1(r1);
+  raise notice '%', r2.a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('t1()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function t1()
+returns void as $$
+declare
+  r1 record;
+  r2 record;
+begin
+  select 10 as a, 20 as b into r1;
+  r2 := df22('{}', r1);
+  raise notice '%', r2.a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('t1()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function df1(anyelement);
+drop function df2(anyelement, jsonb);
+drop function df22(jsonb, anyelement);
+drop function t1();

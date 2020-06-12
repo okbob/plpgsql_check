@@ -4,3 +4,4 @@ plpgsql_check_active_4.out			PostgreSQL 9.6
 plpgsql_check_active.out			PostgreSQL 12, 13
 plpgsql_check_active_1.out			PostgreSQL 10
 plpgsql_check_active_2.out			PostgreSQL 11
+plpgsql_check_active_5.out			PostgreSQL 14
