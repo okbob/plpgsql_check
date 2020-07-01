@@ -4,7 +4,7 @@
  *
  *			  iteration over plpgsql statements loop
  *
- * by Pavel Stehule 2013-2019
+ * by Pavel Stehule 2013-2020
  *
  *-------------------------------------------------------------------------
  */

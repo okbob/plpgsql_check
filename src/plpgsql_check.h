@@ -69,6 +69,11 @@ typedef struct plpgsql_check_info
 	Oid			rettype;
 	char		volatility;
 	Oid			relid;
+	Oid			anyelementoid;
+	Oid			anyenumoid;
+	Oid			anyrangeoid;
+	Oid			anycompatibleoid;
+	Oid			anycompatiblerangeoid;
 	PLpgSQL_trigtype trigtype;
 	char	   *src;
 	bool		fatal_errors;
@@ -154,7 +159,7 @@ extern void plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri, i
  */
 extern void plpgsql_check_get_function_info(HeapTuple procTuple, Oid *rettype, char *volatility, PLpgSQL_trigtype *trigtype, bool *is_procedure);
 extern void plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo);
-extern char * plpgsql_check_get_src(HeapTuple procTuple);
+extern char *plpgsql_check_get_src(HeapTuple procTuple);
 
 /*
  * functions from tablefunc.c
@@ -176,9 +181,8 @@ extern void plpgsql_check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_functi
 extern void plpgsql_check_HashTableInit(void);
 extern bool plpgsql_check_is_checked(PLpgSQL_function *func);
 extern void plpgsql_check_mark_as_checked(PLpgSQL_function *func);
-extern void plpgsql_check_setup_fcinfo(HeapTuple procTuple, FmgrInfo *flinfo, FunctionCallInfo fcinfo,
-	ReturnSetInfo *rsinfo, TriggerData *trigdata, Oid relid, EventTriggerData *etrigdata, Oid funcoid,
-	Oid rettype, PLpgSQL_trigtype trigtype, Trigger *tg_trigger, bool *fake_rtd);
+extern void plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo, FmgrInfo *flinfo, FunctionCallInfo fcinfo,
+	ReturnSetInfo *rsinfo, TriggerData *trigdata, EventTriggerData *etrigdata, Trigger *tg_trigger, bool *fake_rtd);
 
 extern bool plpgsql_check_other_warnings;
 extern bool plpgsql_check_extra_warnings;

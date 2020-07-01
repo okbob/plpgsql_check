@@ -4,7 +4,7 @@
  *
  *			  assign types to record variables
  *
- * by Pavel Stehule 2013-2019
+ * by Pavel Stehule 2013-2020
  *
  *-------------------------------------------------------------------------
  */

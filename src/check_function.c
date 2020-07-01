@@ -5,7 +5,7 @@
  *			  workhorse functionality of this extension - expression
  *			  and query validator
  *
- * by Pavel Stehule 2013-2019
+ * by Pavel Stehule 2013-2020
  *
  *-------------------------------------------------------------------------
  */
@@ -14,6 +14,7 @@
 
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "nodes/makefuncs.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/lsyscache.h"
@@ -128,16 +129,12 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 	if ((rc = SPI_connect()) != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed: %s", SPI_result_code_string(rc));
 
-	plpgsql_check_setup_fcinfo(cinfo->proctuple,
+	plpgsql_check_setup_fcinfo(cinfo,
 							   &flinfo,
 							   fake_fcinfo,
 							   &rsinfo,
 							   &trigdata,
-							   cinfo->relid,
 							   &etrigdata,
-								cinfo->fn_oid,
-								cinfo->rettype,
-								cinfo->trigtype,
 								&tg_trigger,
 								&fake_rtd);
 
@@ -728,20 +725,20 @@ is_polymorphic_tupdesc(TupleDesc tupdesc)
  * because we know nothing about expected result.
  */
 void
-plpgsql_check_setup_fcinfo(HeapTuple procTuple,
+plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 						  FmgrInfo *flinfo,
 						  FunctionCallInfo fcinfo,
 						  ReturnSetInfo *rsinfo,
 						  TriggerData *trigdata,
-						  Oid relid,
 						  EventTriggerData *etrigdata,
-						  Oid funcoid,
-						  Oid rettype,
-						  PLpgSQL_trigtype trigtype,
 						  Trigger *tg_trigger,
 						  bool *fake_rtd)
 {
 	TupleDesc resultTupleDesc;
+	int		nargs;
+	Oid	   *argtypes;
+	char  **argnames;
+	char   *argmodes;
 
 	*fake_rtd = false;
 
@@ -760,10 +757,10 @@ plpgsql_check_setup_fcinfo(HeapTuple procTuple,
 	MemSet(rsinfo, 0, sizeof(ReturnSetInfo));
 
 	fcinfo->flinfo = flinfo;
-	flinfo->fn_oid = funcoid;
+	flinfo->fn_oid = cinfo->fn_oid;
 	flinfo->fn_mcxt = CurrentMemoryContext;
 
-	if (trigtype == PLPGSQL_DML_TRIGGER)
+	if (cinfo->trigtype == PLPGSQL_DML_TRIGGER)
 	{
 		Assert(trigdata != NULL);
 
@@ -775,15 +772,171 @@ plpgsql_check_setup_fcinfo(HeapTuple procTuple,
 
 		fcinfo->context = (Node *) trigdata;
 
-		if (OidIsValid(relid))
-			trigdata->tg_relation = relation_open(relid, AccessShareLock);
+		if (OidIsValid(cinfo->relid))
+			trigdata->tg_relation = relation_open(cinfo->relid, AccessShareLock);
 	}
-	else if (trigtype == PLPGSQL_EVENT_TRIGGER)
+	else if (cinfo->trigtype == PLPGSQL_EVENT_TRIGGER)
 	{
 		MemSet(etrigdata, 0, sizeof(etrigdata));
 		etrigdata->type = T_EventTriggerData;
 		fcinfo->context = (Node *) etrigdata;
 	}
+
+	/* prepare call expression - used for polymorphic arguments */
+	nargs = get_func_arg_info(cinfo->proctuple,
+							  &argtypes,
+							  &argnames,
+							  &argmodes);
+
+	if (nargs > 0)
+	{
+		bool	found_polymorphic = false;
+		Oid		argtype = InvalidOid;
+		int		i;
+
+		for (i = 0; i < nargs; i++)
+		{
+			argtype = InvalidOid;
+
+			if (argmodes)
+			{
+				if (argmodes[i] == FUNC_PARAM_IN ||
+					argmodes[i] == FUNC_PARAM_INOUT ||
+					argmodes[i] == FUNC_PARAM_VARIADIC)
+				argtype = argtypes[i];
+			}
+			else
+				argtype = argtypes[i];
+
+			if (OidIsValid(argtype) && IsPolymorphicType(argtype))
+			{
+				found_polymorphic = true;
+				break;
+			}
+		}
+
+		if (found_polymorphic)
+		{
+			Oid			anyelement_array_oid;
+			Oid			anyelement_base_oid;
+			Oid			anycompatible_array_oid;
+			Oid			anycompatible_base_oid;
+			bool		is_array_anyelement;
+			bool		is_array_anycompatible;
+			List	   *args = NIL;
+
+			anyelement_array_oid = get_array_type(cinfo->anyelementoid);
+			anyelement_base_oid = getBaseType(cinfo->anyelementoid);
+			is_array_anyelement = OidIsValid(get_element_type(anyelement_base_oid));
+			anycompatible_array_oid = get_array_type(cinfo->anycompatibleoid);
+			anycompatible_base_oid = getBaseType(cinfo->anycompatibleoid);
+			is_array_anycompatible = OidIsValid(get_element_type(anycompatible_base_oid));
+
+			/*
+			 * when polymorphic types are used, then we need to build fake fn_expr,
+			 * to be in plpgsql_resolve_polymorphic_argtypes happy.
+			 */
+			for (i = 0; i < nargs; i++)
+			{
+				bool	is_variadic = false;
+
+				argtype = InvalidOid;
+
+				if (argmodes)
+				{
+					if (argmodes[i] == FUNC_PARAM_IN ||
+						argmodes[i] == FUNC_PARAM_INOUT ||
+						argmodes[i] == FUNC_PARAM_VARIADIC)
+					{
+						argtype = argtypes[i];
+						if (argmodes[i] == FUNC_PARAM_VARIADIC)
+							is_variadic = true;
+					}
+				}
+				else
+					argtype = argtypes[i];
+
+				if (OidIsValid(argtype))
+				{
+					if (IsPolymorphicType(argtype))
+					{
+						/* Transform polymorphic type to near int type */
+						switch (argtype)
+						{
+							case ANYELEMENTOID:
+								argtype = is_variadic ? anyelement_array_oid : cinfo->anyelementoid;
+								break;
+
+							case ANYNONARRAYOID:
+								if (is_array_anyelement)
+									elog(ERROR, "anyelement type is a array (expected nonarray)");
+								argtype = is_variadic ? anyelement_array_oid : cinfo->anyelementoid;
+								break;
+
+							case ANYENUMOID:	/* XXX dubious */
+								if (!OidIsValid(cinfo->anyenumoid))
+									elog(ERROR, "anyenumtype option should be specified (anyenum type is used)");
+								if (!type_is_enum(cinfo->anyenumoid))
+									elog(ERROR, "type specified by anyenumtype option is not enum");
+								argtype = cinfo->anyenumoid;
+								break;
+
+							case ANYARRAYOID:
+								argtype = anyelement_array_oid;
+								break;
+
+							case ANYRANGEOID:
+								argtype = is_variadic ? get_array_type(cinfo->anyrangeoid) : cinfo->anyrangeoid;
+								break;
+
+#if PG_VERSION_NUM >= 130000
+
+							case ANYCOMPATIBLEOID:
+								argtype = is_variadic ? anycompatible_array_oid : cinfo->anycompatibleoid;
+								break;
+
+							case ANYCOMPATIBLENONARRAYOID:
+								if (is_array_anycompatible)
+									elog(ERROR, "anycompatible type is a array (expected nonarray)");
+								argtype = is_variadic ? anycompatible_array_oid : cinfo->anycompatibleoid;
+								break;
+
+							case ANYCOMPATIBLEARRAYOID:
+								argtype = anycompatible_array_oid;
+								break;
+
+							case ANYCOMPATIBLERANGEOID:
+								argtype = is_variadic ? get_array_type(cinfo->anycompatiblerangeoid) : cinfo->anycompatiblerangeoid;
+								break;
+
+#endif
+
+							default:
+								/* fallback */
+								argtype = is_variadic ? INT4ARRAYOID : INT4OID;
+						}
+					}
+
+					args = lappend(args,
+								   makeNullConst(argtype, -1, InvalidOid));
+				}
+			}
+
+			fcinfo->flinfo->fn_expr = (Node *) makeFuncExpr(cinfo->fn_oid,
+															cinfo->rettype,
+															args,
+															InvalidOid,
+															InvalidOid,
+															COERCE_EXPLICIT_CALL);
+		}
+	}
+
+	if (argtypes)
+		pfree(argtypes);
+	if (argnames)
+		pfree(argnames);
+	if (argmodes)
+		pfree(argmodes);
 
 	/* 
 	 * prepare ReturnSetInfo
@@ -791,7 +944,7 @@ plpgsql_check_setup_fcinfo(HeapTuple procTuple,
 	 * necessary for RETURN NEXT and RETURN QUERY
 	 *
 	 */
-	resultTupleDesc = build_function_result_tupdesc_t(procTuple);
+	resultTupleDesc = build_function_result_tupdesc_t(cinfo->proctuple);
 	if (resultTupleDesc)
 	{
 		/* we cannot to solve polymorphic params now */
@@ -801,11 +954,11 @@ plpgsql_check_setup_fcinfo(HeapTuple procTuple,
 			resultTupleDesc = NULL;
 		}
 	}
-	else if (rettype == TRIGGEROID
+	else if (cinfo->rettype == TRIGGEROID
 
 #if PG_VERSION_NUM < 130000
 
-			|| rettype == OPAQUEOID
+			|| cinfo->rettype == OPAQUEOID
 
 #endif
 
@@ -815,13 +968,13 @@ plpgsql_check_setup_fcinfo(HeapTuple procTuple,
 		if (trigdata->tg_relation)
 			resultTupleDesc = CreateTupleDescCopy(trigdata->tg_relation->rd_att);
 	}
-	else if (!IsPolymorphicType(rettype))
+	else if (!IsPolymorphicType(cinfo->rettype))
 	{
-		if (get_typtype(rettype) == TYPTYPE_COMPOSITE)
-			resultTupleDesc = lookup_rowtype_tupdesc_copy(rettype, -1);
+		if (get_typtype(cinfo->rettype) == TYPTYPE_COMPOSITE)
+			resultTupleDesc = lookup_rowtype_tupdesc_copy(cinfo->rettype, -1);
 		else
 		{
-			*fake_rtd = rettype == RECORDOID;
+			*fake_rtd = cinfo->rettype == RECORDOID;
 
 #if PG_VERSION_NUM >= 120000
 
@@ -835,7 +988,7 @@ plpgsql_check_setup_fcinfo(HeapTuple procTuple,
 
 			TupleDescInitEntry(resultTupleDesc,
 							    (AttrNumber) 1, "__result__",
-							    rettype, -1, 0);
+							    cinfo->rettype, -1, 0);
 			resultTupleDesc = BlessTupleDesc(resultTupleDesc);
 		}
 	}

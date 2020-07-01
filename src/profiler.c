@@ -4,7 +4,7 @@
  *
  *			  profiler accessories code
  *
- * by Pavel Stehule 2013-2019
+ * by Pavel Stehule 2013-2020
  *
  *-------------------------------------------------------------------------
  */
@@ -1346,16 +1346,12 @@ plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri,
 			unlock_mutex = true;
 		}
 
-		plpgsql_check_setup_fcinfo(cinfo->proctuple,
+		plpgsql_check_setup_fcinfo(cinfo,
 								   &flinfo,
 								   fake_fcinfo,
 								   &rsinfo,
 								   &trigdata,
-								   cinfo->relid,
 								   &etrigdata,
-								   cinfo->fn_oid,
-								   cinfo->rettype,
-								   cinfo->trigtype,
 								   &tg_trigger,
 								   &fake_rtd);
 
