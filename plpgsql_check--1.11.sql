@@ -9,7 +9,12 @@ CREATE FUNCTION plpgsql_check_function_tb(funcoid regprocedure,
                                        extra_warnings boolean DEFAULT true,
                                        security_warnings boolean DEFAULT false,
                                        oldtable name DEFAULT null,
-                                       newtable name DEFAULT null)
+                                       newtable name DEFAULT null,
+                                       anyelememttype regtype DEFAULT 'int',
+                                       anyenumtype regtype DEFAULT '-',
+                                       anyrangetype regtype DEFAULT 'int4range',
+                                       anycompatibletype regtype DEFAULT 'int',
+                                       anycompatiblerangetype regtype DEFAULT 'int4range')
 RETURNS TABLE(functionid regproc,
               lineno int,
               statement text,
@@ -33,7 +38,12 @@ CREATE FUNCTION plpgsql_check_function(funcoid regprocedure,
                                        extra_warnings boolean DEFAULT true,
                                        security_warnings boolean DEFAULT false,
                                        oldtable name DEFAULT null,
-                                       newtable name DEFAULT null)
+                                       newtable name DEFAULT null,
+                                       anyelememttype regtype DEFAULT 'int',
+                                       anyenumtype regtype DEFAULT '-',
+                                       anyrangetype regtype DEFAULT 'int4range',
+                                       anycompatibletype regtype DEFAULT 'int',
+                                       anycompatiblerangetype regtype DEFAULT 'int4range')
 
 RETURNS SETOF text
 AS 'MODULE_PATHNAME','plpgsql_check_function'
@@ -47,7 +57,12 @@ CREATE FUNCTION plpgsql_check_function_tb(name text,
                                        extra_warnings boolean DEFAULT true,
                                        security_warnings boolean DEFAULT false,
                                        oldtable name DEFAULT null,
-                                       newtable name DEFAULT null)
+                                       newtable name DEFAULT null,
+                                       anyelememttype regtype DEFAULT 'int',
+                                       anyenumtype regtype DEFAULT '-',
+                                       anyrangetype regtype DEFAULT 'int4range',
+                                       anycompatibletype regtype DEFAULT 'int',
+                                       anycompatiblerangetype regtype DEFAULT 'int4range')
 RETURNS TABLE(functionid regproc,
               lineno int,
               statement text,
@@ -71,8 +86,12 @@ CREATE FUNCTION plpgsql_check_function(name text,
                                        extra_warnings boolean DEFAULT true,
                                        security_warnings boolean DEFAULT false,
                                        oldtable name DEFAULT null,
-                                       newtable name DEFAULT null)
-
+                                       newtable name DEFAULT null,
+                                       anyelememttype regtype DEFAULT 'int',
+                                       anyenumtype regtype DEFAULT '-',
+                                       anyrangetype regtype DEFAULT 'int4range',
+                                       anycompatibletype regtype DEFAULT 'int',
+                                       anycompatiblerangetype regtype DEFAULT 'int4range')
 RETURNS SETOF text
 AS 'MODULE_PATHNAME','plpgsql_check_function_name'
 LANGUAGE C;

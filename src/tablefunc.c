@@ -4,7 +4,7 @@
  *
  *			  top functions - display results in table format
  *
- * by Pavel Stehule 2013-2019
+ * by Pavel Stehule 2013-2020
  *
  *-------------------------------------------------------------------------
  */
@@ -27,6 +27,12 @@ PG_FUNCTION_INFO_V1(plpgsql_check_function_tb_name);
 PG_FUNCTION_INFO_V1(plpgsql_show_dependency_tb_name);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_function_tb_name);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_function_statements_tb_name);
+
+#define ERR_NULL_OPTION(option)		ereport(ERROR, \
+									  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), \
+									   errmsg("the option \"" option "\" is NULL"), \
+									   errhint("this option should not be NULL")))
+
 
 /*
  * Validate function result description
@@ -70,7 +76,7 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	ErrorContextCallback *prev_errorcontext;
 	int	format;
 
-	if (PG_NARGS() != 10)
+	if (PG_NARGS() != 15)
 		elog(ERROR, "unexpected number of parameters, you should to update extension");
 
 	/* check to see if caller supports us returning a tuplestore */
@@ -78,19 +84,29 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	SetReturningFunctionCheck(rsinfo);
 
 	if (PG_ARGISNULL(1))
-		elog(ERROR, "the second argument should not be null");
+		ERR_NULL_OPTION("relid");
 	if (PG_ARGISNULL(2))
-		elog(ERROR, "the third argument should not be null");
+		ERR_NULL_OPTION("format");
 	if (PG_ARGISNULL(3))
-		elog(ERROR, "the fourth argument should not be null");
+		ERR_NULL_OPTION("fatal_errors");
 	if (PG_ARGISNULL(4))
-		elog(ERROR, "the fifth argument should not be null");
+		ERR_NULL_OPTION("other_warnings");
 	if (PG_ARGISNULL(5))
-		elog(ERROR, "the sixth argument should not be null");
+		ERR_NULL_OPTION("performance warnings");
 	if (PG_ARGISNULL(6))
-		elog(ERROR, "the seventh argument should not be null");
+		ERR_NULL_OPTION("extra_warnings");
 	if (PG_ARGISNULL(7))
-		elog(ERROR, "the eighth argument should not be null");
+		ERR_NULL_OPTION("security_warnings");
+	if (PG_ARGISNULL(10))
+		ERR_NULL_OPTION("anyelementtype");
+	if (PG_ARGISNULL(11))
+		ERR_NULL_OPTION("anyenumtype");
+	if (PG_ARGISNULL(12))
+		ERR_NULL_OPTION("anyrangetype");
+	if (PG_ARGISNULL(13))
+		ERR_NULL_OPTION("anycompatibletype");
+	if (PG_ARGISNULL(14))
+		ERR_NULL_OPTION("anycompatiblerangetype");
 
 	format = plpgsql_check_format_num(text_to_cstring(PG_GETARG_TEXT_PP(2)));
 
@@ -118,6 +134,12 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("missing description of oldtable or newtable"),
 				 errhint("Parameter relid is a empty.")));
+
+	cinfo.anyelementoid = PG_GETARG_OID(10);
+	cinfo.anyenumoid = PG_GETARG_OID(11);
+	cinfo.anyrangeoid = PG_GETARG_OID(12);
+	cinfo.anycompatibleoid = PG_GETARG_OID(13);
+	cinfo.anycompatiblerangeoid = PG_GETARG_OID(14);
 
 	cinfo.proctuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(cinfo.fn_oid));
 	if (!HeapTupleIsValid(cinfo.proctuple))
@@ -162,7 +184,7 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	ReturnSetInfo *rsinfo;
 	ErrorContextCallback *prev_errorcontext;
 
-	if (PG_NARGS() != 9)
+	if (PG_NARGS() != 14)
 		elog(ERROR, "unexpected number of parameters, you should to update extension");
 
 	/* check to see if caller supports us returning a tuplestore */
@@ -170,17 +192,27 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	SetReturningFunctionCheck(rsinfo);
 
 	if (PG_ARGISNULL(1))
-		elog(ERROR, "the second argument should not be null");
+		ERR_NULL_OPTION("relid");
 	if (PG_ARGISNULL(2))
-		elog(ERROR, "the third argument should not be null");
+		ERR_NULL_OPTION("fatal_errors");
 	if (PG_ARGISNULL(3))
-		elog(ERROR, "the fourth argument should not be null");
+		ERR_NULL_OPTION("other_warnings");
 	if (PG_ARGISNULL(4))
-		elog(ERROR, "the fifth argument should not be null");
+		ERR_NULL_OPTION("performance_warnings");
 	if (PG_ARGISNULL(5))
-		elog(ERROR, "the sixth argument should not be null");
+		ERR_NULL_OPTION("extra_warnings");
 	if (PG_ARGISNULL(6))
-		elog(ERROR, "the seventh argument should not be null");
+		ERR_NULL_OPTION("security_warnings");
+	if (PG_ARGISNULL(9))
+		ERR_NULL_OPTION("anyelementtype");
+	if (PG_ARGISNULL(10))
+		ERR_NULL_OPTION("anyenumtype");
+	if (PG_ARGISNULL(11))
+		ERR_NULL_OPTION("anyrangetype");
+	if (PG_ARGISNULL(12))
+		ERR_NULL_OPTION("anycompatibletype");
+	if (PG_ARGISNULL(13))
+		ERR_NULL_OPTION("anycompatiblerangetype");
 
 	plpgsql_check_info_init(&cinfo, fnoid);
 
@@ -190,6 +222,12 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	cinfo.performance_warnings = PG_GETARG_BOOL(4);
 	cinfo.extra_warnings = PG_GETARG_BOOL(5);
 	cinfo.security_warnings = PG_GETARG_BOOL(6);
+
+	cinfo.anyelementoid = PG_GETARG_OID(9);
+	cinfo.anyenumoid = PG_GETARG_OID(10);
+	cinfo.anyrangeoid = PG_GETARG_OID(11);
+	cinfo.anycompatibleoid = PG_GETARG_OID(12);
+	cinfo.anycompatiblerangeoid = PG_GETARG_OID(13);
 
 	if (PG_ARGISNULL(7))
 		cinfo.oldtable = NULL;
@@ -385,7 +423,7 @@ plpgsql_check_function(PG_FUNCTION_ARGS)
 	Oid fnoid;
 
 	if (PG_ARGISNULL(0))
-		elog(ERROR, "the first argument should not be null");
+		ERR_NULL_OPTION("funcoid");
 
 	fnoid = PG_GETARG_OID(0);
 
@@ -398,7 +436,7 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	Oid fnoid;
 
 	if (PG_ARGISNULL(0))
-		elog(ERROR, "the first argument should not be null");
+		ERR_NULL_OPTION("funcoid");
 
 	fnoid = PG_GETARG_OID(0);
 
@@ -411,7 +449,7 @@ plpgsql_show_dependency_tb(PG_FUNCTION_ARGS)
 	Oid fnoid;
 
 	if (PG_ARGISNULL(0))
-		elog(ERROR, "the first argument should not be null");
+		ERR_NULL_OPTION("funcoid");
 
 	fnoid = PG_GETARG_OID(0);
 
@@ -424,7 +462,7 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 	Oid fnoid;
 
 	if (PG_ARGISNULL(0))
-		elog(ERROR, "the first argument should not be null");
+		ERR_NULL_OPTION("funcoid");
 
 	fnoid = PG_GETARG_OID(0);
 
@@ -437,7 +475,7 @@ plpgsql_profiler_function_statements_tb(PG_FUNCTION_ARGS)
 	Oid fnoid;
 
 	if (PG_ARGISNULL(0))
-		elog(ERROR, "the first argument should not be null");
+		ERR_NULL_OPTION("funcoid");
 
 	fnoid = PG_GETARG_OID(0);
 
@@ -451,7 +489,7 @@ plpgsql_check_function_name(PG_FUNCTION_ARGS)
 	char   *name_or_signature;
 
 	if (PG_ARGISNULL(0))
-		elog(ERROR, "the first argument should not be null");
+		ERR_NULL_OPTION("name");
 
 	name_or_signature = text_to_cstring(PG_GETARG_TEXT_PP(0));
 	fnoid = plpgsql_check_parse_name_or_signature(name_or_signature);
@@ -466,7 +504,7 @@ plpgsql_check_function_tb_name(PG_FUNCTION_ARGS)
 	char   *name_or_signature;
 
 	if (PG_ARGISNULL(0))
-		elog(ERROR, "the first argument should not be null");
+		ERR_NULL_OPTION("name");
 
 	name_or_signature = text_to_cstring(PG_GETARG_TEXT_PP(0));
 	fnoid = plpgsql_check_parse_name_or_signature(name_or_signature);
@@ -481,7 +519,7 @@ plpgsql_show_dependency_tb_name(PG_FUNCTION_ARGS)
 	char   *name_or_signature;
 
 	if (PG_ARGISNULL(0))
-		elog(ERROR, "the first argument should not be null");
+		ERR_NULL_OPTION("name");
 
 	name_or_signature = text_to_cstring(PG_GETARG_TEXT_PP(0));
 	fnoid = plpgsql_check_parse_name_or_signature(name_or_signature);
@@ -496,7 +534,7 @@ plpgsql_profiler_function_tb_name(PG_FUNCTION_ARGS)
 	char   *name_or_signature;
 
 	if (PG_ARGISNULL(0))
-		elog(ERROR, "the first argument should not be null");
+		ERR_NULL_OPTION("name");
 
 	name_or_signature = text_to_cstring(PG_GETARG_TEXT_PP(0));
 	fnoid = plpgsql_check_parse_name_or_signature(name_or_signature);
@@ -511,7 +549,7 @@ plpgsql_profiler_function_statements_tb_name(PG_FUNCTION_ARGS)
 	char   *name_or_signature;
 
 	if (PG_ARGISNULL(0))
-		elog(ERROR, "the first argument should not be null");
+		ERR_NULL_OPTION("name");
 
 	name_or_signature = text_to_cstring(PG_GETARG_TEXT_PP(0));
 	fnoid = plpgsql_check_parse_name_or_signature(name_or_signature);

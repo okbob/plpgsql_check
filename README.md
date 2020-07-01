@@ -155,6 +155,16 @@ You can set level of warnings via function's parameters:
 * `security_warnings boolean DEFAULT false` - security related checks like SQL injection
   vulnerability detection
 
+* `anyelementtype regtype DEFAULT 'int'` - a real type used instead anyelement type
+
+* `anyenumtype regtype DEFAULT '-'` - a real type used instead anyenum type
+
+* `anyrangetype regtype DEFAULT 'int4range'` - a real type used instead anyrange type
+
+* `anycompatibletype DEFAULT 'int'` - a real type used instead anycompatible type
+
+* `anycompatiblerangetype DEFAULT 'int4range'` - a real type used instead anycompatible range type
+
 ## Triggers
 
 When you want to check any trigger, you have to enter a relation that will be
