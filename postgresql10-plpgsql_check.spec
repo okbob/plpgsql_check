@@ -46,8 +46,12 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/plpgsql_check.control
 
 %changelog
+* Thu Jul 2 2020 -  Pavel STEHULE <pavel.stehule@gmail.com> 1.11.0
+- possibility to check functions with arguments of polymorphic type
+- possibility to specify type used as real type instead polymorphic type
+
 * Fri Jun 05 2020 - Pavel STEHULE <pavel.stehule@gmail.com> 1.10.0
-- deduction record type struction from result of polymorphic function
+- deduction record type structure from result of polymorphic function
 
 * Mon Apr 27 2020 - Pavel STEHULE <pavel.stehule@gmail.com> 1.9.1
 - minor bugfixes

@@ -10,7 +10,7 @@
          "abstract": "Additional tools for plpgsql functions validation",
          "file": "sql/plpgsql_check_active.sql",
          "docfile": "README.md",
-         "version": "1.10.1"
+         "version": "1.11.0"
       }
    },
    "prereqs": {
