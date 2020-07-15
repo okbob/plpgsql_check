@@ -1212,8 +1212,8 @@ begin
 end
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
-                                 plpgsql_check_function                                  
------------------------------------------------------------------------------------------
+                                plpgsql_check_function                                
+--------------------------------------------------------------------------------------
  warning:42804:7:assignment:target type is different type than source type
  Detail: cast "text" value to "integer" type
  Hint: The input expression type does not have an assignment cast to the target type.
@@ -1233,9 +1233,7 @@ select * from plpgsql_check_function('f1()', performance_warnings := true);
  Detail: cast "text" value to "integer" type
  Hint: The input expression type does not have an assignment cast to the target type.
  warning extra:00000:3:DECLARE:never read variable "intval"
- performance:00000:routine is marked as VOLATILE, should be STABLE
- Hint: When you fix this issue, please, recheck other functions that uses this function.
-(21 rows)
+(19 rows)
 
 drop function f1();
 create or replace function f1()
@@ -1877,12 +1875,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true, fatal_errors := false);
- functionid | lineno | statement | sqlstate |                     message                     | detail |                                       hint                                        |     level     | position | query | context 
-------------+--------+-----------+----------+-------------------------------------------------+--------+-----------------------------------------------------------------------------------+---------------+----------+-------+---------
- fx         |      2 | DECLARE   | 00000    | unused variable "old"                           |        |                                                                                   | warning       |          |       | 
- fx         |      2 | DECLARE   | 00000    | never read variable "new"                       |        |                                                                                   | warning extra |          |       | 
- fx         |        |           | 00000    | routine is marked as VOLATILE, should be STABLE |        | When you fix this issue, please, recheck other functions that uses this function. | performance   |          |       | 
-(3 rows)
+ functionid | lineno | statement | sqlstate |          message          | detail | hint |     level     | position | query | context 
+------------+--------+-----------+----------+---------------------------+--------+------+---------------+----------+-------+---------
+ fx         |      2 | DECLARE   | 00000    | unused variable "old"     |        |      | warning       |          |       | 
+ fx         |      2 | DECLARE   | 00000    | never read variable "new" |        |      | warning extra |          |       | 
+(2 rows)
 
 drop function fx();
 create or replace function fx()
@@ -2043,15 +2040,13 @@ select * from test_t();
 (1 row)
 
 select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
-                                 plpgsql_check_function                                  
------------------------------------------------------------------------------------------
+                          plpgsql_check_function                          
+--------------------------------------------------------------------------
  performance:42804:7:FETCH:target type is different type than source type
  Detail: cast "integer" value to "character varying" type
  Hint: Hidden casting can be a performance issue.
  warning extra:00000:4:DECLARE:never read variable "x"
- performance:00000:routine is marked as VOLATILE, should be STABLE
- Hint: When you fix this issue, please, recheck other functions that uses this function.
-(6 rows)
+(4 rows)
 
 drop function fx();
 create or replace function fx()
@@ -2078,12 +2073,10 @@ select * from test_t();
 (1 row)
 
 select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
-                                 plpgsql_check_function                                  
------------------------------------------------------------------------------------------
+                plpgsql_check_function                 
+-------------------------------------------------------
  warning extra:00000:4:DECLARE:never read variable "x"
- performance:00000:routine is marked as VOLATILE, should be STABLE
- Hint: When you fix this issue, please, recheck other functions that uses this function.
-(3 rows)
+(1 row)
 
 drop function fx();
 create or replace function fx()
@@ -2109,14 +2102,12 @@ select * from test_t();
 (1 row)
 
 select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
-                                 plpgsql_check_function                                  
------------------------------------------------------------------------------------------
+                plpgsql_check_function                 
+-------------------------------------------------------
  error:42703:6:RAISE:record "r" has no field "a"
  Context: SQL statement "SELECT r.a"
  warning extra:00000:5:DECLARE:never read variable "r"
- performance:00000:routine is marked as VOLATILE, should be STABLE
- Hint: When you fix this issue, please, recheck other functions that uses this function.
-(5 rows)
+(3 rows)
 
 drop function fx();
 create or replace function fx()
@@ -2142,11 +2133,9 @@ select * from test_t();
 (1 row)
 
 select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
-                                 plpgsql_check_function                                  
------------------------------------------------------------------------------------------
- performance:00000:routine is marked as VOLATILE, should be STABLE
- Hint: When you fix this issue, please, recheck other functions that uses this function.
-(2 rows)
+ plpgsql_check_function 
+------------------------
+(0 rows)
 
 drop function fx();
 create table foo(a int, b int);
@@ -2166,8 +2155,8 @@ select fx();
 (1 row)
 
 select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
-                                 plpgsql_check_function                                  
------------------------------------------------------------------------------------------
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
  warning:00000:4:SQL statement:too many attributes for target variables
  Detail: There are less target variables than output columns in query.
  Hint: Check target variables in SELECT INTO statement
@@ -2179,9 +2168,7 @@ select * from plpgsql_check_function('fx()', performance_warnings := true, fatal
  Hint: Check target variables in SELECT INTO statement.
  warning extra:00000:2:DECLARE:never read variable "f1"
  warning extra:00000:2:DECLARE:never read variable "f2"
- performance:00000:routine is marked as VOLATILE, should be STABLE
- Hint: When you fix this issue, please, recheck other functions that uses this function.
-(13 rows)
+(11 rows)
 
 drop function fx();
 drop table foo;
@@ -2197,15 +2184,13 @@ select fx();
 ERROR:  invalid input syntax for type date: "1"
 CONTEXT:  PL/pgSQL function fx() line 4 at assignment
 select * from plpgsql_check_function('fx()', performance_warnings := true, fatal_errors := false);
-                                 plpgsql_check_function                                  
------------------------------------------------------------------------------------------
+                              plpgsql_check_function                              
+----------------------------------------------------------------------------------
  warning:42804:4:assignment:target type is different type than source type
  Detail: cast "integer" value to "date" type
  Hint: There are no possible explicit coercion between those types, possibly bug!
  Context: at assignment to variable "d" declared on line 2
- performance:00000:routine is marked as VOLATILE, should be STABLE
- Hint: When you fix this issue, please, recheck other functions that uses this function.
-(6 rows)
+(4 rows)
 
 drop function fx();
 create table tab_1(i int);
@@ -2921,9 +2906,7 @@ select * from plpgsql_check_function('test()', performance_warnings := true);
  Detail: An index of some attribute cannot be used, when variable, used in predicate, has not right type like a attribute
  Hint: Check a variable type - int versus numeric
  warning extra:00000:3:DECLARE:never read variable "r"
- performance:00000:routine is marked as VOLATILE, should be STABLE
- Hint: When you fix this issue, please, recheck other functions that uses this function.
-(18 rows)
+(16 rows)
 
 create or replace function test()
 returns void as $$
@@ -2941,12 +2924,10 @@ end;
 $$ language plpgsql;
 -- there are not any performance issue now
 select * from plpgsql_check_function('test()', performance_warnings := true);
-                                 plpgsql_check_function                                  
------------------------------------------------------------------------------------------
+                plpgsql_check_function                 
+-------------------------------------------------------
  warning extra:00000:3:DECLARE:never read variable "r"
- performance:00000:routine is marked as VOLATILE, should be STABLE
- Hint: When you fix this issue, please, recheck other functions that uses this function.
-(3 rows)
+(1 row)
 
 -- nextval, currval and setval test
 create table test_table();
@@ -3115,12 +3096,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx2()', performance_warnings := true);
-                                 plpgsql_check_function                                  
------------------------------------------------------------------------------------------
+                 plpgsql_check_function                  
+---------------------------------------------------------
  warning extra:00000:2:DECLARE:never read variable "_pa"
- performance:00000:routine is marked as VOLATILE, should be STABLE
- Hint: When you fix this issue, please, recheck other functions that uses this function.
-(3 rows)
+(1 row)
 
 drop function fx2();
 create or replace function fx2()
@@ -3132,12 +3111,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx2()', performance_warnings := true);
-                                 plpgsql_check_function                                  
------------------------------------------------------------------------------------------
+                 plpgsql_check_function                  
+---------------------------------------------------------
  warning extra:00000:2:DECLARE:never read variable "_pa"
- performance:00000:routine is marked as VOLATILE, should be STABLE
- Hint: When you fix this issue, please, recheck other functions that uses this function.
-(3 rows)
+(1 row)
 
 drop function fx2();
 create or replace function test_lab()

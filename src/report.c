@@ -12,6 +12,7 @@
 #include "plpgsql_check.h"
 
 #include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
 
 static bool datum_is_explicit(PLpgSQL_checkstate *cstate, int dno);
 static bool datum_is_used(PLpgSQL_checkstate *cstate, int dno, bool write);
@@ -421,7 +422,7 @@ plpgsql_check_report_too_high_volatility(PLpgSQL_checkstate *cstate)
 	{
 		char	   *current = NULL;
 		char	   *should_be = NULL;
-		bool 		raise_warning;
+		bool 		raise_warning = false;
 
 		if (cstate->volatility == PROVOLATILE_IMMUTABLE &&
 				(cstate->decl_volatility == PROVOLATILE_VOLATILE ||
@@ -435,12 +436,13 @@ plpgsql_check_report_too_high_volatility(PLpgSQL_checkstate *cstate)
 		else if (cstate->volatility == PROVOLATILE_STABLE &&
 				(cstate->decl_volatility == PROVOLATILE_VOLATILE))
 		{
-			should_be = "STABLE";
-			current = "VOLATILE";
-			raise_warning = true;
+			if (cstate->cinfo->rettype != VOIDOID)
+			{
+				should_be = "STABLE";
+				current = "VOLATILE";
+				raise_warning = true;
+			}
 		}
-		else
-			raise_warning = false;
 
 		if (raise_warning)
 		{

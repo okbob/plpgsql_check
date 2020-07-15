@@ -817,20 +817,30 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 
 		if (found_polymorphic)
 		{
+			List	   *args = NIL;
 			Oid			anyelement_array_oid;
 			Oid			anyelement_base_oid;
+			bool		is_array_anyelement;
+
+#if PG_VERSION_NUM >= 130000
+
 			Oid			anycompatible_array_oid;
 			Oid			anycompatible_base_oid;
-			bool		is_array_anyelement;
 			bool		is_array_anycompatible;
-			List	   *args = NIL;
+
+#endif
 
 			anyelement_array_oid = get_array_type(cinfo->anyelementoid);
 			anyelement_base_oid = getBaseType(cinfo->anyelementoid);
 			is_array_anyelement = OidIsValid(get_element_type(anyelement_base_oid));
+
+#if PG_VERSION_NUM >= 130000
+
 			anycompatible_array_oid = get_array_type(cinfo->anycompatibleoid);
 			anycompatible_base_oid = getBaseType(cinfo->anycompatibleoid);
 			is_array_anycompatible = OidIsValid(get_element_type(anycompatible_base_oid));
+
+#endif
 
 			/*
 			 * when polymorphic types are used, then we need to build fake fn_expr,
