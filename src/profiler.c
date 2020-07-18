@@ -480,7 +480,7 @@ profiler_touch_stmt(profiler_info *pinfo,
 				if (stmt_block->exceptions)
 				{
 					ListCell *lc;
-					char	buffer[20];
+					char	buffer[100];
 					int		n = 0;
 
 					foreach(lc, stmt_block->exceptions->exc_list)
@@ -548,7 +548,7 @@ profiler_touch_stmt(profiler_info *pinfo,
 				foreach(lc, stmt_if->elsif_list)
 				{
 					int		n = 0;
-					char buffer[20];
+					char buffer[100];
 
 					sprintf(buffer, "elsif %d", ++n);
 					profiler_touch_stmts(pinfo,
@@ -620,7 +620,7 @@ profiler_touch_stmt(profiler_info *pinfo,
 
 				foreach(lc, stmt_case->case_when_list)
 				{
-					char	buffer[20];
+					char	buffer[100];
 					int		n = 0;
 
 					sprintf(buffer, "case when %d", ++n);
