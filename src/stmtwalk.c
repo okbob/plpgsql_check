@@ -1823,26 +1823,26 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	if (IsA(expr_node, Const))
 	{
 		char *query = plpgsql_check_const_to_string((Const *) expr_node);
-		PLpgSQL_expr		dynexpr;
+		PLpgSQL_expr	   *dynexpr;
 		DynSQLParams		dsp;
 		bool				is_mp;
 
-		memset(&dynexpr, 0, sizeof(PLpgSQL_expr));
+		dynexpr = palloc0(sizeof(PLpgSQL_expr));
 
 #if PG_VERSION_NUM < 110000
 
-		dynexpr.dtype = PLPGSQL_DTYPE_EXPR;
-		dynexpr.dno = -1;
+		dynexpr->dtype = PLPGSQL_DTYPE_EXPR;
+		dynexpr->dno = -1;
 
 #endif
 
 #if PG_VERSION_NUM >= 90500
 
-		dynexpr.rwparam = -1;
+		dynexpr->rwparam = -1;
 
 #endif
 
-		dynexpr.query = query;
+		dynexpr->query = query;
 
 		dsp.args = params;
 		dsp.cstate = cstate;
@@ -1853,7 +1853,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 			cstate->allow_mp = true;
 
 			plpgsql_check_expr_generic_with_parser_setup(cstate,
-													 &dynexpr,
+													 dynexpr,
 													 (ParserSetupHook) dynsql_parser_setup,
 													 &dsp);
 
@@ -1893,11 +1893,11 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 									0, NULL, NULL);
 		}
 
-		if (dynexpr.plan)
+		if (dynexpr->plan)
 		{
 			if (stmt->cmd_type == PLPGSQL_STMT_RETURN_QUERY)
 			{
-				plpgsql_check_returned_expr(cstate, &dynexpr, false);
+				plpgsql_check_returned_expr(cstate, dynexpr, false);
 				cstate->found_return_query = true;
 			}
 			else if (into)
@@ -1906,19 +1906,16 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 #if PG_VERSION_NUM >= 110000
 
 				check_variable(cstate, target);
-				plpgsql_check_assignment_to_variable(cstate, &dynexpr, target, -1);
+				plpgsql_check_assignment_to_variable(cstate, dynexpr, target, -1);
 
 #else
 
 				plpgsql_check_row_or_rec(cstate, row, rec);
-				plpgsql_check_assignment(cstate, &dynexpr, rec, row, -1);
+				plpgsql_check_assignment(cstate, dynexpr, rec, row, -1);
 
 #endif
 
 			}
-
-			SPI_freeplan(dynexpr.plan);
-			cstate->exprs = list_delete_ptr(cstate->exprs, &dynexpr);
 		}
 
 		/* this is not real dynamic SQL statement */
