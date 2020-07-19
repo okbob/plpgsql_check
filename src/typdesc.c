@@ -215,6 +215,7 @@ param_get_desc(PLpgSQL_checkstate *cstate, Param *p)
 
 		if (!var->datatype ||
 			!OidIsValid(var->datatype->typoid) ||
+			var->datatype->typoid == 0xFFFFFFFF ||
 			var->datatype->typoid == p->paramtype)
 		{
 			TupleDesc	rectupdesc;
@@ -249,7 +250,6 @@ param_get_desc(PLpgSQL_checkstate *cstate, Param *p)
 
 	return rettupdesc;
 }
-
 
 /*
  * Try to deduce result tuple descriptor from polymorphic function
@@ -308,12 +308,15 @@ pofce_get_desc(PLpgSQL_checkstate *cstate,
 							PLpgSQL_var *var = (PLpgSQL_var *) cstate->estate->datums[dno];
 
 							/*
-							 * Postgres 9.5 and older has not valid typoid for record
-							 * variables.
+							 * When we know a datatype, then we expect eq with param type.
+							 * But sometimes a Oid of datatype is not valid - record type
+							 * for some older releases. What is worse - sometimes Oid is 0
+							 * or FFFFFFFF.
 							 */
 							if (var->dtype == PLPGSQL_DTYPE_REC &&
 								(!var->datatype ||
 								 !OidIsValid(var->datatype->typoid) ||
+								 var->datatype->typoid == 0xFFFFFFFF ||
 								 var->datatype->typoid == p->paramtype))
 							{
 								PLpgSQL_rec *rec = (PLpgSQL_rec *) var;
