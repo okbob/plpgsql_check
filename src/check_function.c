@@ -717,6 +717,83 @@ is_polymorphic_tupdesc(TupleDesc tupdesc)
 }
 
 /*
+ * Replaces polymorphic types by real type
+ */
+static Oid
+replace_polymorphic_type(plpgsql_check_info *cinfo,
+								Oid typ,
+								Oid anyelement_array_oid,
+								bool is_array_anyelement,
+								Oid anycompatible_array_oid,
+								bool is_array_anycompatible,
+								bool is_variadic)
+{
+	/* quite compiler warnings */
+	(void) anycompatible_array_oid;
+	(void) is_array_anycompatible;
+
+	if (OidIsValid(typ) && IsPolymorphicType(typ))
+	{
+		switch (typ)
+		{
+			case ANYELEMENTOID:
+				typ = is_variadic ? anyelement_array_oid : cinfo->anyelementoid;
+				break;
+
+			case ANYNONARRAYOID:
+				if (is_array_anyelement)
+					elog(ERROR, "anyelement type is a array (expected nonarray)");
+				typ = is_variadic ? anyelement_array_oid : cinfo->anyelementoid;
+				break;
+
+			case ANYENUMOID:	/* XXX dubious */
+				if (!OidIsValid(cinfo->anyenumoid))
+					elog(ERROR, "anyenumtype option should be specified (anyenum type is used)");
+				if (!type_is_enum(cinfo->anyenumoid))
+					elog(ERROR, "type specified by anyenumtype option is not enum");
+				typ = cinfo->anyenumoid;
+			break;
+
+			case ANYARRAYOID:
+				typ = anyelement_array_oid;
+				break;
+
+			case ANYRANGEOID:
+				typ = is_variadic ? get_array_type(cinfo->anyrangeoid) : cinfo->anyrangeoid;
+				break;
+
+#if PG_VERSION_NUM >= 130000
+
+			case ANYCOMPATIBLEOID:
+				typ = is_variadic ? anycompatible_array_oid : cinfo->anycompatibleoid;
+				break;
+
+			case ANYCOMPATIBLENONARRAYOID:
+				if (is_array_anycompatible)
+					elog(ERROR, "anycompatible type is a array (expected nonarray)");
+				typ = is_variadic ? anycompatible_array_oid : cinfo->anycompatibleoid;
+				break;
+
+			case ANYCOMPATIBLEARRAYOID:
+				typ = anycompatible_array_oid;
+				break;
+
+			case ANYCOMPATIBLERANGEOID:
+				typ = is_variadic ? get_array_type(cinfo->anycompatiblerangeoid) : cinfo->anycompatiblerangeoid;
+				break;
+
+#endif
+
+			default:
+				/* fallback */
+				typ = is_variadic ? INT4ARRAYOID : INT4OID;
+		}
+	}
+
+	return typ;
+}
+
+/*
  * Set up a fake fcinfo with just enough info to satisfy plpgsql_compile().
  *
  * There should be a different real argtypes for polymorphic params.
@@ -739,6 +816,8 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 	Oid	   *argtypes;
 	char  **argnames;
 	char   *argmodes;
+	Oid		rettype;
+	bool	found_polymorphic = false;
 
 	*fake_rtd = false;
 
@@ -759,6 +838,8 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 	fcinfo->flinfo = flinfo;
 	flinfo->fn_oid = cinfo->fn_oid;
 	flinfo->fn_mcxt = CurrentMemoryContext;
+
+	rettype = cinfo->rettype;
 
 	if (cinfo->trigtype == PLPGSQL_DML_TRIGGER)
 	{
@@ -790,7 +871,6 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 
 	if (nargs > 0)
 	{
-		bool	found_polymorphic = false;
 		Oid		argtype = InvalidOid;
 		int		i;
 
@@ -821,14 +901,9 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 			Oid			anyelement_array_oid;
 			Oid			anyelement_base_oid;
 			bool		is_array_anyelement;
-
-#if PG_VERSION_NUM >= 130000
-
 			Oid			anycompatible_array_oid;
 			Oid			anycompatible_base_oid;
 			bool		is_array_anycompatible;
-
-#endif
 
 			anyelement_array_oid = get_array_type(cinfo->anyelementoid);
 			anyelement_base_oid = getBaseType(cinfo->anyelementoid);
@@ -839,6 +914,14 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 			anycompatible_array_oid = get_array_type(cinfo->anycompatibleoid);
 			anycompatible_base_oid = getBaseType(cinfo->anycompatibleoid);
 			is_array_anycompatible = OidIsValid(get_element_type(anycompatible_base_oid));
+
+#else
+
+			anycompatible_array_oid = InvalidOid;
+			anycompatible_base_oid = InvalidOid;
+			is_array_anycompatible = false;
+
+			(void) anycompatible_base_oid;
 
 #endif
 
@@ -868,72 +951,29 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 
 				if (OidIsValid(argtype))
 				{
-					if (IsPolymorphicType(argtype))
-					{
-						/* Transform polymorphic type to near int type */
-						switch (argtype)
-						{
-							case ANYELEMENTOID:
-								argtype = is_variadic ? anyelement_array_oid : cinfo->anyelementoid;
-								break;
-
-							case ANYNONARRAYOID:
-								if (is_array_anyelement)
-									elog(ERROR, "anyelement type is a array (expected nonarray)");
-								argtype = is_variadic ? anyelement_array_oid : cinfo->anyelementoid;
-								break;
-
-							case ANYENUMOID:	/* XXX dubious */
-								if (!OidIsValid(cinfo->anyenumoid))
-									elog(ERROR, "anyenumtype option should be specified (anyenum type is used)");
-								if (!type_is_enum(cinfo->anyenumoid))
-									elog(ERROR, "type specified by anyenumtype option is not enum");
-								argtype = cinfo->anyenumoid;
-								break;
-
-							case ANYARRAYOID:
-								argtype = anyelement_array_oid;
-								break;
-
-							case ANYRANGEOID:
-								argtype = is_variadic ? get_array_type(cinfo->anyrangeoid) : cinfo->anyrangeoid;
-								break;
-
-#if PG_VERSION_NUM >= 130000
-
-							case ANYCOMPATIBLEOID:
-								argtype = is_variadic ? anycompatible_array_oid : cinfo->anycompatibleoid;
-								break;
-
-							case ANYCOMPATIBLENONARRAYOID:
-								if (is_array_anycompatible)
-									elog(ERROR, "anycompatible type is a array (expected nonarray)");
-								argtype = is_variadic ? anycompatible_array_oid : cinfo->anycompatibleoid;
-								break;
-
-							case ANYCOMPATIBLEARRAYOID:
-								argtype = anycompatible_array_oid;
-								break;
-
-							case ANYCOMPATIBLERANGEOID:
-								argtype = is_variadic ? get_array_type(cinfo->anycompatiblerangeoid) : cinfo->anycompatiblerangeoid;
-								break;
-
-#endif
-
-							default:
-								/* fallback */
-								argtype = is_variadic ? INT4ARRAYOID : INT4OID;
-						}
-					}
+					argtype = replace_polymorphic_type(cinfo,
+													   argtype,
+													   anyelement_array_oid,
+													   is_array_anyelement,
+													   anycompatible_array_oid,
+													   is_array_anycompatible,
+													   is_variadic);
 
 					args = lappend(args,
 								   makeNullConst(argtype, -1, InvalidOid));
 				}
 			}
 
+			rettype =  replace_polymorphic_type(cinfo,
+												rettype,
+												anyelement_array_oid,
+												is_array_anyelement,
+												anycompatible_array_oid,
+												is_array_anycompatible,
+												false);
+
 			fcinfo->flinfo->fn_expr = (Node *) makeFuncExpr(cinfo->fn_oid,
-															cinfo->rettype,
+															rettype,
 															args,
 															InvalidOid,
 															InvalidOid,
@@ -1000,6 +1040,19 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 							    (AttrNumber) 1, "__result__",
 							    cinfo->rettype, -1, 0);
 			resultTupleDesc = BlessTupleDesc(resultTupleDesc);
+		}
+	}
+	else
+	{
+		if (IsPolymorphicType(cinfo->rettype))
+		{
+			/*
+			 * ensure replacament of polymorphic rettype, but this
+			 * error is checked in validation stage, so this case
+			 * should not be possible.
+			 */
+			if (IsPolymorphicType(rettype))
+				elog(ERROR, "return type is still polymorphic");
 		}
 	}
 
