@@ -7263,3 +7263,15 @@ select * from plpgsql_check_function('f');
 ------------------------
 (0 rows)
 
+-- fix issue #63
+create or replace function distinct_array(arr anyarray) returns anyarray as $$
+begin
+  return array(select distinct e from unnest(arr) as e);
+end;
+$$ language plpgsql immutable;
+select plpgsql_check_function('distinct_array(anyarray)');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function distinct_array(anyarray);

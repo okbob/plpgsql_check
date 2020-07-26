@@ -4033,3 +4033,14 @@ end;
 $$ language plpgsql;
 
 select * from plpgsql_check_function('f');
+
+-- fix issue #63
+create or replace function distinct_array(arr anyarray) returns anyarray as $$
+begin
+  return array(select distinct e from unnest(arr) as e);
+end;
+$$ language plpgsql immutable;
+
+select plpgsql_check_function('distinct_array(anyarray)');
+
+drop function distinct_array(anyarray);
