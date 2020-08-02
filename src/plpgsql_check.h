@@ -124,6 +124,12 @@ typedef struct
 	int		executed_branches;
 } coverage_state;
 
+typedef struct
+{
+	unsigned long int run_id;
+	int		level;
+} tracer_info;
+
 /*
  * function from assign.c
  */
@@ -266,6 +272,8 @@ extern Oid plpgsql_check_parse_name_or_signature(char *name_or_signature);
 /*
  * functions from profiler.c
  */
+extern bool plpgsql_check_profiler;
+
 extern Size plpgsql_check_shmem_size(void);
 extern void plpgsql_check_profiler_init_hash_tables(void);
 
@@ -277,7 +285,27 @@ extern void plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_s
 extern void plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo);
 extern void plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo, coverage_state *cs);
 
-extern bool plpgsql_check_profiler;
+extern bool plpgsql_check_profiler_tracer_is_active(PLpgSQL_execstate *estate, long unsigned int *run_id, int *level);
+
+/*
+ * functions from tracer.c
+ */
+extern long unsigned int plpgsql_tracer_run_id;
+extern PLpgSQL_execstate *plpgsql_tracer_last_stmt_estate;
+extern TimestampTz plpgsql_tracer_last_stmt_xact_start_timestamp;
+
+/* guc for tracing */
+extern bool plpgsql_check_tracer;
+extern bool plpgsql_check_trace_assert;
+extern bool plpgsql_check_tracer_test_mode;
+
+extern int plpgsql_check_tracer_variable_max_length;
+extern int plpgsql_check_tracer_errlevel;
+
+extern PGErrorVerbosity plpgsql_check_tracer_verbosity;
+extern PGErrorVerbosity plpgsql_check_trace_assert_verbosity;
+
+extern void plpgsql_check_tracer_print_fargs(PLpgSQL_execstate *estate, PLpgSQL_function *func, long unsigned int run_id, int level);
 
 /*
  * functions from plpgsql_check.c
@@ -290,7 +318,6 @@ extern shmem_startup_hook_type prev_shmem_startup_hook;
 #define PLPGSQL_BUILD_DATATYPE_4		1
 
 #endif
-
 
 /*
  * Linkage to function in plpgsql module
@@ -354,7 +381,6 @@ extern plpgsql_check__recognize_err_condition_t plpgsql_check__recognize_err_con
 #define is_procedure(estate)	(false)
 
 #endif
-
 
 #if PG_VERSION_NUM >= 100000
 

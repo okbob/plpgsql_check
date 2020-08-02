@@ -218,3 +218,6 @@ CREATE OR REPLACE FUNCTION plpgsql_coverage_branches(name text)
 RETURNS double precision AS 'MODULE_PATHNAME', 'plpgsql_coverage_branches_name'
 LANGUAGE C;
 
+CREATE FUNCTION plpgsql_tracer_reset()
+RETURNS void AS 'MODULE_PATHNAME','plpgsql_tracer_reset'
+LANGUAGE C STRICT;

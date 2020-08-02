@@ -53,6 +53,26 @@ static const struct config_enum_entry plpgsql_check_mode_options[] = {
 	{NULL, 0, false}
 };
 
+static const struct config_enum_entry tracer_verbosity_options[] = {
+	{"terse", PGERROR_TERSE, false},
+	{"default", PGERROR_DEFAULT, false},
+	{"verbose", PGERROR_VERBOSE, false},
+	{NULL, 0, false}
+};
+
+static const struct config_enum_entry tracer_level_options[] = {
+	{"debug5", DEBUG5, false},
+	{"debug4", DEBUG4, false},
+	{"debug3", DEBUG3, false},
+	{"debug2", DEBUG2, false},
+	{"debug1", DEBUG1, false},
+	{"debug", DEBUG2, true},
+	{"info", INFO, false},
+	{"notice", NOTICE, false},
+	{"log", LOG, false},
+	{NULL, 0, false}
+};
+
 void			_PG_init(void);
 void			_PG_fini(void);
 
@@ -178,6 +198,66 @@ _PG_init(void)
 					    PGC_USERSET, 0,
 					    NULL, NULL, NULL);
 
+	DefineCustomBoolVariable("plpgsql_check.tracer",
+					    "when is true, then function is traced",
+					    NULL,
+					    &plpgsql_check_tracer,
+					    true,
+					    PGC_USERSET, 0,
+					    NULL, NULL, NULL);
+
+	DefineCustomBoolVariable("plpgsql_check.trace_assert",
+					    "when is true, then statement ASSERT is traced",
+					    NULL,
+					    &plpgsql_check_trace_assert,
+					    true,
+					    PGC_USERSET, 0,
+					    NULL, NULL, NULL);
+
+	DefineCustomBoolVariable("plpgsql_check.tracer_test_mode",
+					    "when is true, then output of tracer is in regress test possible format",
+					    NULL,
+					    &plpgsql_check_tracer,
+					    true,
+					    PGC_USERSET, 0,
+					    NULL, NULL, NULL);
+
+	DefineCustomEnumVariable("plpgsql_check.tracer_verbosity",
+					    "sets the verbosity of tracer",
+					    NULL,
+					    (int *) &plpgsql_check_tracer_verbosity,
+					    PGERROR_DEFAULT,
+					    tracer_verbosity_options,
+					    PGC_USERSET, 0,
+					    NULL, NULL, NULL);
+
+	DefineCustomEnumVariable("plpgsql_check.trace_assert_verbosity",
+					    "sets the verbosity of trace ASSERT statement",
+					    NULL,
+					    (int *) &plpgsql_check_trace_assert_verbosity,
+					    PGERROR_DEFAULT,
+					    tracer_verbosity_options,
+					    PGC_USERSET, 0,
+					    NULL, NULL, NULL);
+
+	DefineCustomEnumVariable("plpgsql_check.tracer_errlevel",
+					    "sets an error level of tracer's messages",
+					    NULL,
+					    (int *) &plpgsql_check_tracer_errlevel,
+					    NOTICE,
+					    tracer_level_options,
+					    PGC_USERSET, 0,
+					    NULL, NULL, NULL);
+
+	DefineCustomIntVariable("plpgsql_check.tracer_variable_max_length",
+							"Maximum output length of content of variables in bytes",
+							NULL,
+							&plpgsql_check_tracer_variable_max_length,
+							1024,
+							10, 2048,
+							PGC_USERSET, 0,
+							NULL, NULL, NULL);
+
 	plpgsql_check_HashTableInit();
 	plpgsql_check_profiler_init_hash_tables();
 
@@ -213,6 +293,12 @@ _PG_init(void)
 void
 _PG_fini(void)
 {
+	PLpgSQL_plugin **var_ptr;
+
 	shmem_startup_hook = prev_shmem_startup_hook;
+
+	/* Be more correct, and clean rendezvous variable */
+	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable( "PLpgSQL_plugin");
+	*var_ptr = NULL;
 }
 

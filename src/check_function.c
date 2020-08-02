@@ -287,11 +287,20 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
  *
  */
 void
-plpgsql_check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func)
+plpgsql_check_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 {
 	const char *err_text = estate->err_text;
 	int closing;
 	List		*exceptions;
+
+	if (plpgsql_check_tracer)
+	{
+		int		level;
+		long unsigned int run_id;
+
+		if (plpgsql_check_profiler_tracer_is_active(estate, &run_id, &level))
+			plpgsql_check_tracer_print_fargs(estate, func, run_id, level);
+	}
 
 	if (plpgsql_check_mode == PLPGSQL_CHECK_MODE_FRESH_START ||
 		   plpgsql_check_mode == PLPGSQL_CHECK_MODE_EVERY_START)

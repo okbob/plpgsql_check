@@ -72,5 +72,6 @@ extern PGDLLEXPORT Datum plpgsql_coverage_statements(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plpgsql_coverage_branches(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plpgsql_coverage_statements_name(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plpgsql_coverage_branches_name(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum plpgsql_tracer_reset(PG_FUNCTION_ARGS);
 
 #endif
