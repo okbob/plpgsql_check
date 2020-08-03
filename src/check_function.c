@@ -295,11 +295,48 @@ plpgsql_check_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 	if (plpgsql_check_tracer)
 	{
+		PLpgSQL_execstate *outer_estate;
+		int		frame_num;
 		int		level;
-		long unsigned int run_id;
+		instr_time start_time;
+		Oid		fn_oid;
 
-		if (plpgsql_check_profiler_tracer_is_active(estate, &run_id, &level))
-			plpgsql_check_tracer_print_fargs(estate, func, run_id, level);
+		fn_oid = plpgsql_check_tracer_test_mode ? 0 : func->fn_oid;
+
+		/*
+		 * initialize plugin's near_outer_estate and level fields
+		 * from stacked error contexts. Have to be called here.
+		 */
+		plpgsql_check_init_trace_info(estate);
+		(void) plpgsql_check_get_trace_info(estate,
+											&outer_estate,
+											&frame_num,
+											&level,
+											&start_time);
+
+		elog(NOTICE, "#%d%*s ->> start of %s%s (Oid=%u)",
+													  frame_num,
+													  level * 2,
+													  "",
+													  func->fn_oid ? "function " : "block ", 
+													  func->fn_signature,
+													  fn_oid);
+
+		if (outer_estate)
+		{
+			if (outer_estate->err_stmt)
+				elog(NOTICE, "#%d%*s previous execution of PLpgSQL function %s line %d at %s", frame_num,
+								level * 2 + 4, "",
+								outer_estate->func->fn_signature,
+								outer_estate->err_stmt->lineno,
+								plpgsql_check__stmt_typename_p(outer_estate->err_stmt));
+			else
+				elog(NOTICE, "#%d%*s previous execution of PLpgSQL function %s", frame_num,
+								level * 2 + 4, "  ",
+								outer_estate->func->fn_signature);
+		}
+
+		plpgsql_check_tracer_print_fargs(estate, func, frame_num, level);
 	}
 
 	if (plpgsql_check_mode == PLPGSQL_CHECK_MODE_FRESH_START ||

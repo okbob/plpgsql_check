@@ -35,6 +35,9 @@
 PG_MODULE_MAGIC;
 #endif
 
+PLpgSQL_plugin **plpgsql_check_plugin_var_ptr;
+
+
 static PLpgSQL_plugin plugin_funcs = { plpgsql_check_profiler_func_init,
 									   plpgsql_check_on_func_beg,
 									   plpgsql_check_profiler_func_end,
@@ -104,7 +107,6 @@ plpgsql_check__recognize_err_condition_t plpgsql_check__recognize_err_condition_
 void 
 _PG_init(void)
 {
-	PLpgSQL_plugin **var_ptr;
 
 	/* Be sure we do initialization only once (should be redundant now) */
 	static bool inited = false;
@@ -146,8 +148,8 @@ _PG_init(void)
 	plpgsql_check__recognize_err_condition_p = (plpgsql_check__recognize_err_condition_t)
 		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_recognize_err_condition");
 
-	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable( "PLpgSQL_plugin");
-	*var_ptr = &plugin_funcs;
+	plpgsql_check_plugin_var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable( "PLpgSQL_plugin");
+	*plpgsql_check_plugin_var_ptr = &plugin_funcs;
 
 	DefineCustomEnumVariable("plpgsql_check.mode",
 					    "choose a mode for enhanced checking",
@@ -202,7 +204,7 @@ _PG_init(void)
 					    "when is true, then function is traced",
 					    NULL,
 					    &plpgsql_check_tracer,
-					    true,
+					    false,
 					    PGC_USERSET, 0,
 					    NULL, NULL, NULL);
 
@@ -210,15 +212,15 @@ _PG_init(void)
 					    "when is true, then statement ASSERT is traced",
 					    NULL,
 					    &plpgsql_check_trace_assert,
-					    true,
+					    false,
 					    PGC_USERSET, 0,
 					    NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.tracer_test_mode",
 					    "when is true, then output of tracer is in regress test possible format",
 					    NULL,
-					    &plpgsql_check_tracer,
-					    true,
+					    &plpgsql_check_tracer_test_mode,
+					    false,
 					    PGC_USERSET, 0,
 					    NULL, NULL, NULL);
 
@@ -293,12 +295,9 @@ _PG_init(void)
 void
 _PG_fini(void)
 {
-	PLpgSQL_plugin **var_ptr;
-
 	shmem_startup_hook = prev_shmem_startup_hook;
 
 	/* Be more correct, and clean rendezvous variable */
-	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable( "PLpgSQL_plugin");
-	*var_ptr = NULL;
+	*plpgsql_check_plugin_var_ptr = NULL;
 }
 

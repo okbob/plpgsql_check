@@ -18,8 +18,8 @@
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 
-bool plpgsql_check_tracer = true;
-bool plpgsql_check_trace_assert = true;
+bool plpgsql_check_tracer = false;
+bool plpgsql_check_trace_assert = false;
 
 /* the output is modified for regress tests */
 bool plpgsql_check_tracer_test_mode = false;
@@ -29,27 +29,6 @@ PGErrorVerbosity plpgsql_check_trace_assert_verbosity = PGERROR_DEFAULT;
 
 int plpgsql_check_tracer_errlevel = NOTICE;
 int plpgsql_check_tracer_variable_max_length = 1024;
-
-unsigned long int plpgsql_tracer_run_id = 0;
-PLpgSQL_execstate *plpgsql_tracer_last_stmt_estate = NULL;
-TimestampTz		  plpgsql_tracer_last_stmt_xact_start_timestamp = 0;
-
-PG_FUNCTION_INFO_V1(plpgsql_tracer_reset);
-
-/*
- * Reset function execution's counter - used for regress tests
- */
-Datum
-plpgsql_tracer_reset(PG_FUNCTION_ARGS)
-{
-	(void) fcinfo;
-
-	plpgsql_tracer_run_id = 0;
-	plpgsql_tracer_last_stmt_estate = NULL;
-	plpgsql_tracer_last_stmt_xact_start_timestamp = 0;
-
-	PG_RETURN_VOID();
-}
 
 /*
  * Convert binary value to text

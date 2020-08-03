@@ -285,7 +285,8 @@ extern void plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_s
 extern void plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo);
 extern void plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo, coverage_state *cs);
 
-extern bool plpgsql_check_profiler_tracer_is_active(PLpgSQL_execstate *estate, long unsigned int *run_id, int *level);
+extern void plpgsql_check_init_trace_info(PLpgSQL_execstate *estate);
+extern bool plpgsql_check_get_trace_info(PLpgSQL_execstate *estate, PLpgSQL_execstate **outer_estate, int *frame_num, int *level, instr_time *start_time);
 
 /*
  * functions from tracer.c
@@ -312,6 +313,9 @@ extern void plpgsql_check_tracer_print_fargs(PLpgSQL_execstate *estate, PLpgSQL_
  */
 
 extern shmem_startup_hook_type prev_shmem_startup_hook;
+
+extern PLpgSQL_plugin **plpgsql_check_plugin_var_ptr;
+
 
 #if PG_VERSION_NUM > 110005
 

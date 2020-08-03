@@ -510,20 +510,19 @@ start or end functions (terse and default verbosity) and start or end statements
 is displayed. The content of related variables are displayed when verbosity is verbose.
 
     postgres=# do $$ begin perform fx(10,null, 'now', e'stěhule'); end; $$;
-    NOTICE:  #1 ->> start of inline_code_block (Oid=0)
+    NOTICE:  #0 ->> start of inline_code_block (Oid=0)
     NOTICE:  #2   ->> start of function fx(integer,integer,date,text) (Oid=16405)
     NOTICE:  #2       previous execution of PLpgSQL function inline_code_block line 1 at PERFORM
-    NOTICE:  #2       "a" => '10', "b" => null, "c" => '2020-08-02', "d" => 'stěhule'
-    NOTICE:  #3     ->> start of function fx(integer) (Oid=16404)
-    NOTICE:  #3         previous execution of PLpgSQL function fx(integer,integer,date,text) line 1 at PERFORM
-    NOTICE:  #3         "a" => '10'
-    NOTICE:  #3     <<- end of function fx (elapsed time=0.411 ms)
-    NOTICE:  #2   <<- end of function fx (elapsed time=0.974 ms)
-    NOTICE:  #1 <<- end of block (elapsed time=2.164 ms)
+    NOTICE:  #2       "a" => '10', "b" => null, "c" => '2020-08-03', "d" => 'stěhule'
+    NOTICE:  #4     ->> start of function fx(integer) (Oid=16404)
+    NOTICE:  #4         previous execution of PLpgSQL function fx(integer,integer,date,text) line 1 at PERFORM
+    NOTICE:  #4         "a" => '10'
+    NOTICE:  #4     <<- end of function fx (elapsed time=0.098 ms)
+    NOTICE:  #2   <<- end of function fx (elapsed time=0.399 ms)
+    NOTICE:  #0 <<- end of block (elapsed time=0.754 ms)
 
-The number after `#` is a function execution instance oid. It allows to pair start end and of function.
-This number is starting from one on session start, or can be set to one by execution of function
-`plpgsql_tracer_reset()`.
+The number after `#` is a execution frame counter (this number is related to deep of error context stack).
+It allows to pair start end and of function.
 
 Tracing is enabled by setting `plpgsql_check.tracing` to `on`. Attention - enabling this behaviour
 has significant negative impact on performance (against profiler). You can set a level for output used by
