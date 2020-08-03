@@ -97,7 +97,6 @@ plpgsql_check__recognize_err_condition_t plpgsql_check__recognize_err_condition_
  */
 #define LOAD_EXTERNAL_FUNCTION(file, funcname)	((void *) (load_external_function(file, funcname, true, NULL)))
 
-
 /*
  * Module initialization
  *
@@ -198,6 +197,14 @@ _PG_init(void)
 					    &plpgsql_check_profiler,
 					    false,
 					    PGC_USERSET, 0,
+					    NULL, NULL, NULL);
+
+	DefineCustomBoolVariable("plpgsql_check.enable_tracer",
+					    "when is true, then tracer's functionality is enabled",
+					    NULL,
+					    &plpgsql_check_enable_tracer,
+					    false,
+					    PGC_SUSET, 0,
 					    NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.tracer",

@@ -18,6 +18,7 @@
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 
+bool plpgsql_check_enable_tracer = false;
 bool plpgsql_check_tracer = false;
 bool plpgsql_check_trace_assert = false;
 
@@ -82,8 +83,8 @@ trim_string(char *str, int n)
 /*
  * Print function's arguments
  */
-void
-plpgsql_check_tracer_print_fargs(PLpgSQL_execstate *estate, PLpgSQL_function *func, long unsigned int run_id, int level)
+static void
+print_fargs(PLpgSQL_execstate *estate, PLpgSQL_function *func, int frame_num, int level)
 {
 	int		i;
 	StringInfoData		ds;
@@ -123,12 +124,12 @@ plpgsql_check_tracer_print_fargs(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 						if (extra_line)
 						{
 							if (*ds.data)
-								elog(NOTICE, "#%lu%*s %s", run_id, level * 2 + 4, "", ds.data);
+								elog(NOTICE, "#%d%*s %s", frame_num, level * 2 + 4, "", ds.data);
 
 							resetStringInfo(&ds);
 
 							trim_string(str, plpgsql_check_tracer_variable_max_length);
-							elog(NOTICE, "#%lu%*s \"%s\" => '%s'", run_id, level * 2 + 4, "", var->refname, str);
+							elog(NOTICE, "#%d%*s \"%s\" => '%s'", frame_num, level * 2 + 4, "", var->refname, str);
 						}
 						else
 						{
@@ -160,7 +161,7 @@ plpgsql_check_tracer_print_fargs(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 		/*print too long lines immediately */
 		if (ds.len > plpgsql_check_tracer_variable_max_length)
 		{
-			elog(NOTICE, "#%lu%*s %s", run_id, level * 2 + 4, "",  ds.data);
+			elog(NOTICE, "#%d%*s %s", frame_num, level * 2 + 4, "",  ds.data);
 			resetStringInfo(&ds);
 		}
 
@@ -168,8 +169,118 @@ plpgsql_check_tracer_print_fargs(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 
 	if (*ds.data)
 	{
-		elog(NOTICE, "#%lu%*s %s", run_id, level * 2 + 4, "",  ds.data);
+		elog(NOTICE, "#%d%*s %s", frame_num, level * 2 + 4, "",  ds.data);
 	}
 
 	pfree(ds.data);
+}
+
+/*
+ * Initialize tracer info data in plugin data, and displays info about function
+ * entry.
+ */
+void
+plpgsql_check_tracer_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
+{
+	PLpgSQL_execstate *outer_estate;
+	int		frame_num;
+	int		level;
+	instr_time start_time;
+	Oid		fn_oid;
+
+	Assert(plpgsql_check_tracer);
+
+	/* Allow tracing only when it is explicitly allowed */
+	if (!plpgsql_check_enable_tracer)
+		return;
+
+	fn_oid = plpgsql_check_tracer_test_mode ? 0 : func->fn_oid;
+
+	/*
+	 * initialize plugin's near_outer_estate and level fields
+	 * from stacked error contexts. Have to be called here.
+	 */
+	plpgsql_check_init_trace_info(estate);
+	(void) plpgsql_check_get_trace_info(estate,
+										&outer_estate,
+										&frame_num,
+										&level,
+										&start_time);
+
+	(void) start_time;
+
+	elog(plpgsql_check_tracer_errlevel,
+		 "#%d%*s ->> start of %s%s (Oid=%u)",
+											  frame_num,
+											  level * 2,
+											  "",
+											  func->fn_oid ? "function " : "block ", 
+											  func->fn_signature,
+											  fn_oid);
+
+	if (outer_estate)
+	{
+		if (outer_estate->err_stmt)
+			elog(plpgsql_check_tracer_errlevel,
+				 "#%d%*s previous execution of PLpgSQL function %s line %d at %s",
+													frame_num,
+													level * 2 + 4, "",
+													outer_estate->func->fn_signature,
+													outer_estate->err_stmt->lineno,
+													plpgsql_check__stmt_typename_p(outer_estate->err_stmt));
+		else
+			elog(plpgsql_check_tracer_errlevel,
+				 "#%d%*s previous execution of PLpgSQL function %s",
+													frame_num,
+													level * 2 + 4, "  ",
+													outer_estate->func->fn_signature);
+	}
+
+	print_fargs(estate, func, frame_num, level);
+}
+
+void
+plpgsql_check_tracer_on_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
+{
+	int		level;
+	int		frame_num;
+	instr_time start_time;
+	PLpgSQL_execstate *outer_estate;
+
+	Assert(plpgsql_check_tracer);
+
+	/* Allow tracing only when it is explicitly allowed */
+	if (!plpgsql_check_enable_tracer)
+		return;
+
+	if (plpgsql_check_get_trace_info(estate,
+									 &outer_estate,
+									 &frame_num,
+									 &level,
+									 &start_time))
+	{
+		instr_time		end_time;
+		uint64			elapsed;
+
+		INSTR_TIME_SET_CURRENT(end_time);
+		INSTR_TIME_SUBTRACT(end_time, start_time);
+
+		elapsed = INSTR_TIME_GET_MICROSEC(end_time);
+
+		/* For output in regress tests use immutable time 0.010 ms */
+		if (plpgsql_check_tracer_test_mode)
+			elapsed = 10;
+
+		if (func->fn_oid)
+			elog(NOTICE, "#%d%*s <<- end of function %s (elapsed time=%.3f ms)",
+																	frame_num,
+																	level * 2, "",
+																	get_func_name(func->fn_oid),
+																	elapsed / 1000.0);
+		else
+			elog(NOTICE, "#%d%*s <<- end of block (elapsed time=%.3f ms)",
+																	frame_num,
+																	level * 2, "",
+																	elapsed / 1000.0);
+	}
 }

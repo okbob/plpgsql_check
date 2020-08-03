@@ -291,11 +291,7 @@ extern bool plpgsql_check_get_trace_info(PLpgSQL_execstate *estate, PLpgSQL_exec
 /*
  * functions from tracer.c
  */
-extern long unsigned int plpgsql_tracer_run_id;
-extern PLpgSQL_execstate *plpgsql_tracer_last_stmt_estate;
-extern TimestampTz plpgsql_tracer_last_stmt_xact_start_timestamp;
-
-/* guc for tracing */
+extern bool plpgsql_check_enable_tracer;
 extern bool plpgsql_check_tracer;
 extern bool plpgsql_check_trace_assert;
 extern bool plpgsql_check_tracer_test_mode;
@@ -306,7 +302,8 @@ extern int plpgsql_check_tracer_errlevel;
 extern PGErrorVerbosity plpgsql_check_tracer_verbosity;
 extern PGErrorVerbosity plpgsql_check_trace_assert_verbosity;
 
-extern void plpgsql_check_tracer_print_fargs(PLpgSQL_execstate *estate, PLpgSQL_function *func, long unsigned int run_id, int level);
+extern void plpgsql_check_tracer_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func);
+extern void plpgsql_check_tracer_on_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func);
 
 /*
  * functions from plpgsql_check.c

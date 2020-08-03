@@ -533,6 +533,11 @@ Special feature of tracer is tracing of `ASSERT` statement when `plpgsql_check.t
 `plpgsql_check.trace_assert_verbosity` is `VERBOSE`, then all function's or procedure's variables are
 displayed.
 
+## Attention - SECURITY
+
+Tracer prints content of variables or function arguments. For security definer function, this
+content can hold security sensitive data. This is reason why tracer is disabled by default and should
+be enabled only with super user rights `plpgsql_check.enable_tracer`.
 
 # Compilation
 

@@ -250,6 +250,10 @@ plpgsql_check_get_trace_info(PLpgSQL_execstate *estate,
 
 	Assert(pinfo && pinfo->pi_magic == PI_MAGIC);
 
+	/* Allow tracing only when it is explicitly allowed */
+	if (!plpgsql_check_enable_tracer)
+		return false;
+
 	if (pinfo->trace_info_is_initialized)
 	{
 		*outer_estate = pinfo->near_outer_estate;
@@ -1704,7 +1708,6 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 		pinfo->pi_magic = PI_MAGIC;
 
 		INSTR_TIME_SET_CURRENT(pinfo->start_time);
-
 		pinfo->trace_info_is_initialized = true;
 
 		estate->plugin_info = pinfo;
@@ -1777,44 +1780,8 @@ plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *fun
 {
 	profiler_info *pinfo = estate->plugin_info;
 
-	if (plpgsql_check_tracer && pinfo)
-	{
-		int		level;
-		int		frame_num;
-		instr_time start_time;
-		PLpgSQL_execstate *outer_estate;
-
-		if (plpgsql_check_get_trace_info(estate,
-										 &outer_estate,
-										 &frame_num,
-										 &level,
-										 &start_time))
-		{
-			instr_time		end_time;
-			uint64			elapsed;
-
-			INSTR_TIME_SET_CURRENT(end_time);
-			INSTR_TIME_SUBTRACT(end_time, start_time);
-
-			elapsed = INSTR_TIME_GET_MICROSEC(end_time);
-
-			/* For output in regress tests use immutable time 0.010 ms */
-			if (plpgsql_check_tracer_test_mode)
-				elapsed = 10;
-
-			if (func->fn_oid)
-				elog(NOTICE, "#%d%*s <<- end of function %s (elapsed time=%.3f ms)",
-																		frame_num,
-																		level * 2, "",
-																		get_func_name(func->fn_oid),
-																		elapsed / 1000.0);
-			else
-				elog(NOTICE, "#%d%*s <<- end of block (elapsed time=%.3f ms)",
-																		frame_num,
-																		level * 2, "",
-																		elapsed / 1000.0);
-		}
-	}
+	if (plpgsql_check_tracer && pinfo )
+		plpgsql_check_tracer_on_func_end(estate, func);
 
 	if (plpgsql_check_profiler &&
 		pinfo && pinfo->profile &&
