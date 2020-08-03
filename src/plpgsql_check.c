@@ -113,6 +113,8 @@ _PG_init(void)
 	if (inited)
 		return;
 
+	pg_bindtextdomain(TEXTDOMAIN);
+
 	AssertVariableIsOfType(&plpgsql_build_datatype, plpgsql_check__build_datatype_t);
 	plpgsql_check__build_datatype_p = (plpgsql_check__build_datatype_t)
 		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_build_datatype");
@@ -266,6 +268,8 @@ _PG_init(void)
 							10, 2048,
 							PGC_USERSET, 0,
 							NULL, NULL, NULL);
+
+	EmitWarningsOnPlaceholders("plpgsql_check");
 
 	plpgsql_check_HashTableInit();
 	plpgsql_check_profiler_init_hash_tables();

@@ -214,7 +214,7 @@ plpgsql_check_tracer_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 											  frame_num,
 											  level * 2,
 											  "",
-											  func->fn_oid ? "function " : "block ", 
+											  func->fn_oid ? "function " : "block ",
 											  func->fn_signature,
 											  fn_oid);
 
@@ -272,15 +272,17 @@ plpgsql_check_tracer_on_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 			elapsed = 10;
 
 		if (func->fn_oid)
-			elog(NOTICE, "#%d%*s <<- end of function %s (elapsed time=%.3f ms)",
-																	frame_num,
-																	level * 2, "",
-																	get_func_name(func->fn_oid),
-																	elapsed / 1000.0);
+			elog(plpgsql_check_tracer_errlevel,
+				 "#%d%*s <<- end of function %s (elapsed time=%.3f ms)",
+														frame_num,
+														level * 2, "",
+														get_func_name(func->fn_oid),
+														elapsed / 1000.0);
 		else
-			elog(NOTICE, "#%d%*s <<- end of block (elapsed time=%.3f ms)",
-																	frame_num,
-																	level * 2, "",
-																	elapsed / 1000.0);
+			elog(plpgsql_check_tracer_errlevel,
+				 "#%d%*s <<- end of block (elapsed time=%.3f ms)",
+														frame_num,
+														level * 2, "",
+														elapsed / 1000.0);
 	}
 }
