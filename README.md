@@ -512,10 +512,10 @@ is displayed. The content of related variables are displayed when verbosity is v
     postgres=# do $$ begin perform fx(10,null, 'now', e'stěhule'); end; $$;
     NOTICE:  #0 ->> start of inline_code_block (Oid=0)
     NOTICE:  #2   ->> start of function fx(integer,integer,date,text) (Oid=16405)
-    NOTICE:  #2       previous execution of PLpgSQL function inline_code_block line 1 at PERFORM
+    NOTICE:  #2        call by inline_code_block line 1 at PERFORM
     NOTICE:  #2       "a" => '10', "b" => null, "c" => '2020-08-03', "d" => 'stěhule'
     NOTICE:  #4     ->> start of function fx(integer) (Oid=16404)
-    NOTICE:  #4         previous execution of PLpgSQL function fx(integer,integer,date,text) line 1 at PERFORM
+    NOTICE:  #4          call by fx(integer,integer,date,text) line 1 at PERFORM
     NOTICE:  #4         "a" => '10'
     NOTICE:  #4     <<- end of function fx (elapsed time=0.098 ms)
     NOTICE:  #2   <<- end of function fx (elapsed time=0.399 ms)
@@ -529,9 +529,48 @@ has significant negative impact on performance (against profiler). You can set a
 tracer `plpgsql_check.tracer_errlevel` (default is `notice`). The output content is limmited by lenght
 specified by `plpgsql_check.tracer_variable_max_length` configuration variable.
 
+In terse verbose mode the output is reduced:
+
+    postgres=# set plpgsql_check.tracer_verbosity TO terse;
+    SET
+    postgres=# do $$ begin perform fx(10,null, 'now', e'stěhule'); end; $$;
+    NOTICE:  #0 start of inline code block (oid=0)
+    NOTICE:  #2 start of fx (oid=16405)
+    NOTICE:  #4 start of fx (oid=16404)
+    NOTICE:  #4 end of fx
+    NOTICE:  #2 end of fx
+    NOTICE:  #0 end of inline code block
+
+In verbose mode the output is extended about statement details:
+
+    postgres=# do $$ begin perform fx(10,null, 'now', e'stěhule'); end; $$;
+    NOTICE:  #0            ->> start of block inline_code_block (oid=0)
+    NOTICE:  #0.1       1  --> start of PERFORM
+    NOTICE:  #2              ->> start of function fx(integer,integer,date,text) (oid=16405)
+    NOTICE:  #2                   call by inline_code_block line 1 at PERFORM
+    NOTICE:  #2                  "a" => '10', "b" => null, "c" => '2020-08-04', "d" => 'stěhule'
+    NOTICE:  #2.1       1    --> start of PERFORM
+    NOTICE:  #2.1                "a" => '10'
+    NOTICE:  #4                ->> start of function fx(integer) (oid=16404)
+    NOTICE:  #4                     call by fx(integer,integer,date,text) line 1 at PERFORM
+    NOTICE:  #4                    "a" => '10'
+    NOTICE:  #4.1       6      --> start of assignment
+    NOTICE:  #4.1                  "a" => '10', "b" => '20'
+    NOTICE:  #4.1              <-- end of assignment (elapsed time=0.076 ms)
+    NOTICE:  #4.1                  "res" => '130'
+    NOTICE:  #4.2       7      --> start of RETURN
+    NOTICE:  #4.2                  "res" => '130'
+    NOTICE:  #4.2              <-- end of RETURN (elapsed time=0.054 ms)
+    NOTICE:  #4                <<- end of function fx (elapsed time=0.373 ms)
+    NOTICE:  #2.1            <-- end of PERFORM (elapsed time=0.589 ms)
+    NOTICE:  #2              <<- end of function fx (elapsed time=0.727 ms)
+    NOTICE:  #0.1          <-- end of PERFORM (elapsed time=1.147 ms)
+    NOTICE:  #0            <<- end of block (elapsed time=1.286 ms)
+
 Special feature of tracer is tracing of `ASSERT` statement when `plpgsql_check.trace_assert` is `on`. When
 `plpgsql_check.trace_assert_verbosity` is `VERBOSE`, then all function's or procedure's variables are
 displayed.
+
 
 ## Attention - SECURITY
 

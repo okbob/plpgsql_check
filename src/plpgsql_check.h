@@ -288,6 +288,12 @@ extern void plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_
 extern void plpgsql_check_init_trace_info(PLpgSQL_execstate *estate);
 extern bool plpgsql_check_get_trace_info(PLpgSQL_execstate *estate, PLpgSQL_execstate **outer_estate, int *frame_num, int *level, instr_time *start_time);
 
+#if PG_VERSION_NUM >= 120000
+
+extern void plpgsql_check_get_trace_stmt_info(PLpgSQL_execstate *estate, int stmt_id, instr_time **start_time);
+
+#endif
+
 /*
  * functions from tracer.c
  */
@@ -304,6 +310,8 @@ extern PGErrorVerbosity plpgsql_check_trace_assert_verbosity;
 
 extern void plpgsql_check_tracer_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func);
 extern void plpgsql_check_tracer_on_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func);
+extern void plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
+extern void plpgsql_check_tracer_on_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 
 /*
  * functions from plpgsql_check.c

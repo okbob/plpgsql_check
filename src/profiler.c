@@ -148,7 +148,13 @@ typedef struct profiler_info
 	int			frame_num;
 	int			level;
 	PLpgSQL_execstate *near_outer_estate;
+
+#if PG_VERSION_NUM >= 120000
+
 	instr_time *stmt_start_times;
+
+#endif
+
 } profiler_info;
 
 typedef struct profiler_iterator
@@ -266,6 +272,35 @@ plpgsql_check_get_trace_info(PLpgSQL_execstate *estate,
 	else
 		return false;
 }
+
+#if PG_VERSION_NUM >= 120000
+
+/*
+ * Outer profiler's code fields of profiler info are not available.
+ * This routine reads tracer statement fields from profiler info.
+ */
+void
+plpgsql_check_get_trace_stmt_info(PLpgSQL_execstate *estate,
+								  int stmt_id,
+								  instr_time **start_time)
+{
+	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
+
+	Assert(pinfo && pinfo->pi_magic == PI_MAGIC);
+	Assert(stmt_id > 0);
+
+	/* Allow tracing only when it is explicitly allowed */
+	if (!plpgsql_check_enable_tracer)
+		return;
+
+	if (pinfo->trace_info_is_initialized)
+		*start_time = &pinfo->stmt_start_times[stmt_id - 1];
+	else
+		*start_time = NULL;
+
+}
+
+#endif
 
 static profiler_stmt_reduced *
 get_stmt_profile_next(profiler_iterator *pi)
@@ -1710,6 +1745,12 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 		INSTR_TIME_SET_CURRENT(pinfo->start_time);
 		pinfo->trace_info_is_initialized = true;
 
+#if PG_VERSION_NUM >= 120000
+
+		pinfo->stmt_start_times = palloc0(sizeof(instr_time) * func->nstatements);
+
+#endif
+
 		estate->plugin_info = pinfo;
 	}
 
@@ -1831,6 +1872,9 @@ plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
 	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 
+	if (plpgsql_check_tracer && pinfo)
+		plpgsql_check_tracer_on_stmt_beg(estate, stmt);
+
 	if (plpgsql_check_profiler &&
 		pinfo && pinfo->profile &&
 		estate->func->fn_oid != InvalidOid)
@@ -1849,6 +1893,9 @@ void
 plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
 	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
+
+	if (plpgsql_check_tracer && pinfo)
+		plpgsql_check_tracer_on_stmt_end(estate, stmt);
 
 	if (plpgsql_check_profiler && 
 		pinfo && pinfo->profile &&
