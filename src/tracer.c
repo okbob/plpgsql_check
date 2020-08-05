@@ -948,7 +948,7 @@ plpgsql_check_trace_assert_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *
 		print_all_variables(estate);
 
 		/* Show stack and all variables in verbose mode */
-		if (plpgsql_check_trace_assert_verbosity == PGERROR_VERBOSE)
+		if (plpgsql_check_trace_assert_verbosity >= PGERROR_DEFAULT)
 		{
 			for (econtext = error_context_stack->previous;
 				 econtext != NULL;
@@ -978,7 +978,8 @@ plpgsql_check_trace_assert_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *
 															  frame_num,
 															  oestate->func->fn_signature);
 
-					print_all_variables(oestate);
+					if (plpgsql_check_trace_assert_verbosity == PGERROR_VERBOSE)
+						print_all_variables(oestate);
 				}
 			}
 		}

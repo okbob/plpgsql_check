@@ -573,6 +573,33 @@ displayed when assert expression is false. When this configuration is `VERBOSE` 
 from all plpgsql frames are displayed. This behaviour is independent on `plpgsql.check_asserts` value.
 It can be used, although the assertions are disabled in plpgsql runtime.
 
+    postgres=# set plpgsql_check.tracer to off;
+    postgres=# set plpgsql_check.trace_assert_verbosity TO verbose;
+
+    postgres=# do $$ begin perform fx(10,null, 'now', e'stěhule'); end; $$;
+    NOTICE:  #4 PLpgSQL assert expression (false) on line 12 of fx(integer) is false
+    NOTICE:   "a" => '10', "res" => null, "b" => '20'
+    NOTICE:  #2 PL/pgSQL function fx(integer,integer,date,text) line 1 at PERFORM
+    NOTICE:   "a" => '10', "b" => null, "c" => '2020-08-05', "d" => 'stěhule'
+    NOTICE:  #0 PL/pgSQL function inline_code_block line 1 at PERFORM
+    ERROR:  assertion failed
+    CONTEXT:  PL/pgSQL function fx(integer) line 12 at ASSERT
+    SQL statement "SELECT fx(a)"
+    PL/pgSQL function fx(integer,integer,date,text) line 1 at PERFORM
+    SQL statement "SELECT fx(10,null, 'now', e'stěhule')"
+    PL/pgSQL function inline_code_block line 1 at PERFORM
+
+    postgres=# set plpgsql.check_asserts to off;
+    SET
+    postgres=# do $$ begin perform fx(10,null, 'now', e'stěhule'); end; $$;
+    NOTICE:  #4 PLpgSQL assert expression (false) on line 12 of fx(integer) is false
+    NOTICE:   "a" => '10', "res" => null, "b" => '20'
+    NOTICE:  #2 PL/pgSQL function fx(integer,integer,date,text) line 1 at PERFORM
+    NOTICE:   "a" => '10', "b" => null, "c" => '2020-08-05', "d" => 'stěhule'
+    NOTICE:  #0 PL/pgSQL function inline_code_block line 1 at PERFORM
+    DO
+
+
 ## Attention - SECURITY
 
 Tracer prints content of variables or function arguments. For security definer function, this
