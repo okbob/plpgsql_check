@@ -26,6 +26,7 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
+#include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
 /*
@@ -130,14 +131,30 @@ typedef struct profiler_profile
 
 #endif
 
+#define PI_MAGIC 2020080110
+
 /*
  * This structure is used as plpgsql extension parameter
  */
 typedef struct profiler_info
 {
+	int			pi_magic;
 	profiler_profile *profile;
 	profiler_stmt *stmts;
 	instr_time	start_time;
+
+	/* tracer part */
+	bool		trace_info_is_initialized;
+	int			frame_num;
+	int			level;
+	PLpgSQL_execstate *near_outer_estate;
+
+#if PG_VERSION_NUM >= 120000
+
+	instr_time *stmt_start_times;
+
+#endif
+
 } profiler_info;
 
 typedef struct profiler_iterator
@@ -176,6 +193,114 @@ static void update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *fu
 static void profiler_update_map(profiler_profile *profile, PLpgSQL_stmt *stmt);
 static int profiler_get_stmtid(profiler_profile *profile, PLpgSQL_stmt *stmt);
 static void profiler_touch_stmts(profiler_info *pinfo, List *stmts, PLpgSQL_stmt *parent_stmt, const char *parent_note, bool generate_map, bool finalize_profile, int64 *nested_us_total, int64 *nested_executed, profiler_iterator *pi, coverage_state *cs);
+
+/*
+ * Itereate over Error Context Stack and calculate deep of stack (used like frame number)
+ * and most near outer PLpgSQL estate (detect call statement). This function should be
+ * called from func_beg, where error_context_stack is correctly initialized.
+ */
+void
+plpgsql_check_init_trace_info(PLpgSQL_execstate *estate)
+{
+	ErrorContextCallback *econtext;
+	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
+
+	Assert(pinfo && pinfo->pi_magic == PI_MAGIC);
+
+	for (econtext = error_context_stack->previous;
+		 econtext != NULL;
+		 econtext = econtext->previous)
+	{
+		pinfo->frame_num += 1;
+
+		/*
+		 * We detect PLpgSQL related estate by known error callback function.
+		 * This is inspirated by PLDebugger.
+		 */
+		if (econtext->callback == (*plpgsql_check_plugin_var_ptr)->error_callback)
+		{
+			PLpgSQL_execstate *outer_estate = (PLpgSQL_execstate *) econtext->arg;
+
+			if (!pinfo->near_outer_estate)
+				pinfo->near_outer_estate = outer_estate;
+
+			if (pinfo->level == 0 && outer_estate->plugin_info)
+			{
+				profiler_info *outer_pinfo = (profiler_info *) outer_estate->plugin_info;
+
+				if (outer_pinfo->pi_magic == PI_MAGIC &&
+					outer_pinfo->trace_info_is_initialized)
+				{
+					pinfo->level = outer_pinfo->level + 1;
+					pinfo->frame_num += outer_pinfo->frame_num;
+
+					break;
+				}
+			}
+		}
+	}
+}
+
+/*
+ * Outer profiler's code fields of profiler info are not available.
+ * This routine reads tracer fields from profiler info.
+ */
+bool
+plpgsql_check_get_trace_info(PLpgSQL_execstate *estate,
+							 PLpgSQL_execstate **outer_estate,
+							 int *frame_num,
+							 int *level,
+							 instr_time *start_time)
+{
+	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
+
+	Assert(pinfo && pinfo->pi_magic == PI_MAGIC);
+
+	/* Allow tracing only when it is explicitly allowed */
+	if (!plpgsql_check_enable_tracer)
+		return false;
+
+	if (pinfo->trace_info_is_initialized)
+	{
+		*outer_estate = pinfo->near_outer_estate;
+		*frame_num = pinfo->frame_num;
+		*level = pinfo->level;
+		*start_time = pinfo->start_time;
+
+		return true;
+	}
+	else
+		return false;
+}
+
+#if PG_VERSION_NUM >= 120000
+
+/*
+ * Outer profiler's code fields of profiler info are not available.
+ * This routine reads tracer statement fields from profiler info.
+ */
+void
+plpgsql_check_get_trace_stmt_info(PLpgSQL_execstate *estate,
+								  int stmt_id,
+								  instr_time **start_time)
+{
+	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
+
+	Assert(pinfo && pinfo->pi_magic == PI_MAGIC);
+	Assert(stmt_id > 0);
+
+	/* Allow tracing only when it is explicitly allowed */
+	if (!plpgsql_check_enable_tracer)
+		return;
+
+	if (pinfo->trace_info_is_initialized)
+		*start_time = &pinfo->stmt_start_times[stmt_id - 1];
+	else
+		*start_time = NULL;
+
+}
+
+#endif
 
 static profiler_stmt_reduced *
 get_stmt_profile_next(profiler_iterator *pi)
@@ -402,6 +527,8 @@ profiler_touch_stmt(profiler_info *pinfo,
 	int64		_nested_executed = 0;
 	profiler_profile *profile = pinfo->profile;
 	profiler_stmt *pstmt = NULL;
+
+	Assert(profile);
 
 	if (pi)
 	{
@@ -838,7 +965,6 @@ plpgsql_profiler_reset(PG_FUNCTION_ARGS)
 
 	PG_RETURN_VOID();
 }
-
 
 /*
  * Prepare environment for reading profile and calculation of coverage metric
@@ -1598,7 +1724,6 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 		LWLockRelease(profiler_ss->lock);
 }
 
-
 /*
  * plpgsql plugin related functions
  */
@@ -1610,6 +1735,25 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 void
 plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 {
+	profiler_info *pinfo;
+
+	if (plpgsql_check_tracer)
+	{
+		pinfo = palloc0(sizeof(profiler_info));
+		pinfo->pi_magic = PI_MAGIC;
+
+		INSTR_TIME_SET_CURRENT(pinfo->start_time);
+		pinfo->trace_info_is_initialized = true;
+
+#if PG_VERSION_NUM >= 120000
+
+		pinfo->stmt_start_times = palloc0(sizeof(instr_time) * func->nstatements);
+
+#endif
+
+		estate->plugin_info = pinfo;
+	}
+
 	if (plpgsql_check_profiler && func->fn_oid != InvalidOid)
 	{
 		profiler_info *pinfo;
@@ -1623,7 +1767,17 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 											 HASH_ENTER,
 											 &found);
 
-		pinfo = palloc0(sizeof(profiler_info));
+		pinfo = estate->plugin_info;
+		if (!pinfo)
+		{
+			pinfo = palloc0(sizeof(profiler_info));
+			pinfo->pi_magic = PI_MAGIC;
+
+			INSTR_TIME_SET_CURRENT(pinfo->start_time);
+
+			estate->plugin_info = pinfo;
+		}
+
 		pinfo->profile = profile;
 
 		if (!found)
@@ -1665,16 +1819,21 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 void
 plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 {
+	profiler_info *pinfo = estate->plugin_info;
+
+	if (plpgsql_check_tracer && pinfo )
+		plpgsql_check_tracer_on_func_end(estate, func);
+
 	if (plpgsql_check_profiler &&
-		estate->plugin_info &&
+		pinfo && pinfo->profile &&
 		func->fn_oid != InvalidOid)
 	{
 		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 		profiler_profile *profile = pinfo->profile;
 		int		entry_stmtid = profiler_get_stmtid(profile, profile->entry_stmt);
+		int64			nested_us_total;
 		instr_time		end_time;
 		uint64			elapsed;
-		int64			nested_us_total;
 
 		INSTR_TIME_SET_CURRENT(end_time);
 		INSTR_TIME_SUBTRACT(end_time, pinfo->start_time);
@@ -1711,14 +1870,25 @@ plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *fun
 void
 plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
+	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
+
+	if (plpgsql_check_tracer && pinfo)
+		plpgsql_check_tracer_on_stmt_beg(estate, stmt);
+
+	if (stmt->cmd_type == PLPGSQL_STMT_ASSERT &&
+			plpgsql_check_enable_tracer &&
+			plpgsql_check_trace_assert)
+		plpgsql_check_trace_assert_on_stmt_beg(estate, stmt);
+
 	if (plpgsql_check_profiler &&
-		estate->plugin_info &&
+		pinfo && pinfo->profile &&
 		estate->func->fn_oid != InvalidOid)
 	{
-		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 		profiler_profile *profile = pinfo->profile;
 		int stmtid = profiler_get_stmtid(profile, stmt);
 		profiler_stmt *pstmt = &pinfo->stmts[stmtid];
+
+		Assert(pinfo->pi_magic == PI_MAGIC);
 
 		INSTR_TIME_SET_CURRENT(pstmt->start_time);
 	}
@@ -1727,17 +1897,23 @@ plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 void
 plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
+	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
+
+	if (plpgsql_check_tracer && pinfo)
+		plpgsql_check_tracer_on_stmt_end(estate, stmt);
+
 	if (plpgsql_check_profiler && 
-		estate->plugin_info && 
+		pinfo && pinfo->profile &&
 		estate->func->fn_oid != InvalidOid)
 	{
-		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 		profiler_profile *profile  = pinfo->profile;
 		int stmtid = profiler_get_stmtid(profile, stmt);
 		profiler_stmt *pstmt = &pinfo->stmts[stmtid];
 		instr_time		end_time;
 		uint64			elapsed;
 		instr_time		end_time2;
+
+		Assert(pinfo->pi_magic == PI_MAGIC);
 
 		INSTR_TIME_SET_CURRENT(end_time);
 		end_time2 = end_time;

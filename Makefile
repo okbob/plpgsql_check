@@ -2,7 +2,7 @@
 
 MODULE_big = plpgsql_check
 OBJS = $(patsubst %.c,%.o,$(wildcard src/*.c))
-DATA = plpgsql_check--1.11.sql
+DATA = plpgsql_check--1.12.sql
 EXTENSION = plpgsql_check
 
 ifndef MAJORVERSION

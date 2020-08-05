@@ -124,6 +124,12 @@ typedef struct
 	int		executed_branches;
 } coverage_state;
 
+typedef struct
+{
+	unsigned long int run_id;
+	int		level;
+} tracer_info;
+
 /*
  * function from assign.c
  */
@@ -266,6 +272,8 @@ extern Oid plpgsql_check_parse_name_or_signature(char *name_or_signature);
 /*
  * functions from profiler.c
  */
+extern bool plpgsql_check_profiler;
+
 extern Size plpgsql_check_shmem_size(void);
 extern void plpgsql_check_profiler_init_hash_tables(void);
 
@@ -277,7 +285,34 @@ extern void plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_s
 extern void plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo);
 extern void plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo, coverage_state *cs);
 
-extern bool plpgsql_check_profiler;
+extern void plpgsql_check_init_trace_info(PLpgSQL_execstate *estate);
+extern bool plpgsql_check_get_trace_info(PLpgSQL_execstate *estate, PLpgSQL_execstate **outer_estate, int *frame_num, int *level, instr_time *start_time);
+
+#if PG_VERSION_NUM >= 120000
+
+extern void plpgsql_check_get_trace_stmt_info(PLpgSQL_execstate *estate, int stmt_id, instr_time **start_time);
+
+#endif
+
+/*
+ * functions from tracer.c
+ */
+extern bool plpgsql_check_enable_tracer;
+extern bool plpgsql_check_tracer;
+extern bool plpgsql_check_trace_assert;
+extern bool plpgsql_check_tracer_test_mode;
+
+extern int plpgsql_check_tracer_variable_max_length;
+extern int plpgsql_check_tracer_errlevel;
+
+extern PGErrorVerbosity plpgsql_check_tracer_verbosity;
+extern PGErrorVerbosity plpgsql_check_trace_assert_verbosity;
+
+extern void plpgsql_check_tracer_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func);
+extern void plpgsql_check_tracer_on_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func);
+extern void plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
+extern void plpgsql_check_tracer_on_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
+extern void plpgsql_check_trace_assert_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 
 /*
  * functions from plpgsql_check.c
@@ -285,12 +320,14 @@ extern bool plpgsql_check_profiler;
 
 extern shmem_startup_hook_type prev_shmem_startup_hook;
 
+extern PLpgSQL_plugin **plpgsql_check_plugin_var_ptr;
+
+
 #if PG_VERSION_NUM > 110005
 
 #define PLPGSQL_BUILD_DATATYPE_4		1
 
 #endif
-
 
 /*
  * Linkage to function in plpgsql module
@@ -354,7 +391,6 @@ extern plpgsql_check__recognize_err_condition_t plpgsql_check__recognize_err_con
 #define is_procedure(estate)	(false)
 
 #endif
-
 
 #if PG_VERSION_NUM >= 100000
 
