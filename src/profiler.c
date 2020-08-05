@@ -1875,6 +1875,11 @@ plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	if (plpgsql_check_tracer && pinfo)
 		plpgsql_check_tracer_on_stmt_beg(estate, stmt);
 
+	if (stmt->cmd_type == PLPGSQL_STMT_ASSERT &&
+			plpgsql_check_enable_tracer &&
+			plpgsql_check_trace_assert)
+		plpgsql_check_trace_assert_on_stmt_beg(estate, stmt);
+
 	if (plpgsql_check_profiler &&
 		pinfo && pinfo->profile &&
 		estate->func->fn_oid != InvalidOid)

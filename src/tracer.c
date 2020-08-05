@@ -249,7 +249,10 @@ print_func_args(PLpgSQL_execstate *estate, PLpgSQL_function *func, int frame_num
  * Print expression's arguments
  */
 static void
-print_expr_args(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, char *frame, int level)
+print_expr_args(PLpgSQL_execstate *estate,
+				PLpgSQL_expr *expr,
+				char *frame,
+				int level)
 {
 	int		dno;
 	int indent = level * 2 + (plpgsql_check_tracer_verbosity == PGERROR_VERBOSE ? 6 : 0);
@@ -367,6 +370,100 @@ print_expr_args(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, char *frame, int 
 
 	pfree(ds.data);
 }
+
+
+/*
+ * Print all frame variables
+ */
+static void
+print_all_variables(PLpgSQL_execstate *estate)
+{
+	int		dno;
+
+	StringInfoData		ds;
+	bool		indent = 1;
+
+	initStringInfo(&ds);
+
+	for (dno = 0; dno < estate->ndatums; dno++)
+	{
+		bool		isnull;
+		char	   *refname;
+		char	   *str;
+
+		if (dno == estate->found_varno)
+			continue;
+
+		str = convert_plpgsql_datum_to_string(estate,
+											  estate->datums[dno],
+											  &isnull,
+											  &refname);
+
+		if (strcmp(refname, "*internal*") == 0 ||
+				strcmp(refname, "(unnamed row)") == 0)
+			refname = NULL;
+
+		if (refname)
+		{
+			if (!isnull)
+			{
+				/*
+				 * when this output is too long or contains new line, print it
+				 * separately
+				 */
+				if (((int) strlen(str)) > plpgsql_check_tracer_variable_max_length ||
+					strchr(str, '\n') != NULL)
+				{
+					if (*ds.data)
+					{
+						elog(plpgsql_check_tracer_errlevel, "%*s%s", indent, "", ds.data);
+						indent = 2;
+						resetStringInfo(&ds);
+					}
+
+					trim_string(str, plpgsql_check_tracer_variable_max_length);
+					elog(plpgsql_check_tracer_errlevel,
+														"%*s \"%s\" => '%s'",
+														indent, "",
+														refname,
+														str);
+					indent = 2;
+				}
+				else
+				{
+					if (*ds.data)
+						appendStringInfoString(&ds, ", ");
+
+					appendStringInfo(&ds, "\"%s\" => '%s'", refname, str);
+				}
+			}
+			else
+			{
+				if (*ds.data)
+					appendStringInfoString(&ds, ", ");
+
+				appendStringInfo(&ds, "\"%s\" => null", refname);
+			}
+		}
+
+		if (str)
+			pfree(str);
+
+		/*print too long lines immediately */
+		if (ds.len > plpgsql_check_tracer_variable_max_length)
+		{
+			elog(plpgsql_check_tracer_errlevel, "%*s%s", indent, "", ds.data);
+			indent = 2;
+			resetStringInfo(&ds);
+		}
+	}
+
+	if (*ds.data)
+		elog(plpgsql_check_tracer_errlevel, "%*s%s", indent, "", ds.data);
+
+	pfree(ds.data);
+}
+
 
 /*
  * Print plpgsql datum
@@ -554,6 +651,32 @@ plpgsql_check_tracer_on_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 	}
 }
 
+static char *
+copy_string_part(char *dest, char *src, int n)
+{
+	char *retval = dest;
+
+	while (*src && n > 0)
+	{
+		int mbl = pg_mblen(src);
+
+		memcpy(dest, src, mbl);
+		src += mbl;
+		dest += mbl;
+		n -= mbl;
+	}
+
+	if (*src)
+	{
+		memcpy(dest, " ...", 3);
+		dest += 3;
+	}
+
+	*dest = '\0';
+
+	return retval;
+}
+
 void
 plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
@@ -579,8 +702,51 @@ plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 			int		indent = level * 2;
 			int		frame_width = 6;
 			char	printbuf[20];
-			PLpgSQL_expr   *expr = NULL;
+			char	exprbuf[200];
+			PLpgSQL_expr *expr = NULL;
+			char   *exprname = NULL;
 			int				retvarno = -1;
+
+			switch (stmt->cmd_type)
+			{
+				case PLPGSQL_STMT_PERFORM:
+					expr = ((PLpgSQL_stmt_perform *) stmt)->expr;
+					exprname = "expr";
+					break;
+
+				case PLPGSQL_STMT_ASSIGN:
+					expr = ((PLpgSQL_stmt_assign *) stmt)->expr;
+					exprname = "expr";
+					break;
+
+				case PLPGSQL_STMT_RETURN:
+					expr = ((PLpgSQL_stmt_return *) stmt)->expr;
+					retvarno = ((PLpgSQL_stmt_return *) stmt)->retvarno;
+					exprname = "expr";
+					break;
+
+				case PLPGSQL_STMT_ASSERT:
+					expr = ((PLpgSQL_stmt_assert *) stmt)->cond;
+					exprname = "expr";
+					break;
+
+				case PLPGSQL_STMT_CALL:
+					expr = ((PLpgSQL_stmt_call *) stmt)->expr;
+					exprname = "expr";
+					break;
+
+				case PLPGSQL_STMT_EXECSQL:
+					expr = ((PLpgSQL_stmt_execsql *) stmt)->sqlstmt;
+					exprname = "query";
+					break;
+
+				case PLPGSQL_STMT_IF:
+					expr = ((PLpgSQL_stmt_if *) stmt)->cond;
+					exprname = "cond";
+
+				default:
+					;
+			}
 
 #if PG_VERSION_NUM >= 120000
 
@@ -599,49 +765,58 @@ plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 #endif
 
-			elog(plpgsql_check_tracer_errlevel,
-				 "#%-*s %4d %*s --> start of %s",
-											frame_width, printbuf,
-											stmt->lineno,
-											indent, "",
-											plpgsql_check__stmt_typename_p(stmt));
-
-			switch (stmt->cmd_type)
+			if (expr)
 			{
-				case PLPGSQL_STMT_PERFORM:
-					expr = ((PLpgSQL_stmt_perform *) stmt)->expr;
-					break;
-
-				case PLPGSQL_STMT_ASSIGN:
-					expr = ((PLpgSQL_stmt_assign *) stmt)->expr;
-					break;
-
-				case PLPGSQL_STMT_RETURN:
-					expr = ((PLpgSQL_stmt_return *) stmt)->expr;
-					retvarno = ((PLpgSQL_stmt_return *) stmt)->retvarno;
-					break;
-
-				case PLPGSQL_STMT_ASSERT:
-					expr = ((PLpgSQL_stmt_assert *) stmt)->cond;
-					break;
-
-				case PLPGSQL_STMT_CALL:
-					expr = ((PLpgSQL_stmt_call *) stmt)->expr;
-					break;
-
-				case PLPGSQL_STMT_EXECSQL:
-					expr = ((PLpgSQL_stmt_execsql *) stmt)->sqlstmt;
-					break;
-
-				default:
-					;
+				elog(plpgsql_check_tracer_errlevel,
+					 "#%-*s %4d %*s --> start of %s (%s='%s')",
+												frame_width, printbuf,
+												stmt->lineno,
+												indent, "",
+												plpgsql_check__stmt_typename_p(stmt),
+												exprname,
+												copy_string_part(exprbuf, expr->query + 7, 30));
 			}
+			else
+				elog(plpgsql_check_tracer_errlevel,
+					 "#%-*s %4d %*s --> start of %s",
+												frame_width, printbuf,
+												stmt->lineno,
+												indent, "",
+												plpgsql_check__stmt_typename_p(stmt));
 
 			if (expr)
 				print_expr_args(estate, expr, printbuf, level);
 
 			if (retvarno >= 0)
 				print_datum(estate, estate->datums[retvarno], printbuf, level);
+
+			switch (stmt->cmd_type)
+			{
+				case PLPGSQL_STMT_IF:
+					{
+						PLpgSQL_stmt_if *stmt_if = (PLpgSQL_stmt_if *) stmt;
+						ListCell *lc;
+
+						foreach (lc, stmt_if->elsif_list)
+						{
+							PLpgSQL_if_elsif *ifelseif = (PLpgSQL_if_elsif *) lfirst(lc);
+
+							elog(plpgsql_check_tracer_errlevel,
+								 "#%-*s %4d %*s     ELSEIF (expr='%s')",
+												frame_width, printbuf,
+												ifelseif->lineno,
+												indent, "",
+												copy_string_part(exprbuf, ifelseif->cond->query + 7, 30));
+
+							print_expr_args(estate, ifelseif->cond, printbuf, level);
+						}
+						break;
+					}
+
+				default:
+					;
+			}
+
 		}
 	}
 }
@@ -709,6 +884,98 @@ plpgsql_check_tracer_on_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 							estate->datums[((PLpgSQL_stmt_assign *) stmt)->varno],
 							printbuf,
 							level);
+		}
+	}
+}
+
+void
+plpgsql_check_trace_assert_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
+{
+	PLpgSQL_var result;
+	PLpgSQL_type typ;
+	char		exprbuf[200];
+	PLpgSQL_stmt_assert *stmt_assert = (PLpgSQL_stmt_assert *) stmt;
+
+	/* Allow tracing only when it is explicitly allowed */
+	if (!plpgsql_check_enable_tracer)
+		return;
+
+	memset(&result, 0, sizeof(result));
+	memset(&typ, 0, sizeof(typ));
+
+	result.dtype = PLPGSQL_DTYPE_VAR;
+	result.refname = "*auxstorage*";
+	result.datatype = &typ;
+	result.value = (Datum) 5;
+
+	typ.typoid = BOOLOID;
+	typ.ttype = PLPGSQL_TTYPE_SCALAR;
+	typ.typlen = 1;
+	typ.typbyval = true;
+	typ.typtype = 'b';
+
+	(*plpgsql_check_plugin_var_ptr)->assign_expr(estate, (PLpgSQL_datum *) &result, stmt_assert->cond);
+
+	if ((bool) result.value)
+	{
+		if (plpgsql_check_trace_assert_verbosity >= PGERROR_DEFAULT)
+			elog(plpgsql_check_tracer_errlevel, "PLpgSQL assert expression (%s) on line %d of %s is true",
+												copy_string_part(exprbuf, stmt_assert->cond->query + 7, 30),
+												stmt->lineno,
+												estate->func->fn_signature);
+	}
+	else
+	{
+		ErrorContextCallback *econtext;
+		int		frame_num = 0;
+
+		for (econtext = error_context_stack->previous;
+			 econtext != NULL;
+			 econtext = econtext->previous)
+			frame_num += 1;
+
+		elog(plpgsql_check_tracer_errlevel, "#%d PLpgSQL assert expression (%s) on line %d of %s is false",
+											frame_num,
+											copy_string_part(exprbuf, stmt_assert->cond->query + 7, 30),
+											stmt->lineno,
+											estate->func->fn_signature);
+
+		print_all_variables(estate);
+
+		/* Show stack and all variables in verbose mode */
+		if (plpgsql_check_trace_assert_verbosity == PGERROR_VERBOSE)
+		{
+			for (econtext = error_context_stack->previous;
+				 econtext != NULL;
+				 econtext = econtext->previous)
+			{
+				frame_num -= 1;
+
+				/*
+				 * We detect PLpgSQL related estate by known error callback function.
+				 * This is inspirated by PLDebugger.
+				 */
+				if (econtext->callback == (*plpgsql_check_plugin_var_ptr)->error_callback)
+				{
+					PLpgSQL_execstate *oestate = (PLpgSQL_execstate *) econtext->arg;
+
+					if (oestate->err_stmt)
+						elog(plpgsql_check_tracer_errlevel,
+							 "#%d PL/pgSQL function %s line %d at %s",
+															  frame_num,
+															  oestate->func->fn_signature,
+															  oestate->err_stmt->lineno,
+															  plpgsql_check__stmt_typename_p(oestate->err_stmt));
+
+					else
+						elog(plpgsql_check_tracer_errlevel,
+							 "#%d PLpgSQL function %s",
+															  frame_num,
+															  oestate->func->fn_signature);
+
+					print_all_variables(oestate);
+				}
+			}
 		}
 	}
 }

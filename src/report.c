@@ -14,8 +14,8 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 
-static bool datum_is_explicit(PLpgSQL_checkstate *cstate, int dno);
 static bool datum_is_used(PLpgSQL_checkstate *cstate, int dno, bool write);
+static bool datum_is_explicit(PLpgSQL_checkstate *cstate, int dno);
 
 /*
  * Returns true, when variable is internal (automatic)
@@ -90,7 +90,7 @@ plpgsql_check_datum_get_refname(PLpgSQL_datum *d)
  * Returns true if dno is explicitly declared. It should not be used
  * for arguments.
  */
-static bool
+bool
 datum_is_explicit(PLpgSQL_checkstate *cstate, int dno)
 {
 	PLpgSQL_execstate *estate = cstate->estate;

@@ -568,9 +568,10 @@ In verbose mode the output is extended about statement details:
     NOTICE:  #0            <<- end of block (elapsed time=1.286 ms)
 
 Special feature of tracer is tracing of `ASSERT` statement when `plpgsql_check.trace_assert` is `on`. When
-`plpgsql_check.trace_assert_verbosity` is `VERBOSE`, then all function's or procedure's variables are
-displayed.
-
+`plpgsql_check.trace_assert_verbosity` is `DEFAULT`, then all function's or procedure's variables are
+displayed when assert expression is false. When this configuration is `VERBOSE` then all variables
+from all plpgsql frames are displayed. This behaviour is independent on `plpgsql.check_asserts` value.
+It can be used, although the assertions are disabled in plpgsql runtime.
 
 ## Attention - SECURITY
 

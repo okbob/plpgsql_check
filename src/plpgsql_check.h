@@ -312,6 +312,7 @@ extern void plpgsql_check_tracer_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_
 extern void plpgsql_check_tracer_on_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func);
 extern void plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 extern void plpgsql_check_tracer_on_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
+extern void plpgsql_check_trace_assert_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 
 /*
  * functions from plpgsql_check.c
