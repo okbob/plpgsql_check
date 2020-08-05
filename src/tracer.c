@@ -12,6 +12,7 @@
 #include "plpgsql_check.h"
 #include "plpgsql_check_builtins.h"
 
+#include "catalog/pg_type.h"
 #include "mb/pg_wchar.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -730,10 +731,14 @@ plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 					exprname = "expr";
 					break;
 
+#if PG_VERSION_NUM >= 110000
+
 				case PLPGSQL_STMT_CALL:
 					expr = ((PLpgSQL_stmt_call *) stmt)->expr;
 					exprname = "expr";
 					break;
+
+#endif
 
 				case PLPGSQL_STMT_EXECSQL:
 					expr = ((PLpgSQL_stmt_execsql *) stmt)->sqlstmt;
