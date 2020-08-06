@@ -244,8 +244,6 @@ print_func_args(PLpgSQL_execstate *estate, PLpgSQL_function *func, int frame_num
 	pfree(ds.data);
 }
 
-
-
 /*
  * Print expression's arguments
  */
@@ -772,6 +770,8 @@ plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 			if (expr)
 			{
+				int startpos = (strcmp(exprname, "query") == 0) ? 0 : 7;
+
 				elog(plpgsql_check_tracer_errlevel,
 					 "#%-*s %4d %*s --> start of %s (%s='%s')",
 												frame_width, printbuf,
@@ -779,7 +779,7 @@ plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 												indent, "",
 												plpgsql_check__stmt_typename_p(stmt),
 												exprname,
-												copy_string_part(exprbuf, expr->query + 7, 30));
+												copy_string_part(exprbuf, expr->query + startpos, 30));
 			}
 			else
 				elog(plpgsql_check_tracer_errlevel,
