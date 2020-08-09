@@ -606,6 +606,45 @@ Tracer prints content of variables or function arguments. For security definer f
 content can hold security sensitive data. This is reason why tracer is disabled by default and should
 be enabled only with super user rights `plpgsql_check.enable_tracer`.
 
+# Pragma
+
+You can configure plpgsql_check behave inside checked function with "pragma" function. This
+is a analogy of PL/SQL or ADA language of PRAGMA feature. PLpgSQL doesn't support PRAGMA, but
+plpgsql_check detects function named `plpgsql_check_pragma` and get options from parameters of
+this function. These plpgsql_check options are valid to end of group of statements.
+
+    CREATE OR REPLACE FUNCTION test()
+    RETURNS void AS $$
+    BEGIN
+      ...
+      -- for following statements disable check
+      PERFORM plpgsql_check_pragma('disable:check');
+      ...
+      -- enable check again
+      PERFORM plpgsql_check_pragma('enable:check');
+      ...
+    END;
+    $$ LANGUAGE plpgsql;
+    
+The function `plpgsql_check_pragma` is immutable function that returns one. It is defined
+by `plpgsql_check` extension. You can declare alternative `plpgsql_check_pragma` function
+like:
+
+    CREATE OR REPLACE FUNCTION plpgsql_check_pragma(VARIADIC args[])
+    RETURNS int AS $$
+    SELECT 1
+    $$ LANGUAGE sql IMMUTABLE;
+
+## Supported pragmas
+
+* `echo:str` - print string (for testing)
+
+* `status:check`,`status:tracer`, `status:other_warnings`, `status:performance_warnings`, `status:extra_warnings`,`status:security_warnings`
+
+* `enable:check`,`enable:tracer`, `enable:other_warnings`, `enable:performance_warnings`, `enable:extra_warnings`,`enable:security_warnings`
+
+* `disable:check`,`disable:tracer`, `disable:other_warnings`, `disable:performance_warnings`, `disable:extra_warnings`,`disable:security_warnings`
+
 # Compilation
 
 You need a development environment for PostgreSQL extensions:

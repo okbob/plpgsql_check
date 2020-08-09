@@ -86,6 +86,16 @@ typedef struct plpgsql_check_info
 	char	   *newtable;
 } plpgsql_check_info;
 
+typedef struct
+{
+	unsigned int disable_check : 1;
+	unsigned int disable_tracer : 1;
+	unsigned int disable_other_warnings : 1;
+	unsigned int disable_performance_warnings : 1;
+	unsigned int disable_extra_warnings : 1;
+	unsigned int disable_security_warnings : 1;
+} plpgsql_check_pragma_vector;
+
 typedef struct PLpgSQL_checkstate
 {
 	List	    *argnames;					/* function arg names */
@@ -115,6 +125,7 @@ typedef struct PLpgSQL_checkstate
 	bool			allow_mp;				/* true, when multiple plans in plancache are allowed */
 	bool			has_mp;					/* true, when multiple plan was used */
 	bool			was_pragma;				/* true, when last expression was a plpgsql_check pragma */
+	plpgsql_check_pragma_vector pragma_vector;
 } PLpgSQL_checkstate;
 
 typedef struct
