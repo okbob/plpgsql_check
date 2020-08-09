@@ -114,6 +114,7 @@ typedef struct PLpgSQL_checkstate
 	bool			stop_check;				/* true after error when fatal_errors option is active */
 	bool			allow_mp;				/* true, when multiple plans in plancache are allowed */
 	bool			has_mp;					/* true, when multiple plan was used */
+	bool			was_pragma;				/* true, when last expression was a plpgsql_check pragma */
 } PLpgSQL_checkstate;
 
 typedef struct
@@ -295,7 +296,7 @@ extern void plpgsql_check_get_trace_stmt_info(PLpgSQL_execstate *estate, int stm
 #endif
 
 /*
- * functions from tracer.c
+ * functions and variables from tracer.c
  */
 extern bool plpgsql_check_enable_tracer;
 extern bool plpgsql_check_tracer;
@@ -313,6 +314,11 @@ extern void plpgsql_check_tracer_on_func_end(PLpgSQL_execstate *estate, PLpgSQL_
 extern void plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 extern void plpgsql_check_tracer_on_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 extern void plpgsql_check_trace_assert_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
+
+/*
+ * variables from pragma.c
+ */
+extern void plpgsql_check_pragma_apply(PLpgSQL_checkstate *cstate, char *pragma_str);
 
 /*
  * functions from plpgsql_check.c

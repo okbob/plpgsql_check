@@ -217,3 +217,7 @@ LANGUAGE C;
 CREATE OR REPLACE FUNCTION plpgsql_coverage_branches(name text)
 RETURNS double precision AS 'MODULE_PATHNAME', 'plpgsql_coverage_branches_name'
 LANGUAGE C;
+
+CREATE OR REPLACE FUNCTION plpgsql_check_pragma(VARIADIC name text[])
+RETURNS integer AS 'MODULE_PATHNAME', 'plpgsql_check_pragma'
+LANGUAGE C IMMUTABLE;
