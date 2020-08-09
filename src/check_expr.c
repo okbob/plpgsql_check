@@ -260,12 +260,23 @@ ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 	/* the test of PRAGMA function call */
 	if (result->commandType == CMD_SELECT)
 	{
+
+#if PG_VERSION_NUM < 100000
+
+		if (plansource->raw_parse_tree &&
+			IsA(plansource->raw_parse_tree, SelectStmt))
+		{
+			SelectStmt *selectStmt = (SelectStmt *) plansource->raw_parse_tree;
+
+#else
+
 		if (plansource->raw_parse_tree &&
 			plansource->raw_parse_tree->stmt &&
 			IsA(plansource->raw_parse_tree->stmt, SelectStmt))
 		{
 			SelectStmt *selectStmt = (SelectStmt *) plansource->raw_parse_tree->stmt;
 
+#endif
 			if (selectStmt->targetList && IsA(linitial(selectStmt->targetList), ResTarget))
 			{
 				ResTarget *rt = (ResTarget *) linitial(selectStmt->targetList);
