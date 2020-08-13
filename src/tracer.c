@@ -32,6 +32,268 @@ PGErrorVerbosity plpgsql_check_trace_assert_verbosity = PGERROR_DEFAULT;
 int plpgsql_check_tracer_errlevel = NOTICE;
 int plpgsql_check_tracer_variable_max_length = 1024;
 
+#if PG_VERSION_NUM >= 120000
+
+static void set_stmts_group_number(List *stmts, int *group_numbers, int *parent_group_numbers, int sgn, int *cgn, int spgn);
+
+/*
+ * sgn - statement group number
+ * cgn - counter for group number
+ * spgn - statemen parent group number
+ */
+void
+plpgsql_check_set_stmt_group_number(PLpgSQL_stmt *stmt,
+									int *group_numbers,
+									int *parent_group_numbers,
+									int sgn,
+									int *cgn,
+									int psgn)
+{
+	ListCell *lc;
+	int			newgn;
+	int			stmtid = stmt->stmtid;
+
+	switch (PLPGSQL_STMT_TYPES stmt->cmd_type)
+	{
+		case PLPGSQL_STMT_BLOCK:
+			{
+				PLpgSQL_stmt_block *stmt_block = (PLpgSQL_stmt_block *) stmt;
+
+				newgn = ++(*cgn);
+
+				group_numbers[stmtid] = newgn;
+				parent_group_numbers[stmtid] = psgn;
+
+				set_stmts_group_number(stmt_block->body,
+									  group_numbers,
+									  parent_group_numbers,
+									  ++(*cgn),
+									  cgn,
+									  newgn);
+
+				if (stmt_block->exceptions)
+				{
+					foreach(lc, stmt_block->exceptions->exc_list)
+					{
+						set_stmts_group_number(
+									  ((PLpgSQL_exception *) lfirst(lc))->action,
+									  group_numbers,
+									  parent_group_numbers,
+									  ++(*cgn),
+									  cgn,
+									  newgn);
+					}
+				}
+			}
+			break;
+
+		case PLPGSQL_STMT_IF:
+			{
+				PLpgSQL_stmt_if *stmt_if = (PLpgSQL_stmt_if *) stmt;
+
+				newgn = ++(*cgn);
+
+				group_numbers[stmtid] = newgn;
+				parent_group_numbers[stmtid] = psgn;
+
+				set_stmts_group_number(stmt_if->then_body,
+									  group_numbers,
+									  parent_group_numbers,
+									  ++(*cgn),
+									  cgn,
+									  newgn);
+
+				foreach(lc, stmt_if->elsif_list)
+				{
+					set_stmts_group_number(((PLpgSQL_if_elsif *) lfirst(lc))->stmts,
+										  group_numbers,
+										  parent_group_numbers,
+										  ++(*cgn),
+										  cgn,
+										  newgn);
+				}
+
+				set_stmts_group_number(stmt_if->else_body,
+									  group_numbers,
+									  parent_group_numbers,
+									  ++(*cgn),
+									  cgn,
+									  newgn);
+			}
+			break;
+
+		case PLPGSQL_STMT_CASE:
+			{
+				PLpgSQL_stmt_case *stmt_case = (PLpgSQL_stmt_case *) stmt;
+
+				newgn = ++(*cgn);
+
+				group_numbers[stmtid] = newgn;
+				parent_group_numbers[stmtid] = psgn;
+
+				foreach(lc, stmt_case->case_when_list)
+				{
+					set_stmts_group_number(((PLpgSQL_case_when *) lfirst(lc))->stmts,
+										  group_numbers,
+										  parent_group_numbers,
+										  ++(*cgn),
+										  cgn,
+										  newgn);
+				}
+
+				set_stmts_group_number(stmt_case->else_stmts,
+									  group_numbers,
+									  parent_group_numbers,
+									  ++(*cgn),
+									  cgn,
+									  newgn);
+			}
+			break;
+
+		case PLPGSQL_STMT_LOOP:
+			{
+				newgn = ++(*cgn);
+
+				group_numbers[stmtid] = newgn;
+				parent_group_numbers[stmtid] = psgn;
+
+				set_stmts_group_number(((PLpgSQL_stmt_loop *) stmt)->body,
+									   group_numbers,
+									   parent_group_numbers,
+									    ++(*cgn),
+									    cgn,
+									    newgn);
+			}
+			break;
+
+		case PLPGSQL_STMT_FORI:
+			{
+				newgn = ++(*cgn);
+
+				group_numbers[stmtid] = newgn;
+				parent_group_numbers[stmtid] = psgn;
+
+				set_stmts_group_number(((PLpgSQL_stmt_fori *) stmt)->body,
+									   group_numbers,
+									   parent_group_numbers,
+									    ++(*cgn),
+									    cgn,
+									    newgn);
+			}
+			break;
+
+		case PLPGSQL_STMT_FORS:
+			{
+				newgn = ++(*cgn);
+
+				group_numbers[stmtid] = newgn;
+				parent_group_numbers[stmtid] = psgn;
+
+				set_stmts_group_number(((PLpgSQL_stmt_fors *) stmt)->body,
+									   group_numbers,
+									   parent_group_numbers,
+									    ++(*cgn),
+									    cgn,
+									    newgn);
+			}
+			break;
+
+		case PLPGSQL_STMT_FORC:
+			{
+				newgn = ++(*cgn);
+
+				group_numbers[stmtid] = newgn;
+				parent_group_numbers[stmtid] = psgn;
+
+				set_stmts_group_number(((PLpgSQL_stmt_forc *) stmt)->body,
+									   group_numbers,
+									   parent_group_numbers,
+									    ++(*cgn),
+									    cgn,
+									    newgn);
+			}
+			break;
+
+		case PLPGSQL_STMT_DYNFORS:
+			{
+				newgn = ++(*cgn);
+
+				group_numbers[stmtid] = newgn;
+				parent_group_numbers[stmtid] = psgn;
+
+				set_stmts_group_number(((PLpgSQL_stmt_dynfors *) stmt)->body,
+									   group_numbers,
+									   parent_group_numbers,
+									    ++(*cgn),
+									    cgn,
+									    newgn);
+			}
+			break;
+
+		case PLPGSQL_STMT_FOREACH_A:
+			{
+				newgn = ++(*cgn);
+
+				group_numbers[stmtid] = newgn;
+				parent_group_numbers[stmtid] = psgn;
+
+				set_stmts_group_number(((PLpgSQL_stmt_foreach_a *) stmt)->body,
+									   group_numbers,
+									   parent_group_numbers,
+									    ++(*cgn),
+									    cgn,
+									    newgn);
+			}
+			break;
+
+		case PLPGSQL_STMT_WHILE:
+			{
+				newgn = ++(*cgn);
+
+				group_numbers[stmtid] = newgn;
+				parent_group_numbers[stmtid] = psgn;
+
+				set_stmts_group_number(((PLpgSQL_stmt_while *) stmt)->body,
+									   group_numbers,
+									   parent_group_numbers,
+									    ++(*cgn),
+									    cgn,
+									    newgn);
+			}
+			break;
+
+		default:
+			group_numbers[stmt->stmtid] = sgn;
+			parent_group_numbers[stmtid] = psgn;
+	}
+}
+
+static void
+set_stmts_group_number(List *stmts,
+					   int *group_numbers,
+					   int *parent_group_numbers,
+					   int sgn,
+					   int *cgn,
+					   int psgn)
+{
+	ListCell *lc;
+	bool		is_first = true;
+
+	foreach(lc, stmts)
+	{
+		plpgsql_check_set_stmt_group_number((PLpgSQL_stmt *) lfirst(lc),
+							  group_numbers,
+							  parent_group_numbers,
+							  sgn,
+							  cgn,
+							  is_first ? psgn : -1);
+		is_first = false;
+	}
+}
+
+#endif
+
+
 /*
  * Convert binary value to text
  */
@@ -524,6 +786,8 @@ plpgsql_check_tracer_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 
 	Assert(plpgsql_check_tracer);
 
+	plpgsql_check_runtime_pragma_vector_changed = false;
+
 	/* Allow tracing only when it is explicitly allowed */
 	if (!plpgsql_check_enable_tracer)
 		return;
@@ -536,6 +800,7 @@ plpgsql_check_tracer_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 	 */
 	plpgsql_check_init_trace_info(estate);
 	(void) plpgsql_check_get_trace_info(estate,
+										NULL,
 										&outer_estate,
 										&frame_num,
 										&level,
@@ -605,6 +870,7 @@ plpgsql_check_tracer_on_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 		return;
 
 	if (plpgsql_check_get_trace_info(estate,
+									 NULL,
 									 &outer_estate,
 									 &frame_num,
 									 &level,
@@ -693,6 +959,7 @@ plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		 instr_time start_time;
 
 		if (plpgsql_check_get_trace_info(estate,
+										 stmt,
 										 &outer_estate,
 										 &frame_num,
 										 &level,
@@ -843,6 +1110,7 @@ plpgsql_check_tracer_on_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		 instr_time start_time;
 
 		if (plpgsql_check_get_trace_info(estate,
+										 stmt,
 										 &outer_estate,
 										 &frame_num,
 										 &level,

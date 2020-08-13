@@ -152,6 +152,10 @@ typedef struct profiler_info
 #if PG_VERSION_NUM >= 120000
 
 	instr_time *stmt_start_times;
+	int		   *stmt_group_numbers;
+	int		   *stmt_parent_group_numbers;
+	bool	   *stmt_disabled_tracers;
+	bool	   *pragma_disable_tracer_stack;
 
 #endif
 
@@ -231,6 +235,30 @@ plpgsql_check_init_trace_info(PLpgSQL_execstate *estate)
 				if (outer_pinfo->pi_magic == PI_MAGIC &&
 					outer_pinfo->trace_info_is_initialized)
 				{
+
+#if PG_VERSION_NUM >= 120000
+
+					PLpgSQL_stmt *outer_stmt = outer_estate->err_stmt;
+					PLpgSQL_stmt_block *stmt_block = estate->func->action;
+					int		tgn;
+
+					/* set top current group number */
+					tgn = pinfo->stmt_group_numbers[stmt_block->stmtid];
+
+					if (outer_stmt)
+					{
+						int		ogn;
+
+						ogn = outer_pinfo->stmt_group_numbers[outer_stmt->stmtid];
+
+						pinfo->pragma_disable_tracer_stack[tgn] =
+							outer_pinfo->pragma_disable_tracer_stack[ogn];
+					}
+					else
+						pinfo->pragma_disable_tracer_stack[tgn] = false;
+
+#endif
+
 					pinfo->level = outer_pinfo->level + 1;
 					pinfo->frame_num += outer_pinfo->frame_num;
 
@@ -241,16 +269,11 @@ plpgsql_check_init_trace_info(PLpgSQL_execstate *estate)
 	}
 }
 
-/*
- * Outer profiler's code fields of profiler info are not available.
- * This routine reads tracer fields from profiler info.
- */
-bool
-plpgsql_check_get_trace_info(PLpgSQL_execstate *estate,
-							 PLpgSQL_execstate **outer_estate,
-							 int *frame_num,
-							 int *level,
-							 instr_time *start_time)
+#if PG_VERSION_NUM >= 120000
+
+bool *
+plpgsql_check_get_disable_tracer_on_stack(PLpgSQL_execstate *estate,
+										  PLpgSQL_stmt *stmt)
 {
 	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 
@@ -261,7 +284,52 @@ plpgsql_check_get_trace_info(PLpgSQL_execstate *estate,
 		return false;
 
 	if (pinfo->trace_info_is_initialized)
+		return &pinfo->pragma_disable_tracer_stack[stmt->stmtid];
+
+	return NULL;
+}
+
+#endif
+
+/*
+ * Outer profiler's code fields of profiler info are not available.
+ * This routine reads tracer fields from profiler info.
+ */
+bool
+plpgsql_check_get_trace_info(PLpgSQL_execstate *estate,
+							 PLpgSQL_stmt *stmt,
+							 PLpgSQL_execstate **outer_estate,
+							 int *frame_num,
+							 int *level,
+							 instr_time *start_time)
+{
+	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
+
+	Assert(pinfo && pinfo->pi_magic == PI_MAGIC);
+
+	(void) stmt;
+
+	/* Allow tracing only when it is explicitly allowed */
+	if (!plpgsql_check_enable_tracer)
+		return false;
+
+	if (pinfo->trace_info_is_initialized)
 	{
+
+#if PG_VERSION_NUM >= 120000
+
+		if (stmt)
+		{
+			int		sgn;
+
+			sgn = pinfo->stmt_group_numbers[stmt->stmtid];
+
+			if (pinfo->pragma_disable_tracer_stack[sgn])
+				return false;
+		}
+
+#endif
+
 		*outer_estate = pinfo->near_outer_estate;
 		*frame_num = pinfo->frame_num;
 		*level = pinfo->level;
@@ -1739,6 +1807,13 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 
 	if (plpgsql_check_tracer)
 	{
+
+#if PG_VERSION_NUM >= 120000
+
+		int		group_number_counter = 0;
+
+#endif
+
 		pinfo = palloc0(sizeof(profiler_info));
 		pinfo->pi_magic = PI_MAGIC;
 
@@ -1748,6 +1823,18 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 #if PG_VERSION_NUM >= 120000
 
 		pinfo->stmt_start_times = palloc0(sizeof(instr_time) * func->nstatements);
+		pinfo->stmt_group_numbers = palloc(sizeof(int) * (func->nstatements + 1));
+		pinfo->stmt_parent_group_numbers = palloc(sizeof(int) * (func->nstatements + 1));
+		pinfo->stmt_disabled_tracers = palloc(sizeof(int) * (func->nstatements + 1));
+
+		plpgsql_check_set_stmt_group_number((PLpgSQL_stmt *) func->action,
+											pinfo->stmt_group_numbers,
+											pinfo->stmt_parent_group_numbers,
+											0,
+											&group_number_counter,
+											-1);
+
+		pinfo->pragma_disable_tracer_stack = palloc(sizeof(bool) * (group_number_counter + 1));
 
 #endif
 
@@ -1822,7 +1909,20 @@ plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *fun
 	profiler_info *pinfo = estate->plugin_info;
 
 	if (plpgsql_check_tracer && pinfo )
+	{
 		plpgsql_check_tracer_on_func_end(estate, func);
+
+#if PG_VERSION_NUM >= 120000
+
+		pfree(pinfo->stmt_start_times);
+		pfree(pinfo->stmt_group_numbers);
+		pfree(pinfo->stmt_parent_group_numbers);
+		pfree(pinfo->stmt_disabled_tracers);
+		pfree(pinfo->pragma_disable_tracer_stack);
+
+#endif
+
+	}
 
 	if (plpgsql_check_profiler &&
 		pinfo && pinfo->profile &&
@@ -1863,8 +1963,10 @@ plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *fun
 		update_persistent_profile(pinfo, func);
 
 		pfree(pinfo->stmts);
-		pfree(pinfo);
 	}
+
+	if ((plpgsql_check_tracer || plpgsql_check_profiler) && pinfo)
+		pfree(pinfo);
 }
 
 void
@@ -1873,7 +1975,40 @@ plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 
 	if (plpgsql_check_tracer && pinfo)
+	{
+
+#if PG_VERSION_NUM >= 120000
+
+		int		stmtid = stmt->stmtid;
+		int		sgn = pinfo->stmt_group_numbers[stmtid];
+		int		pgn = pinfo->stmt_parent_group_numbers[stmtid];
+
+		plpgsql_check_runtime_pragma_vector_changed = false;
+
+		/*
+		 * First statement in group has valid parent group number.
+		 * We use this number for copy setting from outer group
+		 * to nested group.
+		 */
+		if (pgn != -1)
+		{
+			pinfo->pragma_disable_tracer_stack[sgn] =
+				pinfo->pragma_disable_tracer_stack[pgn];
+		}
+
+		pinfo->stmt_disabled_tracers[stmtid] =
+				pinfo->pragma_disable_tracer_stack[sgn];
+
+		if (!pinfo->stmt_disabled_tracers[stmtid])
+			plpgsql_check_tracer_on_stmt_beg(estate, stmt);
+
+#else
+
 		plpgsql_check_tracer_on_stmt_beg(estate, stmt);
+
+#endif
+
+	}
 
 	if (stmt->cmd_type == PLPGSQL_STMT_ASSERT &&
 			plpgsql_check_enable_tracer &&
@@ -1900,7 +2035,31 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 
 	if (plpgsql_check_tracer && pinfo)
+	{
+#if PG_VERSION_NUM >= 120000
+
+		int		stmtid = stmt->stmtid;
+
+		if (plpgsql_check_runtime_pragma_vector_changed)
+		{
+			int		sgn;
+
+			sgn = pinfo->stmt_group_numbers[stmtid];
+
+			pinfo->pragma_disable_tracer_stack[sgn] =
+				plpgsql_check_runtime_pragma_vector.disable_tracer;
+		}
+
+		if (!pinfo->stmt_disabled_tracers[stmtid])
+			plpgsql_check_tracer_on_stmt_end(estate, stmt);
+
+#else
+
 		plpgsql_check_tracer_on_stmt_end(estate, stmt);
+
+#endif
+
+	}
 
 	if (plpgsql_check_profiler && 
 		pinfo && pinfo->profile &&

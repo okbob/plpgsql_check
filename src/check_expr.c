@@ -141,9 +141,9 @@ collect_volatility(PLpgSQL_checkstate *cstate, Query *query)
 		if (!query->hasModifyingCTE && !query->hasForUpdate)
 		{
 			/* there is chance so query will be immutable */
-			if (contain_volatile_functions((Node *) query))
+			if (plpgsql_check_contain_volatile_functions((Node *) query, cstate))
 				cstate->volatility = PROVOLATILE_VOLATILE;
-			else if (!contain_mutable_functions((Node *) query))
+			else if (!plpgsql_check_contain_mutable_functions((Node *) query, cstate))
 			{
 				/*
 				 * when level is still immutable, check if there

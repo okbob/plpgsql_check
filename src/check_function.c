@@ -1278,8 +1278,10 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->pragma_vector.disable_performance_warnings = false;
 	cstate->pragma_vector.disable_extra_warnings = false;
 	cstate->pragma_vector.disable_security_warnings = false;
-}
 
+	/* try to find oid of plpgsql_check pragma function */
+	cstate->pragma_foid = plpgsql_check_pragma_func_oid();
+}
 
 /*
  * Loads function's configuration

@@ -220,4 +220,4 @@ LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION plpgsql_check_pragma(VARIADIC name text[])
 RETURNS integer AS 'MODULE_PATHNAME', 'plpgsql_check_pragma'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C VOLATILE;

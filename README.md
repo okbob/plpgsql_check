@@ -635,6 +635,15 @@ like:
     SELECT 1
     $$ LANGUAGE sql IMMUTABLE;
 
+Using pragma function in declaration part of top block sets options on function level too.
+
+    CREATE OR REPLACE FUNCTION test()
+    RETURNS void AS $$
+    DECLARE
+      aux int := plpgsql_check_pragma('disable:extra_warnings');
+      ...
+
+
 ## Supported pragmas
 
 * `echo:str` - print string (for testing)
