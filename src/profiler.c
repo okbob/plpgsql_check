@@ -149,6 +149,8 @@ typedef struct profiler_info
 	int			level;
 	PLpgSQL_execstate *near_outer_estate;
 
+	bool		disable_tracer;
+
 #if PG_VERSION_NUM >= 120000
 
 	instr_time *stmt_start_times;
@@ -209,6 +211,13 @@ plpgsql_check_init_trace_info(PLpgSQL_execstate *estate)
 	ErrorContextCallback *econtext;
 	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 
+#if PG_VERSION_NUM >= 120000
+
+	PLpgSQL_stmt_block *stmt_block = estate->func->action;
+	int		tgn;
+
+#endif
+
 	Assert(pinfo && pinfo->pi_magic == PI_MAGIC);
 
 	for (econtext = error_context_stack->previous;
@@ -239,23 +248,14 @@ plpgsql_check_init_trace_info(PLpgSQL_execstate *estate)
 #if PG_VERSION_NUM >= 120000
 
 					PLpgSQL_stmt *outer_stmt = outer_estate->err_stmt;
-					PLpgSQL_stmt_block *stmt_block = estate->func->action;
-					int		tgn;
-
-					/* set top current group number */
-					tgn = pinfo->stmt_group_numbers[stmt_block->stmtid];
 
 					if (outer_stmt)
 					{
 						int		ogn;
 
 						ogn = outer_pinfo->stmt_group_numbers[outer_stmt->stmtid];
-
-						pinfo->pragma_disable_tracer_stack[tgn] =
-							outer_pinfo->pragma_disable_tracer_stack[ogn];
+						pinfo->disable_tracer = outer_pinfo->pragma_disable_tracer_stack[ogn];
 					}
-					else
-						pinfo->pragma_disable_tracer_stack[tgn] = false;
 
 #endif
 
@@ -267,6 +267,18 @@ plpgsql_check_init_trace_info(PLpgSQL_execstate *estate)
 			}
 		}
 	}
+
+	if (plpgsql_check_runtime_pragma_vector_changed)
+		pinfo->disable_tracer = plpgsql_check_runtime_pragma_vector.disable_tracer;
+
+#if PG_VERSION_NUM >= 120000
+
+	/* set top current group number */
+	tgn = pinfo->stmt_group_numbers[stmt_block->stmtid];
+	pinfo->pragma_disable_tracer_stack[tgn] = pinfo->disable_tracer;
+
+#endif
+
 }
 
 #if PG_VERSION_NUM >= 120000
@@ -318,15 +330,11 @@ plpgsql_check_get_trace_info(PLpgSQL_execstate *estate,
 
 #if PG_VERSION_NUM >= 120000
 
-		if (stmt)
-		{
-			int		sgn;
+		if (stmt && pinfo->stmt_disabled_tracers[stmt->stmtid])
+			return false;
 
-			sgn = pinfo->stmt_group_numbers[stmt->stmtid];
-
-			if (pinfo->pragma_disable_tracer_stack[sgn])
-				return false;
-		}
+		if (!stmt && pinfo->disable_tracer)
+			return false;
 
 #endif
 
@@ -1825,7 +1833,7 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 		pinfo->stmt_start_times = palloc0(sizeof(instr_time) * func->nstatements);
 		pinfo->stmt_group_numbers = palloc(sizeof(int) * (func->nstatements + 1));
 		pinfo->stmt_parent_group_numbers = palloc(sizeof(int) * (func->nstatements + 1));
-		pinfo->stmt_disabled_tracers = palloc(sizeof(int) * (func->nstatements + 1));
+		pinfo->stmt_disabled_tracers = palloc0(sizeof(int) * (func->nstatements + 1));
 
 		plpgsql_check_set_stmt_group_number((PLpgSQL_stmt *) func->action,
 											pinfo->stmt_group_numbers,
@@ -1835,6 +1843,11 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 											-1);
 
 		pinfo->pragma_disable_tracer_stack = palloc(sizeof(bool) * (group_number_counter + 1));
+
+		/* now we have not access to outer estate */
+		pinfo->disable_tracer = false;
+
+		plpgsql_check_runtime_pragma_vector_changed = false;
 
 #endif
 
@@ -1999,15 +2012,9 @@ plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		pinfo->stmt_disabled_tracers[stmtid] =
 				pinfo->pragma_disable_tracer_stack[sgn];
 
-		if (!pinfo->stmt_disabled_tracers[stmtid])
-			plpgsql_check_tracer_on_stmt_beg(estate, stmt);
-
-#else
-
-		plpgsql_check_tracer_on_stmt_beg(estate, stmt);
-
 #endif
 
+		plpgsql_check_tracer_on_stmt_beg(estate, stmt);
 	}
 
 	if (stmt->cmd_type == PLPGSQL_STMT_ASSERT &&
@@ -2036,6 +2043,7 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 	if (plpgsql_check_tracer && pinfo)
 	{
+
 #if PG_VERSION_NUM >= 120000
 
 		int		stmtid = stmt->stmtid;
@@ -2050,15 +2058,9 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 				plpgsql_check_runtime_pragma_vector.disable_tracer;
 		}
 
-		if (!pinfo->stmt_disabled_tracers[stmtid])
-			plpgsql_check_tracer_on_stmt_end(estate, stmt);
-
-#else
-
-		plpgsql_check_tracer_on_stmt_end(estate, stmt);
-
 #endif
 
+		plpgsql_check_tracer_on_stmt_end(estate, stmt);
 	}
 
 	if (plpgsql_check_profiler && 

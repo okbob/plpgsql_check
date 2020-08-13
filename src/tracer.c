@@ -50,8 +50,10 @@ plpgsql_check_set_stmt_group_number(PLpgSQL_stmt *stmt,
 									int psgn)
 {
 	ListCell *lc;
-	int			newgn;
 	int			stmtid = stmt->stmtid;
+
+	group_numbers[stmtid] = sgn;
+	parent_group_numbers[stmtid] = psgn;
 
 	switch (PLPGSQL_STMT_TYPES stmt->cmd_type)
 	{
@@ -59,17 +61,12 @@ plpgsql_check_set_stmt_group_number(PLpgSQL_stmt *stmt,
 			{
 				PLpgSQL_stmt_block *stmt_block = (PLpgSQL_stmt_block *) stmt;
 
-				newgn = ++(*cgn);
-
-				group_numbers[stmtid] = newgn;
-				parent_group_numbers[stmtid] = psgn;
-
 				set_stmts_group_number(stmt_block->body,
 									  group_numbers,
 									  parent_group_numbers,
 									  ++(*cgn),
 									  cgn,
-									  newgn);
+									  sgn);
 
 				if (stmt_block->exceptions)
 				{
@@ -81,7 +78,7 @@ plpgsql_check_set_stmt_group_number(PLpgSQL_stmt *stmt,
 									  parent_group_numbers,
 									  ++(*cgn),
 									  cgn,
-									  newgn);
+									  sgn);
 					}
 				}
 			}
@@ -91,17 +88,12 @@ plpgsql_check_set_stmt_group_number(PLpgSQL_stmt *stmt,
 			{
 				PLpgSQL_stmt_if *stmt_if = (PLpgSQL_stmt_if *) stmt;
 
-				newgn = ++(*cgn);
-
-				group_numbers[stmtid] = newgn;
-				parent_group_numbers[stmtid] = psgn;
-
 				set_stmts_group_number(stmt_if->then_body,
 									  group_numbers,
 									  parent_group_numbers,
 									  ++(*cgn),
 									  cgn,
-									  newgn);
+									  sgn);
 
 				foreach(lc, stmt_if->elsif_list)
 				{
@@ -110,7 +102,7 @@ plpgsql_check_set_stmt_group_number(PLpgSQL_stmt *stmt,
 										  parent_group_numbers,
 										  ++(*cgn),
 										  cgn,
-										  newgn);
+										  sgn);
 				}
 
 				set_stmts_group_number(stmt_if->else_body,
@@ -118,18 +110,13 @@ plpgsql_check_set_stmt_group_number(PLpgSQL_stmt *stmt,
 									  parent_group_numbers,
 									  ++(*cgn),
 									  cgn,
-									  newgn);
+									  sgn);
 			}
 			break;
 
 		case PLPGSQL_STMT_CASE:
 			{
 				PLpgSQL_stmt_case *stmt_case = (PLpgSQL_stmt_case *) stmt;
-
-				newgn = ++(*cgn);
-
-				group_numbers[stmtid] = newgn;
-				parent_group_numbers[stmtid] = psgn;
 
 				foreach(lc, stmt_case->case_when_list)
 				{
@@ -138,7 +125,7 @@ plpgsql_check_set_stmt_group_number(PLpgSQL_stmt *stmt,
 										  parent_group_numbers,
 										  ++(*cgn),
 										  cgn,
-										  newgn);
+										  sgn);
 				}
 
 				set_stmts_group_number(stmt_case->else_stmts,
@@ -146,125 +133,89 @@ plpgsql_check_set_stmt_group_number(PLpgSQL_stmt *stmt,
 									  parent_group_numbers,
 									  ++(*cgn),
 									  cgn,
-									  newgn);
+									  sgn);
 			}
 			break;
 
 		case PLPGSQL_STMT_LOOP:
 			{
-				newgn = ++(*cgn);
-
-				group_numbers[stmtid] = newgn;
-				parent_group_numbers[stmtid] = psgn;
-
 				set_stmts_group_number(((PLpgSQL_stmt_loop *) stmt)->body,
 									   group_numbers,
 									   parent_group_numbers,
 									    ++(*cgn),
 									    cgn,
-									    newgn);
+									    sgn);
 			}
 			break;
 
 		case PLPGSQL_STMT_FORI:
 			{
-				newgn = ++(*cgn);
-
-				group_numbers[stmtid] = newgn;
-				parent_group_numbers[stmtid] = psgn;
-
 				set_stmts_group_number(((PLpgSQL_stmt_fori *) stmt)->body,
 									   group_numbers,
 									   parent_group_numbers,
 									    ++(*cgn),
 									    cgn,
-									    newgn);
+									    sgn);
 			}
 			break;
 
 		case PLPGSQL_STMT_FORS:
 			{
-				newgn = ++(*cgn);
-
-				group_numbers[stmtid] = newgn;
-				parent_group_numbers[stmtid] = psgn;
-
 				set_stmts_group_number(((PLpgSQL_stmt_fors *) stmt)->body,
 									   group_numbers,
 									   parent_group_numbers,
 									    ++(*cgn),
 									    cgn,
-									    newgn);
+									    sgn);
 			}
 			break;
 
 		case PLPGSQL_STMT_FORC:
 			{
-				newgn = ++(*cgn);
-
-				group_numbers[stmtid] = newgn;
-				parent_group_numbers[stmtid] = psgn;
-
 				set_stmts_group_number(((PLpgSQL_stmt_forc *) stmt)->body,
 									   group_numbers,
 									   parent_group_numbers,
 									    ++(*cgn),
 									    cgn,
-									    newgn);
+									    sgn);
 			}
 			break;
 
 		case PLPGSQL_STMT_DYNFORS:
 			{
-				newgn = ++(*cgn);
-
-				group_numbers[stmtid] = newgn;
-				parent_group_numbers[stmtid] = psgn;
-
 				set_stmts_group_number(((PLpgSQL_stmt_dynfors *) stmt)->body,
 									   group_numbers,
 									   parent_group_numbers,
 									    ++(*cgn),
 									    cgn,
-									    newgn);
+									    sgn);
 			}
 			break;
 
 		case PLPGSQL_STMT_FOREACH_A:
 			{
-				newgn = ++(*cgn);
-
-				group_numbers[stmtid] = newgn;
-				parent_group_numbers[stmtid] = psgn;
-
 				set_stmts_group_number(((PLpgSQL_stmt_foreach_a *) stmt)->body,
 									   group_numbers,
 									   parent_group_numbers,
 									    ++(*cgn),
 									    cgn,
-									    newgn);
+									    sgn);
 			}
 			break;
 
 		case PLPGSQL_STMT_WHILE:
 			{
-				newgn = ++(*cgn);
-
-				group_numbers[stmtid] = newgn;
-				parent_group_numbers[stmtid] = psgn;
-
 				set_stmts_group_number(((PLpgSQL_stmt_while *) stmt)->body,
 									   group_numbers,
 									   parent_group_numbers,
 									    ++(*cgn),
 									    cgn,
-									    newgn);
+									    sgn);
 			}
 			break;
 
 		default:
-			group_numbers[stmt->stmtid] = sgn;
-			parent_group_numbers[stmtid] = psgn;
+			;
 	}
 }
 
@@ -292,7 +243,6 @@ set_stmts_group_number(List *stmts,
 }
 
 #endif
-
 
 /*
  * Convert binary value to text
@@ -632,6 +582,108 @@ print_expr_args(PLpgSQL_execstate *estate,
 	pfree(ds.data);
 }
 
+/*
+ * Print expression's arguments
+ */
+static void
+print_assert_args(PLpgSQL_execstate *estate, PLpgSQL_stmt_assert *stmt)
+{
+	int		dno;
+
+	StringInfoData		ds;
+
+	initStringInfo(&ds);
+
+	/*
+	 * When expression hasn't assigned plan, then we cannot to show a related
+	 * variables. So we can enforce creating plan.
+	 */
+	if (!stmt->cond->plan)
+	{
+		SPIPlanPtr		plan;
+
+		stmt->cond->func = estate->func;
+
+		/*
+		 * Generate the plan (enforce expr query parsing) and throw plan 
+		 */
+		plan = SPI_prepare_params(stmt->cond->query,
+								  (ParserSetupHook) plpgsql_check__parser_setup_p,
+								  (void *) stmt->cond,
+								  0);
+		SPI_freeplan(plan);
+	}
+
+	/* print value of arguments */
+	dno = -1;
+	while ((dno = bms_next_member(stmt->cond->paramnos, dno)) >= 0)
+	{
+		bool		isnull;
+		char	   *refname;
+		char	   *str;
+
+		str = convert_plpgsql_datum_to_string(estate,
+											  estate->datums[dno],
+											  &isnull,
+											  &refname);
+
+		if (refname)
+		{
+			if (!isnull)
+			{
+				/*
+				 * when this output is too long or contains new line, print it
+				 * separately
+				 */
+				if (((int) strlen(str)) > plpgsql_check_tracer_variable_max_length ||
+					strchr(str, '\n') != NULL)
+				{
+					if (*ds.data)
+					{
+						elog(plpgsql_check_tracer_errlevel, " %s", ds.data);
+
+						resetStringInfo(&ds);
+					}
+
+					trim_string(str, plpgsql_check_tracer_variable_max_length);
+					elog(plpgsql_check_tracer_errlevel,
+						 " \"%s\" => '%s'",
+										refname,
+										str);
+				}
+				else
+				{
+					if (*ds.data)
+						appendStringInfoString(&ds, ", ");
+
+					appendStringInfo(&ds, "\"%s\" => '%s'", refname, str);
+				}
+			}
+			else
+			{
+				if (*ds.data)
+					appendStringInfoString(&ds, ", ");
+
+				appendStringInfo(&ds, "\"%s\" => null", refname);
+			}
+		}
+
+		if (str)
+			pfree(str);
+
+		/*print too long lines immediately */
+		if (ds.len > plpgsql_check_tracer_variable_max_length)
+		{
+			elog(plpgsql_check_tracer_errlevel, " %s", ds.data);
+			resetStringInfo(&ds);
+		}
+	}
+
+	if (*ds.data)
+		elog(plpgsql_check_tracer_errlevel, " %s", ds.data);
+
+	pfree(ds.data);
+}
 
 /*
  * Print all frame variables
@@ -725,7 +777,6 @@ print_all_variables(PLpgSQL_execstate *estate)
 	pfree(ds.data);
 }
 
-
 /*
  * Print plpgsql datum
  */
@@ -786,8 +837,6 @@ plpgsql_check_tracer_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 
 	Assert(plpgsql_check_tracer);
 
-	plpgsql_check_runtime_pragma_vector_changed = false;
-
 	/* Allow tracing only when it is explicitly allowed */
 	if (!plpgsql_check_enable_tracer)
 		return;
@@ -799,59 +848,60 @@ plpgsql_check_tracer_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 	 * from stacked error contexts. Have to be called here.
 	 */
 	plpgsql_check_init_trace_info(estate);
-	(void) plpgsql_check_get_trace_info(estate,
+	if (plpgsql_check_get_trace_info(estate,
 										NULL,
 										&outer_estate,
 										&frame_num,
 										&level,
-										&start_time);
-
-	(void) start_time;
-
-	indent = level * 2 + (plpgsql_check_tracer_verbosity == PGERROR_VERBOSE ? 6 : 0);
-	frame_width = plpgsql_check_tracer_verbosity == PGERROR_VERBOSE ? 6 : 3;
-
-	if (plpgsql_check_tracer_verbosity >= PGERROR_DEFAULT)
-		elog(plpgsql_check_tracer_errlevel,
-			 "#%-*d%*s ->> start of %s%s (oid=%u)",
-												  frame_width,
-												  frame_num,
-												  indent,
-												  "",
-												  func->fn_oid ? "function " : "block ",
-												  func->fn_signature,
-												  fn_oid);
-	else
-		elog(plpgsql_check_tracer_errlevel,
-			 "#%-*d start of %s (oid=%u)",
-												  frame_width,
-												  frame_num,
-												  func->fn_oid ? get_func_name(func->fn_oid) : "inline code block",
-												  fn_oid);
-
-	if (plpgsql_check_tracer_verbosity >= PGERROR_DEFAULT)
+										&start_time))
 	{
-		if (outer_estate)
-		{
-			if (outer_estate->err_stmt)
-				elog(plpgsql_check_tracer_errlevel,
-					 "#%-*d%*s  call by %s line %d at %s",
-														frame_width,
-														frame_num,
-														indent + 4, "",
-														outer_estate->func->fn_signature,
-														outer_estate->err_stmt->lineno,
-														plpgsql_check__stmt_typename_p(outer_estate->err_stmt));
-			else
-				elog(plpgsql_check_tracer_errlevel,
-					 "#%-*d%*s  call by %s",
-														frame_width,
-														frame_num,
-														indent + 4, "  ",
-														outer_estate->func->fn_signature);
-		}
+		(void) start_time;
 
-		print_func_args(estate, func, frame_num, level);
+		indent = level * 2 + (plpgsql_check_tracer_verbosity == PGERROR_VERBOSE ? 6 : 0);
+		frame_width = plpgsql_check_tracer_verbosity == PGERROR_VERBOSE ? 6 : 3;
+
+		if (plpgsql_check_tracer_verbosity >= PGERROR_DEFAULT)
+			elog(plpgsql_check_tracer_errlevel,
+				 "#%-*d%*s ->> start of %s%s (oid=%u)",
+													  frame_width,
+													  frame_num,
+													  indent,
+													  "",
+													  func->fn_oid ? "function " : "block ",
+													  func->fn_signature,
+													  fn_oid);
+		else
+			elog(plpgsql_check_tracer_errlevel,
+				 "#%-*d start of %s (oid=%u)",
+													  frame_width,
+													  frame_num,
+													  func->fn_oid ? get_func_name(func->fn_oid) : "inline code block",
+													  fn_oid);
+
+		if (plpgsql_check_tracer_verbosity >= PGERROR_DEFAULT)
+		{
+			if (outer_estate)
+			{
+				if (outer_estate->err_stmt)
+					elog(plpgsql_check_tracer_errlevel,
+						 "#%-*d%*s  call by %s line %d at %s",
+															frame_width,
+															frame_num,
+															indent + 4, "",
+															outer_estate->func->fn_signature,
+															outer_estate->err_stmt->lineno,
+															plpgsql_check__stmt_typename_p(outer_estate->err_stmt));
+				else
+					elog(plpgsql_check_tracer_errlevel,
+						 "#%-*d%*s  call by %s",
+															frame_width,
+															frame_num,
+															indent + 4, "  ",
+															outer_estate->func->fn_signature);
+			}
+
+			print_func_args(estate, func, frame_num, level);
+		}
 	}
 }
 
@@ -1135,6 +1185,8 @@ plpgsql_check_tracer_on_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 				INSTR_TIME_SUBTRACT(end_time, *stmt_start_time);
 
 				elapsed = INSTR_TIME_GET_MICROSEC(end_time);
+				if (plpgsql_check_tracer_test_mode)
+					elapsed = 10;
 			}
 
 			snprintf(printbuf, 20, "%d.%d", frame_num, stmt->stmtid);
@@ -1192,10 +1244,14 @@ plpgsql_check_trace_assert_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *
 	if ((bool) result.value)
 	{
 		if (plpgsql_check_trace_assert_verbosity >= PGERROR_DEFAULT)
+		{
 			elog(plpgsql_check_tracer_errlevel, "PLpgSQL assert expression (%s) on line %d of %s is true",
 												copy_string_part(exprbuf, stmt_assert->cond->query + 7, 30),
 												stmt->lineno,
 												estate->func->fn_signature);
+
+			print_assert_args(estate, stmt_assert);
+		}
 	}
 	else
 	{

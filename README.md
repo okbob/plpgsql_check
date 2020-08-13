@@ -654,6 +654,8 @@ Using pragma function in declaration part of top block sets options on function 
 
 * `disable:check`,`disable:tracer`, `disable:other_warnings`, `disable:performance_warnings`, `disable:extra_warnings`,`disable:security_warnings`
 
+Pragmas `enable:tracer` and `disable:tracer`are active for Postgres 12 and higher
+
 # Compilation
 
 You need a development environment for PostgreSQL extensions:

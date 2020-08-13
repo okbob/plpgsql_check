@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * praga.c
+ * pragma.c
  *
  *			  pragma related code
  *
@@ -28,6 +28,7 @@ pragma_apply(plpgsql_check_pragma_vector *pv, char *pragma_str)
 
 	while (*pragma_str == ' ')
 		pragma_str++;
+
 
 	if (strncasecmp(pragma_str, "ECHO:", 5) == 0)
 	{

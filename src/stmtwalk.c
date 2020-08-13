@@ -1331,18 +1331,22 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 		pop_stmt_from_stmt_stack(cstate);
 
-		cstate->pragma_vector = pragma_vector;
+		if (!cstate->pragma_vector.disable_check)
+		{
+			/*
+			 * If fatal_errors is true, we just propagate the error up to the
+			 * highest level. Otherwise the error is appended to our current list
+			 * of errors, and we continue checking.
+			 */
+			if (cstate->cinfo->fatal_errors)
+				ReThrowError(edata);
+			else
+				plpgsql_check_put_error_edata(cstate, edata);
+		}
 
-		/*
-		 * If fatal_errors is true, we just propagate the error up to the
-		 * highest level. Otherwise the error is appended to our current list
-		 * of errors, and we continue checking.
-		 */
-		if (cstate->cinfo->fatal_errors)
-			ReThrowError(edata);
-		else
-			plpgsql_check_put_error_edata(cstate, edata);
 		MemoryContextSwitchTo(oldCxt);
+
+		cstate->pragma_vector = pragma_vector;
 
 		/* reconnect spi */
 		SPI_restore_connection();
