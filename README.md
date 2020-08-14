@@ -625,7 +625,7 @@ this function. These plpgsql_check options are valid to end of group of statemen
       ...
     END;
     $$ LANGUAGE plpgsql;
-    
+
 The function `plpgsql_check_pragma` is immutable function that returns one. It is defined
 by `plpgsql_check` extension. You can declare alternative `plpgsql_check_pragma` function
 like:

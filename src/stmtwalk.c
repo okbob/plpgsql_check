@@ -140,7 +140,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
 	PLpgSQL_stmt_stack_item *outer_stmt;
-	plpgsql_check_pragma_vector pragma_vector = cstate->pragma_vector;
+	volatile plpgsql_check_pragma_vector pragma_vector = {0, 0, 0, 0, 0, 0};
 
 	if (stmt == NULL)
 		return;
@@ -169,6 +169,9 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					PLpgSQL_stmt_block *stmt_block = (PLpgSQL_stmt_block *) stmt;
 					int			i;
 					PLpgSQL_datum *d;
+
+					/* save pragma vector before local values initialization */
+					pragma_vector = cstate->pragma_vector;
 
 					for (i = 0; i < stmt_block->n_initvars; i++)
 					{
@@ -384,7 +387,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						plpgsql_check_record_variable_usage(cstate, stmt_block->exceptions->sqlerrm_varno, false);
 					}
 
-					/* return back origin pragma setting */
+					/* return back original pragma vector */
 					cstate->pragma_vector = pragma_vector;
 				}
 				break;
@@ -1346,10 +1349,11 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 		MemoryContextSwitchTo(oldCxt);
 
-		cstate->pragma_vector = pragma_vector;
-
 		/* reconnect spi */
 		SPI_restore_connection();
+
+		if (stmt->cmd_type == PLPGSQL_STMT_BLOCK)
+			cstate->pragma_vector = pragma_vector;
 	}
 	PG_END_TRY();
 }
@@ -1365,7 +1369,7 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 	int			closing_local;
 	List	   *exceptions_local;
 	bool		dead_code_alert = false;
-	plpgsql_check_pragma_vector		pragma_vector = cstate->pragma_vector;
+	plpgsql_check_pragma_vector		prev_pragma_vector = cstate->pragma_vector;
 
 	*closing = PLPGSQL_CHECK_UNCLOSED;
 	*exceptions = NIL;
@@ -1375,10 +1379,16 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 		foreach(lc, stmts)
 		{
 			PLpgSQL_stmt	   *stmt = (PLpgSQL_stmt *) lfirst(lc);
+			plpgsql_check_pragma_vector		pragma_vector = cstate->pragma_vector;
 
 			closing_local = PLPGSQL_CHECK_UNCLOSED;
 			exceptions_local = NIL;
+
 			plpgsql_check_stmt(cstate, stmt, &closing_local, &exceptions_local);
+			if (!cstate->was_pragma)
+				cstate->pragma_vector = pragma_vector;
+			else
+				cstate->was_pragma = false;
 
 			/* raise dead_code_alert only for visible statements */
 			if (dead_code_alert && stmt->lineno > 0)
@@ -1423,7 +1433,7 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 	}
 	PG_CATCH();
 	{
-		cstate->pragma_vector = pragma_vector;
+		cstate->pragma_vector = prev_pragma_vector;
 
 		PG_RE_THROW();
 	}

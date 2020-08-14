@@ -613,12 +613,11 @@ begin
 end;
 $$;
 select * from plpgsql_check_function('test_pragma');
-                           plpgsql_check_function                           
-----------------------------------------------------------------------------
- error:55000:5:RAISE:record "r" is not assigned yet
- Detail: The tuple structure of a not-yet-assigned record is indeterminate.
- Context: SQL statement "SELECT r.y"
-(3 rows)
+             plpgsql_check_function              
+-------------------------------------------------
+ error:42703:9:RAISE:record "r" has no field "x"
+ Context: SQL statement "SELECT r.x"
+(2 rows)
 
 create or replace function test_pragma()
  returns void
@@ -637,12 +636,11 @@ begin
 end;
 $$;
 select * from plpgsql_check_function('test_pragma');
-                           plpgsql_check_function                           
-----------------------------------------------------------------------------
- error:55000:7:RAISE:record "r" is not assigned yet
- Detail: The tuple structure of a not-yet-assigned record is indeterminate.
- Context: SQL statement "SELECT r.y"
-(3 rows)
+              plpgsql_check_function              
+--------------------------------------------------
+ error:42703:11:RAISE:record "r" has no field "x"
+ Context: SQL statement "SELECT r.x"
+(2 rows)
 
 drop function test_pragma();
 create or replace function nested_trace_test(a int)

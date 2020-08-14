@@ -605,7 +605,7 @@ print_assert_args(PLpgSQL_execstate *estate, PLpgSQL_stmt_assert *stmt)
 		stmt->cond->func = estate->func;
 
 		/*
-		 * Generate the plan (enforce expr query parsing) and throw plan 
+		 * Generate the plan (enforce expr query parsing) and throw plan
 		 */
 		plan = SPI_prepare_params(stmt->cond->query,
 								  (ParserSetupHook) plpgsql_check__parser_setup_p,
