@@ -1347,14 +1347,6 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 		/* reconnect spi */
 		SPI_restore_connection();
-
-		if (!cstate->was_pragma)
-
-		if (stmt->cmd_type == PLPGSQL_STMT_BLOCK)
-		{
-			cstate->pragma_vector = pragma_vector;
-			cstate->was_pragma = false;
-		}
 	}
 	PG_END_TRY();
 
