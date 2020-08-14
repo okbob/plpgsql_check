@@ -46,6 +46,10 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/plpgsql_check.control
 
 %changelog
+* Fri Aug 14 2020 - Pavel Stehule <pavel.stehule@gmail.com> 1.13.0
+- tracer
+- pragma support to control checks, warnings and tracing
+
 * Thu Jul 2 2020 -  Pavel STEHULE <pavel.stehule@gmail.com> 1.11.0
 - possibility to check functions with arguments of polymorphic type
 - possibility to specify type used as real type instead polymorphic type
