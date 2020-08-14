@@ -1,6 +1,6 @@
 # plpgsql_check extension
 comment = 'extended check for plpgsql functions'
-default_version = '1.12'
+default_version = '1.13'
 module_pathname = '$libdir/plpgsql_check'
 relocatable = false
 requires = 'plpgsql'

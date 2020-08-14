@@ -311,4 +311,3 @@ _PG_fini(void)
 	/* Be more correct, and clean rendezvous variable */
 	*plpgsql_check_plugin_var_ptr = NULL;
 }
-

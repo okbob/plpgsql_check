@@ -13,6 +13,7 @@
 #include "plpgsql_check.h"
 
 #include "access/tupconvert.h"
+#include "catalog/namespace.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "executor/spi_priv.h"
@@ -140,9 +141,9 @@ collect_volatility(PLpgSQL_checkstate *cstate, Query *query)
 		if (!query->hasModifyingCTE && !query->hasForUpdate)
 		{
 			/* there is chance so query will be immutable */
-			if (contain_volatile_functions((Node *) query))
+			if (plpgsql_check_contain_volatile_functions((Node *) query, cstate))
 				cstate->volatility = PROVOLATILE_VOLATILE;
-			else if (!contain_mutable_functions((Node *) query))
+			else if (!plpgsql_check_contain_mutable_functions((Node *) query, cstate))
 			{
 				/*
 				 * when level is still immutable, check if there
@@ -253,6 +254,64 @@ ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 	}
 	else
 		result = linitial(plansource->query_list);
+
+	cstate->was_pragma = false;
+
+	/* the test of PRAGMA function call */
+	if (result->commandType == CMD_SELECT)
+	{
+
+#if PG_VERSION_NUM < 100000
+
+		if (plansource->raw_parse_tree &&
+			IsA(plansource->raw_parse_tree, SelectStmt))
+		{
+			SelectStmt *selectStmt = (SelectStmt *) plansource->raw_parse_tree;
+
+#else
+
+		if (plansource->raw_parse_tree &&
+			plansource->raw_parse_tree->stmt &&
+			IsA(plansource->raw_parse_tree->stmt, SelectStmt))
+		{
+			SelectStmt *selectStmt = (SelectStmt *) plansource->raw_parse_tree->stmt;
+
+#endif
+			if (selectStmt->targetList && IsA(linitial(selectStmt->targetList), ResTarget))
+			{
+				ResTarget *rt = (ResTarget *) linitial(selectStmt->targetList);
+
+				if (rt->val && IsA(rt->val, FuncCall))
+				{
+					char	   *funcname;
+					char	   *schemaname;
+					FuncCall   *fc = (FuncCall *) rt->val;
+
+					DeconstructQualifiedName(fc->funcname, &schemaname, &funcname);
+
+					if (strcmp(funcname, "plpgsql_check_pragma") == 0)
+					{
+						ListCell	   *lc;
+
+						cstate->was_pragma = true;
+
+						foreach(lc, fc->args)
+						{
+							Node *arg = (Node *) lfirst(lc);
+
+							if (IsA(arg, A_Const))
+							{
+								A_Const *ac = (A_Const *) arg;
+
+								if (ac->val.type == T_String)
+									plpgsql_check_pragma_apply(cstate, strVal(&(ac->val)));
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 
 	return result;
 }
@@ -827,6 +886,14 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 		prepare_plan(cstate, expr, 0, NULL, NULL);
 		/* record all variables used by the query */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
+
+		/*
+		 * there is a possibility to call a plpgsql_pragma like default for some aux
+		 * variable. When we detect this case, then we mark target variable as used
+		 * variable.
+		 */
+		if (cstate->was_pragma && targetdno != -1)
+			cstate->used_variables = bms_add_member(cstate->used_variables, targetdno);
 
 		tupdesc = plpgsql_check_expr_get_desc(cstate, expr, use_element_type, expand, is_expression, &first_level_typoid);
 		is_immutable_null = is_const_null_expr(cstate, expr);

@@ -86,6 +86,16 @@ typedef struct plpgsql_check_info
 	char	   *newtable;
 } plpgsql_check_info;
 
+typedef struct
+{
+	unsigned int disable_check : 1;
+	unsigned int disable_tracer : 1;		/* has not any effect - it's runtime */
+	unsigned int disable_other_warnings : 1;
+	unsigned int disable_performance_warnings : 1;
+	unsigned int disable_extra_warnings : 1;
+	unsigned int disable_security_warnings : 1;
+} plpgsql_check_pragma_vector;
+
 typedef struct PLpgSQL_checkstate
 {
 	List	    *argnames;					/* function arg names */
@@ -114,6 +124,9 @@ typedef struct PLpgSQL_checkstate
 	bool			stop_check;				/* true after error when fatal_errors option is active */
 	bool			allow_mp;				/* true, when multiple plans in plancache are allowed */
 	bool			has_mp;					/* true, when multiple plan was used */
+	bool			was_pragma;				/* true, when last expression was a plpgsql_check pragma */
+	plpgsql_check_pragma_vector pragma_vector;
+	Oid			pragma_foid;				/* oid of plpgsql_check pragma function */
 } PLpgSQL_checkstate;
 
 typedef struct
@@ -166,6 +179,7 @@ extern void plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri, i
 extern void plpgsql_check_get_function_info(HeapTuple procTuple, Oid *rettype, char *volatility, PLpgSQL_trigtype *trigtype, bool *is_procedure);
 extern void plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo);
 extern char *plpgsql_check_get_src(HeapTuple procTuple);
+extern Oid plpgsql_check_pragma_func_oid(void);
 
 /*
  * functions from tablefunc.c
@@ -204,6 +218,8 @@ extern bool plpgsql_check_has_rtable(Query *query);
 extern bool plpgsql_check_qual_has_fishy_cast(PlannedStmt *plannedstmt, Plan *plan, Param **param);
 extern void plpgsql_check_funcexpr(PLpgSQL_checkstate *cstate, Query *query, char *query_str);
 extern bool plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, Node *node, int *location);
+extern bool plpgsql_check_contain_volatile_functions(Node *clause, PLpgSQL_checkstate *cstate);
+extern bool plpgsql_check_contain_mutable_functions(Node *clause, PLpgSQL_checkstate *cstate);
 
 /*
  * functions from check_expr.c
@@ -286,16 +302,18 @@ extern void plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri, p
 extern void plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo, coverage_state *cs);
 
 extern void plpgsql_check_init_trace_info(PLpgSQL_execstate *estate);
-extern bool plpgsql_check_get_trace_info(PLpgSQL_execstate *estate, PLpgSQL_execstate **outer_estate, int *frame_num, int *level, instr_time *start_time);
+extern bool plpgsql_check_get_trace_info(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, PLpgSQL_execstate **outer_estate, int *frame_num, int *level, instr_time *start_time);
+
 
 #if PG_VERSION_NUM >= 120000
 
 extern void plpgsql_check_get_trace_stmt_info(PLpgSQL_execstate *estate, int stmt_id, instr_time **start_time);
+extern bool *plpgsql_check_get_disable_tracer_on_stack(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 
 #endif
 
 /*
- * functions from tracer.c
+ * functions and variables from tracer.c
  */
 extern bool plpgsql_check_enable_tracer;
 extern bool plpgsql_check_tracer;
@@ -313,6 +331,18 @@ extern void plpgsql_check_tracer_on_func_end(PLpgSQL_execstate *estate, PLpgSQL_
 extern void plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 extern void plpgsql_check_tracer_on_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 extern void plpgsql_check_trace_assert_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
+
+extern void plpgsql_check_set_stmt_group_number(PLpgSQL_stmt *stmt, int *group_numbers, int *parent_group_numbers, int sgn, int *cgn, int psgn);
+
+
+/*
+ * variables from pragma.c
+ */
+extern void plpgsql_check_pragma_apply(PLpgSQL_checkstate *cstate, char *pragma_str);
+
+extern plpgsql_check_pragma_vector plpgsql_check_runtime_pragma_vector;
+extern bool plpgsql_check_runtime_pragma_vector_changed;
+
 
 /*
  * functions from plpgsql_check.c

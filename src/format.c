@@ -265,9 +265,18 @@ plpgsql_check_put_error_internal(PLpgSQL_checkstate *cstate,
 
 	/* ignore warnings when is not requested */
 	if ((level == PLPGSQL_CHECK_WARNING_PERFORMANCE && !cstate->cinfo->performance_warnings) ||
-			    (level == PLPGSQL_CHECK_WARNING_OTHERS && !cstate->cinfo->other_warnings) ||
-			    (level == PLPGSQL_CHECK_WARNING_EXTRA && !cstate->cinfo->extra_warnings) ||
-			    (level == PLPGSQL_CHECK_WARNING_SECURITY && !cstate->cinfo->security_warnings))
+				(level == PLPGSQL_CHECK_WARNING_OTHERS && !cstate->cinfo->other_warnings) ||
+				(level == PLPGSQL_CHECK_WARNING_EXTRA && !cstate->cinfo->extra_warnings) ||
+				(level == PLPGSQL_CHECK_WARNING_SECURITY && !cstate->cinfo->security_warnings))
+		return;
+
+	if ((level == PLPGSQL_CHECK_WARNING_PERFORMANCE && cstate->pragma_vector.disable_performance_warnings) ||
+			(level == PLPGSQL_CHECK_WARNING_OTHERS && cstate->pragma_vector.disable_other_warnings) ||
+			(level == PLPGSQL_CHECK_WARNING_EXTRA && cstate->pragma_vector.disable_extra_warnings) ||
+			(level == PLPGSQL_CHECK_WARNING_SECURITY && cstate->pragma_vector.disable_security_warnings))
+		return;
+
+	if (cstate->pragma_vector.disable_check)
 		return;
 
 	if (ri->init_tag)

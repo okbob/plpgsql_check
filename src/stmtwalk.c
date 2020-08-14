@@ -140,6 +140,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
 	PLpgSQL_stmt_stack_item *outer_stmt;
+	volatile plpgsql_check_pragma_vector pragma_vector = {0, 0, 0, 0, 0, 0};
 
 	if (stmt == NULL)
 		return;
@@ -168,6 +169,9 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					PLpgSQL_stmt_block *stmt_block = (PLpgSQL_stmt_block *) stmt;
 					int			i;
 					PLpgSQL_datum *d;
+
+					/* save pragma vector before local values initialization */
+					pragma_vector = cstate->pragma_vector;
 
 					for (i = 0; i < stmt_block->n_initvars; i++)
 					{
@@ -279,6 +283,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 								pfree(str.data);
 							}
 						}
+
 					}
 
 					check_stmts(cstate, stmt_block->body, closing, exceptions);
@@ -381,6 +386,9 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						plpgsql_check_record_variable_usage(cstate, stmt_block->exceptions->sqlstate_varno, false);
 						plpgsql_check_record_variable_usage(cstate, stmt_block->exceptions->sqlerrm_varno, false);
 					}
+
+					/* return back original pragma vector */
+					cstate->pragma_vector = pragma_vector;
 				}
 				break;
 
@@ -1326,19 +1334,26 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 		pop_stmt_from_stmt_stack(cstate);
 
-		/*
-		 * If fatal_errors is true, we just propagate the error up to the
-		 * highest level. Otherwise the error is appended to our current list
-		 * of errors, and we continue checking.
-		 */
-		if (cstate->cinfo->fatal_errors)
-			ReThrowError(edata);
-		else
-			plpgsql_check_put_error_edata(cstate, edata);
+		if (!cstate->pragma_vector.disable_check)
+		{
+			/*
+			 * If fatal_errors is true, we just propagate the error up to the
+			 * highest level. Otherwise the error is appended to our current list
+			 * of errors, and we continue checking.
+			 */
+			if (cstate->cinfo->fatal_errors)
+				ReThrowError(edata);
+			else
+				plpgsql_check_put_error_edata(cstate, edata);
+		}
+
 		MemoryContextSwitchTo(oldCxt);
 
 		/* reconnect spi */
 		SPI_restore_connection();
+
+		if (stmt->cmd_type == PLPGSQL_STMT_BLOCK)
+			cstate->pragma_vector = pragma_vector;
 	}
 	PG_END_TRY();
 }
@@ -1354,58 +1369,75 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 	int			closing_local;
 	List	   *exceptions_local;
 	bool		dead_code_alert = false;
+	plpgsql_check_pragma_vector		prev_pragma_vector = cstate->pragma_vector;
 
 	*closing = PLPGSQL_CHECK_UNCLOSED;
 	*exceptions = NIL;
 
-	foreach(lc, stmts)
+	PG_TRY();
 	{
-		PLpgSQL_stmt	   *stmt = (PLpgSQL_stmt *) lfirst(lc);
-
-		closing_local = PLPGSQL_CHECK_UNCLOSED;
-		exceptions_local = NIL;
-		plpgsql_check_stmt(cstate, stmt, &closing_local, &exceptions_local);
-
-		/* raise dead_code_alert only for visible statements */
-		if (dead_code_alert && stmt->lineno > 0)
+		foreach(lc, stmts)
 		{
-			plpgsql_check_put_error(cstate,
-						  0, stmt->lineno,
-						  "unreachable code",
-						  NULL,
-						  NULL,
-						  PLPGSQL_CHECK_WARNING_EXTRA,
-						  0, NULL, NULL);
-			/* don't raise this warning every line */
-			dead_code_alert = false;
-		}
+			PLpgSQL_stmt	   *stmt = (PLpgSQL_stmt *) lfirst(lc);
+			plpgsql_check_pragma_vector		pragma_vector = cstate->pragma_vector;
 
-		if (closing_local == PLPGSQL_CHECK_CLOSED)
-		{
-			dead_code_alert = true;
-			*closing = PLPGSQL_CHECK_CLOSED;
-			*exceptions = NIL;
-		}
-		else if (closing_local == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
-		{
-			dead_code_alert = true;
-			if (*closing == PLPGSQL_CHECK_UNCLOSED ||
-				*closing == PLPGSQL_CHECK_POSSIBLY_CLOSED ||
-				*closing == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
+			closing_local = PLPGSQL_CHECK_UNCLOSED;
+			exceptions_local = NIL;
+
+			plpgsql_check_stmt(cstate, stmt, &closing_local, &exceptions_local);
+			if (!cstate->was_pragma)
+				cstate->pragma_vector = pragma_vector;
+			else
+				cstate->was_pragma = false;
+
+			/* raise dead_code_alert only for visible statements */
+			if (dead_code_alert && stmt->lineno > 0)
 			{
-				*closing = PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS;
-				*exceptions = exceptions_local;
+				plpgsql_check_put_error(cstate,
+							  0, stmt->lineno,
+							  "unreachable code",
+							  NULL,
+							  NULL,
+							  PLPGSQL_CHECK_WARNING_EXTRA,
+							  0, NULL, NULL);
+				/* don't raise this warning every line */
+				dead_code_alert = false;
 			}
-		}
-		else if (closing_local == PLPGSQL_CHECK_POSSIBLY_CLOSED)
-		{
-			if (*closing == PLPGSQL_CHECK_UNCLOSED)
+
+			if (closing_local == PLPGSQL_CHECK_CLOSED)
 			{
-				*closing = PLPGSQL_CHECK_POSSIBLY_CLOSED;
+				dead_code_alert = true;
+				*closing = PLPGSQL_CHECK_CLOSED;
 				*exceptions = NIL;
+			}
+			else if (closing_local == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
+			{
+				dead_code_alert = true;
+				if (*closing == PLPGSQL_CHECK_UNCLOSED ||
+					*closing == PLPGSQL_CHECK_POSSIBLY_CLOSED ||
+					*closing == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
+				{
+					*closing = PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS;
+					*exceptions = exceptions_local;
+				}
+			}
+			else if (closing_local == PLPGSQL_CHECK_POSSIBLY_CLOSED)
+			{
+				if (*closing == PLPGSQL_CHECK_UNCLOSED)
+				{
+					*closing = PLPGSQL_CHECK_POSSIBLY_CLOSED;
+					*exceptions = NIL;
+				}
 			}
 		}
 	}
+	PG_CATCH();
+	{
+		cstate->pragma_vector = prev_pragma_vector;
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 }
 
 /*

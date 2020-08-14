@@ -11,12 +11,21 @@
 
 #include "plpgsql_check.h"
 
+#include "nodes/nodeFuncs.h"
+
 #include "catalog/pg_class.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "nodes/nodeFuncs.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+
+#if PG_VERSION_NUM < 90600
+
+#include "optimizer/planmain.h"
+
+#endif
 
 typedef struct 
 {
@@ -24,6 +33,9 @@ typedef struct
 	PLpgSQL_expr *expr;
 	char *query_str;
 } check_funcexpr_walker_params;
+
+typedef bool (*check_function_callback) (Oid func_id, void *context);
+
 
 static int check_fmt_string(const char *fmt,
 							List *args,
@@ -136,7 +148,6 @@ plpgsql_check_detect_dependency(PLpgSQL_checkstate *cstate, Query *query)
 #define SETVAL2_OID		1765
 #define FORMAT_0PARAM_OID	3540
 #define FORMAT_NPARAM_OID	3539
-
 
 /*
  * When sequence related functions has constant oid parameter, then ensure, so
@@ -925,4 +936,355 @@ plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
 	}
 	else
 		return false;
+}
+
+
+#if PG_VERSION_NUM >= 90600
+
+/*
+ * These checker function returns volatility or immutability of any function.
+ * Special case is plpgsql_check_pragma function. This function is vollatile,
+ * but we should to fake flags to be immutable - becase we would not to change
+ * result of analyzes and we know so this function has not any negative side
+ * effect.
+ */
+static bool
+contain_volatile_functions_checker(Oid func_id, void *context)
+{
+	PLpgSQL_checkstate *cstate = (PLpgSQL_checkstate *) context;
+
+	if (func_id == cstate->pragma_foid)
+		return false;
+
+	return (func_volatile(func_id) == PROVOLATILE_VOLATILE);
+}
+
+static bool
+contain_mutable_functions_checker(Oid func_id, void *context)
+{
+	PLpgSQL_checkstate *cstate = (PLpgSQL_checkstate *) context;
+
+	if (func_id == cstate->pragma_foid)
+		return false;
+
+	return (func_volatile(func_id) != PROVOLATILE_IMMUTABLE);
+}
+
+static bool
+contain_volatile_functions_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+	/* Check for volatile functions in node itself */
+	if (check_functions_in_node(node, contain_volatile_functions_checker,
+								context))
+		return true;
+
+#if PG_VERSION_NUM >= 100000
+
+	if (IsA(node, NextValueExpr))
+	{
+		/* NextValueExpr is volatile */
+		return true;
+	}
+
+#endif
+
+	/*
+	 * See notes in contain_mutable_functions_walker about why we treat
+	 * MinMaxExpr, XmlExpr, and CoerceToDomain as immutable, while
+	 * SQLValueFunction is stable.  Hence, none of them are of interest here.
+	 */
+
+	/* Recurse to check arguments */
+	if (IsA(node, Query))
+	{
+		/* Recurse into subselects */
+		return query_tree_walker((Query *) node,
+								 contain_volatile_functions_walker,
+								 context, 0);
+	}
+	return expression_tree_walker(node, contain_volatile_functions_walker,
+								  context);
+}
+
+static bool
+contain_mutable_functions_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+	/* Check for mutable functions in node itself */
+	if (check_functions_in_node(node, contain_mutable_functions_checker,
+								context))
+		return true;
+
+#if PG_VERSION_NUM >= 100000
+
+	if (IsA(node, SQLValueFunction))
+	{
+		/* all variants of SQLValueFunction are stable */
+		return true;
+	}
+
+	if (IsA(node, NextValueExpr))
+	{
+		/* NextValueExpr is volatile */
+		return true;
+	}
+
+#endif
+
+	/*
+	 * It should be safe to treat MinMaxExpr as immutable, because it will
+	 * depend on a non-cross-type btree comparison function, and those should
+	 * always be immutable.  Treating XmlExpr as immutable is more dubious,
+	 * and treating CoerceToDomain as immutable is outright dangerous.  But we
+	 * have done so historically, and changing this would probably cause more
+	 * problems than it would fix.  In practice, if you have a non-immutable
+	 * domain constraint you are in for pain anyhow.
+	 */
+
+	/* Recurse to check arguments */
+	if (IsA(node, Query))
+	{
+		/* Recurse into subselects */
+		return query_tree_walker((Query *) node,
+								 contain_mutable_functions_walker,
+								 context, 0);
+	}
+	return expression_tree_walker(node, contain_mutable_functions_walker,
+								  context);
+}
+
+#else
+
+static bool
+contain_mutable_functions_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, FuncExpr))
+	{
+		FuncExpr   *expr = (FuncExpr *) node;
+		PLpgSQL_checkstate *cstate = (PLpgSQL_checkstate *) context;
+
+		if (func_volatile(expr->funcid) != PROVOLATILE_IMMUTABLE &&
+				expr->funcid != cstate->pragma_foid)
+			return true;
+		/* else fall through to check args */
+	}
+	else if (IsA(node, OpExpr))
+	{
+		OpExpr	   *expr = (OpExpr *) node;
+
+		set_opfuncid(expr);
+		if (func_volatile(expr->opfuncid) != PROVOLATILE_IMMUTABLE)
+			return true;
+		/* else fall through to check args */
+	}
+	else if (IsA(node, DistinctExpr))
+	{
+		DistinctExpr *expr = (DistinctExpr *) node;
+
+		set_opfuncid((OpExpr *) expr);	/* rely on struct equivalence */
+		if (func_volatile(expr->opfuncid) != PROVOLATILE_IMMUTABLE)
+			return true;
+		/* else fall through to check args */
+	}
+	else if (IsA(node, NullIfExpr))
+	{
+		NullIfExpr *expr = (NullIfExpr *) node;
+
+		set_opfuncid((OpExpr *) expr);	/* rely on struct equivalence */
+		if (func_volatile(expr->opfuncid) != PROVOLATILE_IMMUTABLE)
+			return true;
+		/* else fall through to check args */
+	}
+	else if (IsA(node, ScalarArrayOpExpr))
+	{
+		ScalarArrayOpExpr *expr = (ScalarArrayOpExpr *) node;
+
+		set_sa_opfuncid(expr);
+		if (func_volatile(expr->opfuncid) != PROVOLATILE_IMMUTABLE)
+			return true;
+		/* else fall through to check args */
+	}
+	else if (IsA(node, CoerceViaIO))
+	{
+		CoerceViaIO *expr = (CoerceViaIO *) node;
+		Oid			iofunc;
+		Oid			typioparam;
+		bool		typisvarlena;
+
+		/* check the result type's input function */
+		getTypeInputInfo(expr->resulttype,
+						 &iofunc, &typioparam);
+		if (func_volatile(iofunc) != PROVOLATILE_IMMUTABLE)
+			return true;
+		/* check the input type's output function */
+		getTypeOutputInfo(exprType((Node *) expr->arg),
+						  &iofunc, &typisvarlena);
+		if (func_volatile(iofunc) != PROVOLATILE_IMMUTABLE)
+			return true;
+		/* else fall through to check args */
+	}
+	else if (IsA(node, ArrayCoerceExpr))
+	{
+		ArrayCoerceExpr *expr = (ArrayCoerceExpr *) node;
+
+		if (OidIsValid(expr->elemfuncid) &&
+			func_volatile(expr->elemfuncid) != PROVOLATILE_IMMUTABLE)
+			return true;
+		/* else fall through to check args */
+	}
+	else if (IsA(node, RowCompareExpr))
+	{
+		RowCompareExpr *rcexpr = (RowCompareExpr *) node;
+		ListCell   *opid;
+
+		foreach(opid, rcexpr->opnos)
+		{
+			if (op_volatile(lfirst_oid(opid)) != PROVOLATILE_IMMUTABLE)
+				return true;
+		}
+		/* else fall through to check args */
+	}
+	else if (IsA(node, Query))
+	{
+		/* Recurse into subselects */
+		return query_tree_walker((Query *) node,
+								 contain_mutable_functions_walker,
+								 context, 0);
+	}
+	return expression_tree_walker(node, contain_mutable_functions_walker,
+								  context);
+}
+
+/*
+ * General purpose code for checking expression volatility.
+ *
+ * Special purpose code for use in COPY is almost identical to this,
+ * so any changes here may also be needed in other contain_volatile...
+ * functions.
+ */
+static bool
+contain_volatile_functions_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, FuncExpr))
+	{
+		FuncExpr   *expr = (FuncExpr *) node;
+		PLpgSQL_checkstate *cstate = (PLpgSQL_checkstate *) context;
+
+		if (func_volatile(expr->funcid) == PROVOLATILE_VOLATILE &&
+				expr->funcid != cstate->pragma_foid)
+			return true;
+		/* else fall through to check args */
+	}
+	else if (IsA(node, OpExpr))
+	{
+		OpExpr	   *expr = (OpExpr *) node;
+
+		set_opfuncid(expr);
+		if (func_volatile(expr->opfuncid) == PROVOLATILE_VOLATILE)
+			return true;
+		/* else fall through to check args */
+	}
+	else if (IsA(node, DistinctExpr))
+	{
+		DistinctExpr *expr = (DistinctExpr *) node;
+
+		set_opfuncid((OpExpr *) expr);	/* rely on struct equivalence */
+		if (func_volatile(expr->opfuncid) == PROVOLATILE_VOLATILE)
+			return true;
+		/* else fall through to check args */
+	}
+	else if (IsA(node, NullIfExpr))
+	{
+		NullIfExpr *expr = (NullIfExpr *) node;
+
+		set_opfuncid((OpExpr *) expr);	/* rely on struct equivalence */
+		if (func_volatile(expr->opfuncid) == PROVOLATILE_VOLATILE)
+			return true;
+		/* else fall through to check args */
+	}
+	else if (IsA(node, ScalarArrayOpExpr))
+	{
+		ScalarArrayOpExpr *expr = (ScalarArrayOpExpr *) node;
+
+		set_sa_opfuncid(expr);
+		if (func_volatile(expr->opfuncid) == PROVOLATILE_VOLATILE)
+			return true;
+		/* else fall through to check args */
+	}
+	else if (IsA(node, CoerceViaIO))
+	{
+		CoerceViaIO *expr = (CoerceViaIO *) node;
+		Oid			iofunc;
+		Oid			typioparam;
+		bool		typisvarlena;
+
+		/* check the result type's input function */
+		getTypeInputInfo(expr->resulttype,
+						 &iofunc, &typioparam);
+		if (func_volatile(iofunc) == PROVOLATILE_VOLATILE)
+			return true;
+		/* check the input type's output function */
+		getTypeOutputInfo(exprType((Node *) expr->arg),
+						  &iofunc, &typisvarlena);
+		if (func_volatile(iofunc) == PROVOLATILE_VOLATILE)
+			return true;
+		/* else fall through to check args */
+	}
+	else if (IsA(node, ArrayCoerceExpr))
+	{
+		ArrayCoerceExpr *expr = (ArrayCoerceExpr *) node;
+
+		if (OidIsValid(expr->elemfuncid) &&
+			func_volatile(expr->elemfuncid) == PROVOLATILE_VOLATILE)
+			return true;
+		/* else fall through to check args */
+	}
+	else if (IsA(node, RowCompareExpr))
+	{
+		/* RowCompare probably can't have volatile ops, but check anyway */
+		RowCompareExpr *rcexpr = (RowCompareExpr *) node;
+		ListCell   *opid;
+
+		foreach(opid, rcexpr->opnos)
+		{
+			if (op_volatile(lfirst_oid(opid)) == PROVOLATILE_VOLATILE)
+				return true;
+		}
+		/* else fall through to check args */
+	}
+	else if (IsA(node, Query))
+	{
+		/* Recurse into subselects */
+		return query_tree_walker((Query *) node,
+								 contain_volatile_functions_walker,
+								 context, 0);
+	}
+	return expression_tree_walker(node, contain_volatile_functions_walker,
+								  context);
+}
+
+#endif
+
+/*
+ * This is same like Postgres buildin function, but it ignores used
+ * plpgsql_check pragma function
+ */
+bool
+plpgsql_check_contain_volatile_functions(Node *clause, PLpgSQL_checkstate *cstate)
+{
+	return contain_volatile_functions_walker(clause, cstate);
+}
+
+
+bool
+plpgsql_check_contain_mutable_functions(Node *clause, PLpgSQL_checkstate *cstate)
+{
+	return contain_mutable_functions_walker(clause, cstate);
 }

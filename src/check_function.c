@@ -56,8 +56,8 @@ static void release_exprs(List *exprs);
 static int load_configuration(HeapTuple procTuple, bool *reload_config);
 static void init_datum_dno(PLpgSQL_checkstate *cstate, int dno, bool is_auto, bool is_protected);
 static PLpgSQL_datum * copy_plpgsql_datum(PLpgSQL_checkstate *cstate, PLpgSQL_datum *datum);
-static void plpgsql_check_setup_estate(PLpgSQL_execstate *estate, PLpgSQL_function *func, ReturnSetInfo *rsi, plpgsql_check_info *cinfo);
-static void plpgsql_check_setup_cstate(PLpgSQL_checkstate *cstate, plpgsql_check_result_info *result_info,
+static void setup_estate(PLpgSQL_execstate *estate, PLpgSQL_function *func, ReturnSetInfo *rsi, plpgsql_check_info *cinfo);
+static void setup_cstate(PLpgSQL_checkstate *cstate, plpgsql_check_result_info *result_info,
 	plpgsql_check_info *cinfo, bool is_active_mode, bool fake_rtd);
 
 /*
@@ -138,7 +138,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 								&tg_trigger,
 								&fake_rtd);
 
-	plpgsql_check_setup_cstate(&cstate, ri, cinfo, true, fake_rtd);
+	setup_cstate(&cstate, ri, cinfo, true, fake_rtd);
 
 	old_cxt = MemoryContextSwitchTo(cstate.check_cxt);
 
@@ -191,7 +191,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 
 			Assert(function->fn_is_trigger == cinfo->trigtype);
 
-			plpgsql_check_setup_estate(&estate, function, (ReturnSetInfo *) fake_fcinfo->resultinfo, cinfo);
+			setup_estate(&estate, function, (ReturnSetInfo *) fake_fcinfo->resultinfo, cinfo);
 			cstate.estate = &estate;
 
 			/*
@@ -350,7 +350,7 @@ plpgsql_check_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 		ri.format = PLPGSQL_CHECK_FORMAT_ELOG;
 
-		plpgsql_check_setup_cstate(&cstate, &ri, &cinfo, false, false);
+		setup_cstate(&cstate, &ri, &cinfo, false, false);
 
 		collect_out_variables(func, &cstate);
 
@@ -1082,7 +1082,7 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
  * ----------
  */
 static void
-plpgsql_check_setup_estate(PLpgSQL_execstate *estate,
+setup_estate(PLpgSQL_execstate *estate,
 					 PLpgSQL_function *func,
 					 ReturnSetInfo *rsi,
 					 plpgsql_check_info *cinfo)
@@ -1211,7 +1211,7 @@ plpgsql_check_setup_estate(PLpgSQL_execstate *estate,
  *
  */
 static void
-plpgsql_check_setup_cstate(PLpgSQL_checkstate *cstate,
+setup_cstate(PLpgSQL_checkstate *cstate,
 			 plpgsql_check_result_info *result_info,
 			 plpgsql_check_info *cinfo,
 			 bool is_active_mode,
@@ -1271,8 +1271,17 @@ plpgsql_check_setup_cstate(PLpgSQL_checkstate *cstate,
 
 	cstate->stop_check = false;
 	cstate->allow_mp = false;
-}
 
+	cstate->pragma_vector.disable_check = false;
+	cstate->pragma_vector.disable_tracer = false;
+	cstate->pragma_vector.disable_other_warnings = false;
+	cstate->pragma_vector.disable_performance_warnings = false;
+	cstate->pragma_vector.disable_extra_warnings = false;
+	cstate->pragma_vector.disable_security_warnings = false;
+
+	/* try to find oid of plpgsql_check pragma function */
+	cstate->pragma_foid = plpgsql_check_pragma_func_oid();
+}
 
 /*
  * Loads function's configuration

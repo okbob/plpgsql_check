@@ -595,3 +595,334 @@ drop function df1(anyelement);
 drop function df2(anyelement, jsonb);
 drop function df22(jsonb, anyelement);
 drop function t1();
+/*
+ * Test pragma
+ */
+create or replace function test_pragma()
+ returns void
+ language plpgsql
+as $$
+declare r record;
+begin
+  perform plpgsql_check_pragma('disable:check');
+  raise notice '%', r.y;
+  perform plpgsql_check_pragma('enable:check');
+  select 10 as a, 20 as b into r;
+  raise notice '%', r.a;
+  raise notice '%', r.x;
+end;
+$$;
+select * from plpgsql_check_function('test_pragma');
+             plpgsql_check_function              
+-------------------------------------------------
+ error:42703:9:RAISE:record "r" has no field "x"
+ Context: SQL statement "SELECT r.x"
+(2 rows)
+
+create or replace function test_pragma()
+ returns void
+ language plpgsql
+as $$
+declare r record;
+begin
+  if false then
+    -- check is disabled just for if body
+    perform plpgsql_check_pragma('disable:check');
+    raise notice '%', r.y;
+  end if;
+  select 10 as a, 20 as b into r;
+  raise notice '%', r.a;
+  raise notice '%', r.x;
+end;
+$$;
+select * from plpgsql_check_function('test_pragma');
+              plpgsql_check_function              
+--------------------------------------------------
+ error:42703:11:RAISE:record "r" has no field "x"
+ Context: SQL statement "SELECT r.x"
+(2 rows)
+
+drop function test_pragma();
+create or replace function nested_trace_test(a int)
+returns int as $$
+begin
+  return a + 1;
+end;
+$$ language plpgsql;
+create or replace function trace_test(b int)
+returns int as $$
+declare r int default 0;
+begin
+  for i in 1..b
+  loop
+    r := nested_trace_test(r);
+  end loop;
+  return r;
+end;
+$$ language plpgsql;
+select trace_test(3);
+ trace_test 
+------------
+          3
+(1 row)
+
+set plpgsql_check.enable_tracer to on;
+set plpgsql_check.tracer to on;
+set plpgsql_check.tracer_test_mode = true;
+select trace_test(3);
+NOTICE:  #0   ->> start of function trace_test(integer) (oid=0)
+NOTICE:  #0       "b" => '3'
+NOTICE:  #1     ->> start of function nested_trace_test(integer) (oid=0)
+NOTICE:  #1          call by trace_test(integer) line 6 at assignment
+NOTICE:  #1         "a" => '0'
+NOTICE:  #1     <<- end of function nested_trace_test (elapsed time=0.010 ms)
+NOTICE:  #1     ->> start of function nested_trace_test(integer) (oid=0)
+NOTICE:  #1          call by trace_test(integer) line 6 at assignment
+NOTICE:  #1         "a" => '1'
+NOTICE:  #1     <<- end of function nested_trace_test (elapsed time=0.010 ms)
+NOTICE:  #1     ->> start of function nested_trace_test(integer) (oid=0)
+NOTICE:  #1          call by trace_test(integer) line 6 at assignment
+NOTICE:  #1         "a" => '2'
+NOTICE:  #1     <<- end of function nested_trace_test (elapsed time=0.010 ms)
+NOTICE:  #0   <<- end of function trace_test (elapsed time=0.010 ms)
+ trace_test 
+------------
+          3
+(1 row)
+
+set plpgsql_check.tracer_verbosity TO verbose;
+select trace_test(3);
+NOTICE:  #0            ->> start of function trace_test(integer) (oid=0)
+NOTICE:  #0                "b" => '3'
+NOTICE:  #0.3       4  --> start of FOR with integer loop variable
+NOTICE:  #0.2       6  --> start of assignment (expr='nested_trace_test(r)')
+NOTICE:  #0.2              "r" => '0'
+NOTICE:  #1              ->> start of function nested_trace_test(integer) (oid=0)
+NOTICE:  #1                   call by trace_test(integer) line 6 at assignment
+NOTICE:  #1                  "a" => '0'
+NOTICE:  #1.1       3    --> start of RETURN (expr='a + 1')
+NOTICE:  #1.1                "a" => '0'
+NOTICE:  #1.1            <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #1              <<- end of function nested_trace_test (elapsed time=0.010 ms)
+NOTICE:  #0.2          <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.2              "r" => '1'
+NOTICE:  #0.2       6  --> start of assignment (expr='nested_trace_test(r)')
+NOTICE:  #0.2              "r" => '1'
+NOTICE:  #1              ->> start of function nested_trace_test(integer) (oid=0)
+NOTICE:  #1                   call by trace_test(integer) line 6 at assignment
+NOTICE:  #1                  "a" => '1'
+NOTICE:  #1.1       3    --> start of RETURN (expr='a + 1')
+NOTICE:  #1.1                "a" => '1'
+NOTICE:  #1.1            <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #1              <<- end of function nested_trace_test (elapsed time=0.010 ms)
+NOTICE:  #0.2          <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.2              "r" => '2'
+NOTICE:  #0.2       6  --> start of assignment (expr='nested_trace_test(r)')
+NOTICE:  #0.2              "r" => '2'
+NOTICE:  #1              ->> start of function nested_trace_test(integer) (oid=0)
+NOTICE:  #1                   call by trace_test(integer) line 6 at assignment
+NOTICE:  #1                  "a" => '2'
+NOTICE:  #1.1       3    --> start of RETURN (expr='a + 1')
+NOTICE:  #1.1                "a" => '2'
+NOTICE:  #1.1            <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #1              <<- end of function nested_trace_test (elapsed time=0.010 ms)
+NOTICE:  #0.2          <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.2              "r" => '3'
+NOTICE:  #0.3          <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
+NOTICE:  #0.4       8  --> start of RETURN
+NOTICE:  #0.4              "r" => '3'
+NOTICE:  #0.4          <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
+ trace_test 
+------------
+          3
+(1 row)
+
+create or replace function trace_test(b int)
+returns int as $$
+declare r int default 0;
+begin
+  for i in 1..b
+  loop
+    perform plpgsql_check_pragma('disable:tracer');
+    r := nested_trace_test(r);
+  end loop;
+  return r;
+end;
+$$ language plpgsql;
+select trace_test(3);
+NOTICE:  #0            ->> start of function trace_test(integer) (oid=0)
+NOTICE:  #0                "b" => '3'
+NOTICE:  #0.4       4  --> start of FOR with integer loop variable
+NOTICE:  #0.2       6  --> start of PERFORM (expr='plpgsql_check_pragma('disable: ..')
+NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #0.2       6  --> start of PERFORM (expr='plpgsql_check_pragma('disable: ..')
+NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #0.2       6  --> start of PERFORM (expr='plpgsql_check_pragma('disable: ..')
+NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #0.4          <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
+NOTICE:  #0.5       9  --> start of RETURN
+NOTICE:  #0.5              "r" => '3'
+NOTICE:  #0.5          <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
+ trace_test 
+------------
+          3
+(1 row)
+
+create or replace function nested_trace_test(a int)
+returns int as $$
+begin
+  perform plpgsql_check_pragma('enable:tracer');
+  return a + 1;
+end;
+$$ language plpgsql;
+select trace_test(3);
+NOTICE:  #0            ->> start of function trace_test(integer) (oid=0)
+NOTICE:  #0                "b" => '3'
+NOTICE:  #0.4       4  --> start of FOR with integer loop variable
+NOTICE:  #0.2       6  --> start of PERFORM (expr='plpgsql_check_pragma('disable: ..')
+NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #1.2       4    --> start of RETURN (expr='a + 1')
+NOTICE:  #1.2                "a" => '0'
+NOTICE:  #1.2            <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.2       6  --> start of PERFORM (expr='plpgsql_check_pragma('disable: ..')
+NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #1.2       4    --> start of RETURN (expr='a + 1')
+NOTICE:  #1.2                "a" => '1'
+NOTICE:  #1.2            <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.2       6  --> start of PERFORM (expr='plpgsql_check_pragma('disable: ..')
+NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #1.2       4    --> start of RETURN (expr='a + 1')
+NOTICE:  #1.2                "a" => '2'
+NOTICE:  #1.2            <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.4          <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
+NOTICE:  #0.5       9  --> start of RETURN
+NOTICE:  #0.5              "r" => '3'
+NOTICE:  #0.5          <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
+ trace_test 
+------------
+          3
+(1 row)
+
+drop function trace_test(int);
+drop function nested_trace_test(int);
+create or replace function trace_test(int)
+returns int as $$
+declare r int default 0;
+begin
+  for i in 1..$1 loop
+    r := r + 1;
+  end loop;
+  r := r + 10;
+  return r;
+end;
+$$ language plpgsql;
+select trace_test(4);
+NOTICE:  #0            ->> start of function trace_test(integer) (oid=0)
+NOTICE:  #0                "$1" => '4'
+NOTICE:  #0.3       4  --> start of FOR with integer loop variable
+NOTICE:  #0.2       5  --> start of assignment (expr='r + 1')
+NOTICE:  #0.2              "r" => '0'
+NOTICE:  #0.2          <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.2              "r" => '1'
+NOTICE:  #0.2       5  --> start of assignment (expr='r + 1')
+NOTICE:  #0.2              "r" => '1'
+NOTICE:  #0.2          <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.2              "r" => '2'
+NOTICE:  #0.2       5  --> start of assignment (expr='r + 1')
+NOTICE:  #0.2              "r" => '2'
+NOTICE:  #0.2          <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.2              "r" => '3'
+NOTICE:  #0.2       5  --> start of assignment (expr='r + 1')
+NOTICE:  #0.2              "r" => '3'
+NOTICE:  #0.2          <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.2              "r" => '4'
+NOTICE:  #0.3          <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
+NOTICE:  #0.4       7  --> start of assignment (expr='r + 10')
+NOTICE:  #0.4              "r" => '4'
+NOTICE:  #0.4          <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.4              "r" => '14'
+NOTICE:  #0.5       8  --> start of RETURN
+NOTICE:  #0.5              "r" => '14'
+NOTICE:  #0.5          <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
+ trace_test 
+------------
+         14
+(1 row)
+
+create or replace function trace_test(int)
+returns int as $$
+declare r int default 0;
+begin
+  for i in 1..$1 loop
+    perform plpgsql_check_pragma('disable:tracer');
+    r := r + 1;
+  end loop;
+  r := r + 10;
+  return r;
+end;
+$$ language plpgsql;
+select trace_test(4);
+NOTICE:  #0            ->> start of function trace_test(integer) (oid=0)
+NOTICE:  #0                "$1" => '4'
+NOTICE:  #0.4       4  --> start of FOR with integer loop variable
+NOTICE:  #0.2       5  --> start of PERFORM (expr='plpgsql_check_pragma('disable: ..')
+NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #0.2       5  --> start of PERFORM (expr='plpgsql_check_pragma('disable: ..')
+NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #0.2       5  --> start of PERFORM (expr='plpgsql_check_pragma('disable: ..')
+NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #0.2       5  --> start of PERFORM (expr='plpgsql_check_pragma('disable: ..')
+NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #0.4          <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
+NOTICE:  #0.5       8  --> start of assignment (expr='r + 10')
+NOTICE:  #0.5              "r" => '4'
+NOTICE:  #0.5          <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.5              "r" => '14'
+NOTICE:  #0.6       9  --> start of RETURN
+NOTICE:  #0.6              "r" => '14'
+NOTICE:  #0.6          <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
+ trace_test 
+------------
+         14
+(1 row)
+
+create or replace function trace_test(int)
+returns int as $$
+declare r int default 0;
+begin
+  perform plpgsql_check_pragma('disable:tracer');
+
+  for i in 1..$1 loop
+    r := r + 1;
+  end loop;
+
+  perform plpgsql_check_pragma('enable:tracer');
+
+  r := r + 10;
+  return r;
+end;
+$$ language plpgsql;
+select trace_test(4);
+NOTICE:  #0            ->> start of function trace_test(integer) (oid=0)
+NOTICE:  #0                "$1" => '4'
+NOTICE:  #0.1       4  --> start of PERFORM (expr='plpgsql_check_pragma('disable: ..')
+NOTICE:  #0.1          <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #0.6      12  --> start of assignment (expr='r + 10')
+NOTICE:  #0.6              "r" => '4'
+NOTICE:  #0.6          <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.6              "r" => '14'
+NOTICE:  #0.7      13  --> start of RETURN
+NOTICE:  #0.7              "r" => '14'
+NOTICE:  #0.7          <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
+ trace_test 
+------------
+         14
+(1 row)
+
+drop function trace_test(int);
