@@ -297,11 +297,15 @@ StringInfoPrintRow(StringInfo ds, PLpgSQL_execstate *estate, PLpgSQL_row *row)
 
 		if (!isnull)
 		{
-			appendStringInfoString(ds, str);
+			if (*str)
+				appendStringInfoString(ds, str);
+			else
+				appendStringInfoString(ds, "\"\"");
+
 			pfree(str);
 		}
 		else
-			appendStringInfoString(ds, "NULL");
+			appendStringInfoString(ds, "");
 	}
 
 	appendStringInfoChar(ds, ')');
@@ -1364,7 +1368,6 @@ plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 				default:
 					;
 			}
-
 		}
 	}
 }
