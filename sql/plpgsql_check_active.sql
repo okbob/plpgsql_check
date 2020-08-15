@@ -4044,3 +4044,38 @@ $$ language plpgsql immutable;
 select plpgsql_check_function('distinct_array(anyarray)');
 
 drop function distinct_array(anyarray);
+
+-- tracer test
+set plpgsql_check.enable_tracer to on;
+set plpgsql_check.tracer to on;
+set plpgsql_check.tracer_test_mode = true;
+
+\set VERBOSITY terse
+
+create or replace function fxo(a int, b int, c date, d numeric)
+returns void as $$
+begin
+  insert into tracer_tab values(a,b,c,d);
+end;
+$$ language plpgsql;
+
+create table tracer_tab(a int, b int, c date, d numeric);
+
+create or replace function tracer_tab_trg_fx()
+returns trigger as $$
+begin
+  return new;
+end;
+$$ language plpgsql;
+
+create trigger tracer_tab_trg before insert on tracer_tab for each row execute procedure tracer_tab_trg_fx();
+
+select fxo(10,20,'20200815', 3.14);
+select fxo(11,21,'20200816', 6.28);
+
+set plpgsql_check.enable_tracer to off;
+set plpgsql_check.tracer to off;
+
+drop table tracer_tab cascade;
+drop function tracer_tab_trg_fx();
+drop function fxo(int, int, date, numeric);

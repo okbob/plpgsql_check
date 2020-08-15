@@ -19,6 +19,12 @@
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 
+#if PG_VERSION_NUM < 110000
+
+#include "access/htup_details.h"
+
+#endif
+
 bool plpgsql_check_enable_tracer = false;
 bool plpgsql_check_tracer = false;
 bool plpgsql_check_trace_assert = false;
@@ -31,6 +37,8 @@ PGErrorVerbosity plpgsql_check_trace_assert_verbosity = PGERROR_DEFAULT;
 
 int plpgsql_check_tracer_errlevel = NOTICE;
 int plpgsql_check_tracer_variable_max_length = 1024;
+
+static void print_datum(PLpgSQL_execstate *estate, PLpgSQL_datum *dtm, char *frame, int level);
 
 #if PG_VERSION_NUM >= 120000
 
@@ -269,6 +277,9 @@ convert_plpgsql_datum_to_string(PLpgSQL_execstate *estate,
 								bool *isnull,
 								char **refname)
 {
+	*isnull = true;
+	*refname = NULL;
+
 	switch (dtm->dtype)
 	{
 		case PLPGSQL_DTYPE_VAR:
@@ -286,41 +297,71 @@ convert_plpgsql_datum_to_string(PLpgSQL_execstate *estate,
 												   var->datatype->typoid);
 				}
 				else
-				{
-					*isnull = true;
-
 					return NULL;
-				}
 			}
+			break;
 
 		case PLPGSQL_DTYPE_REC:
 			{
 				PLpgSQL_rec *rec = (PLpgSQL_rec *) dtm;
 
 				*refname = rec->refname;
-				*isnull = false;
 
-				return pstrdup("...");
+#if PG_VERSION_NUM < 110000
+
+				if (rec->tup && HeapTupleIsValid(rec->tup))
+				{
+					Datum		value;
+					Oid			typid;
+					MemoryContext oldcontext;
+
+					Assert(rec->tupdesc);
+
+					BlessTupleDesc(rec->tupdesc);
+
+					*isnull = false;
+
+					oldcontext = MemoryContextSwitchTo(estate->eval_econtext->ecxt_per_tuple_memory);
+					typid = rec->tupdesc->tdtypeid;
+					value = heap_copy_tuple_as_datum(rec->tup, rec->tupdesc);
+					MemoryContextSwitchTo(oldcontext);
+
+					return convert_value_to_string(estate,
+												   value,
+												   typid);
+				}
+				else
+					return NULL;
+
+#else
+
+				if (rec->erh && !ExpandedRecordIsEmpty(rec->erh))
+				{
+					*isnull = false;
+
+					return convert_value_to_string(estate,
+												   ExpandedRecordGetDatum(rec->erh),
+												   rec->rectypeid);
+				}
+				else
+					return NULL;
+
+#endif
+
 			}
+			break;
 
 		case PLPGSQL_DTYPE_ROW:
 			{
-				PLpgSQL_row *row = (PLpgSQL_row *) dtm;
-
-				*refname = row->refname;
 				*isnull = false;
-
 				return pstrdup("...");
 			}
 
 		default:
-			{
-				*refname = NULL;
-				*isnull = true;
-
-				return NULL;
-			}
+			;
 	}
+
+	return NULL;
 }
 
 /*
@@ -366,6 +407,145 @@ print_func_args(PLpgSQL_execstate *estate, PLpgSQL_function *func, int frame_num
 	StringInfoData		ds;
 
 	initStringInfo(&ds);
+
+#if PG_VERSION_NUM < 110000
+
+	if (func->fn_is_trigger == PLPGSQL_DML_TRIGGER)
+	{
+		const char *trgtyp;
+		const char *trgtime;
+		const char *trgcmd;
+		int		rec_new_varno = func->new_varno;
+		int		rec_old_varno = func->old_varno;
+		char buffer[20];
+		PLpgSQL_var *var;
+		char *str;
+
+		var = (PLpgSQL_var *) estate->datums[func->tg_when_varno];
+		Assert(!var->isnull);
+		str = TextDatumGetCString(var->value);
+		trgtime = strcmp(str, "BEFORE") == 0 ? "before" : "after";
+		pfree(str);
+
+		var = (PLpgSQL_var *) estate->datums[func->tg_level_varno];
+		Assert(!var->isnull);
+		str = TextDatumGetCString(var->value);
+		trgtyp = strcmp(str, "ROW") == 0 ? "row" : "statement";
+		pfree(str);
+
+		var = (PLpgSQL_var *) estate->datums[func->tg_op_varno];
+		Assert(!var->isnull);
+		str = TextDatumGetCString(var->value);
+
+		if (strcmp(str, "INSERT") == 0)
+		{
+			trgcmd = " insert";
+			rec_old_varno = -1;
+		}
+		else if (strcmp(str, "UPDATE") == 0)
+		{
+			trgcmd = " update";
+		}
+		else if (strcmp(str, "DELETE") == 0)
+		{
+			trgcmd = " delete";
+			rec_new_varno = -1;
+		}
+		else
+			trgcmd = "";
+
+		pfree(str);
+
+		elog(plpgsql_check_tracer_errlevel,
+							 "#%-*d%*s triggered by %s %s%s trigger",
+											frame_width,
+											frame_num,
+											indent + 4, "",
+											trgtime,
+											trgtyp,
+											trgcmd);
+
+		sprintf(buffer, "%d", frame_num);
+
+		if (rec_new_varno != -1)
+			print_datum(estate, estate->datums[rec_new_varno], buffer, level);
+		if (rec_old_varno != -1)
+			print_datum(estate, estate->datums[rec_new_varno], buffer, level);
+	}
+	else if (func->fn_is_trigger == PLPGSQL_EVENT_TRIGGER)
+	{
+		elog(plpgsql_check_tracer_errlevel,
+							 "#%-*d%*s triggered by event trigger",
+											frame_width,
+											frame_num,
+											indent + 4, "");
+	}
+
+#else
+
+	if (func->fn_is_trigger == PLPGSQL_DML_TRIGGER)
+	{
+		Assert(estate->trigdata);
+
+		TriggerData *td = estate->trigdata;
+		const char *trgtyp;
+		const char *trgtime;
+		const char *trgcmd;
+		int		rec_new_varno = func->new_varno;
+		int		rec_old_varno = func->old_varno;
+		char buffer[20];
+
+		trgtyp = TRIGGER_FIRED_FOR_ROW(td->tg_event) ? "row" : "statement";
+		trgtime = TRIGGER_FIRED_BEFORE(td->tg_event) ? "before" : "after";
+
+		if (TRIGGER_FIRED_BY_INSERT(td->tg_event))
+		{
+			trgcmd = " insert";
+			rec_old_varno = -1;
+		}
+		else if (TRIGGER_FIRED_BY_UPDATE(td->tg_event))
+		{
+			trgcmd = " update";
+		}
+		else if (TRIGGER_FIRED_BY_DELETE(td->tg_event))
+		{
+			trgcmd = " delete";
+			rec_new_varno = -1;
+		}
+		else
+		{
+			trgcmd = "";
+		}
+
+		elog(plpgsql_check_tracer_errlevel,
+							 "#%-*d%*s triggered by %s %s%s trigger",
+											frame_width,
+											frame_num,
+											indent + 4, "",
+											trgtime,
+											trgtyp,
+											trgcmd);
+
+		sprintf(buffer, "%d", frame_num);
+
+		if (rec_new_varno != -1)
+			print_datum(estate, estate->datums[rec_new_varno], buffer, level);
+		if (rec_old_varno != -1)
+			print_datum(estate, estate->datums[rec_new_varno], buffer, level);
+	}
+
+	if (func->fn_is_trigger == PLPGSQL_EVENT_TRIGGER)
+	{
+		Assert(estate->evtrigdata);
+
+		elog(plpgsql_check_tracer_errlevel,
+							 "#%-*d%*s triggered by event trigger",
+											frame_width,
+											frame_num,
+											indent + 4, "");
+	}
+
+#endif
 
 	/* print value of arguments */
 	for (i = 0; i < func->fn_nargs; i++)

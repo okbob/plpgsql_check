@@ -7275,3 +7275,55 @@ select plpgsql_check_function('distinct_array(anyarray)');
 (0 rows)
 
 drop function distinct_array(anyarray);
+-- tracer test
+set plpgsql_check.enable_tracer to on;
+set plpgsql_check.tracer to on;
+set plpgsql_check.tracer_test_mode = true;
+\set VERBOSITY terse
+create or replace function fxo(a int, b int, c date, d numeric)
+returns void as $$
+begin
+  insert into tracer_tab values(a,b,c,d);
+end;
+$$ language plpgsql;
+create table tracer_tab(a int, b int, c date, d numeric);
+create or replace function tracer_tab_trg_fx()
+returns trigger as $$
+begin
+  return new;
+end;
+$$ language plpgsql;
+create trigger tracer_tab_trg before insert on tracer_tab for each row execute procedure tracer_tab_trg_fx();
+select fxo(10,20,'20200815', 3.14);
+NOTICE:  #0   ->> start of function fxo(integer,integer,date,numeric) (oid=0)
+NOTICE:  #0       "$1" => '10', "$2" => '20', "$3" => '08-15-2020', "$4" => '3.14'
+NOTICE:  #2     ->> start of function tracer_tab_trg_fx() (oid=0)
+NOTICE:  #2          call by fxo(integer,integer,date,numeric) line 3 at SQL statement
+NOTICE:  #2         triggered by before row insert trigger
+NOTICE:  #2         "new" => '(10,20,08-15-2020,3.14)'
+NOTICE:  #2     <<- end of function tracer_tab_trg_fx (elapsed time=0.010 ms)
+NOTICE:  #0   <<- end of function fxo (elapsed time=0.010 ms)
+ fxo 
+-----
+ 
+(1 row)
+
+select fxo(11,21,'20200816', 6.28);
+NOTICE:  #0   ->> start of function fxo(integer,integer,date,numeric) (oid=0)
+NOTICE:  #0       "$1" => '11', "$2" => '21', "$3" => '08-16-2020', "$4" => '6.28'
+NOTICE:  #2     ->> start of function tracer_tab_trg_fx() (oid=0)
+NOTICE:  #2          call by fxo(integer,integer,date,numeric) line 3 at SQL statement
+NOTICE:  #2         triggered by before row insert trigger
+NOTICE:  #2         "new" => '(11,21,08-16-2020,6.28)'
+NOTICE:  #2     <<- end of function tracer_tab_trg_fx (elapsed time=0.010 ms)
+NOTICE:  #0   <<- end of function fxo (elapsed time=0.010 ms)
+ fxo 
+-----
+ 
+(1 row)
+
+set plpgsql_check.enable_tracer to off;
+set plpgsql_check.tracer to off;
+drop table tracer_tab cascade;
+drop function tracer_tab_trg_fx();
+drop function fxo(int, int, date, numeric);
