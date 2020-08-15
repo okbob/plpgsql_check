@@ -39,6 +39,8 @@ int plpgsql_check_tracer_errlevel = NOTICE;
 int plpgsql_check_tracer_variable_max_length = 1024;
 
 static void print_datum(PLpgSQL_execstate *estate, PLpgSQL_datum *dtm, char *frame, int level);
+static char *convert_plpgsql_datum_to_string(PLpgSQL_execstate *estate, PLpgSQL_datum *dtm, bool *isnull, char **refname);
+
 
 #if PG_VERSION_NUM >= 120000
 
@@ -271,6 +273,40 @@ convert_value_to_string(PLpgSQL_execstate *estate, Datum value, Oid valtype)
 	return result;
 }
 
+static void
+StringInfoPrintRow(StringInfo ds, PLpgSQL_execstate *estate, PLpgSQL_row *row)
+{
+	bool		isfirst = true;
+	int			i;
+	bool		isnull;
+	char	   *str;
+	char	   *refname;
+
+	appendStringInfoChar(ds, '(');
+
+	for (i = 0; i < row->nfields; i++)
+	{
+		str = convert_plpgsql_datum_to_string(estate,
+											  estate->datums[row->varnos[i]],
+											  &isnull,
+											  &refname);
+		if (!isfirst)
+			appendStringInfoChar(ds, ',');
+		else
+			isfirst = false;
+
+		if (!isnull)
+		{
+			appendStringInfoString(ds, str);
+			pfree(str);
+		}
+		else
+			appendStringInfoString(ds, "NULL");
+	}
+
+	appendStringInfoChar(ds, ')');
+}
+
 static char *
 convert_plpgsql_datum_to_string(PLpgSQL_execstate *estate,
 								PLpgSQL_datum *dtm,
@@ -353,8 +389,18 @@ convert_plpgsql_datum_to_string(PLpgSQL_execstate *estate,
 
 		case PLPGSQL_DTYPE_ROW:
 			{
+				PLpgSQL_row *row = (PLpgSQL_row *) dtm;
+				StringInfoData ds;
+
 				*isnull = false;
-				return pstrdup("...");
+
+				*refname = row->refname;
+
+				initStringInfo(&ds);
+
+				StringInfoPrintRow(&ds, estate, row);
+
+				return ds.data;
 			}
 
 		default:
