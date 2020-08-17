@@ -714,16 +714,17 @@ ICU support)
 
 ## Compilation plpgsql_check on OS X
 
-use `-undefined dynamic_lookup` to the last line of the `Makefile ("override CFLAGS += ...")` allowed it to build.
+use `-undefined dynamic_lookup` to the last line of the `Makefile ("override CFLAGS += ...")` allowed it to build
+(It should not be necessary for current code).
 
-## Compilation plpgsql_check on Windows 7
+## Compilation plpgsql_check on Windows
 
 You can check precompiled dll libraries http://okbob.blogspot.cz/2015/02/plpgsqlcheck-is-available-for-microsoft.html
 
 or compile by self:
 
-1. Download and install PostgreSQL 9.3.4 for Win32 from http://www.enterprisedb.com
-2. Download and install Microsoft Visual C++ 2010 Express
+1. Download and install PostgreSQL for Win32 from http://www.enterprisedb.com
+2. Download and install Microsoft Visual C++ Express
 3. Lern tutorial http://blog.2ndquadrant.com/compiling-postgresql-extensions-visual-studio-windows
 4. The plpgsql_check depends on plpgsql and we need to add plpgsql.lib to the library list. Unfortunately PostgreSQL 9.4.3 does not contain this library.
 5. Create a plpgsql.lib from plpgsql.dll as described in http://adrianhenke.wordpress.com/2008/12/05/create-lib-file-from-dll (this step is not necessary now)
@@ -757,7 +758,7 @@ or compile by self:
 
 * gcc on Linux (against all supported PostgreSQL)
 * clang 3.4 on Linux (against PostgreSQL 9.5)
-* for success regress tests the PostgreSQL 9.4.5, 9.5 or higher is required
+* for success regress tests the PostgreSQL 9.5 or higher is required
 
 Compilation against PostgreSQL 10 requires libICU!
 
