@@ -15,6 +15,13 @@
 #include "utils/builtins.h"
 #include "utils/array.h"
 
+#ifdef _MSC_VER
+
+#define strcasecmp _stricmp
+#define strncasecmp _strnicmp
+
+#endif
+
 PG_FUNCTION_INFO_V1(plpgsql_check_pragma);
 
 plpgsql_check_pragma_vector plpgsql_check_runtime_pragma_vector;
