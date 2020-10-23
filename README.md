@@ -524,7 +524,7 @@ is displayed. The content of related variables are displayed when verbosity is v
 The number after `#` is a execution frame counter (this number is related to deep of error context stack).
 It allows to pair start end and of function.
 
-Tracing is enabled by setting `plpgsql_check.tracing` to `on`. Attention - enabling this behaviour
+Tracing is enabled by setting `plpgsql_check.tracer` to `on`. Attention - enabling this behaviour
 has significant negative impact on performance (against profiler). You can set a level for output used by
 tracer `plpgsql_check.tracer_errlevel` (default is `notice`). The output content is limmited by lenght
 specified by `plpgsql_check.tracer_variable_max_length` configuration variable.
