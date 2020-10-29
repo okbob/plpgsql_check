@@ -4079,3 +4079,20 @@ set plpgsql_check.tracer to off;
 drop table tracer_tab cascade;
 drop function tracer_tab_trg_fx();
 drop function fxo(int, int, date, numeric);
+
+create or replace function foo_trg_func()
+returns trigger as $$
+begin
+  -- bad function, RETURN is missing
+end;
+$$ language plpgsql;
+
+create table foo(a int);
+
+create trigger foo_trg before insert for each row execute procedure foo_trg_func();
+
+-- should to print error
+select * from plpgsql_check_function('foo_trg_func', 'foo');
+
+drop table foo;
+drop function foo_trg_func();

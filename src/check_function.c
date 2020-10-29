@@ -88,6 +88,22 @@ collect_out_variables(PLpgSQL_function *func, PLpgSQL_checkstate *cstate)
 }
 
 /*
+ * Returns true, when routine should be closed by RETURN statement
+ *
+ */
+static bool
+return_is_required(plpgsql_check_info *cinfo)
+{
+	if (cinfo->is_procedure)
+		return false;
+
+	if (cinfo->rettype == VOIDOID)
+		return false;
+
+	return true;
+}
+
+/*
  * own implementation - active mode
  *
  */
@@ -429,7 +445,7 @@ plpgsql_check_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 			if (!cstate.stop_check)
 			{
 				if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS &&
-					!is_procedure(estate))
+					return_is_required(cstate.cinfo))
 					plpgsql_check_put_error(&cstate,
 									  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
 									  "control reached end of function without RETURN",
@@ -569,7 +585,7 @@ function_check(PLpgSQL_function *func, PLpgSQL_checkstate *cstate)
 	if (!cstate->stop_check)
 	{
 		if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS &&
-			!is_procedure(cstate->estate))
+			return_is_required(cstate->cinfo))
 			plpgsql_check_put_error(cstate,
 							  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
 							  "control reached end of function without RETURN",
@@ -690,7 +706,7 @@ trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate)
 	if (!cstate->stop_check)
 	{
 		if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS &&
-			!is_procedure(cstate->estate))
+			return_is_required(cstate->cinfo))
 			plpgsql_check_put_error(cstate,
 							  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
 							  "control reached end of function without RETURN",

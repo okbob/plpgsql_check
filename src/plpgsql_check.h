@@ -411,14 +411,10 @@ extern plpgsql_check__recognize_err_condition_t plpgsql_check__recognize_err_con
 #define recvar_tuple(rec)		(rec->erh ? expanded_record_get_tuple(rec->erh) : NULL)
 #define recvar_tupdesc(rec)		(rec->erh ? expanded_record_fetch_tupdesc(rec->erh) : NULL)
 
-#define is_procedure(estate)		((estate)->func && (estate)->func->fn_rettype == InvalidOid)
-
 #else
 
 #define recvar_tuple(rec)		(rec->tup)
 #define recvar_tupdesc(rec)		(rec->tupdesc)
-
-#define is_procedure(estate)	(false)
 
 #endif
 
