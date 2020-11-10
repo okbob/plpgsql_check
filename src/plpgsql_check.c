@@ -201,6 +201,14 @@ _PG_init(void)
 					    PGC_USERSET, 0,
 					    NULL, NULL, NULL);
 
+	DefineCustomBoolVariable("plpgsql_check.profiler_dynamic_queryid",
+					    "when is true, then function execution profile will track query identifier for dynamic queries",
+					    NULL,
+					    &plpgsql_check_profiler_dynamic_queryid,
+					    false,
+					    PGC_USERSET, 0,
+					    NULL, NULL, NULL);
+
 	DefineCustomBoolVariable("plpgsql_check.enable_tracer",
 					    "when is true, then tracer's functionality is enabled",
 					    NULL,

@@ -10,11 +10,9 @@
 #if PG_VERSION_NUM >= 110000
 typedef uint64 pc_queryid;
 #define NOQUERYID				(UINT64CONST(0))
-#define QueryidGetDatum(datum)	(UInt64GetDatum(datum))
 #else
 typedef uint32 pc_queryid;
 #define NOQUERYID	(0)
-#define QueryidGetDatum(datum)	(Int64GetDatum((int64) datum))
 #endif
 
 
@@ -300,6 +298,7 @@ extern Oid plpgsql_check_parse_name_or_signature(char *name_or_signature);
  * functions from profiler.c
  */
 extern bool plpgsql_check_profiler;
+extern bool plpgsql_check_profiler_dynamic_queryid;
 
 extern Size plpgsql_check_shmem_size(void);
 extern void plpgsql_check_profiler_init_hash_tables(void);

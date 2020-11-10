@@ -139,9 +139,9 @@ AS $$
 $$ LANGUAGE sql;
 
 CREATE FUNCTION plpgsql_profiler_function_tb(funcoid regprocedure)
-RETURNS TABLE(queryids int8[],
-              lineno int,
+RETURNS TABLE(lineno int,
               stmt_lineno int,
+              queryids int8[],
               cmds_on_row int,
               exec_stmts int8,
               total_time double precision,
@@ -153,9 +153,9 @@ AS 'MODULE_PATHNAME','plpgsql_profiler_function_tb'
 LANGUAGE C STRICT;
 
 CREATE FUNCTION plpgsql_profiler_function_tb(name text)
-RETURNS TABLE(queryids int8[],
-              lineno int,
+RETURNS TABLE(lineno int,
               stmt_lineno int,
+              queryids int8[],
               cmds_on_row int,
               exec_stmts int8,
               total_time double precision,
@@ -167,12 +167,12 @@ AS 'MODULE_PATHNAME','plpgsql_profiler_function_tb_name'
 LANGUAGE C STRICT;
 
 CREATE FUNCTION plpgsql_profiler_function_statements_tb(funcoid regprocedure)
-RETURNS TABLE(queryids int8,
-              stmtid int,
+RETURNS TABLE(stmtid int,
               parent_stmtid int,
               parent_note text,
               block_num int,
               lineno int,
+              queryids int8,
               exec_stmts int8,
               total_time double precision,
               avg_time double precision,
@@ -183,12 +183,12 @@ AS 'MODULE_PATHNAME','plpgsql_profiler_function_statements_tb'
 LANGUAGE C STRICT;
 
 CREATE FUNCTION plpgsql_profiler_function_statements_tb(name text)
-RETURNS TABLE(queryids int8,
-              stmtid int,
+RETURNS TABLE(stmtid int,
               parent_stmtid int,
               parent_note text,
               block_num int,
               lineno int,
+              queryids int8,
               exec_stmts int8,
               total_time double precision,
               avg_time double precision,

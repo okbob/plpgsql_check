@@ -14,6 +14,8 @@
 
 #include "access/htup_details.h"
 #include "catalog/pg_type.h"
+#include "nodes/pg_list.h"
+#include "parser/analyze.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
 
@@ -23,10 +25,12 @@
 
 #endif
 
+#include "tcop/tcopprot.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "utils/lsyscache.h"
+#include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
 /*
@@ -188,6 +192,7 @@ static profiler_shared_state *profiler_ss = NULL;
 static MemoryContext profiler_mcxt = NULL;
 
 bool plpgsql_check_profiler = true;
+bool plpgsql_check_profiler_dynamic_queryid = false;
 
 PG_FUNCTION_INFO_V1(plpgsql_profiler_reset_all);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_reset);
@@ -201,7 +206,8 @@ static void update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *fu
 static void profiler_update_map(profiler_profile *profile, PLpgSQL_stmt *stmt);
 static int profiler_get_stmtid(profiler_profile *profile, PLpgSQL_stmt *stmt);
 static void profiler_touch_stmts(profiler_info *pinfo, List *stmts, PLpgSQL_stmt *parent_stmt, const char *parent_note, bool generate_map, bool finalize_profile, int64 *nested_us_total, int64 *nested_executed, profiler_iterator *pi, coverage_state *cs);
-static pc_queryid profiler_get_queryid(PLpgSQL_stmt *stmt);
+static PLpgSQL_expr *profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic);
+static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 
 /*
  * Itereate over Error Context Stack and calculate deep of stack (used like frame number)
@@ -1482,11 +1488,16 @@ profiler_touch_stmts(profiler_info *pinfo,
 	}
 }
 
-/* Return the first queryid found in the given PLpgSQL_stmt, if any. */
-static pc_queryid
-profiler_get_queryid(PLpgSQL_stmt *stmt)
+/*
+ * Given a PLpgSQL_stmt, return the underlying PLpgSQL_expr that may contain a
+ * queryidμ
+ */
+static PLpgSQL_expr  *
+profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic)
 {
 	PLpgSQL_expr *expr = NULL;
+
+	*dynamic = false;
 
 	switch(stmt->cmd_type)
 	{
@@ -1542,7 +1553,10 @@ profiler_get_queryid(PLpgSQL_stmt *stmt)
 				if (q->query)
 					expr = q->query;
 				else
+				{
 					expr = q->dynquery;
+					*dynamic = true;
+				}
 			}
 			break;
 		case PLPGSQL_STMT_ASSERT:
@@ -1553,6 +1567,7 @@ profiler_get_queryid(PLpgSQL_stmt *stmt)
 			break;
 		case PLPGSQL_STMT_DYNEXECUTE:
 			expr = ((PLpgSQL_stmt_dynexecute *) stmt)->query;
+			*dynamic = true;
 			break;
 		case PLPGSQL_STMT_OPEN:
 			{
@@ -1562,7 +1577,10 @@ profiler_get_queryid(PLpgSQL_stmt *stmt)
 				if (o->query)
 					expr = o->query;
 				else if (o->dynquery)
+				{
 					expr = o->dynquery;
+					*dynamic = true;
+				}
 				else
 					expr = o->argquery;
 			}
@@ -1580,6 +1598,101 @@ profiler_get_queryid(PLpgSQL_stmt *stmt)
 		case PLPGSQL_STMT_RAISE:
 		case PLPGSQL_STMT_CLOSE:
 			break;
+	}
+
+	return expr;
+}
+
+static pc_queryid
+profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
+{
+	Query	   *query;
+#if PG_VERSION_NUM >= 100000
+	RawStmt    *parsetree;
+#else
+	Node	   *parsetree;
+#endif
+	bool		snapshot_set;
+	List	   *parsetree_list;
+	PLpgSQL_var result;
+	PLpgSQL_type typ;
+	char	   *query_string = NULL;
+
+	memset(&result, 0, sizeof(result));
+	memset(&typ, 0, sizeof(typ));
+
+	result.dtype = PLPGSQL_DTYPE_VAR;
+	result.refname = "*auxstorage*";
+	result.datatype = &typ;
+
+	typ.typoid = TEXTOID;
+	typ.ttype = PLPGSQL_TTYPE_SCALAR;
+	typ.typlen = -1;
+	typ.typbyval = false;
+	typ.typtype = 'b';
+
+	(*plpgsql_check_plugin_var_ptr)->assign_expr(estate,
+			(PLpgSQL_datum *) &result, expr);
+
+	query_string = TextDatumGetCString(result.value);
+
+	/*
+	 * Do basic parsing of the query or queries (this should be safe even if
+	 * we are in aborted transaction state!)
+	 */
+	parsetree_list = pg_parse_query(query_string);
+
+	/*
+	 * There should not be more than one query, silently ignore rather than
+	 * error out in that case.
+	 */
+	if (list_length(parsetree_list) > 1)
+		return NOQUERYID;
+
+	/* Run through the raw parsetree and process it. */
+#if PG_VERSION_NUM >= 100000
+	parsetree = (RawStmt *) linitial(parsetree_list);
+#else
+	parsetree = (Node *) linitial(parsetree_list);
+#endif
+	snapshot_set = false;
+
+	/*
+	 * Set up a snapshot if parse analysis/planning will need one.
+	 */
+	if (analyze_requires_snapshot(parsetree))
+	{
+		PushActiveSnapshot(GetTransactionSnapshot());
+		snapshot_set = true;
+	}
+
+	query = parse_analyze(parsetree, query_string, NULL, 0
+#if PG_VERSION_NUM >= 100000
+			, NULL
+#endif
+			);
+
+	if (snapshot_set)
+		PopActiveSnapshot();
+
+	return query->queryId;
+}
+
+/* Return the first queryid found in the given PLpgSQL_stmt, if any. */
+static pc_queryid
+profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
+{
+	bool dynamic;
+	PLpgSQL_expr *expr = profiler_get_expr(stmt, &dynamic);
+
+	if (dynamic)
+	{
+		Assert(expr);
+
+		if (!plpgsql_check_profiler_dynamic_queryid)
+			return NOQUERYID;
+
+		return profiler_get_dyn_queryid(estate, expr);
 	}
 
 	if (expr)
@@ -1877,7 +1990,7 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 						stmt_lineno = lineno;
 
 						queryids_abs = accumArrayResult(queryids_abs,
-														QueryidGetDatum(prstmt->queryid),
+														Int64GetDatum((int64) prstmt->queryid),
 														prstmt->queryid == NOQUERYID,
 														INT8OID,
 														CurrentMemoryContext);
@@ -2215,7 +2328,7 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		Assert(pinfo->pi_magic == PI_MAGIC);
 
 		if (pstmt->queryid == NOQUERYID)
-			pstmt->queryid = profiler_get_queryid(stmt);
+			pstmt->queryid = profiler_get_queryid(estate, stmt);
 
 		INSTR_TIME_SET_CURRENT(end_time);
 		end_time2 = end_time;
