@@ -173,6 +173,55 @@ select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb
 (8 rows)
 
 drop function f1();
+-- test queryid retrieval
+create function f1()
+returns void as $$
+declare
+  t1 text = 't1';
+begin
+  insert into t1 values(10,20);
+  EXECUTE 'update ' ||  't1' || ' set a = 10';
+  EXECUTE 'delete from ' || t1;
+end;
+$$ language plpgsql;
+select plpgsql_profiler_reset_all();
+ plpgsql_profiler_reset_all 
+----------------------------
+ 
+(1 row)
+
+select plpgsql_profiler_install_fake_queryid_hook();
+ plpgsql_profiler_install_fake_queryid_hook 
+--------------------------------------------
+ 
+(1 row)
+
+select f1();
+ f1 
+----
+ 
+(1 row)
+
+select queryids, lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+ queryids | lineno | stmt_lineno | exec_stmts |                     source                     
+----------+--------+-------------+------------+------------------------------------------------
+          |      1 |             |            | 
+          |      2 |             |            | declare
+          |      3 |             |            |   t1 text = 't1';
+ {NULL}   |      4 |           4 |          1 | begin
+ {3}      |      5 |           5 |          1 |   insert into t1 values(10,20);
+ {2}      |      6 |           6 |          1 |   EXECUTE 'update ' ||  't1' || ' set a = 10';
+ {4}      |      7 |           7 |          1 |   EXECUTE 'delete from ' || t1;
+          |      8 |             |            | end;
+(8 rows)
+
+select plpgsql_profiler_remove_fake_queryid_hook();
+ plpgsql_profiler_remove_fake_queryid_hook 
+-------------------------------------------
+ 
+(1 row)
+
+drop function f1();
 set plpgsql_check.profiler to off;
 create function f1()
 returns void as $$

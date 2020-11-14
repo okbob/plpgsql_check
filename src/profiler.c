@@ -188,11 +188,13 @@ static HTAB *profiler_HashTable = NULL;
 static HTAB *shared_profiler_chunks_HashTable = NULL;
 static HTAB *profiler_chunks_HashTable = NULL;
 
+static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
+
 static profiler_shared_state *profiler_ss = NULL;
 static MemoryContext profiler_mcxt = NULL;
+static MemoryContext profiler_queryid_mcxt = NULL;
 
 bool plpgsql_check_profiler = true;
-bool plpgsql_check_profiler_dynamic_queryid = false;
 
 PG_FUNCTION_INFO_V1(plpgsql_profiler_reset_all);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_reset);
@@ -200,6 +202,8 @@ PG_FUNCTION_INFO_V1(plpgsql_coverage_statements);
 PG_FUNCTION_INFO_V1(plpgsql_coverage_branches);
 PG_FUNCTION_INFO_V1(plpgsql_coverage_statements_name);
 PG_FUNCTION_INFO_V1(plpgsql_coverage_branches_name);
+PG_FUNCTION_INFO_V1(plpgsql_profiler_install_fake_queryid_hook);
+PG_FUNCTION_INFO_V1(plpgsql_profiler_remove_fake_queryid_hook);
 
 static void profiler_touch_stmt(profiler_info *pinfo, PLpgSQL_stmt *stmt, PLpgSQL_stmt *parent_stmt, const char *parent_note, int block_num, bool generate_map, bool finalize_profile, int64 *nested_us_total, int64 *nested_executed, profiler_iterator *pi, coverage_state *cs);
 static void update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func);
@@ -208,6 +212,7 @@ static int profiler_get_stmtid(profiler_profile *profile, PLpgSQL_stmt *stmt);
 static void profiler_touch_stmts(profiler_info *pinfo, List *stmts, PLpgSQL_stmt *parent_stmt, const char *parent_note, bool generate_map, bool finalize_profile, int64 *nested_us_total, int64 *nested_executed, profiler_iterator *pi, coverage_state *cs);
 static PLpgSQL_expr *profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic);
 static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
+static void profiler_fake_queryid_hook(ParseState *pstate, Query *query);
 
 /*
  * Itereate over Error Context Stack and calculate deep of stack (used like frame number)
@@ -1154,6 +1159,32 @@ plpgsql_coverage_branches(PG_FUNCTION_ARGS)
 	PG_RETURN_FLOAT8(coverage_internal(fnoid, COVERAGE_BRANCHES));
 }
 
+Datum
+plpgsql_profiler_install_fake_queryid_hook(PG_FUNCTION_ARGS)
+{
+	if (post_parse_analyze_hook == profiler_fake_queryid_hook)
+		PG_RETURN_VOID();
+
+	if (post_parse_analyze_hook == NULL)
+		prev_post_parse_analyze_hook = post_parse_analyze_hook;
+
+	post_parse_analyze_hook = profiler_fake_queryid_hook;
+
+	PG_RETURN_VOID();
+}
+
+Datum
+plpgsql_profiler_remove_fake_queryid_hook(PG_FUNCTION_ARGS)
+{
+	if (post_parse_analyze_hook == profiler_fake_queryid_hook)
+	{
+		post_parse_analyze_hook = prev_post_parse_analyze_hook;
+		prev_post_parse_analyze_hook = NULL;
+	}
+
+	PG_RETURN_VOID();
+}
+
 static void
 update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 {
@@ -1490,7 +1521,7 @@ profiler_touch_stmts(profiler_info *pinfo,
 
 /*
  * Given a PLpgSQL_stmt, return the underlying PLpgSQL_expr that may contain a
- * queryidμ
+ * queryid.
  */
 static PLpgSQL_expr  *
 profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic)
@@ -1606,6 +1637,7 @@ profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic)
 static pc_queryid
 profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 {
+	MemoryContext oldcxt;
 	Query	   *query;
 #if PG_VERSION_NUM >= 100000
 	RawStmt    *parsetree;
@@ -1631,6 +1663,16 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 	typ.typbyval = false;
 	typ.typtype = 'b';
 
+	if (profiler_queryid_mcxt == NULL)
+		profiler_queryid_mcxt = AllocSetContextCreate(TopMemoryContext,
+				"plpgsql_check - profiler queryid context",
+				ALLOCSET_DEFAULT_MINSIZE,
+				ALLOCSET_DEFAULT_INITSIZE,
+				ALLOCSET_DEFAULT_MAXSIZE);
+
+	oldcxt = MemoryContextSwitchTo(profiler_queryid_mcxt);
+	MemoryContextSwitchTo(oldcxt);
+
 	(*plpgsql_check_plugin_var_ptr)->assign_expr(estate,
 			(PLpgSQL_datum *) &result, expr);
 
@@ -1647,7 +1689,11 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 	 * error out in that case.
 	 */
 	if (list_length(parsetree_list) > 1)
+	{
+		MemoryContextSwitchTo(oldcxt);
+		MemoryContextReset(profiler_queryid_mcxt);
 		return NOQUERYID;
+	}
 
 	/* Run through the raw parsetree and process it. */
 #if PG_VERSION_NUM >= 100000
@@ -1675,6 +1721,9 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 	if (snapshot_set)
 		PopActiveSnapshot();
 
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextReset(profiler_queryid_mcxt);
+
 	return query->queryId;
 }
 
@@ -1689,16 +1738,18 @@ profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	{
 		Assert(expr);
 
-		if (!plpgsql_check_profiler_dynamic_queryid)
-			return NOQUERYID;
-
 		return profiler_get_dyn_queryid(estate, expr);
 	}
 
 	if (expr)
 	{
 		SPIPlanPtr ptr  = expr->plan;
-		List *sources = SPI_plan_get_plan_sources(ptr);
+		List *sources;
+
+		if (!ptr)
+			return NOQUERYID;
+
+		sources = SPI_plan_get_plan_sources(ptr);
 
 		if (sources)
 		{
@@ -1715,6 +1766,18 @@ profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	}
 
 	return NOQUERYID;
+}
+
+/*
+ * Generate simple queryid  for testing purpose.
+ * DO NOT USE IN PRODUCTION.
+ */
+static void
+profiler_fake_queryid_hook(ParseState *pstate, Query *query)
+{
+	Assert(query->queryId == NOQUERYID);
+
+	query->queryId = query->commandType;
 }
 
 /*

@@ -83,6 +83,30 @@ select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb
 
 drop function f1();
 
+-- test queryid retrieval
+create function f1()
+returns void as $$
+declare
+  t1 text = 't1';
+begin
+  insert into t1 values(10,20);
+  EXECUTE 'update ' ||  't1' || ' set a = 10';
+  EXECUTE 'delete from ' || t1;
+end;
+$$ language plpgsql;
+
+select plpgsql_profiler_reset_all();
+
+select plpgsql_profiler_install_fake_queryid_hook();
+
+select f1();
+
+select queryids, lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+
+select plpgsql_profiler_remove_fake_queryid_hook();
+
+drop function f1();
+
 set plpgsql_check.profiler to off;
 
 create function f1()

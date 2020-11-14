@@ -198,6 +198,14 @@ RETURNS TABLE(stmtid int,
 AS 'MODULE_PATHNAME','plpgsql_profiler_function_statements_tb_name'
 LANGUAGE C STRICT;
 
+CREATE FUNCTION plpgsql_profiler_install_fake_queryid_hook()
+RETURNS void AS 'MODULE_PATHNAME','plpgsql_profiler_install_fake_queryid_hook'
+LANGUAGE C STRICT;
+
+CREATE FUNCTION plpgsql_profiler_remove_fake_queryid_hook()
+RETURNS void AS 'MODULE_PATHNAME','plpgsql_profiler_remove_fake_queryid_hook'
+LANGUAGE C STRICT;
+
 CREATE FUNCTION plpgsql_profiler_reset_all()
 RETURNS void AS 'MODULE_PATHNAME','plpgsql_profiler_reset_all'
 LANGUAGE C STRICT;
