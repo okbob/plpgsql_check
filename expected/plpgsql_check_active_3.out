@@ -208,7 +208,7 @@ select queryids, lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_f
           |      1 |             |            | 
           |      2 |             |            | declare
           |      3 |             |            |   t1 text = 't1';
- {NULL}   |      4 |           4 |          1 | begin
+          |      4 |           4 |          1 | begin
  {3}      |      5 |           5 |          1 |   insert into t1 values(10,20);
  {2}      |      6 |           6 |          1 |   EXECUTE 'update ' ||  't1' || ' set a = 10';
  {4}      |      7 |           7 |          1 |   EXECUTE 'delete from ' || t1;

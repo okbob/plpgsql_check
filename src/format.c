@@ -909,7 +909,8 @@ plpgsql_check_put_profile(plpgsql_check_result_info *ri,
 	if (stmt_lineno > 0)
 	{
 		SET_RESULT_INT32(Anum_profiler_stmt_lineno, stmt_lineno);
-		SET_RESULT(Anum_profiler_queryid, queryids_array);
+		if (queryids_array != (Datum) 0)
+			SET_RESULT(Anum_profiler_queryid, queryids_array);
 		SET_RESULT_INT32(Anum_profiler_cmds_on_row, cmds_on_row);
 		SET_RESULT_INT64(Anum_profiler_exec_count, exec_count);
 		SET_RESULT_FLOAT8(Anum_profiler_total_time, us_total / 1000.0);

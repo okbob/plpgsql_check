@@ -65,6 +65,7 @@ typedef struct profiler_stmt
 	uint64	exec_count;
 	instr_time	start_time;
 	instr_time	total;
+	bool		has_queryid;
 } profiler_stmt;
 
 typedef struct profiler_stmt_reduced
@@ -75,6 +76,7 @@ typedef struct profiler_stmt_reduced
 	uint64	us_total;
 	uint64	rows;
 	uint64	exec_count;
+	bool		has_queryid;
 } profiler_stmt_reduced;
 
 #define		STATEMENTS_PER_CHUNK		30
@@ -211,7 +213,7 @@ static void profiler_update_map(profiler_profile *profile, PLpgSQL_stmt *stmt);
 static int profiler_get_stmtid(profiler_profile *profile, PLpgSQL_stmt *stmt);
 static void profiler_touch_stmts(profiler_info *pinfo, List *stmts, PLpgSQL_stmt *parent_stmt, const char *parent_note, bool generate_map, bool finalize_profile, int64 *nested_us_total, int64 *nested_executed, profiler_iterator *pi, coverage_state *cs);
 static PLpgSQL_expr *profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic);
-static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
+static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, bool *has_queryid);
 static void profiler_fake_queryid_hook(ParseState *pstate, Query *query);
 
 /*
@@ -1265,6 +1267,7 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 
 			prstmt->lineno = pstmt->lineno;
 			prstmt->queryid = pstmt->queryid;
+			prstmt->has_queryid = pstmt->has_queryid;
 			prstmt->us_max = pstmt->us_max;
 			prstmt->us_total = pstmt->us_total;
 			prstmt->rows = pstmt->rows;
@@ -1729,10 +1732,13 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 
 /* Return the first queryid found in the given PLpgSQL_stmt, if any. */
 static pc_queryid
-profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
+profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
+					 bool *has_queryid)
 {
 	bool dynamic;
 	PLpgSQL_expr *expr = profiler_get_expr(stmt, &dynamic);
+
+	*has_queryid = (expr != NULL);
 
 	if (dynamic)
 	{
@@ -1983,6 +1989,7 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 			Datum		max_time_array = (Datum) 0;
 			Datum		processed_rows_array = (Datum) 0;
 			int			cmds_on_row = 0;
+			int			queryids_on_row = 0;
 
 			lineend = prosrc;
 			linebeg = prosrc;
@@ -2052,11 +2059,15 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 
 						stmt_lineno = lineno;
 
-						queryids_abs = accumArrayResult(queryids_abs,
-														Int64GetDatum((int64) prstmt->queryid),
-														prstmt->queryid == NOQUERYID,
-														INT8OID,
-														CurrentMemoryContext);
+						if (prstmt->has_queryid)
+						{
+							queryids_abs = accumArrayResult(queryids_abs,
+															Int64GetDatum((int64) prstmt->queryid),
+															prstmt->queryid == NOQUERYID,
+															INT8OID,
+															CurrentMemoryContext);
+							queryids_on_row += 1;
+						}
 
 						max_time_abs = accumArrayResult(max_time_abs,
 														Float8GetDatum(prstmt->us_max / 1000.0), false,
@@ -2077,9 +2088,11 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 						break;
 				}
 
+				if (queryids_on_row > 0)
+					queryids_array = makeArrayResult(queryids_abs, CurrentMemoryContext);
+
 				if (cmds_on_row > 0)
 				{
-					queryids_array = makeArrayResult(queryids_abs, CurrentMemoryContext);
 					max_time_array = makeArrayResult(max_time_abs, CurrentMemoryContext);
 					processed_rows_array = makeArrayResult(processed_rows_abs, CurrentMemoryContext);
 				}
@@ -2391,7 +2404,8 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		Assert(pinfo->pi_magic == PI_MAGIC);
 
 		if (pstmt->queryid == NOQUERYID)
-			pstmt->queryid = profiler_get_queryid(estate, stmt);
+			pstmt->queryid = profiler_get_queryid(estate, stmt,
+												  &pstmt->has_queryid);
 
 		INSTR_TIME_SET_CURRENT(end_time);
 		end_time2 = end_time;
