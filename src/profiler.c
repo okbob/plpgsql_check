@@ -1164,6 +1164,8 @@ plpgsql_coverage_branches(PG_FUNCTION_ARGS)
 Datum
 plpgsql_profiler_install_fake_queryid_hook(PG_FUNCTION_ARGS)
 {
+	(void) fcinfo;
+
 	if (post_parse_analyze_hook == profiler_fake_queryid_hook)
 		PG_RETURN_VOID();
 
@@ -1178,6 +1180,8 @@ plpgsql_profiler_install_fake_queryid_hook(PG_FUNCTION_ARGS)
 Datum
 plpgsql_profiler_remove_fake_queryid_hook(PG_FUNCTION_ARGS)
 {
+	(void) fcinfo;
+
 	if (post_parse_analyze_hook == profiler_fake_queryid_hook)
 	{
 		post_parse_analyze_hook = prev_post_parse_analyze_hook;
@@ -1781,6 +1785,8 @@ profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
 static void
 profiler_fake_queryid_hook(ParseState *pstate, Query *query)
 {
+	(void) pstate;
+
 	Assert(query->queryId == NOQUERYID);
 
 	query->queryId = query->commandType;
