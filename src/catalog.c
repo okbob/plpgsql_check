@@ -62,7 +62,7 @@ plpgsql_check_is_eventtriggeroid(Oid typoid)
 
 #if PG_VERSION_NUM >= 140000
 
-	return typoid == EVENTTRIGGEROID;
+	return typoid == EVENT_TRIGGEROID;
 
 #else
 
