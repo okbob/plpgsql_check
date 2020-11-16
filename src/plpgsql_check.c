@@ -278,6 +278,14 @@ _PG_init(void)
 	if (process_shared_preload_libraries_in_progress)
 	{
 
+		DefineCustomIntVariable("plpgsql_check.profiler_max_shared_chunks",
+						    "maximum numbers of statements chunks in shared memory",
+						    NULL,
+						    &plpgsql_check_profiler_max_shared_chunks,
+						    15000, 50, 100000,
+						    PGC_POSTMASTER, 0,
+						    NULL, NULL, NULL);
+
 		RequestAddinShmemSpace(plpgsql_check_shmem_size());
 
 #if PG_VERSION_NUM >= 90600

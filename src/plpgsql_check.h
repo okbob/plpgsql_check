@@ -299,6 +299,7 @@ extern Oid plpgsql_check_parse_name_or_signature(char *name_or_signature);
  * functions from profiler.c
  */
 extern bool plpgsql_check_profiler;
+extern int plpgsql_check_profiler_max_shared_chunks;
 
 extern Size plpgsql_check_shmem_size(void);
 extern void plpgsql_check_profiler_init_hash_tables(void);
