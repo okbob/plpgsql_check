@@ -7,6 +7,15 @@
 #include "access/tupdesc.h"
 #include "storage/ipc.h"
 
+#if PG_VERSION_NUM >= 110000
+typedef uint64 pc_queryid;
+#define NOQUERYID				(UINT64CONST(0))
+#else
+typedef uint32 pc_queryid;
+#define NOQUERYID	(0)
+#endif
+
+
 enum
 {
 	PLPGSQL_CHECK_ERROR,
@@ -168,9 +177,9 @@ extern void plpgsql_check_put_error(PLpgSQL_checkstate *cstate, int sqlerrcode, 
 	const char *message, const char *detail, const char *hint, int level, int position, const char *query, const char *context);
 extern void plpgsql_check_put_error_edata(PLpgSQL_checkstate *cstate, ErrorData *edata);
 extern void plpgsql_check_put_dependency(plpgsql_check_result_info *ri, char *type, Oid oid, char *schema, char *name, char *params);
-extern void plpgsql_check_put_profile(plpgsql_check_result_info *ri, int lineno, int stmt_lineno,
+extern void plpgsql_check_put_profile(plpgsql_check_result_info *ri, Datum queryids_array, int lineno, int stmt_lineno,
 	int cmds_on_row, int exec_count, int64 us_total, Datum max_time_array, Datum processed_rows_array, char *source_row);
-extern void plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri, int stmtid, int parent_stmtid, const char *parent_note, int block_num, int lineno,
+extern void plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri, pc_queryid queryid, int stmtid, int parent_stmtid, const char *parent_note, int block_num, int lineno,
 	int64 exec_stmts, double total_time, double max_time, int64 processed_rows, char *stmtname);
 
 /*

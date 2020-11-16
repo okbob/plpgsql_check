@@ -71,35 +71,37 @@ static void put_error_tabular(plpgsql_check_result_info *ri, PLpgSQL_execstate *
  * columns of plpgsql_profiler_function_tb result
  *
  */
-#define Natts_profiler					9
+#define Natts_profiler					10
 
 #define Anum_profiler_lineno			0
 #define Anum_profiler_stmt_lineno		1
-#define Anum_profiler_cmds_on_row		2
-#define Anum_profiler_exec_count		3
-#define Anum_profiler_total_time		4
-#define Anum_profiler_avg_time			5
-#define Anum_profiler_max_time			6
-#define Anum_profiler_processed_rows	7
-#define Anum_profiler_source			8
+#define Anum_profiler_queryid			2
+#define Anum_profiler_cmds_on_row		3
+#define Anum_profiler_exec_count		4
+#define Anum_profiler_total_time		5
+#define Anum_profiler_avg_time			6
+#define Anum_profiler_max_time			7
+#define Anum_profiler_processed_rows	8
+#define Anum_profiler_source			9
 
 /*
  * columns of plpgsql_profiler_function_statements_tb result
  *
  */
-#define Natts_profiler_statements					11
+#define Natts_profiler_statements					12
 
 #define Anum_profiler_statements_stmtid				0
 #define Anum_profiler_statements_parent_stmtid		1
 #define Anum_profiler_statements_parent_note		2
 #define Anum_profiler_statements_block_num			3
 #define Anum_profiler_statements_lineno				4
-#define Anum_profiler_statements_exec_stmts			5
-#define Anum_profiler_statements_total_time			6
-#define Anum_profiler_statements_avg_time			7
-#define Anum_profiler_statements_max_time			8
-#define Anum_profiler_statements_processed_rows		9
-#define Anum_profiler_statements_stmtname			10
+#define Anum_profiler_statements_queryid			5
+#define Anum_profiler_statements_exec_stmts			6
+#define Anum_profiler_statements_total_time			7
+#define Anum_profiler_statements_avg_time			8
+#define Anum_profiler_statements_max_time			9
+#define Anum_profiler_statements_processed_rows		10
+#define Anum_profiler_statements_stmtname			11
 
 
 #define SET_RESULT_NULL(anum) \
@@ -128,6 +130,11 @@ static void put_error_tabular(plpgsql_check_result_info *ri, PLpgSQL_execstate *
 
 #define SET_RESULT_INT32(anum, ival)	SET_RESULT((anum), Int32GetDatum((ival)))
 #define SET_RESULT_INT64(anum, ival)	SET_RESULT((anum), Int64GetDatum((ival)))
+#if PG_VERSION_NUM >= 110000
+#define SET_RESULT_QUERYID(anum, ival)	SET_RESULT((anum), UInt64GetDatum((ival)))
+#else
+#define SET_RESULT_QUERYID(anum, ival)	SET_RESULT((anum), UInt32GetDatum((ival)))
+#endif
 #define SET_RESULT_OID(anum, oid)		SET_RESULT((anum), ObjectIdGetDatum((oid)))
 #define SET_RESULT_FLOAT8(anum, fval)	SET_RESULT((anum), Float8GetDatum(fval))
 
@@ -870,6 +877,7 @@ plpgsql_check_put_dependency(plpgsql_check_result_info *ri,
  */
 void
 plpgsql_check_put_profile(plpgsql_check_result_info *ri,
+						  Datum queryids_array,
 						  int lineno,
 						  int stmt_lineno,
 						  int cmds_on_row,
@@ -886,6 +894,7 @@ plpgsql_check_put_profile(plpgsql_check_result_info *ri,
 	Assert(ri->tupdesc);
 
 	SET_RESULT_NULL(Anum_profiler_stmt_lineno);
+	SET_RESULT_NULL(Anum_profiler_queryid);
 	SET_RESULT_NULL(Anum_profiler_exec_count);
 	SET_RESULT_NULL(Anum_profiler_total_time);
 	SET_RESULT_NULL(Anum_profiler_avg_time);
@@ -900,6 +909,8 @@ plpgsql_check_put_profile(plpgsql_check_result_info *ri,
 	if (stmt_lineno > 0)
 	{
 		SET_RESULT_INT32(Anum_profiler_stmt_lineno, stmt_lineno);
+		if (queryids_array != (Datum) 0)
+			SET_RESULT(Anum_profiler_queryid, queryids_array);
 		SET_RESULT_INT32(Anum_profiler_cmds_on_row, cmds_on_row);
 		SET_RESULT_INT64(Anum_profiler_exec_count, exec_count);
 		SET_RESULT_FLOAT8(Anum_profiler_total_time, us_total / 1000.0);
@@ -918,6 +929,7 @@ plpgsql_check_put_profile(plpgsql_check_result_info *ri,
  */
 void
 plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri,
+									pc_queryid queryid,
 									int stmtid,
 									int parent_stmtid,
 									const char *parent_note,
@@ -942,6 +954,10 @@ plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri,
 	SET_RESULT_INT32(Anum_profiler_statements_stmtid, stmtid);
 	SET_RESULT_INT32(Anum_profiler_statements_block_num, block_num);
 	SET_RESULT_INT32(Anum_profiler_statements_lineno, lineno);
+	if (queryid == NOQUERYID)
+		SET_RESULT_NULL(Anum_profiler_statements_queryid);
+	else
+		SET_RESULT_QUERYID(Anum_profiler_statements_queryid, queryid);
 	SET_RESULT_INT64(Anum_profiler_statements_exec_stmts, exec_stmts);
 	SET_RESULT_INT64(Anum_profiler_statements_processed_rows, processed_rows);
 	SET_RESULT_FLOAT8(Anum_profiler_statements_total_time, total_time / 1000.0);
