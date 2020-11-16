@@ -185,6 +185,7 @@ extern void plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri, p
 /*
  * function from catalog.c
  */
+extern bool plpgsql_check_is_eventtriggeroid(Oid typoid);
 extern void plpgsql_check_get_function_info(HeapTuple procTuple, Oid *rettype, char *volatility, PLpgSQL_trigtype *trigtype, bool *is_procedure);
 extern void plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo);
 extern char *plpgsql_check_get_src(HeapTuple procTuple);

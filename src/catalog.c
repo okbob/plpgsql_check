@@ -54,6 +54,26 @@
 #include "utils/syscache.h"
 
 /*
+ * Fix - change of typename in Postgres 14
+ */
+bool
+plpgsql_check_is_eventtriggeroid(Oid typoid)
+{
+
+#if PG_VERSION_NUM >= 140000
+
+	return typoid == EVENTTRIGGEROID;
+
+#else
+
+	return typoid == EVTTRIGGEROID;
+
+#endif
+
+}
+
+
+/*
  * Prepare metadata necessary for plpgsql_check
  */
 void
@@ -99,7 +119,7 @@ plpgsql_check_get_function_info(HeapTuple procTuple,
 
 			)
 			*trigtype = PLPGSQL_DML_TRIGGER;
-		else if (proc->prorettype == EVTTRIGGEROID)
+		else if (plpgsql_check_is_eventtriggeroid(proc->prorettype))
 			*trigtype = PLPGSQL_EVENT_TRIGGER;
 		else if (proc->prorettype != RECORDOID &&
 				 proc->prorettype != VOIDOID &&
