@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	1.13.1
+Version:	1.14.0
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -47,6 +47,11 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/plpgsql_check.control
 
 %changelog
+* Mon Nov 16 2020 - Pavel Stehule <pavel.stehule@gmail.com> 1.14.0
+- queryid can be displayed in profiler's reports (Julien Rouhaud)
+- new profiler's GUC plpgsql_check.profiler_max_shared_chunks (Julien Rouhaud)
+- few minor bugfixes
+
 * Fri Aug 14 2020 - Pavel Stehule <pavel.stehule@gmail.com> 1.13.0
 - tracer
 - pragma support to control checks, warnings and tracing
