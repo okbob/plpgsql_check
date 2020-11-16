@@ -97,12 +97,6 @@ typedef struct profiler_shared_state
 } profiler_shared_state;
 
 /*
- * should be enough for project of 300K PLpgSQL rows.
- * It should to take about 18MB of shared memory.
- */
-#define		MAX_SHARED_CHUNKS		15000
-
-/*
  * It is used for fast mapping plpgsql stmt -> stmtid
  */
 
@@ -197,6 +191,11 @@ static MemoryContext profiler_mcxt = NULL;
 static MemoryContext profiler_queryid_mcxt = NULL;
 
 bool plpgsql_check_profiler = true;
+/*
+ * should be enough for project of 300K PLpgSQL rows.
+ * It should to take about 24.4MB of shared memory.
+ */
+int plpgsql_check_profiler_max_shared_chunks = 15000;
 
 PG_FUNCTION_INFO_V1(plpgsql_profiler_reset_all);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_reset);
@@ -434,7 +433,7 @@ plpgsql_check_shmem_size(void)
 
 	num_bytes = MAXALIGN(sizeof(profiler_shared_state));
 	num_bytes = add_size(num_bytes,
-						 hash_estimate_size(MAX_SHARED_CHUNKS,
+						 hash_estimate_size(plpgsql_check_profiler_max_shared_chunks,
 											sizeof(profiler_stmt_chunk)));
 
 	return num_bytes;
@@ -485,8 +484,8 @@ plpgsql_check_profiler_shmem_startup(void)
 	info.entrysize = sizeof(profiler_stmt_chunk);
 
 	shared_profiler_chunks_HashTable = ShmemInitHash("plpgsql_check profiler chunks",
-													MAX_SHARED_CHUNKS,
-													MAX_SHARED_CHUNKS,
+													plpgsql_check_profiler_max_shared_chunks,
+													plpgsql_check_profiler_max_shared_chunks,
 													&info,
 													HASH_ELEM | HASH_BLOBS);
 

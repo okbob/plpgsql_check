@@ -426,6 +426,21 @@ Due dependencies, `shared_preload_libraries` should to contains `plpgsql` first
 The profiler is active when GUC `plpgsql_check.profiler` is on. The profiler doesn't require shared memory,
 but if there are not shared memory, then the profile is limmitted just to active session.
 
+When plpgsql_check is initialized by `shared_preload_libraries`, another GUC is
+available to configure the amount of shared memory used by the profiler:
+`plpgsql_check.profiler_max_shared_chunks`.  This defines the maximum number of
+statements chunk that can be stored in shared memory.  For each plpgsql
+function (or procedure), the whole content is split into chunks of 30
+statements.  If needed, multiple chunks can be used to store the whole content
+of a single function.  A single chunk is 1704 bytes.  The default value for
+this GUC is 15000, which should be enough for big projects containing hundred
+of thousands of statements in plpgsql, and will consume about 24MB of memory.
+If your project doesn't require that much number of chunks, you can set this
+parameter to a smaller number in order to decrease the memory usage.  The
+minimum value is 50 (which should consume about 83kB of memory), and the
+maximum value is 100000 (which should consume about 163MB of memory).  Changing
+this parameter requires a PostgreSQL restart.
+
 The profiler will also retrieve the query identifier for each instruction that
 contains an expression or optimizable statement.  Note that this requires
 pg_stat_statements, or another similar third-party extension), to be installed.
