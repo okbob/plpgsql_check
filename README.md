@@ -25,12 +25,12 @@ google group.
 * possibility to collect relations and functions used by function
 * possibility to check EXECUTE stmt agaist SQL injection vulnerability
 
-I invite any ideas, patches, bugreports
+I invite any ideas, patches, bugreports.
 
 plpgsql_check is next generation of plpgsql_lint. It allows to check source code by explicit call
 <i>plpgsql_check_function</i>.
 
-PostgreSQL PostgreSQL 9.5, 9.6, 10, 11, 12 are supported (Develop 13 is supported too).
+PostgreSQL PostgreSQL 9.5, 9.6, 10, 11, 12 and 13 are supported.
 
 The SQL statements inside PL/pgSQL functions are checked by validator for semantic errors. These errors
 can be found by plpgsql_check_function:
@@ -426,6 +426,23 @@ Due dependencies, `shared_preload_libraries` should to contains `plpgsql` first
 The profiler is active when GUC `plpgsql_check.profiler` is on. The profiler doesn't require shared memory,
 but if there are not shared memory, then the profile is limmitted just to active session.
 
+The profiler will also retrieve the query identifier for each instruction that
+contains an expression or optimizable statement.  Note that this requires
+pg_stat_statements, or another similar third-party extension), to be installed.
+There are some limitations to the query identifier retrieval:
+
+* if a plpgsql expression contains underlying statements, only the top level
+  query identifier will be retrieved
+* the profiler doesn't compute query identifier by itself but relies on
+  external extension, such as pg_stat_statements, for that.  It means that
+  depending on the external extension behavior, you may not be able to see a
+  query identifier for some statements.  That's for instance the case with DDL
+  statements, as pg_stat_statements doesn't expose the query identifier for
+  such queries.
+* a query identifier is retrieved only for instructions containing
+  expressions.  This means that plpgsql_profiler_function_tb() function can
+  report less query identifier than instructions on a single line.
+
 Attention: A update of shared profiles can decrease performance on servers under higher load.
 
 The profile can be displayed by function `plpgsql_profiler_function_tb`:
@@ -525,8 +542,8 @@ The number after `#` is a execution frame counter (this number is related to dee
 It allows to pair start end and of function.
 
 Tracing is enabled by setting `plpgsql_check.tracer` to `on`. Attention - enabling this behaviour
-has significant negative impact on performance (against profiler). You can set a level for output used by
-tracer `plpgsql_check.tracer_errlevel` (default is `notice`). The output content is limmited by lenght
+has significant negative impact on performance (unlike the profiler). You can set a level for output used by
+tracer `plpgsql_check.tracer_errlevel` (default is `notice`). The output content is limited by length
 specified by `plpgsql_check.tracer_variable_max_length` configuration variable.
 
 In terse verbose mode the output is reduced:
