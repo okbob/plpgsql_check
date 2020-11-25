@@ -165,6 +165,10 @@ You can set level of warnings via function's parameters:
 
 * `anycompatiblerangetype DEFAULT 'int4range'` - a real type used instead anycompatible range type
 
+* `without_warnings DEFAULT false` - disable all warnings
+
+* `all_warnings DEFAULT false` - enable all warnings
+
 ## Triggers
 
 When you want to check any trigger, you have to enter a relation that will be

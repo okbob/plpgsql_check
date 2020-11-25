@@ -76,7 +76,7 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	ErrorContextCallback *prev_errorcontext;
 	int	format;
 
-	if (PG_NARGS() != 15)
+	if (PG_NARGS() != 17)
 		elog(ERROR, "unexpected number of parameters, you should to update extension");
 
 	/* check to see if caller supports us returning a tuplestore */
@@ -107,6 +107,10 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 		ERR_NULL_OPTION("anycompatibletype");
 	if (PG_ARGISNULL(14))
 		ERR_NULL_OPTION("anycompatiblerangetype");
+	if (PG_ARGISNULL(15))
+		ERR_NULL_OPTION("without_warnings");
+	if (PG_ARGISNULL(16))
+		ERR_NULL_OPTION("all_warnings");
 
 	format = plpgsql_check_format_num(text_to_cstring(PG_GETARG_TEXT_PP(2)));
 
@@ -118,6 +122,28 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	cinfo.performance_warnings = PG_GETARG_BOOL(5);
 	cinfo.extra_warnings = PG_GETARG_BOOL(6);
 	cinfo.security_warnings = PG_GETARG_BOOL(7);
+
+	/* without_warnings */
+	if (PG_GETARG_BOOL(15))
+	{
+		if (PG_GETARG_BOOL(16))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("without_warnings and all_warnings cannot be true same time")));
+
+		cinfo.other_warnings = false;
+		cinfo.performance_warnings = false;
+		cinfo.extra_warnings = false;
+		cinfo.security_warnings = false;
+	}
+	/* all warnings */
+	else if (PG_GETARG_BOOL(16))
+	{
+		cinfo.other_warnings = true;
+		cinfo.performance_warnings = true;
+		cinfo.extra_warnings = true;
+		cinfo.security_warnings = true;
+	}
 
 	if (PG_ARGISNULL(8))
 		cinfo.oldtable = NULL;
@@ -184,7 +210,7 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	ReturnSetInfo *rsinfo;
 	ErrorContextCallback *prev_errorcontext;
 
-	if (PG_NARGS() != 14)
+	if (PG_NARGS() != 16)
 		elog(ERROR, "unexpected number of parameters, you should to update extension");
 
 	/* check to see if caller supports us returning a tuplestore */
@@ -213,6 +239,10 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 		ERR_NULL_OPTION("anycompatibletype");
 	if (PG_ARGISNULL(13))
 		ERR_NULL_OPTION("anycompatiblerangetype");
+	if (PG_ARGISNULL(14))
+		ERR_NULL_OPTION("without_warnings");
+	if (PG_ARGISNULL(15))
+		ERR_NULL_OPTION("all_warnings");
 
 	plpgsql_check_info_init(&cinfo, fnoid);
 
@@ -222,6 +252,28 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	cinfo.performance_warnings = PG_GETARG_BOOL(4);
 	cinfo.extra_warnings = PG_GETARG_BOOL(5);
 	cinfo.security_warnings = PG_GETARG_BOOL(6);
+
+	/* without_warnings */
+	if (PG_GETARG_BOOL(14))
+	{
+		if (PG_GETARG_BOOL(15))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("without_warnings and all_warnings cannot be true same time")));
+
+		cinfo.other_warnings = false;
+		cinfo.performance_warnings = false;
+		cinfo.extra_warnings = false;
+		cinfo.security_warnings = false;
+	}
+	/* all warnings */
+	else if (PG_GETARG_BOOL(15))
+	{
+		cinfo.other_warnings = true;
+		cinfo.performance_warnings = true;
+		cinfo.extra_warnings = true;
+		cinfo.security_warnings = true;
+	}
 
 	cinfo.anyelementoid = PG_GETARG_OID(9);
 	cinfo.anyenumoid = PG_GETARG_OID(10);
