@@ -64,11 +64,33 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 	{
 		MemoryContext old_cxt;
 
+#if PG_VERSION_NUM >= 140000
+
+		SPIPrepareOptions options;
+
+		memset(&options, 0, sizeof(options));
+		options.parserSetup = parser_setup ?
+			parser_setup : (ParserSetupHook) plpgsql_check__parser_setup_p;
+		options.parserSetupArg = arg ? arg : (void *) expr;
+		options.parseMode = expr->parseMode;
+		options.cursorOptions = cursorOptions;
+
+#endif
+
 		/*
 		 * The grammar can't conveniently set expr->func while building the parse
 		 * tree, so make sure it's set before parser hooks need it.
 		 */
 		expr->func = cstate->estate->func;
+
+#if PG_VERSION_NUM >= 140000
+
+		/*
+		 * Generate and save the plan
+		 */
+		plan = SPI_prepare_extended(expr->query, &options);
+
+#else
 
 		/*
 		 * Generate and save the plan
@@ -77,6 +99,8 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 								  parser_setup ? parser_setup : (ParserSetupHook) plpgsql_check__parser_setup_p,
 								  arg ? arg : (void *) expr,
 								  cursorOptions);
+
+#endif
 
 		if (plan == NULL)
 		{
@@ -869,13 +893,26 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 	{
 		plpgsql_check_target(cstate, targetdno, &expected_typoid, &expected_typmod);
 
+
 		/*
 		 * When target variable is not compossite, then we should not
 		 * to expand result tupdesc.
 		 */
 		if (!type_is_rowtype(expected_typoid))
 			expand = false;
+
+#if PG_VERSION_NUM >= 140000
+
+		expr->target_param = targetdno;
 	}
+	else
+		expr->target_param = -1;
+
+#else
+
+	}
+
+#endif
 
 	oldowner = CurrentResourceOwner;
 	BeginInternalSubTransaction(NULL);

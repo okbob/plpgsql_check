@@ -1467,7 +1467,12 @@ copy_plpgsql_datum(PLpgSQL_checkstate *cstate, PLpgSQL_datum *datum)
 
 		case PLPGSQL_DTYPE_ROW:
 		case PLPGSQL_DTYPE_RECFIELD:
+
+#if PG_VERSION_NUM < 140000
+
 		case PLPGSQL_DTYPE_ARRAYELEM:
+
+#endif
 
 			/*
 			 * These datum records are read-only at runtime, so no need to
