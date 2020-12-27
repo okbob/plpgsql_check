@@ -25,6 +25,14 @@
 
 #endif
 
+#if PG_VERSION_NUM >= 140000
+
+#include "nodes/nodeFuncs.h"
+#include "parser/parse_coerce.h"
+#include "utils/builtins.h"
+
+#endif
+
 #include "tcop/utility.h"
 #include "utils/lsyscache.h"
 
@@ -893,7 +901,6 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 	{
 		plpgsql_check_target(cstate, targetdno, &expected_typoid, &expected_typmod);
 
-
 		/*
 		 * When target variable is not compossite, then we should not
 		 * to expand result tupdesc.
@@ -922,7 +929,112 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 	{
 		prepare_plan(cstate, expr, 0, NULL, NULL);
 		/* record all variables used by the query */
+
+#if PG_VERSION_NUM >= 140000
+
+		if (expr->target_param != -1)
+		{
+			int		target_dno = expr->target_param;
+			Node *node;
+			Oid		target_typoid = InvalidOid;
+			Oid		value_typoid = InvalidOid;
+
+			node = plpgsql_check_expr_get_node(cstate, expr, false);
+
+			if (bms_is_member(target_dno, expr->paramnos))
+			{
+				/* recheck if target_dno is really used on right side of assignment */
+				if (!plpgsql_check_vardno_is_used_for_reading(node, target_dno))
+				{
+					Bitmapset *paramnos;
+
+					/* create set without target_param */
+					paramnos = bms_copy(expr->paramnos);
+					paramnos = bms_del_member(paramnos, expr->target_param);
+					cstate->used_variables = bms_add_members(cstate->used_variables, paramnos);
+
+					bms_free(paramnos);
+				}
+				else
+					cstate->used_variables = bms_add_members(cstate->used_variables,
+															 expr->paramnos);
+			}
+			else
+				cstate->used_variables = bms_add_members(cstate->used_variables,
+														 expr->paramnos);
+
+			if (node && IsA(node, SubscriptingRef))
+				node = (Node *) ((SubscriptingRef *) node)->refassgnexpr;
+
+			/* check implicit coercion */
+			if (node && IsA(node, FuncExpr))
+			{
+				FuncExpr	   *fexpr = (FuncExpr *) node;
+
+				if (fexpr->funcformat == COERCE_IMPLICIT_CAST)
+				{
+					target_typoid = fexpr->funcresulttype;
+					value_typoid = exprType(linitial(fexpr->args));
+				}
+			}
+			else if (node && IsA(node, CoerceViaIO))
+			{
+				CoerceViaIO	   *cexpr = (CoerceViaIO *) node;
+
+				if (cexpr->coerceformat == COERCE_IMPLICIT_CAST)
+				{
+					target_typoid = cexpr->resulttype;
+					value_typoid = exprType((Node *) cexpr->arg);
+				}
+			}
+
+			if (target_typoid != value_typoid)
+			{
+				StringInfoData	str;
+
+				initStringInfo(&str);
+				appendStringInfo(&str, "cast \"%s\" value to \"%s\" type",
+											format_type_be(value_typoid),
+											format_type_be(target_typoid));
+
+				/* accent warning when cast is without supported explicit casting */
+				if (!can_coerce_type(1, &value_typoid, &target_typoid, COERCION_EXPLICIT))
+					plpgsql_check_put_error(cstate,
+								  ERRCODE_DATATYPE_MISMATCH, 0,
+								  "target type is different type than source type",
+								  str.data,
+								  "There are no possible explicit coercion between those types, possibly bug!",
+								  PLPGSQL_CHECK_WARNING_OTHERS,
+								  0, NULL, NULL);
+				else if (!can_coerce_type(1, &value_typoid, &target_typoid, COERCION_ASSIGNMENT))
+					plpgsql_check_put_error(cstate,
+								  ERRCODE_DATATYPE_MISMATCH, 0,
+								  "target type is different type than source type",
+								  str.data,
+								  "The input expression type does not have an assignment cast to the target type.",
+								  PLPGSQL_CHECK_WARNING_OTHERS,
+								  0, NULL, NULL);
+				else
+					plpgsql_check_put_error(cstate,
+								  ERRCODE_DATATYPE_MISMATCH, 0,
+								  "target type is different type than source type",
+								  str.data,
+								  "Hidden casting can be a performance issue.",
+								  PLPGSQL_CHECK_WARNING_PERFORMANCE,
+								  0, NULL, NULL);
+
+				pfree(str.data);
+			}
+		}
+		else
+			cstate->used_variables = bms_add_members(cstate->used_variables,
+													 expr->paramnos);
+
+#else
+
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
+
+#endif
 
 		/*
 		 * there is a possibility to call a plpgsql_pragma like default for some aux
