@@ -1013,6 +1013,7 @@ contain_mutable_functions_walker(Node *node, void *context)
 {
 	if (node == NULL)
 		return false;
+
 	/* Check for mutable functions in node itself */
 	if (check_functions_in_node(node, contain_mutable_functions_checker,
 								context))
@@ -1071,6 +1072,7 @@ contain_mutable_functions_walker(Node *node, void *context)
 		if (func_volatile(expr->funcid) != PROVOLATILE_IMMUTABLE &&
 				expr->funcid != cstate->pragma_foid)
 			return true;
+
 		/* else fall through to check args */
 	}
 	else if (IsA(node, OpExpr))
@@ -1080,6 +1082,7 @@ contain_mutable_functions_walker(Node *node, void *context)
 		set_opfuncid(expr);
 		if (func_volatile(expr->opfuncid) != PROVOLATILE_IMMUTABLE)
 			return true;
+
 		/* else fall through to check args */
 	}
 	else if (IsA(node, DistinctExpr))
@@ -1121,11 +1124,13 @@ contain_mutable_functions_walker(Node *node, void *context)
 						 &iofunc, &typioparam);
 		if (func_volatile(iofunc) != PROVOLATILE_IMMUTABLE)
 			return true;
+
 		/* check the input type's output function */
 		getTypeOutputInfo(exprType((Node *) expr->arg),
 						  &iofunc, &typisvarlena);
 		if (func_volatile(iofunc) != PROVOLATILE_IMMUTABLE)
 			return true;
+
 		/* else fall through to check args */
 	}
 	else if (IsA(node, ArrayCoerceExpr))
@@ -1287,4 +1292,44 @@ bool
 plpgsql_check_contain_mutable_functions(Node *clause, PLpgSQL_checkstate *cstate)
 {
 	return contain_mutable_functions_walker(clause, cstate);
+}
+
+
+static bool
+has_external_param_with_paramid(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, Param))
+	{
+		Param *p = (Param *) node;
+
+		if (p->paramkind == PARAM_EXTERN &&
+			p->paramid > 0 && p->location != -1)
+		{
+			int			dno = p->paramid - 1;
+
+			if (dno == *((int *) context))
+				return true;
+		}
+	}
+
+	return expression_tree_walker(node, has_external_param_with_paramid, context);
+}
+
+/*
+ * This walker is used for checking usage target_param elsewhere than top subscripting
+ * node.
+ */
+bool
+plpgsql_check_vardno_is_used_for_reading(Node *node, int dno)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, SubscriptingRef))
+		node  = (Node *) ((SubscriptingRef *) node)->refassgnexpr;
+
+	return has_external_param_with_paramid(node, (void *) &dno);
 }

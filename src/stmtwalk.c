@@ -436,6 +436,9 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 						cstate->estate->err_text = str.data;
 					}
+
+#if PG_VERSION_NUM < 140000
+
 					else if (d->dtype == PLPGSQL_DTYPE_ARRAYELEM)
 					{
 						PLpgSQL_arrayelem *elem = (PLpgSQL_arrayelem *) d;
@@ -447,6 +450,8 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 						cstate->estate->err_text = str.data;
 					}
+
+#endif
 
 					plpgsql_check_assignment(cstate, stmt_assign->expr, NULL, NULL,
 											 stmt_assign->varno);
@@ -1862,11 +1867,17 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 #endif
 
-#if PG_VERSION_NUM >= 90500
+#if PG_VERSION_NUM >= 140000
+
+		dynexpr->expr_rw_param = NULL;
+
+#elif PG_VERSION_NUM >= 90500
 
 		dynexpr->rwparam = -1;
 
 #endif
+
+
 
 		dynexpr->query = query;
 

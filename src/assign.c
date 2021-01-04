@@ -191,6 +191,8 @@ plpgsql_check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid
 			}
 			break;
 
+#if PG_VERSION_NUM < 140000
+
 		case PLPGSQL_DTYPE_ARRAYELEM:
 			{
 				/*
@@ -247,6 +249,8 @@ plpgsql_check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid
 				plpgsql_check_record_variable_usage(cstate, target->dno, true);
 			}
 			break;
+
+#endif
 
 		default:
 			;		/* nope */
@@ -366,6 +370,8 @@ plpgsql_check_assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDes
 			}
 			break;
 
+#if PG_VERSION_NUM < 140000
+
 		case PLPGSQL_DTYPE_ARRAYELEM:
 			{
 				Oid expected_typoid;
@@ -406,6 +412,8 @@ plpgsql_check_assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDes
 									    isnull);
 			}
 			break;
+
+#endif
 
 		default:
 			;		/* nope */

@@ -41,6 +41,15 @@ int plpgsql_check_tracer_variable_max_length = 1024;
 static void print_datum(PLpgSQL_execstate *estate, PLpgSQL_datum *dtm, char *frame, int level);
 static char *convert_plpgsql_datum_to_string(PLpgSQL_execstate *estate, PLpgSQL_datum *dtm, bool *isnull, char **refname);
 
+#if PG_VERSION_NUM >= 140000
+
+#define STREXPR_START		0
+
+#else
+
+#define STREXPR_START		7
+
+#endif
 
 #if PG_VERSION_NUM >= 120000
 
@@ -711,7 +720,28 @@ print_expr_args(PLpgSQL_execstate *estate,
 	{
 		SPIPlanPtr		plan;
 
+#if PG_VERSION_NUM >= 140000
+
+		SPIPrepareOptions options;
+
+		memset(&options, 0, sizeof(options));
+		options.parserSetup = (ParserSetupHook) plpgsql_check__parser_setup_p;
+		options.parserSetupArg = (void *) expr;
+		options.parseMode = expr->parseMode;
+		options.cursorOptions = 0;
+
+#endif
+
 		expr->func = estate->func;
+
+#if PG_VERSION_NUM >= 140000
+
+		/*
+		 * Generate and save the plan
+		 */
+		plan = SPI_prepare_extended(expr->query, &options);
+
+#else
 
 		/*
 		 * Generate the plan (enforce expr query parsing) and throw plan 
@@ -720,6 +750,9 @@ print_expr_args(PLpgSQL_execstate *estate,
 								  (ParserSetupHook) plpgsql_check__parser_setup_p,
 								  (void *) expr,
 								  0);
+
+#endif
+
 		SPI_freeplan(plan);
 	}
 
@@ -832,7 +865,28 @@ print_assert_args(PLpgSQL_execstate *estate, PLpgSQL_stmt_assert *stmt)
 	{
 		SPIPlanPtr		plan;
 
+#if PG_VERSION_NUM >= 140000
+
+		SPIPrepareOptions options;
+
+		memset(&options, 0, sizeof(options));
+		options.parserSetup = (ParserSetupHook) plpgsql_check__parser_setup_p;
+		options.parserSetupArg = (void *) stmt->cond;
+		options.parseMode = stmt->cond->parseMode;
+		options.cursorOptions = 0;
+
+#endif
+
 		stmt->cond->func = estate->func;
+
+#if PG_VERSION_NUM >= 140000
+
+		/*
+		 * Generate and save the plan
+		 */
+		plan = SPI_prepare_extended((void *) stmt->cond->query, &options);
+
+#else
 
 		/*
 		 * Generate the plan (enforce expr query parsing) and throw plan
@@ -841,6 +895,9 @@ print_assert_args(PLpgSQL_execstate *estate, PLpgSQL_stmt_assert *stmt)
 								  (ParserSetupHook) plpgsql_check__parser_setup_p,
 								  (void *) stmt->cond,
 								  0);
+
+#endif
+
 		SPI_freeplan(plan);
 	}
 
@@ -1252,17 +1309,32 @@ plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 			PLpgSQL_expr *expr = NULL;
 			char   *exprname = NULL;
 			int				retvarno = -1;
+			bool	is_assignment = false;
+			bool	is_perform = false;
 
 			switch (stmt->cmd_type)
 			{
 				case PLPGSQL_STMT_PERFORM:
 					expr = ((PLpgSQL_stmt_perform *) stmt)->expr;
-					exprname = "expr";
+					exprname = "perform";
+					is_perform = true;
 					break;
 
 				case PLPGSQL_STMT_ASSIGN:
-					expr = ((PLpgSQL_stmt_assign *) stmt)->expr;
-					exprname = "expr";
+					{
+						PLpgSQL_stmt_assign	*stmt_assign = (PLpgSQL_stmt_assign *) stmt;
+						PLpgSQL_datum	   *target = estate->datums[stmt_assign->varno];
+
+						expr = stmt_assign->expr;
+
+						if (target->dtype == PLPGSQL_DTYPE_VAR)
+							expr->target_param = target->dno;
+						else
+							expr->target_param = -1;
+
+						exprname = "expr";
+						is_assignment = true;
+					}
 					break;
 
 				case PLPGSQL_STMT_RETURN:
@@ -1317,16 +1389,47 @@ plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 			if (expr)
 			{
-				int startpos = (strcmp(exprname, "query") == 0) ? 0 : 7;
+				int startpos;
 
-				elog(plpgsql_check_tracer_errlevel,
-					 "#%-*s %4d %*s --> start of %s (%s='%s')",
-												frame_width, printbuf,
-												stmt->lineno,
-												indent, "",
-												plpgsql_check__stmt_typename_p(stmt),
-												exprname,
-												copy_string_part(exprbuf, expr->query + startpos, 30));
+				if (strcmp(exprname, "perform") == 0)
+				{
+					startpos = 7;
+					exprname = "expr";
+				}
+				else if (strcmp(exprname, "query") == 0)
+					startpos = 0;
+				else
+					startpos = STREXPR_START;
+
+				if (is_assignment)
+				{
+					elog(plpgsql_check_tracer_errlevel,
+						 "#%-*s %4d %*s --> start of assignment %s",
+													frame_width, printbuf,
+													stmt->lineno,
+													indent, "",
+													copy_string_part(exprbuf, expr->query + startpos, 30));
+				}
+				else if (is_perform)
+				{
+					elog(plpgsql_check_tracer_errlevel,
+						 "#%-*s %4d %*s --> start of perform %s",
+													frame_width, printbuf,
+													stmt->lineno,
+													indent, "",
+													copy_string_part(exprbuf, expr->query + startpos, 30));
+				}
+				else
+				{
+					elog(plpgsql_check_tracer_errlevel,
+						 "#%-*s %4d %*s --> start of %s (%s='%s')",
+													frame_width, printbuf,
+													stmt->lineno,
+													indent, "",
+													plpgsql_check__stmt_typename_p(stmt),
+													exprname,
+													copy_string_part(exprbuf, expr->query + startpos, 30));
+				}
 			}
 			else
 				elog(plpgsql_check_tracer_errlevel,
@@ -1358,7 +1461,7 @@ plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 												frame_width, printbuf,
 												ifelseif->lineno,
 												indent, "",
-												copy_string_part(exprbuf, ifelseif->cond->query + 7, 30));
+												copy_string_part(exprbuf, ifelseif->cond->query + STREXPR_START, 30));
 
 							print_expr_args(estate, ifelseif->cond, printbuf, level);
 						}
@@ -1475,7 +1578,7 @@ plpgsql_check_trace_assert_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *
 		if (plpgsql_check_trace_assert_verbosity >= PGERROR_DEFAULT)
 		{
 			elog(plpgsql_check_tracer_errlevel, "PLpgSQL assert expression (%s) on line %d of %s is true",
-												copy_string_part(exprbuf, stmt_assert->cond->query + 7, 30),
+												copy_string_part(exprbuf, stmt_assert->cond->query + STREXPR_START, 30),
 												stmt->lineno,
 												estate->func->fn_signature);
 
@@ -1494,7 +1597,7 @@ plpgsql_check_trace_assert_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *
 
 		elog(plpgsql_check_tracer_errlevel, "#%d PLpgSQL assert expression (%s) on line %d of %s is false",
 											frame_num,
-											copy_string_part(exprbuf, stmt_assert->cond->query + 7, 30),
+											copy_string_part(exprbuf, stmt_assert->cond->query + STREXPR_START, 30),
 											stmt->lineno,
 											estate->func->fn_signature);
 

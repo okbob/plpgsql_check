@@ -230,6 +230,7 @@ extern void plpgsql_check_funcexpr(PLpgSQL_checkstate *cstate, Query *query, cha
 extern bool plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, Node *node, int *location);
 extern bool plpgsql_check_contain_volatile_functions(Node *clause, PLpgSQL_checkstate *cstate);
 extern bool plpgsql_check_contain_mutable_functions(Node *clause, PLpgSQL_checkstate *cstate);
+extern bool plpgsql_check_vardno_is_used_for_reading(Node *node, int dno);
 
 /*
  * functions from check_expr.c
