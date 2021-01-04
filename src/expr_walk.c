@@ -1294,6 +1294,7 @@ plpgsql_check_contain_mutable_functions(Node *clause, PLpgSQL_checkstate *cstate
 	return contain_mutable_functions_walker(clause, cstate);
 }
 
+#if PG_VERSION_NUM >= 140000
 
 static bool
 has_external_param_with_paramid(Node *node, void *context)
@@ -1333,3 +1334,5 @@ plpgsql_check_vardno_is_used_for_reading(Node *node, int dno)
 
 	return has_external_param_with_paramid(node, (void *) &dno);
 }
+
+#endif

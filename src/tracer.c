@@ -1323,6 +1323,9 @@ plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 				case PLPGSQL_STMT_ASSIGN:
 					{
 						PLpgSQL_stmt_assign	*stmt_assign = (PLpgSQL_stmt_assign *) stmt;
+
+#if PG_VERSION_NUM >= 140000
+
 						PLpgSQL_datum	   *target = estate->datums[stmt_assign->varno];
 
 						expr = stmt_assign->expr;
@@ -1331,6 +1334,12 @@ plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 							expr->target_param = target->dno;
 						else
 							expr->target_param = -1;
+
+#else
+
+						expr = stmt_assign->expr;
+
+#endif
 
 						exprname = "expr";
 						is_assignment = true;
