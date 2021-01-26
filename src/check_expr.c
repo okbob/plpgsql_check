@@ -367,7 +367,11 @@ get_cached_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *has_result
 
 	*has_result_desc = plansource->resultDesc ? true : false;
 
-#if PG_VERSION_NUM >= 100000
+#if PG_VERSION_NUM >= 140000
+
+	cplan = GetCachedPlan(plansource, NULL, NULL, NULL);
+
+#elif PG_VERSION_NUM >= 100000
 
 	cplan = GetCachedPlan(plansource, NULL, true, NULL);
 
@@ -561,7 +565,15 @@ plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 		}
 	}
 
+#if PG_VERSION_NUM >= 140000
+
+	ReleaseCachedPlan(cplan, NULL);
+
+#else
+
 	ReleaseCachedPlan(cplan, true);
+
+#endif
 
 	return result;
 }
@@ -647,7 +659,17 @@ force_plan_checks(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 
 	/* do all checks for this plan, reduce a access to plan cache */
 	plan_checks(cstate, cplan, expr->query);
+
+#if PG_VERSION_NUM >= 140000
+
+	ReleaseCachedPlan(cplan, NULL);
+
+#else
+
 	ReleaseCachedPlan(cplan, true);
+
+#endif
+
 }
 
 /*

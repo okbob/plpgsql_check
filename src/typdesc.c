@@ -512,7 +512,11 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 		 * plan if it is just function call and if it is then we can try to
 		 * derive a tupledes from function's description.
 		 */
-#if PG_VERSION_NUM >= 100000
+#if PG_VERSION_NUM >= 140000
+
+	cplan = GetCachedPlan(plansource, NULL, NULL, NULL);
+
+#elif PG_VERSION_NUM >= 100000
 
 	cplan = GetCachedPlan(plansource, NULL, true, NULL);
 
@@ -663,7 +667,17 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 				}
 			}
 		}
+
+#if PG_VERSION_NUM >= 140000
+
+		ReleaseCachedPlan(cplan, NULL);
+
+#else
+
 		ReleaseCachedPlan(cplan, true);
+
+#endif
+
 	}
 	return tupdesc;
 }
