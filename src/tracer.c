@@ -69,7 +69,7 @@ plpgsql_check_set_stmt_group_number(PLpgSQL_stmt *stmt,
 									int psgn)
 {
 	ListCell *lc;
-	int			stmtid = stmt->stmtid;
+	int			stmtid = stmt->stmtid - 1;
 
 	group_numbers[stmtid] = sgn;
 	parent_group_numbers[stmtid] = psgn;
@@ -1383,7 +1383,7 @@ plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 			instr_time *stmt_start_time;
 
-			plpgsql_check_get_trace_stmt_info(estate, stmt->stmtid, &stmt_start_time);
+			plpgsql_check_get_trace_stmt_info(estate, stmt->stmtid - 1, &stmt_start_time);
 
 			if (stmt_start_time)
 				INSTR_TIME_SET_CURRENT(*stmt_start_time);
@@ -1516,7 +1516,7 @@ plpgsql_check_tracer_on_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 			instr_time *stmt_start_time;
 
-			plpgsql_check_get_trace_stmt_info(estate, stmt->stmtid, &stmt_start_time);
+			plpgsql_check_get_trace_stmt_info(estate, stmt->stmtid - 1, &stmt_start_time);
 
 			if (stmt_start_time)
 			{
