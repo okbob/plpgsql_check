@@ -104,19 +104,22 @@ typedef struct profiler_shared_state
 
 typedef struct profiler_map_entry
 {
+	PLpgSQL_function *function;
 	PLpgSQL_stmt *stmt;
 	int			stmtid;
 	struct profiler_map_entry *next;
 } profiler_map_entry;
 
 /*
- * holds profile data (counters) and metadata (maps)
+ * holds profiland metadata (maps)
  */
 typedef struct profiler_profile
 {
 	profiler_hashkey key;
 	int			nstatements;
-	PLpgSQL_stmt *entry_stmt;
+	PLpgSQL_function **mapped_functions;
+	int			max_mapped_functions;
+	int			n_mapped_functions;
 	int			stmts_map_max_lineno;
 	profiler_map_entry *stmts_map;
 } profiler_profile;
@@ -127,7 +130,6 @@ typedef struct profiler_profile
 {
 	profiler_hashkey key;
 	int			nstatements;
-	PLpgSQL_stmt *entry_stmt;
 	int		   *stmts_map;
 } profiler_profile;
 
@@ -143,6 +145,7 @@ typedef struct profiler_info
 	int			pi_magic;
 	profiler_profile *profile;
 	profiler_stmt *stmts;
+	PLpgSQL_function *function;
 	instr_time	start_time;
 
 	/* tracer part */
@@ -208,8 +211,8 @@ PG_FUNCTION_INFO_V1(plpgsql_profiler_remove_fake_queryid_hook);
 
 static void profiler_touch_stmt(profiler_info *pinfo, PLpgSQL_stmt *stmt, PLpgSQL_stmt *parent_stmt, const char *parent_note, int block_num, bool generate_map, bool finalize_profile, int64 *nested_us_total, int64 *nested_executed, profiler_iterator *pi, coverage_state *cs);
 static void update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func);
-static void profiler_update_map(profiler_profile *profile, PLpgSQL_stmt *stmt);
-static int profiler_get_stmtid(profiler_profile *profile, PLpgSQL_stmt *stmt);
+static void profiler_update_map(profiler_profile *profile, PLpgSQL_function *function, PLpgSQL_stmt *stmt);
+static int profiler_get_stmtid(profiler_profile *profile, PLpgSQL_function *function, PLpgSQL_stmt *stmt);
 static void profiler_touch_stmts(profiler_info *pinfo, List *stmts, PLpgSQL_stmt *parent_stmt, const char *parent_note, bool generate_map, bool finalize_profile, int64 *nested_us_total, int64 *nested_executed, profiler_iterator *pi, coverage_state *cs);
 static PLpgSQL_expr *profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic);
 static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, bool *has_queryid);
@@ -623,11 +626,11 @@ profiler_touch_stmt(profiler_info *pinfo,
 
 	if (pi)
 	{
-		int		stmtid = profiler_get_stmtid(profile, stmt);
-		int		parent_stmtid = parent_stmt ? profiler_get_stmtid(profile, parent_stmt) : -1;
+		int		stmtid = profiler_get_stmtid(profile, pinfo->function, stmt);
+		int		parent_stmtid = parent_stmt ? profiler_get_stmtid(profile, pinfo->function, parent_stmt) : -1;
 		profiler_stmt_reduced *pstmt;
 
-		Assert(pi->current_statement == stmtid);
+	//	Assert(pi->current_statement == stmtid);
 
 		pstmt = get_stmt_profile_next(pi);
 
@@ -664,11 +667,11 @@ profiler_touch_stmt(profiler_info *pinfo,
 	}
 	else if (generate_map)
 	{
-		profiler_update_map(profile, stmt);
+		profiler_update_map(profile, pinfo->function, stmt);
 	}
 	else if (finalize_profile)
 	{
-		int stmtid = profiler_get_stmtid(profile, stmt);
+		int stmtid = profiler_get_stmtid(profile, pinfo->function, stmt);
 
 		*nested_us_total = 0;
 
@@ -1378,8 +1381,9 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
  * native stmtid, a creating map and searching in map is much faster.
  */
 static void
-profiler_update_map(profiler_profile *profile, PLpgSQL_stmt *stmt)
+profiler_update_map(profiler_profile *profile, PLpgSQL_function *function, PLpgSQL_stmt *stmt)
 {
+
 #if PG_VERSION_NUM < 120000
 
 	int		lineno = stmt->lineno;
@@ -1410,13 +1414,21 @@ profiler_update_map(profiler_profile *profile, PLpgSQL_stmt *stmt)
 
 	if (!pme->stmt)
 	{
+		pme->function = function;
 		pme->stmt = stmt;
 		pme->stmtid = profile->nstatements++;
+		pme->next = NULL;
 	}
 	else
 	{
-		profiler_map_entry *new_pme = palloc(sizeof(profiler_map_entry));
+		MemoryContext oldcxt;
+		profiler_map_entry *new_pme;
 
+		oldcxt = MemoryContextSwitchTo(profiler_mcxt);
+
+		new_pme = palloc0(sizeof(profiler_map_entry));
+
+		new_pme->function = function;
 		new_pme->stmt = stmt;
 		new_pme->stmtid = profile->nstatements++;
 		new_pme->next = NULL;
@@ -1425,6 +1437,8 @@ profiler_update_map(profiler_profile *profile, PLpgSQL_stmt *stmt)
 			pme = pme->next;
 
 		pme->next = new_pme;
+
+		MemoryContextSwitchTo(oldcxt);
 	}
 
 #else
@@ -1440,12 +1454,26 @@ profiler_update_map(profiler_profile *profile, PLpgSQL_stmt *stmt)
  * fast, because lineno is usually unique.
  */
 static int
-profiler_get_stmtid(profiler_profile *profile, PLpgSQL_stmt *stmt)
+profiler_get_stmtid(profiler_profile *profile, PLpgSQL_function *function, PLpgSQL_stmt *stmt)
 {
 #if PG_VERSION_NUM < 120000
 
 	int		lineno = stmt->lineno;
 	profiler_map_entry *pme;
+	int			i;
+	bool		found = false;
+
+	for (i = 0; i < profile->n_mapped_functions; i++)
+	{
+		if (profile->mapped_functions[i] == function)
+		{
+			found = true;
+			break;
+		}
+	}
+
+	if (!found)
+		elog(ERROR, "Internal error - this compiled function has not created statement map");
 
 	if (lineno > profile->stmts_map_max_lineno)
 		elog(ERROR, "broken statement map - too high lineno");
@@ -1456,7 +1484,8 @@ profiler_get_stmtid(profiler_profile *profile, PLpgSQL_stmt *stmt)
 	if (!pme->stmt)
 		elog(ERROR, "broken statement map - broken format on line: %d", lineno);
 
-	while (pme && pme->stmt != stmt)
+	while (pme && !
+			(pme->stmt == stmt && pme->function == function))
 		pme = pme->next;
 
 	/* we should to find statement */
@@ -1792,6 +1821,115 @@ profiler_fake_queryid_hook(ParseState *pstate, Query *query)
 }
 
 /*
+ * This routine does an update or creating new profile. Function's profile
+ * holds statements metadata (statement map).  The statement map is necessary
+ * for pre pg 12 releases, where we have not statement id. Instead we have
+ * a structure, that allows mapping statement's pointer to assigned id.
+ * The work is complicated by fact so we can have more different (independent)
+ * tries of statements for one real function. Then we need two fields
+ * (function_ptr, stmt_ptr) for workable searching statement id for all
+ * compiled variant of one function (identified by oid).
+ *
+ * PostgreSQL 12 has assigned statement id, so there is not necessity to
+ * prepare and maintain statement map.
+ */
+static void
+prepare_profile(profiler_info *pinfo,
+				profiler_profile *profile,
+				bool init)
+{
+	PLpgSQL_function *function;
+
+	Assert(pinfo && pinfo->function);
+
+	function = pinfo->function;
+	pinfo->profile = profile;
+
+#if PG_VERSION_NUM < 120000
+
+	int		i;
+	bool	found = false;
+
+#endif
+
+	if (init)
+	{
+		MemoryContext oldcxt;
+
+		oldcxt = MemoryContextSwitchTo(profiler_mcxt);
+
+#if PG_VERSION_NUM < 120000
+
+		profile->nstatements = 0;
+		profile->n_mapped_functions = 0;
+
+		profile->stmts_map_max_lineno = 200;
+		profile->max_mapped_functions = 10;
+
+		profile->stmts_map = palloc0((profile->stmts_map_max_lineno + 1) * sizeof(profiler_map_entry));
+		profile->mapped_functions = palloc0(profile->max_mapped_functions * sizeof(PLpgSQL_function *));
+
+#else
+
+		profile->stmts_map = palloc0(function->nstatements * sizeof(int));
+
+#endif
+
+		MemoryContextSwitchTo(oldcxt);
+	}
+
+#if PG_VERSION_NUM < 120000
+
+	/*
+	 * Every touched incarnation should to have statement map.
+	 */
+	for (i = 0; i < profile->n_mapped_functions; i++)
+	{
+		if (profile->mapped_functions[i] == function)
+		{
+			found = true;
+			break;
+		}
+	}
+
+	if (!found)
+	{
+		int		prev_nstatements = profile->nstatements;
+
+		/*
+		 * Ensure correct size of array of pointers to function incarnations with
+		 * prepared statement map.
+		 */
+		if (profile->n_mapped_functions == profile->max_mapped_functions)
+		{
+			int		new_max_mapped_functions = profile->max_mapped_functions * 2;
+
+			if (new_max_mapped_functions > 200)
+				elog(ERROR, "too much different incarnations of one function (please, close session)");
+
+			profile->mapped_functions = repalloc(profile->mapped_functions,
+												 new_max_mapped_functions * sizeof(PLpgSQL_function *));
+
+			profile->max_mapped_functions = new_max_mapped_functions;
+		}
+
+		profile->mapped_functions[profile->n_mapped_functions++] = function;
+
+		profile->nstatements = 0;
+
+		profiler_touch_stmt(pinfo, (PLpgSQL_stmt *) function->action, NULL, NULL, 1, true, false, NULL, NULL, NULL, NULL);
+
+		if (prev_nstatements > 0 && prev_nstatements != profile->nstatements)
+			elog(ERROR,
+					"internal error - unexpected number of statements in different function incarnations (%d <> %d)",
+					prev_nstatements, profile->nstatements);
+	}
+
+#endif
+
+}
+
+/*
  * Prepare tuplestore with function profile
  *
  */
@@ -1800,8 +1938,6 @@ plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri,
 									plpgsql_check_info *cinfo,
 									coverage_state *cs)
 {
-	PLpgSQL_function *function = NULL;
-
 #if PG_VERSION_NUM >= 120000
 
 	LOCAL_FCINFO(fake_fcinfo, 0);
@@ -1871,50 +2007,23 @@ plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri,
 								   &tg_trigger,
 								   &fake_rtd);
 
-		/* Get a compiled function */
-		function = plpgsql_check__compile_p(fake_fcinfo, false);
+		pinfo.function = plpgsql_check__compile_p(fake_fcinfo, false);
 
-		profiler_init_hashkey(&hk_function, function);
+		profiler_init_hashkey(&hk_function, pinfo.function);
 		profile = (profiler_profile *) hash_search(profiler_HashTable,
 												 (void *) &hk_function,
 												 HASH_ENTER,
 												 &found_profile);
 
-		pinfo.profile = profile;
+		prepare_profile(&pinfo, profile, !found_profile);
 
-		if (!found_profile)
-		{
-			MemoryContext oldcxt;
-
-			oldcxt = MemoryContextSwitchTo(profiler_mcxt);
-
-			profile->nstatements = 0;
-
-#if PG_VERSION_NUM < 120000
-
-			profile->stmts_map_max_lineno = 200;
-
-			profile->stmts_map = palloc0((profile->stmts_map_max_lineno + 1) * sizeof(profiler_map_entry));
-
-#else
-
-			profile->stmts_map = palloc0(function->nstatements * sizeof(int));
-
-#endif
-
-			profile->entry_stmt = (PLpgSQL_stmt *) function->action;
-			profiler_touch_stmt(&pinfo, (PLpgSQL_stmt *) function->action, NULL, NULL, 1, true, false, NULL, NULL, NULL, NULL);
-
-			MemoryContextSwitchTo(oldcxt);
-		}
-
-		profiler_touch_stmt(&pinfo, (PLpgSQL_stmt *) function->action, NULL, NULL, 1, false, false, NULL, NULL, &pi, cs);
-
+		profiler_touch_stmt(&pinfo, (PLpgSQL_stmt *) pinfo.function->action, NULL, NULL, 1, false, false, NULL, NULL, &pi, cs);
 	}
 	PG_CATCH();
 	{
 		if (unlock_mutex)
 			SpinLockRelease(&first_chunk->mutex);
+
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -2135,6 +2244,18 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 /*
  * plpgsql plugin related functions
  */
+static profiler_info *
+init_profiler_info(profiler_info *pinfo, PLpgSQL_function *func)
+{
+	if (!pinfo)
+	{
+		pinfo = palloc0(sizeof(profiler_info));
+		pinfo->pi_magic = PI_MAGIC;
+		pinfo->function = func;
+	}
+
+	return pinfo;
+}
 
 /*
  * Try to search profile pattern for function. Creates profile pattern when
@@ -2143,7 +2264,7 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 void
 plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 {
-	profiler_info *pinfo;
+	profiler_info *pinfo = NULL;
 
 	if (plpgsql_check_tracer)
 	{
@@ -2154,10 +2275,7 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 
 #endif
 
-		pinfo = palloc0(sizeof(profiler_info));
-		pinfo->pi_magic = PI_MAGIC;
-
-		INSTR_TIME_SET_CURRENT(pinfo->start_time);
+		pinfo = init_profiler_info(pinfo, func);
 		pinfo->trace_info_is_initialized = true;
 
 #if PG_VERSION_NUM >= 120000
@@ -2183,69 +2301,30 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 
 #endif
 
-		estate->plugin_info = pinfo;
 	}
 
 	if (plpgsql_check_profiler && func->fn_oid != InvalidOid)
 	{
-		profiler_info *pinfo;
 		profiler_profile *profile;
 		profiler_hashkey hk;
 		bool		found;
 
 		profiler_init_hashkey(&hk, func);
 		profile = (profiler_profile *) hash_search(profiler_HashTable,
-											 (void *) &hk,
-											 HASH_ENTER,
-											 &found);
+												   (void *) &hk,
+												   HASH_ENTER,
+												   &found);
 
-		pinfo = estate->plugin_info;
-		if (!pinfo)
-		{
-			pinfo = palloc0(sizeof(profiler_info));
-			pinfo->pi_magic = PI_MAGIC;
-
-			INSTR_TIME_SET_CURRENT(pinfo->start_time);
-
-			estate->plugin_info = pinfo;
-		}
-
-		pinfo->profile = profile;
-
-		if (!found)
-		{
-			MemoryContext oldcxt;
-
-			oldcxt = MemoryContextSwitchTo(profiler_mcxt);
-
-			profile->nstatements = 0;
-
-#if PG_VERSION_NUM < 120000
-
-			profile->stmts_map_max_lineno = 200;
-
-			profile->stmts_map = palloc0((profile->stmts_map_max_lineno + 1) * sizeof(profiler_map_entry));
-
-#else
-
-			profile->stmts_map = palloc0(func->nstatements * sizeof(int));
-
-#endif
-
-			profile->entry_stmt = (PLpgSQL_stmt *) func->action;
-			profiler_touch_stmt(pinfo, (PLpgSQL_stmt *) func->action, NULL, NULL, 1, true, false, NULL, NULL, NULL, NULL);
-
-			/* entry statements is not visible for plugin functions */
-
-			MemoryContextSwitchTo(oldcxt);
-		}
+		pinfo = init_profiler_info(pinfo, func);
+		prepare_profile(pinfo, profile, !found);
 
 		pinfo->stmts = palloc0(profile->nstatements * sizeof(profiler_stmt));
+	}
 
+	if (pinfo)
 		INSTR_TIME_SET_CURRENT(pinfo->start_time);
 
-		estate->plugin_info = pinfo;
-	}
+	estate->plugin_info = pinfo;
 }
 
 void
@@ -2275,7 +2354,7 @@ plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *fun
 	{
 		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 		profiler_profile *profile = pinfo->profile;
-		int		entry_stmtid = profiler_get_stmtid(profile, profile->entry_stmt);
+		int		entry_stmtid = profiler_get_stmtid(profile, pinfo->function, (PLpgSQL_stmt *) pinfo->function->action);
 		int64			nested_us_total;
 		instr_time		end_time;
 		uint64			elapsed;
@@ -2294,7 +2373,7 @@ plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *fun
 
 		/* finalize profile - get result profile */
 		profiler_touch_stmt(pinfo,
-						   profile->entry_stmt,
+						   (PLpgSQL_stmt *) pinfo->function->action,
 						   NULL,
 						   NULL,
 						   1,
@@ -2359,7 +2438,7 @@ plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		estate->func->fn_oid != InvalidOid)
 	{
 		profiler_profile *profile = pinfo->profile;
-		int stmtid = profiler_get_stmtid(profile, stmt);
+		int stmtid = profiler_get_stmtid(profile, pinfo->function, stmt);
 		profiler_stmt *pstmt = &pinfo->stmts[stmtid];
 
 		Assert(pinfo->pi_magic == PI_MAGIC);
@@ -2400,7 +2479,7 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		estate->func->fn_oid != InvalidOid)
 	{
 		profiler_profile *profile  = pinfo->profile;
-		int stmtid = profiler_get_stmtid(profile, stmt);
+		int stmtid = profiler_get_stmtid(profile, pinfo->function, stmt);
 		profiler_stmt *pstmt = &pinfo->stmts[stmtid];
 		instr_time		end_time;
 		uint64			elapsed;
