@@ -124,6 +124,23 @@ typedef struct profiler_profile
 	profiler_map_entry *stmts_map;
 } profiler_profile;
 
+#else
+
+/*
+ * In current releases we know unique statement id, and we don't
+ * need statement map. Unfortunately this id (stmtid) is not in
+ * order of statement execution. The order depends on order of
+ * processing inside parser. So some deeper statememts has less
+ * number than less deeper statements. When we generate result,
+ * then we need to work with statements in natural order. This
+ * mapping is provided by stmtid_reorder_map.
+ */
+typedef struct profiler_profile
+{
+	profiler_hashkey key;
+	int	   *stmtid_reorder_map;
+} profiler_profile;
+
 #endif
 
 #define PI_MAGIC 2020080110
@@ -135,12 +152,7 @@ typedef struct profiler_info
 {
 	int			pi_magic;
 
-#if PG_VERSION_NUM < 120000
-
 	profiler_profile *profile;
-
-#endif
-
 	profiler_stmt *stmts;
 	PLpgSQL_function *function;
 	instr_time	start_time;
@@ -174,6 +186,23 @@ typedef struct profiler_iterator
 	int					 current_statement;
 } profiler_iterator;
 
+typedef enum
+{
+	STMT_WALKER_PREPARE_PROFILE,
+	STMT_WALKER_COUNT_EXEC_TIME,
+	STMT_WALKER_PREPARE_RESULT,
+	STMT_WALKER_COLLECT_COVERAGE
+} profiler_stmt_walker_mode;
+
+typedef struct
+{
+	int		stmtid;
+	int64 nested_us_time;
+	int64 nested_executed;
+	profiler_iterator *pi;
+	coverage_state *cs;
+} profiler_stmt_walker_options;
+
 enum
 {
 	COVERAGE_STATEMENTS,
@@ -206,16 +235,21 @@ PG_FUNCTION_INFO_V1(plpgsql_coverage_branches_name);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_install_fake_queryid_hook);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_remove_fake_queryid_hook);
 
-static void profiler_touch_stmt(profiler_info *pinfo, PLpgSQL_stmt *stmt, PLpgSQL_stmt *parent_stmt, const char *parent_note, int block_num, bool generate_map, bool finalize_profile, int64 *nested_us_total, int64 *nested_executed, profiler_iterator *pi, coverage_state *cs);
 static void update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func);
-static void profiler_touch_stmts(profiler_info *pinfo, List *stmts, PLpgSQL_stmt *parent_stmt, const char *parent_note, bool generate_map, bool finalize_profile, int64 *nested_us_total, int64 *nested_executed, profiler_iterator *pi, coverage_state *cs);
 static PLpgSQL_expr *profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic);
 static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, bool *has_queryid);
 static void profiler_fake_queryid_hook(ParseState *pstate, Query *query);
 
+static void profile_register_stmt(profiler_info *pinfo, profiler_stmt_walker_options *opts, PLpgSQL_stmt *stmt);
+static void stmts_walker(profiler_info *pinfo, profiler_stmt_walker_mode, List *stmts, PLpgSQL_stmt *parent_stmt,
+	 const char *description, profiler_stmt_walker_options *opts);
+static void profiler_stmt_walker(profiler_info *pinfo, profiler_stmt_walker_mode mode, PLpgSQL_stmt *stmt,
+	 PLpgSQL_stmt *parent_stmt, const char *description, int stmt_block_num, profiler_stmt_walker_options *opts);
+
 #if PG_VERSION_NUM < 120000
 
-static void profiler_update_map(profiler_profile *profile, PLpgSQL_function *function, PLpgSQL_stmt *stmt);
+static void profiler_update_map(profiler_profile *profile, profiler_stmt_walker_options *opts,
+	 PLpgSQL_function *function, PLpgSQL_stmt *stmt);
 static int profiler_get_stmtid(profiler_profile *profile, PLpgSQL_function *function, PLpgSQL_stmt *stmt);
 
 #endif
@@ -513,8 +547,6 @@ profiler_init_hashkey(profiler_hashkey *hk, PLpgSQL_function *func)
 	hk->chunk_num = 1;
 }
 
-#if PG_VERSION_NUM < 120000
-
 /*
  * Hash table for function profiling metadata.
  */
@@ -535,8 +567,6 @@ profiler_localHashTableInit(void)
 									&ctl,
 									HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 }
-
-#endif
 
 /*
  * Hash table for local function profiles. When shared memory is not available
@@ -579,12 +609,7 @@ plpgsql_check_profiler_init_hash_tables(void)
 												ALLOCSET_DEFAULT_MAXSIZE);
 	}
 
-#if PG_VERSION_NUM < 120000
-
 	profiler_localHashTableInit();
-
-#endif
-
 	profiler_chunks_HashTableInit();
 }
 
@@ -595,15 +620,87 @@ plpgsql_check_profiler_init_hash_tables(void)
 static void
 increment_branch_counter(coverage_state *cs, int64 executed)
 {
-	if (cs)
+	Assert(cs);
+
+	cs->branches += 1;
+	cs->executed_branches += executed > 0 ? 1 : 0;
+}
+
+/*
+ * Aux routine to reduce differencies between pg releases with and without
+ * statemet id support.
+ */
+#if PG_VERSION_NUM < 120000
+
+#define STMTID(stmt)		(profiler_get_stmtid(pinfo->profile, pinfo->function, ((PLpgSQL_stmt *) stmt)))
+
+#else
+
+#define STMTID(stmt)		(((PLpgSQL_stmt *) stmt)->stmtid - 1)
+
+#endif
+
+#define IS_PLPGSQL_STMT(stmt, typ)		(PLPGSQL_STMT_TYPES stmt->cmd_type == typ)
+
+static bool
+is_cycle(PLpgSQL_stmt *stmt)
+{
+	switch (PLPGSQL_STMT_TYPES stmt->cmd_type)
 	{
-		cs->branches += 1;
-		cs->executed_branches += executed > 0 ? 1 : 0;
+		case PLPGSQL_STMT_LOOP:
+		case PLPGSQL_STMT_FORI:
+		case PLPGSQL_STMT_FORS:
+		case PLPGSQL_STMT_FORC:
+		case PLPGSQL_STMT_DYNFORS:
+		case PLPGSQL_STMT_FOREACH_A:
+		case PLPGSQL_STMT_WHILE:
+			return true;
+		default:
+			return false;
 	}
 }
 
 /*
- * profiler_touch_stmt - iterator over plpgsql statements.
+ * Returns statements assigned to cycle's body
+ */
+static List *
+get_cycle_body(PLpgSQL_stmt *stmt)
+{
+	List *stmts;
+
+	switch (PLPGSQL_STMT_TYPES stmt->cmd_type)
+	{
+		case PLPGSQL_STMT_WHILE:
+			stmts = ((PLpgSQL_stmt_while *) stmt)->body;
+			break;
+		case PLPGSQL_STMT_LOOP:
+			stmts = ((PLpgSQL_stmt_loop *) stmt)->body;
+			break;
+		case PLPGSQL_STMT_FORI:
+			stmts = ((PLpgSQL_stmt_fori *) stmt)->body;
+			break;
+		case PLPGSQL_STMT_FORS:
+			stmts = ((PLpgSQL_stmt_fors *) stmt)->body;
+			break;
+		case PLPGSQL_STMT_FORC:
+			stmts = ((PLpgSQL_stmt_forc *) stmt)->body;
+			break;
+		case PLPGSQL_STMT_DYNFORS:
+			stmts = ((PLpgSQL_stmt_dynfors *) stmt)->body;
+			break;
+		case PLPGSQL_STMT_FOREACH_A:
+			stmts = ((PLpgSQL_stmt_foreach_a *) stmt)->body;
+			break;
+		default:
+			stmts = NIL;
+			break;
+	}
+
+	return stmts;
+}
+
+/*
+ * profiler_stmt_walker - iterator over plpgsql statements.
  *
  * This function is designed for two different purposes:
  *
@@ -616,401 +713,255 @@ increment_branch_counter(coverage_state *cs, int64 executed)
  *
  */
 static void
-profiler_touch_stmt(profiler_info *pinfo,
+profiler_stmt_walker(profiler_info *pinfo,
+					profiler_stmt_walker_mode mode,
 					PLpgSQL_stmt *stmt,
 					PLpgSQL_stmt *parent_stmt,
-					const char *parent_note,
-					int block_num,
-					bool generate_map,
-					bool finalize_profile,
-					int64 *nested_us_total,
-					int64 *nested_executed,
-					profiler_iterator *pi,
-					coverage_state *cs)
+					const char *description,
+					int stmt_block_num,
+					profiler_stmt_walker_options *opts)
 {
-	int64		us_total = 0;
-	int64		_nested_executed = 0;
 	profiler_stmt *pstmt = NULL;
-
-#if PG_VERSION_NUM < 120000
-
 	profiler_profile *profile = pinfo->profile;
+
+	bool	prepare_profile		= mode == STMT_WALKER_PREPARE_PROFILE;
+	bool	count_exec_time		= mode == STMT_WALKER_COUNT_EXEC_TIME;
+	bool	prepare_result		= mode == STMT_WALKER_PREPARE_RESULT;
+	bool	collect_coverage	= mode == STMT_WALKER_COLLECT_COVERAGE;
+
+	int64	total_us_time = 0;
+	int64	nested_us_time = 0;
+//	int64	nested_executed = 0;
+
+	int		stmtid = -1;
+
+	char	strbuf[100];
+	int		n = 0;
+	List   *stmts;
+	ListCell   *lc;
 
 	Assert(profile);
 
-#endif
-
-	if (pi)
+	if (prepare_profile)
 	{
+		profile_register_stmt(pinfo, opts, stmt);
+	}
+	else
+	{
+		stmtid = STMTID(stmt);
+
+		if (count_exec_time)
+		{
+			/*
+			 * Get statement info from function execution context
+			 * by statement id.
+			 */
+			pstmt = &pinfo->stmts[stmtid];
+			pstmt->lineno = stmt->lineno;
+
+			total_us_time = pstmt->us_total;
+			opts->nested_us_time = 0;
+		}
+		else
+		{
+			profiler_stmt_reduced *ppstmt = NULL;
+
+			Assert(opts->pi);
+
+			/*
+			 * When iterator is used, then id of iterator's current statement
+			 * have to be same like stmtid of stmt.
+			 */
 #if PG_VERSION_NUM < 120000
 
-		int		stmtid = profiler_get_stmtid(profile, pinfo->function, stmt);
-		int		parent_stmtid = parent_stmt ? profiler_get_stmtid(profile, pinfo->function, parent_stmt) : -1;
+elog(NOTICE, "%d %d", opts->pi->current_statement, stmtid);
+			Assert(opts->pi->current_statement == stmtid);
 
 #else
-
-		int		stmtid = stmt->stmtid - 1;
-		int		parent_stmtid = parent_stmt ? ((int) parent_stmt->stmtid - 1) : -1;
+			Assert(profile->stmtid_reorder_map[opts->pi->current_statement] == stmtid);
 
 #endif
 
-		profiler_stmt_reduced *pstmt;
+			/*
+			 * Get persistent statement info stored in shared memory
+			 * or in session memory by iterator.
+			 */
+			ppstmt = get_stmt_profile_next(opts->pi);
 
-	//	Assert(pi->current_statement == stmtid);
-
-		pstmt = get_stmt_profile_next(pi);
-
-		if (pi->ri)
-			plpgsql_check_put_profile_statement(pi->ri,
-												pstmt ? pstmt->queryid : NOQUERYID,
-												stmtid,
-												parent_stmtid,
-												parent_note,
-												block_num,
-												stmt->lineno,
-												pstmt ? pstmt->exec_count : 0,
-												pstmt ? pstmt->us_total : 0.0,
-												pstmt ? pstmt->us_max : 0.0,
-												pstmt ? pstmt->rows : 0,
-												(char *) plpgsql_check__stmt_typename_p(stmt));
-
-		if (cs)
-		{
-			_nested_executed = pstmt ? pstmt->exec_count : 0;
-
-			/* ignore invisible BLOCK */
-			if (stmt->lineno != -1)
+			if (prepare_result)
 			{
-				cs->statements += 1;
-				cs->executed_statements += _nested_executed > 0 ? 1 : 0;
+				int parent_stmtid = parent_stmt ? ((int) STMTID(parent_stmt)) : -1;
+
+				/* When we use iterator, then current */
+				//	Assert(pi->current_statement == stmtid);
+
+				Assert(opts->pi);
+
+				if (opts->pi->ri)
+					plpgsql_check_put_profile_statement(opts->pi->ri,
+														ppstmt ? ppstmt->queryid : NOQUERYID,
+														stmtid,
+														parent_stmtid,
+														description,
+														stmt_block_num,
+														stmt->lineno,
+														ppstmt ? ppstmt->exec_count : 0,
+														ppstmt ? ppstmt->us_total : 0.0,
+														ppstmt ? ppstmt->us_max : 0.0,
+														ppstmt ? ppstmt->rows : 0,
+														(char *) plpgsql_check__stmt_typename_p(stmt));
+			}
+			else if (collect_coverage)
+			{
+				int64 executed_statements = ppstmt ? ppstmt->exec_count : 0;
+
+				/* ignore invisible BLOCK */
+				if (stmt->lineno != -1)
+				{
+					opts->cs->statements += 1;
+					opts->cs->executed_statements += executed_statements > 0 ? 1 : 0;
+				}
+
+				opts->nested_executed = executed_statements;
 			}
 		}
-
-		if (nested_executed)
-			*nested_executed = _nested_executed;
-
-		parent_note = NULL;
-	}
-#if PG_VERSION_NUM < 120000
-
-	else if (generate_map)
-	{
-		profiler_update_map(profile, pinfo->function, stmt);
-
-	}
-	else if (finalize_profile)
-	{
-		int stmtid = profiler_get_stmtid(profile, pinfo->function, stmt);
-
-#else
-
-	else if (finalize_profile)
-	{
-		int stmtid = stmt->stmtid - 1;
-
-#endif
-
-		*nested_us_total = 0;
-
-		pstmt = &pinfo->stmts[stmtid];
-		pstmt->lineno = stmt->lineno;
 	}
 
-	switch (PLPGSQL_STMT_TYPES stmt->cmd_type)
+	if (is_cycle(stmt))
 	{
-		case PLPGSQL_STMT_BLOCK:
+		stmts = get_cycle_body(stmt);
+
+		stmts_walker(pinfo, mode,
+					 stmts, stmt, "loop body",
+					 opts);
+
+		if (collect_coverage)
+			increment_branch_counter(opts->cs,
+									 opts->nested_executed);
+	}
+	else if (IS_PLPGSQL_STMT(stmt, PLPGSQL_STMT_IF))
+	{
+		PLpgSQL_stmt_if *stmt_if = (PLpgSQL_stmt_if *) stmt;
+
+		stmts_walker(pinfo, mode,
+					 stmt_if->then_body, stmt, "then body",
+					 opts);
+
+		if (count_exec_time)
+			nested_us_time = opts->nested_us_time;
+
+		if (collect_coverage)
+			increment_branch_counter(opts->cs,
+									 opts->nested_executed);
+
+		foreach(lc, stmt_if->elsif_list)
+		{
+			stmts = ((PLpgSQL_if_elsif *) lfirst(lc))->stmts;
+
+			sprintf(strbuf, "elsif %d", ++n);
+
+			stmts_walker(pinfo, mode,
+						 stmts, stmt, strbuf,
+						 opts);
+
+			if (count_exec_time)
+				nested_us_time += opts->nested_us_time;
+
+			if (collect_coverage)
+				increment_branch_counter(opts->cs,
+										 opts->nested_executed);
+		}
+
+		if (stmt_if->else_body)
+		{
+			stmts_walker(pinfo, mode,
+						 stmt_if->else_body, stmt, "else body",
+						 opts);
+
+			if (count_exec_time)
+				nested_us_time += opts->nested_us_time;
+
+			if (collect_coverage)
+				increment_branch_counter(opts->cs,
+										 opts->nested_executed);
+		}
+	}
+	else if (IS_PLPGSQL_STMT(stmt, PLPGSQL_STMT_CASE))
+	{
+		PLpgSQL_stmt_case *stmt_case = (PLpgSQL_stmt_case *) stmt;
+
+		foreach(lc, stmt_case->case_when_list)
+		{
+			stmts = ((PLpgSQL_case_when *) lfirst(lc))->stmts;
+
+			sprintf(strbuf, "case when %d", ++n);
+
+			stmts_walker(pinfo, mode,
+						 stmts, stmt, strbuf,
+						 opts);
+
+			if (count_exec_time)
+				nested_us_time = opts->nested_us_time;
+
+			if (collect_coverage)
+				increment_branch_counter(opts->cs,
+										 opts->nested_executed);
+		}
+
+		stmts_walker(pinfo, mode,
+					 stmt_case->else_stmts, stmt, "case else",
+					 opts);
+
+		if (count_exec_time)
+			nested_us_time = opts->nested_us_time;
+
+		if (collect_coverage)
+			increment_branch_counter(opts->cs,
+									 opts->nested_executed);
+	}
+	else if (IS_PLPGSQL_STMT(stmt, PLPGSQL_STMT_BLOCK))
+	{
+		PLpgSQL_stmt_block *stmt_block = (PLpgSQL_stmt_block *) stmt;
+
+		stmts_walker(pinfo, mode,
+					 stmt_block->body, stmt, "body",
+					 opts);
+
+		if (count_exec_time)
+			nested_us_time = opts->nested_us_time;
+
+		if (stmt_block->exceptions)
+		{
+
+			foreach(lc, stmt_block->exceptions->exc_list)
 			{
-				PLpgSQL_stmt_block *stmt_block = (PLpgSQL_stmt_block *) stmt;
+				stmts = ((PLpgSQL_exception *) lfirst(lc))->action;
 
-				profiler_touch_stmts(pinfo,
-									 stmt_block->body,
-									 stmt,
-									 "body",
-									 generate_map,
-									 finalize_profile,
-									 &us_total,
-									 &_nested_executed,
-									 pi,
-									 cs);
+				sprintf(strbuf, "exception %d", ++n);
 
-				if (finalize_profile)
-					*nested_us_total += us_total;
+				stmts_walker(pinfo, mode,
+							 stmts, stmt, strbuf,
+							 opts);
 
-				if (stmt_block->exceptions)
-				{
-					ListCell *lc;
-					char	buffer[100];
-					int		n = 0;
-
-					foreach(lc, stmt_block->exceptions->exc_list)
-					{
-						sprintf(buffer, "exception %d", ++n);
-
-						profiler_touch_stmts(pinfo,
-											 ((PLpgSQL_exception *) lfirst(lc))->action,
-											 stmt,
-											 (const char *) buffer,
-											 generate_map,
-											 finalize_profile,
-											 &us_total,
-											 &_nested_executed,
-											 pi,
-											 cs);
-
-						if (finalize_profile)
-							*nested_us_total += us_total;
-					}
-				}
-
-				if (finalize_profile)
-				{
-					pstmt->us_total -= *nested_us_total;
-
-					/*
-					 * the max time can be calculated only when this node
-					 * was executed once!
-					 */
-					if (pstmt->exec_count == 1)
-						pstmt->us_max = pstmt->us_total;
-					else
-						pstmt->us_max = 0;
-
-					*nested_us_total += pstmt->us_total;
-				}
+				if (count_exec_time)
+					nested_us_time += opts->nested_us_time;
 			}
-			break;
+		}
+	}
 
-		case PLPGSQL_STMT_IF:
-			{
-				PLpgSQL_stmt_if *stmt_if = (PLpgSQL_stmt_if *) stmt;
-				int64	_nested_executed2;
-				int64	_nested_executed2_total = 0;
-				ListCell *lc;
+	if (count_exec_time)
+	{
+		Assert (pstmt);
 
-				profiler_touch_stmts(pinfo,
-									 stmt_if->then_body,
-									 stmt,
-									 "then body",
-									 generate_map,
-									 finalize_profile,
-									 &us_total,
-									 &_nested_executed2,
-									 pi,
-									 cs);
+		pstmt->us_total -= opts->nested_us_time;
+		opts->nested_us_time = total_us_time;
 
-				increment_branch_counter(cs, _nested_executed2);
-				_nested_executed2_total += _nested_executed2;
-
-				if (finalize_profile)
-					*nested_us_total += us_total;
-
-				foreach(lc, stmt_if->elsif_list)
-				{
-					int		n = 0;
-					char buffer[100];
-
-					sprintf(buffer, "elsif %d", ++n);
-					profiler_touch_stmts(pinfo,
-										 ((PLpgSQL_if_elsif *) lfirst(lc))->stmts,
-										 stmt,
-										 (const char *) buffer,
-										 generate_map,
-										 finalize_profile,
-										 &us_total,
-										 &_nested_executed2,
-										 pi,
-										 cs);
-
-					if (finalize_profile)
-						*nested_us_total += us_total;
-
-					increment_branch_counter(cs, _nested_executed2);
-					_nested_executed2_total += _nested_executed2;
-				}
-
-				profiler_touch_stmts(pinfo,
-									 stmt_if->else_body,
-									 stmt,
-									 "else body",
-									 generate_map,
-									 finalize_profile,
-									 &us_total,
-									 &_nested_executed2,
-									 pi,
-									 cs);
-
-				if (finalize_profile)
-					*nested_us_total += us_total;
-
-				if (stmt_if->else_body)
-				{
-					increment_branch_counter(cs, _nested_executed2);
-				}
-				else
-				{
-					/*
-					 * When we have not else branch, then we can increase branch counter,
-					 */
-					increment_branch_counter(cs, _nested_executed - _nested_executed2_total);
-				}
-
-				if (finalize_profile)
-				{
-					pstmt->us_total -= *nested_us_total;
-
-					/*
-					 * the max time can be calculated only when this node
-					 * was executed once!
-					 */
-					if (pstmt->exec_count == 1)
-						pstmt->us_max = pstmt->us_total;
-					else
-						pstmt->us_max = 0;
-
-					*nested_us_total += pstmt->us_total;
-				}
-			}
-			break;
-
-		case PLPGSQL_STMT_CASE:
-			{
-				PLpgSQL_stmt_case *stmt_case = (PLpgSQL_stmt_case *) stmt;
-				ListCell *lc;
-
-				foreach(lc, stmt_case->case_when_list)
-				{
-					char	buffer[100];
-					int		n = 0;
-
-					sprintf(buffer, "case when %d", ++n);
-					profiler_touch_stmts(pinfo,
-										 ((PLpgSQL_case_when *) lfirst(lc))->stmts,
-										 stmt,
-										 (const char *) buffer,
-										 generate_map,
-										 finalize_profile,
-										 &us_total,
-										 &_nested_executed,
-										 pi,
-										 cs);
-
-					if (finalize_profile)
-						*nested_us_total += us_total;
-
-					increment_branch_counter(cs, _nested_executed);
-				}
-
-				profiler_touch_stmts(pinfo,
-									 stmt_case->else_stmts,
-									 stmt,
-									 "case else",
-									 generate_map,
-									 finalize_profile,
-									 &us_total,
-									 &_nested_executed,
-									 pi,
-									 cs);
-
-				if (finalize_profile)
-					*nested_us_total += us_total;
-
-				if (stmt_case->else_stmts)
-					increment_branch_counter(cs, _nested_executed);
-
-				if (finalize_profile)
-				{
-					pstmt->us_total -= *nested_us_total;
-
-					/*
-					 * the max time can be calculated only when this node
-					 * was executed once!
-					 */
-					if (pstmt->exec_count == 1)
-						pstmt->us_max = pstmt->us_total;
-					else
-						pstmt->us_max = 0;
-
-					*nested_us_total += pstmt->us_total;
-				}
-			}
-			break;
-
-		case PLPGSQL_STMT_LOOP:
-		case PLPGSQL_STMT_FORI:
-		case PLPGSQL_STMT_FORS:
-		case PLPGSQL_STMT_FORC:
-		case PLPGSQL_STMT_DYNFORS:
-		case PLPGSQL_STMT_FOREACH_A:
-		case PLPGSQL_STMT_WHILE:
-			{
-				List   *stmts;
-
-				switch (PLPGSQL_STMT_TYPES stmt->cmd_type)
-				{
-					case PLPGSQL_STMT_WHILE:
-						stmts = ((PLpgSQL_stmt_while *) stmt)->body;
-						break;
-					case PLPGSQL_STMT_LOOP:
-						stmts = ((PLpgSQL_stmt_loop *) stmt)->body;
-						break;
-					case PLPGSQL_STMT_FORI:
-						stmts = ((PLpgSQL_stmt_fori *) stmt)->body;
-						break;
-					case PLPGSQL_STMT_FORS:
-						stmts = ((PLpgSQL_stmt_fors *) stmt)->body;
-						break;
-					case PLPGSQL_STMT_FORC:
-						stmts = ((PLpgSQL_stmt_forc *) stmt)->body;
-						break;
-					case PLPGSQL_STMT_DYNFORS:
-						stmts = ((PLpgSQL_stmt_dynfors *) stmt)->body;
-						break;
-					case PLPGSQL_STMT_FOREACH_A:
-						stmts = ((PLpgSQL_stmt_foreach_a *) stmt)->body;
-						break;
-					default:
-						stmts = NIL;
-						break;
-				}
-
-				profiler_touch_stmts(pinfo,
-								 stmts,
-								 stmt,
-								 "loop body",
-								 generate_map,
-								 finalize_profile,
-								 &us_total,
-								 &_nested_executed,
-								 pi,
-								 cs);
-
-				increment_branch_counter(cs, _nested_executed);
-
-				if (finalize_profile)
-					*nested_us_total += us_total;
-
-				if (finalize_profile)
-				{
-					pstmt->us_total -= *nested_us_total;
-
-					/*
-					 * the max time can be calculated only when this node
-					 * was executed once!
-					 */
-					if (pstmt->exec_count == 1)
-						pstmt->us_max = pstmt->us_total;
-					else
-						pstmt->us_max = 0;
-
-					*nested_us_total += pstmt->us_total;
-				}
-			}
-			break;
-
-		default:
-			if (finalize_profile)
-				*nested_us_total = pstmt->us_total;
-			break;
+		/*
+		 * When max time is unknown, but statement was executed only
+		 * only once, we can se max time.
+		 */
+		if (pstmt->exec_count == 1 && pstmt->us_max == 1)
+			pstmt->us_max = pstmt->us_total;
 	}
 }
 
@@ -1260,13 +1211,13 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 
 	profiler_init_hashkey(&hk, func) ;
 
-	/* don't need too strong lock for shared memory */
+	/* don't need too strong lock for reading shared memory */
 	chunk = (profiler_stmt_chunk *) hash_search(chunks,
 											 (void *) &hk,
 											 HASH_FIND,
 											 &found);
 
-	/* We need exclusive lock */
+	/* We need exclusive lock, when we want to add new chunk */
 	if (!found && shared_chunks)
 	{
 		LWLockRelease(profiler_ss->lock);
@@ -1291,17 +1242,30 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 
 #if PG_VERSION_NUM >= 120000
 
+		/*
+		 * We need to store statement statistics to chunks in natural order
+		 * next statistics should be related to statement on same or higher
+		 * line. Unfortunately buildin stmtid has inverse order based on
+		 * bison parser processing 
+		 * statement should to be on same or higher line)
+		 *
+		 */
 		for (i = 0; i < (int) pinfo->function->nstatements; i++)
+		{
+			int		n = pinfo->profile->stmtid_reorder_map[i];
 
 #else
 
 		for (i = 0; i < profile->nstatements; i++)
+		{
+			int		n = i;
 
 #endif
 
-		{
 			volatile profiler_stmt_reduced *prstmt;
-			profiler_stmt *pstmt = &pinfo->stmts[i];
+			profiler_stmt *pstmt = &pinfo->stmts[n];
+
+//elog(NOTICE, "copy %d[%d] %d %ld", pstmt, i, pstmt->exec_count, pstmt->us_total);
 
 			if (hk.chunk_num == 0 || stmt_counter >= STATEMENTS_PER_CHUNK)
 			{
@@ -1378,16 +1342,22 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 #if PG_VERSION_NUM >= 120000
 
 		for (i = 0; i < (int) pinfo->function->nstatements; i++)
+		{
+			int		n = pinfo->profile->stmtid_reorder_map[i];
 
 #else
 
 		for (i = 0; i < profile->nstatements; i++)
+		{
+			int		n = i;
 
 #endif
 
-		{
 			profiler_stmt_reduced *prstmt;
-			profiler_stmt *pstmt = &pinfo->stmts[i];
+			profiler_stmt *pstmt = &pinfo->stmts[n];
+
+//elog(NOTICE, "copy increment %d[%d] %d %ld", pstmt, i, pstmt->exec_count, pstmt->us_total);
+
 
 			if (stmt_counter >= STATEMENTS_PER_CHUNK)
 			{
@@ -1415,6 +1385,9 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 			prstmt->us_total += pstmt->us_total;
 			prstmt->rows += pstmt->rows;
 			prstmt->exec_count += pstmt->exec_count;
+
+//elog(NOTICE, "copy increment after [%d] %d %ld", i, prstmt->exec_count, prstmt->us_total);
+
 		}
 	}
 	PG_CATCH();
@@ -1444,7 +1417,10 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
  * native stmtid, a creating map and searching in map is much faster.
  */
 static void
-profiler_update_map(profiler_profile *profile, PLpgSQL_function *function, PLpgSQL_stmt *stmt)
+profiler_update_map(profiler_profile *profile,
+					profiler_stmt_walker_options *opts,
+					PLpgSQL_function *function,
+					PLpgSQL_stmt *stmt)
 {
 	int		lineno = stmt->lineno;
 	profiler_map_entry *pme;
@@ -1476,7 +1452,7 @@ profiler_update_map(profiler_profile *profile, PLpgSQL_function *function, PLpgS
 	{
 		pme->function = function;
 		pme->stmt = stmt;
-		pme->stmtid = profile->nstatements++;
+		pme->stmtid = opts->stmtid++;
 		pme->next = NULL;
 	}
 	else
@@ -1490,7 +1466,7 @@ profiler_update_map(profiler_profile *profile, PLpgSQL_function *function, PLpgS
 
 		new_pme->function = function;
 		new_pme->stmt = stmt;
-		new_pme->stmtid = profile->nstatements++;
+		new_pme->stmtid = opts->stmtid++;
 		new_pme->next = NULL;
 
 		while (pme->next)
@@ -1503,6 +1479,22 @@ profiler_update_map(profiler_profile *profile, PLpgSQL_function *function, PLpgS
 }
 
 #endif
+
+static void
+profile_register_stmt(profiler_info *pinfo,
+					  profiler_stmt_walker_options *opts,
+					  PLpgSQL_stmt *stmt)
+{
+#if PG_VERSION_NUM < 120000
+
+		profiler_update_map(pinfo->profile, opts, pinfo->function, stmt);
+
+#else
+
+		pinfo->profile->stmtid_reorder_map[opts->stmtid++] = stmt->stmtid - 1;
+
+#endif
+}
 
 /*
  * Returns statement id assigned to plpgsql statement. Should be
@@ -1553,57 +1545,65 @@ profiler_get_stmtid(profiler_profile *profile, PLpgSQL_function *function, PLpgS
 
 #endif
 
+/*
+ * Iterate over list of statements
+ */
 static void
-profiler_touch_stmts(profiler_info *pinfo,
-					 List *stmts,
-					 PLpgSQL_stmt *parent_stmt,
-					 const char *parent_note,
-					 bool generate_map,
-					 bool finalize_profile,
-					 int64 *nested_us_total,
-					 int64 *nested_executed,
-					 profiler_iterator *pi,
-					 coverage_state *cs)
+stmts_walker(profiler_info *pinfo,
+			 profiler_stmt_walker_mode mode,
+			 List *stmts,
+			 PLpgSQL_stmt *parent_stmt,
+			 const char *description,
+			 profiler_stmt_walker_options *opts)
 {
+	bool	count_exec_time = mode == STMT_WALKER_COUNT_EXEC_TIME;
+	bool	collect_coverage = mode == STMT_WALKER_COLLECT_COVERAGE;
+
+	int64 nested_us_time = 0;
+	int64 nested_executed = 0;
+
+	int			stmt_block_num = 1;
+
 	ListCell   *lc;
-	int			block_num = 1;
-	int64		_nested_executed;
-	bool		is_first = true;
-
-	*nested_us_total = 0;
-	block_num = 1;
-
-	if (nested_executed)
-		*nested_executed = false;
 
 	foreach(lc, stmts)
 	{
-		int64		us_total = 0;
-
 		PLpgSQL_stmt *stmt = (PLpgSQL_stmt *) lfirst(lc);
 
-		profiler_touch_stmt(pinfo,
-							stmt,
-							parent_stmt,
-							parent_note,
-							block_num++,
-							generate_map,
-							finalize_profile,
-							&us_total,
-							&_nested_executed,
-							pi,
-							cs);
+		if (count_exec_time)
+			opts->nested_us_time = 0;
 
-		if (finalize_profile)
-			*nested_us_total += us_total;
+		if (collect_coverage)
+			opts->nested_executed = 0;
 
-		/* take first */
-		if (nested_executed && is_first)
-		{
-			*nested_executed = _nested_executed;
-			is_first = false;
-		}
+		profiler_stmt_walker(pinfo, mode,
+							 stmt, parent_stmt, description,
+							 stmt_block_num,
+							 opts);
+
+		 /* add stmt execution time to total execution time */
+		if (count_exec_time)
+			nested_us_time += opts->nested_us_time;
+
+		/*
+		 * For calculation of coverage we need a numbers of nested statements
+		 * execution. Usually or statements in list has same number of execution.
+		 * But it should not be true for some reasons (after RETURN or some exception).
+		 * I am not sure if following simplification is accurate, but maybe. I use
+		 * number of execution of first statement in block like number of execution
+		 * all statements in list.
+		 */
+		if (collect_coverage && stmt_block_num == 1)
+			nested_executed = opts->nested_executed;
+
+		stmt_block_num += 1;
 	}
+
+	if (count_exec_time)
+		opts->nested_us_time = nested_us_time;
+
+	if (collect_coverage)
+		opts->nested_executed = nested_executed;
 }
 
 /*
@@ -1625,14 +1625,18 @@ profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic)
 		case PLPGSQL_STMT_PERFORM:
 			expr = ((PLpgSQL_stmt_perform *) stmt)->expr;
 			break;
+
 #if PG_VERSION_NUM >= 110000
+
 		case PLPGSQL_STMT_CALL:
 			expr = ((PLpgSQL_stmt_call *) stmt)->expr;
 			break;
 		case PLPGSQL_STMT_SET:
 			expr = ((PLpgSQL_stmt_set *) stmt)->expr;
 			break;
+
 #endif
+
 		case PLPGSQL_STMT_IF:
 			expr = ((PLpgSQL_stmt_if *) stmt)->cond;
 			break;
@@ -1703,13 +1707,20 @@ profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic)
 					expr = o->argquery;
 			}
 		case PLPGSQL_STMT_BLOCK:
+
 #if PG_VERSION_NUM >= 100000
+
 		case PLPGSQL_STMT_FORS:
+
 #endif
+
 #if PG_VERSION_NUM >= 110000
+
 		case PLPGSQL_STMT_COMMIT:
 		case PLPGSQL_STMT_ROLLBACK:
+
 #endif
+
 		case PLPGSQL_STMT_GETDIAG:
 		case PLPGSQL_STMT_LOOP:
 		case PLPGSQL_STMT_FORI:
@@ -1872,7 +1883,6 @@ profiler_fake_queryid_hook(ParseState *pstate, Query *query)
 	query->queryId = query->commandType;
 }
 
-#if PG_VERSION_NUM < 120000
 
 /*
  * This routine does an update or creating new profile. Function's profile
@@ -1885,16 +1895,23 @@ profiler_fake_queryid_hook(ParseState *pstate, Query *query)
  * compiled variant of one function (identified by oid).
  *
  * PostgreSQL 12 has assigned statement id, so there is not necessity to
- * prepare and maintain statement map.
+ * prepare and maintain statement map. On second hand these releases needs
+ * reorder map for reordering statement id to natural order of execution.
  */
 static void
 prepare_profile(profiler_info *pinfo,
 				profiler_profile *profile,
 				bool init)
 {
+	profiler_stmt_walker_options opts;
 	PLpgSQL_function *function;
+
+#if PG_VERSION_NUM < 120000
+
 	bool	found = false;
 	int		i;
+
+#endif
 
 	Assert(pinfo && pinfo->function);
 
@@ -1904,6 +1921,8 @@ prepare_profile(profiler_info *pinfo,
 	if (init)
 	{
 		MemoryContext oldcxt;
+
+#if PG_VERSION_NUM < 120000
 
 		oldcxt = MemoryContextSwitchTo(profiler_mcxt);
 
@@ -1916,8 +1935,27 @@ prepare_profile(profiler_info *pinfo,
 		profile->stmts_map = palloc0((profile->stmts_map_max_lineno + 1) * sizeof(profiler_map_entry));
 		profile->mapped_functions = palloc0(profile->max_mapped_functions * sizeof(PLpgSQL_function *));
 
+
 		MemoryContextSwitchTo(oldcxt);
+
+#else
+
+		oldcxt = MemoryContextSwitchTo(profiler_mcxt);
+
+		profile->stmtid_reorder_map = palloc(sizeof(int) * function->nstatements);
+
+		MemoryContextSwitchTo(oldcxt);
+
+		opts.stmtid = 0;
+		profiler_stmt_walker(pinfo, STMT_WALKER_PREPARE_PROFILE,
+							 (PLpgSQL_stmt *) function->action, NULL, NULL, 1,
+							 &opts);
+
+#endif
+
 	}
+
+#if PG_VERSION_NUM < 120000
 
 	/*
 	 * Every touched incarnation should to have statement map.
@@ -1933,9 +1971,6 @@ prepare_profile(profiler_info *pinfo,
 
 	if (!found)
 	{
-
-		int		prev_nstatements = profile->nstatements;
-
 		/*
 		 * Ensure correct size of array of pointers to function incarnations with
 		 * prepared statement map.
@@ -1955,18 +1990,22 @@ prepare_profile(profiler_info *pinfo,
 
 		profile->mapped_functions[profile->n_mapped_functions++] = function;
 
-		profile->nstatements = 0;
+		opts.stmtid = 0;
+		profiler_stmt_walker(pinfo, STMT_WALKER_PREPARE_PROFILE,
+							 (PLpgSQL_stmt *) function->action, NULL, NULL, 1,
+							 &opts);
 
-		profiler_touch_stmt(pinfo, (PLpgSQL_stmt *) function->action, NULL, NULL, 1, true, false, NULL, NULL, NULL, NULL);
-
-		if (prev_nstatements > 0 && prev_nstatements != profile->nstatements)
+		if (profile->nstatements > 0 && profile->nstatements != opts.stmtid)
 			elog(ERROR,
 					"internal error - unexpected number of statements in different function incarnations (%d <> %d)",
-					prev_nstatements, profile->nstatements);
+					opts.stmtid, profile->nstatements);
+
+		profile->nstatements = opts.stmtid;
 	}
-}
 
 #endif
+
+}
 
 /*
  * Prepare tuplestore with function profile
@@ -1986,11 +2025,11 @@ plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri,
 	FunctionCallInfoData fake_fcinfo_data;
 	FunctionCallInfo fake_fcinfo = &fake_fcinfo_data;
 
+#endif
+
 	profiler_profile *profile;
 	profiler_hashkey hk_function;
 	bool		found_profile = false;
-
-#endif
 
 	FmgrInfo	flinfo;
 	TriggerData trigdata;
@@ -2003,6 +2042,7 @@ plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri,
 	profiler_iterator		pi;
 	volatile bool		unlock_mutex = false;
 	bool		shared_chunks;
+	profiler_stmt_walker_options opts;
 
 	memset(&pi, 0, sizeof(profiler_iterator));
 	pi.key.fn_oid = cinfo->fn_oid;
@@ -2049,8 +2089,6 @@ plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri,
 
 		pinfo.function = plpgsql_check__compile_p(fake_fcinfo, false);
 
-#if PG_VERSION_NUM < 120000
-
 		profiler_init_hashkey(&hk_function, pinfo.function);
 		profile = (profiler_profile *) hash_search(profiler_HashTable,
 												 (void *) &hk_function,
@@ -2059,9 +2097,12 @@ plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri,
 
 		prepare_profile(&pinfo, profile, !found_profile);
 
-#endif
+		opts.pi =  &pi;
+		opts.cs = cs;
 
-		profiler_touch_stmt(&pinfo, (PLpgSQL_stmt *) pinfo.function->action, NULL, NULL, 1, false, false, NULL, NULL, &pi, cs);
+		profiler_stmt_walker(&pinfo, STMT_WALKER_PREPARE_RESULT,
+							 (PLpgSQL_stmt *) pinfo.function->action, NULL, NULL, 1,
+							 &opts);
 	}
 	PG_CATCH();
 	{
@@ -2203,7 +2244,7 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 					Assert(chunk != NULL);
 
 					/* skip invisible statements if any */
-					if (chunk->stmts[current_statement].lineno < lineno)
+					if (0 && chunk->stmts[current_statement].lineno < lineno)
 					{
 						current_statement += 1;
 						continue;
@@ -2237,8 +2278,6 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 															 INT8OID,
 															 CurrentMemoryContext);
 						cmds_on_row += 1;
-
-
 						current_statement += 1;
 						continue;
 					}
@@ -2349,9 +2388,6 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 
 	if (plpgsql_check_profiler && func->fn_oid != InvalidOid)
 	{
-
-#if PG_VERSION_NUM < 120000
-
 		profiler_profile *profile;
 		profiler_hashkey hk;
 		bool		found;
@@ -2365,11 +2401,12 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 		pinfo = init_profiler_info(pinfo, func);
 		prepare_profile(pinfo, profile, !found);
 
+#if PG_VERSION_NUM < 120000
+
 		pinfo->stmts = palloc0(profile->nstatements * sizeof(profiler_stmt));
 
 #else
 
-		pinfo = init_profiler_info(pinfo, func);
 		pinfo->stmts = palloc0(func->nstatements * sizeof(profiler_stmt));
 
 #endif
@@ -2403,31 +2440,16 @@ plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *fun
 
 	}
 
-#if PG_VERSION_NUM < 120000
-
 	if (plpgsql_check_profiler &&
 		pinfo && pinfo->profile &&
 		func->fn_oid != InvalidOid)
 	{
 		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
+		int		entry_stmtid = STMTID(pinfo->function->action);
 
-		profiler_profile *profile = pinfo->profile;
-		int		entry_stmtid = profiler_get_stmtid(profile, pinfo->function, (PLpgSQL_stmt *) pinfo->function->action);
-
-#else
-
-	if (plpgsql_check_profiler && pinfo &&
-		func->fn_oid != InvalidOid)
-	{
-		profiler_info *pinfo = (profiler_info *) estate->plugin_info;
-
-		int		entry_stmtid = ((PLpgSQL_stmt *) pinfo->function->action)->stmtid - 1;
-
-#endif
-
-		int64			nested_us_total;
 		instr_time		end_time;
 		uint64			elapsed;
+		profiler_stmt_walker_options opts;
 
 		INSTR_TIME_SET_CURRENT(end_time);
 		INSTR_TIME_SUBTRACT(end_time, pinfo->start_time);
@@ -2442,17 +2464,10 @@ plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *fun
 		}
 
 		/* finalize profile - get result profile */
-		profiler_touch_stmt(pinfo,
-						   (PLpgSQL_stmt *) pinfo->function->action,
-						   NULL,
-						   NULL,
-						   1,
-						   false,
-						   true,
-						   &nested_us_total,
-						   NULL,
-						   NULL,
-						   NULL);
+
+		profiler_stmt_walker(pinfo, STMT_WALKER_COUNT_EXEC_TIME,
+							 (PLpgSQL_stmt *) pinfo->function->action, NULL, NULL, 1,
+							 &opts);
 
 		update_persistent_profile(pinfo, func);
 
@@ -2503,24 +2518,11 @@ plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 			plpgsql_check_trace_assert)
 		plpgsql_check_trace_assert_on_stmt_beg(estate, stmt);
 
-#if PG_VERSION_NUM < 120000
-
 	if (plpgsql_check_profiler &&
 		pinfo && pinfo->profile &&
 		estate->func->fn_oid != InvalidOid)
 	{
-		profiler_profile *profile = pinfo->profile;
-		int stmtid = profiler_get_stmtid(profile, pinfo->function, stmt);
-
-#else
-
-	if (plpgsql_check_profiler && pinfo &&
-		estate->func->fn_oid != InvalidOid)
-	{
-		int stmtid = stmt->stmtid - 1;
-
-#endif
-
+		int stmtid = STMTID(stmt);
 		profiler_stmt *pstmt = &pinfo->stmts[stmtid];
 
 		Assert(pinfo->pi_magic == PI_MAGIC);
@@ -2556,25 +2558,11 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		plpgsql_check_tracer_on_stmt_end(estate, stmt);
 	}
 
-#if PG_VERSION_NUM < 120000
-
-	if (plpgsql_check_profiler && 
+	if (plpgsql_check_profiler &&
 		pinfo && pinfo->profile &&
 		estate->func->fn_oid != InvalidOid)
 	{
-		profiler_profile *profile  = pinfo->profile;
-		int stmtid = profiler_get_stmtid(profile, pinfo->function, stmt);
-
-#else
-
-	if (plpgsql_check_profiler && pinfo &&
-		estate->func->fn_oid != InvalidOid)
-	{
-
-		int stmtid = stmt->stmtid - 1;
-
-#endif
-
+		int stmtid = STMTID(stmt);
 		profiler_stmt *pstmt = &pinfo->stmts[stmtid];
 		instr_time		end_time;
 		uint64			elapsed;
@@ -2599,5 +2587,8 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		pstmt->us_total = INSTR_TIME_GET_MICROSEC(pstmt->total);
 		pstmt->rows += estate->eval_processed;
 		pstmt->exec_count++;
+
+//elog(NOTICE, "%d[%d] %d %s %ld", pstmt, stmtid, pstmt->exec_count, plpgsql_check__stmt_typename_p(stmt), pstmt->us_total);
+
 	}
 }
