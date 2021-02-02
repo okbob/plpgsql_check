@@ -4,7 +4,7 @@
  *
  *			  top functions - display results in table format
  *
- * by Pavel Stehule 2013-2020
+ * by Pavel Stehule 2013-2021
  *
  *-------------------------------------------------------------------------
  */

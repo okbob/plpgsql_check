@@ -196,7 +196,6 @@ extern Oid plpgsql_check_pragma_func_oid(void);
  */
 extern void plpgsql_check_info_init(plpgsql_check_info *cinfo, Oid fn_oid);
 
-
 /*
  * functions from profiler.c
  */
@@ -346,7 +345,6 @@ extern void plpgsql_check_trace_assert_on_stmt_beg(PLpgSQL_execstate *estate, PL
 
 extern void plpgsql_check_set_stmt_group_number(PLpgSQL_stmt *stmt, int *group_numbers, int *parent_group_numbers, int sgn, int *cgn, int psgn);
 
-
 /*
  * variables from pragma.c
  */
@@ -355,7 +353,6 @@ extern void plpgsql_check_pragma_apply(PLpgSQL_checkstate *cstate, char *pragma_
 extern plpgsql_check_pragma_vector plpgsql_check_runtime_pragma_vector;
 extern bool plpgsql_check_runtime_pragma_vector_changed;
 
-
 /*
  * functions from plpgsql_check.c
  */
@@ -363,7 +360,6 @@ extern bool plpgsql_check_runtime_pragma_vector_changed;
 extern shmem_startup_hook_type prev_shmem_startup_hook;
 
 extern PLpgSQL_plugin **plpgsql_check_plugin_var_ptr;
-
 
 #if PG_VERSION_NUM > 110005
 
