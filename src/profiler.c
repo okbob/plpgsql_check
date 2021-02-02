@@ -633,10 +633,27 @@ increment_branch_counter(coverage_state *cs, int64 executed)
 #if PG_VERSION_NUM < 120000
 
 #define STMTID(stmt)		(profiler_get_stmtid(pinfo->profile, pinfo->function, ((PLpgSQL_stmt *) stmt)))
+#define FUNC_NSTATEMENTS(pinfo)	(pinfo->profile->nstatements)
+#define NATURAL_STMTID(pinfo, id) (id)
 
 #else
 
 #define STMTID(stmt)		(((PLpgSQL_stmt *) stmt)->stmtid - 1)
+#define FUNC_NSTATEMENTS(pinfo) ((int) pinfo->function->nstatements)
+
+static int
+get_natural_stmtid(profiler_info *pinfo, int id)
+{
+	int		i;
+
+	for (i = 0; i < ((int) pinfo->function->nstatements); i++)
+		if (pinfo->profile->stmtid_reorder_map[i] == id)
+			return i;
+
+	return -1;
+}
+
+#define NATURAL_STMTID(pinfo, id)		get_natural_stmtid(pinfo, id)
 
 #endif
 
@@ -770,15 +787,19 @@ profiler_stmt_walker(profiler_info *pinfo,
 
 			/*
 			 * When iterator is used, then id of iterator's current statement
-			 * have to be same like stmtid of stmt.
+			 * have to be same like stmtid of stmt. When function was not executed
+			 * in active profile mode, then we have not any stored chunk, and
+			 * iterator returns 0 stmtid.
 			 */
 #if PG_VERSION_NUM < 120000
 
-elog(NOTICE, "%d %d", opts->pi->current_statement, stmtid);
-			Assert(opts->pi->current_statement == stmtid);
+			Assert(!opts->pi->current_chunk ||
+				   opts->pi->current_statement == stmtid);
 
 #else
-			Assert(profile->stmtid_reorder_map[opts->pi->current_statement] == stmtid);
+
+			Assert(!opts->pi->current_chunk ||
+				   profile->stmtid_reorder_map[opts->pi->current_statement] == stmtid);
 
 #endif
 
@@ -792,16 +813,12 @@ elog(NOTICE, "%d %d", opts->pi->current_statement, stmtid);
 			{
 				int parent_stmtid = parent_stmt ? ((int) STMTID(parent_stmt)) : -1;
 
-				/* When we use iterator, then current */
-				//	Assert(pi->current_statement == stmtid);
-
-				Assert(opts->pi);
-
 				if (opts->pi->ri)
+				{
 					plpgsql_check_put_profile_statement(opts->pi->ri,
 														ppstmt ? ppstmt->queryid : NOQUERYID,
-														stmtid,
-														parent_stmtid,
+														NATURAL_STMTID(pinfo, stmtid),
+														NATURAL_STMTID(pinfo, parent_stmtid),
 														description,
 														stmt_block_num,
 														stmt->lineno,
@@ -810,6 +827,7 @@ elog(NOTICE, "%d %d", opts->pi->current_statement, stmtid);
 														ppstmt ? ppstmt->us_max : 0.0,
 														ppstmt ? ppstmt->rows : 0,
 														(char *) plpgsql_check__stmt_typename_p(stmt));
+				}
 			}
 			else if (collect_coverage)
 			{
@@ -1184,7 +1202,7 @@ plpgsql_profiler_remove_fake_queryid_hook(PG_FUNCTION_ARGS)
 static void
 update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 {
-#if PG_VERSION_NUM < 120000
+#if PG_VERSION_NUM >= 120000
 
 	profiler_profile *profile = pinfo->profile;
 
@@ -1195,6 +1213,7 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 	bool		found;
 	HTAB	   *chunks;
 	bool		shared_chunks;
+
 	volatile profiler_stmt_chunk *chunk_with_mutex = NULL;
 
 	if (shared_profiler_chunks_HashTable)
@@ -1240,32 +1259,34 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 
 		/* we should to enter empty chunks first */
 
+		for (i = 0; i < FUNC_NSTATEMENTS(pinfo); i++)
+		{
+			volatile profiler_stmt_reduced *prstmt;
+			profiler_stmt *pstmt;
+
 #if PG_VERSION_NUM >= 120000
 
-		/*
-		 * We need to store statement statistics to chunks in natural order
-		 * next statistics should be related to statement on same or higher
-		 * line. Unfortunately buildin stmtid has inverse order based on
-		 * bison parser processing 
-		 * statement should to be on same or higher line)
-		 *
-		 */
-		for (i = 0; i < (int) pinfo->function->nstatements; i++)
-		{
-			int		n = pinfo->profile->stmtid_reorder_map[i];
+			/*
+			 * We need to store statement statistics to chunks in natural order
+			 * next statistics should be related to statement on same or higher
+			 * line. Unfortunately buildin stmtid has inverse order based on
+			 * bison parser processing 
+			 * statement should to be on same or higher line)
+			 *
+			 */
+			int		n = profile->stmtid_reorder_map[i];
+
+			/* Skip gaps in reorder map */
+			if (n == -1)
+				continue;
+
+			pstmt = &pinfo->stmts[n];
 
 #else
 
-		for (i = 0; i < profile->nstatements; i++)
-		{
-			int		n = i;
+			pstmt = &pinfo->stmts[i];
 
-#endif
-
-			volatile profiler_stmt_reduced *prstmt;
-			profiler_stmt *pstmt = &pinfo->stmts[n];
-
-//elog(NOTICE, "copy %d[%d] %d %ld", pstmt, i, pstmt->exec_count, pstmt->us_total);
+#endif 
 
 			if (hk.chunk_num == 0 || stmt_counter >= STATEMENTS_PER_CHUNK)
 			{
@@ -1339,25 +1360,34 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 		stmt_counter = 0;
 
 		/* there is a profiler chunk already */
+		for (i = 0; i < FUNC_NSTATEMENTS(pinfo); i++)
+		{
+			volatile profiler_stmt_reduced *prstmt;
+			profiler_stmt *pstmt;
+
 #if PG_VERSION_NUM >= 120000
 
-		for (i = 0; i < (int) pinfo->function->nstatements; i++)
-		{
-			int		n = pinfo->profile->stmtid_reorder_map[i];
+			/*
+			 * We need to store statement statistics to chunks in natural order
+			 * next statistics should be related to statement on same or higher
+			 * line. Unfortunately buildin stmtid has inverse order based on
+			 * bison parser processing 
+			 * statement should to be on same or higher line)
+			 *
+			 */
+			int		n = profile->stmtid_reorder_map[i];
+
+			/* Skip gaps in reorder map */
+			if (n == -1)
+				continue;
+
+			pstmt = &pinfo->stmts[n];
 
 #else
 
-		for (i = 0; i < profile->nstatements; i++)
-		{
-			int		n = i;
+			pstmt = &pinfo->stmts[i];
 
 #endif
-
-			profiler_stmt_reduced *prstmt;
-			profiler_stmt *pstmt = &pinfo->stmts[n];
-
-//elog(NOTICE, "copy increment %d[%d] %d %ld", pstmt, i, pstmt->exec_count, pstmt->us_total);
-
 
 			if (stmt_counter >= STATEMENTS_PER_CHUNK)
 			{
@@ -1737,11 +1767,17 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 {
 	MemoryContext oldcxt;
 	Query	   *query;
+
 #if PG_VERSION_NUM >= 100000
+
 	RawStmt    *parsetree;
+
 #else
+
 	Node	   *parsetree;
+
 #endif
+
 	bool		snapshot_set;
 	List	   *parsetree_list;
 	PLpgSQL_var result;
@@ -1795,10 +1831,15 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 
 	/* Run through the raw parsetree and process it. */
 #if PG_VERSION_NUM >= 100000
+
 	parsetree = (RawStmt *) linitial(parsetree_list);
+
 #else
+
 	parsetree = (Node *) linitial(parsetree_list);
+
 #endif
+
 	snapshot_set = false;
 
 	/*
@@ -1811,9 +1852,13 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 	}
 
 	query = parse_analyze(parsetree, query_string, NULL, 0
+
 #if PG_VERSION_NUM >= 100000
+
 			, NULL
+
 #endif
+
 			);
 
 	if (snapshot_set)
@@ -1883,7 +1928,6 @@ profiler_fake_queryid_hook(ParseState *pstate, Query *query)
 	query->queryId = query->commandType;
 }
 
-
 /*
  * This routine does an update or creating new profile. Function's profile
  * holds statements metadata (statement map).  The statement map is necessary
@@ -1905,11 +1949,11 @@ prepare_profile(profiler_info *pinfo,
 {
 	profiler_stmt_walker_options opts;
 	PLpgSQL_function *function;
+	int		i;
 
 #if PG_VERSION_NUM < 120000
 
 	bool	found = false;
-	int		i;
 
 #endif
 
@@ -1942,7 +1986,15 @@ prepare_profile(profiler_info *pinfo,
 
 		oldcxt = MemoryContextSwitchTo(profiler_mcxt);
 
-		profile->stmtid_reorder_map = palloc(sizeof(int) * function->nstatements);
+		profile->stmtid_reorder_map = palloc0(sizeof(int) * function->nstatements);
+
+		/*
+		 * I found my bug in PLpgSQL runtime - when function statement counter
+		 * is incremental 2x for every FOR cycle. Until fix this bug, some entries
+		 * of reorder map can be uniinitialized, and we have to detect these entries.
+		 */
+		for (i = 0; i < ((int) function->nstatements); i++)
+			profile->stmtid_reorder_map[i] = -1;
 
 		MemoryContextSwitchTo(oldcxt);
 
@@ -2401,16 +2453,7 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 		pinfo = init_profiler_info(pinfo, func);
 		prepare_profile(pinfo, profile, !found);
 
-#if PG_VERSION_NUM < 120000
-
-		pinfo->stmts = palloc0(profile->nstatements * sizeof(profiler_stmt));
-
-#else
-
-		pinfo->stmts = palloc0(func->nstatements * sizeof(profiler_stmt));
-
-#endif
-
+		pinfo->stmts = palloc0(FUNC_NSTATEMENTS(pinfo) * sizeof(profiler_stmt));
 	}
 
 	if (pinfo)
@@ -2587,8 +2630,5 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		pstmt->us_total = INSTR_TIME_GET_MICROSEC(pstmt->total);
 		pstmt->rows += estate->eval_processed;
 		pstmt->exec_count++;
-
-//elog(NOTICE, "%d[%d] %d %s %ld", pstmt, stmtid, pstmt->exec_count, plpgsql_check__stmt_typename_p(stmt), pstmt->us_total);
-
 	}
 }
