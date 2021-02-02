@@ -2312,12 +2312,15 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 
 						if (prstmt->has_queryid)
 						{
-							queryids_abs = accumArrayResult(queryids_abs,
-															Int64GetDatum((int64) prstmt->queryid),
-															prstmt->queryid == NOQUERYID,
-															INT8OID,
-															CurrentMemoryContext);
-							queryids_on_row += 1;
+							if (prstmt->queryid != NOQUERYID)
+							{
+								queryids_abs = accumArrayResult(queryids_abs,
+																Int64GetDatum((int64) prstmt->queryid),
+																prstmt->queryid == NOQUERYID,
+																INT8OID,
+																CurrentMemoryContext);
+								queryids_on_row += 1;
+							}
 						}
 
 						max_time_abs = accumArrayResult(max_time_abs,
