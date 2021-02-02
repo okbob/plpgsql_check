@@ -54,6 +54,14 @@ enum
 	PLPGSQL_CHECK_UNKNOWN
 };
 
+typedef enum
+{
+	PLPGSQL_CHECK_STMT_WALKER_PREPARE_PROFILE,
+	PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME,
+	PLPGSQL_CHECK_STMT_WALKER_PREPARE_RESULT,
+	PLPGSQL_CHECK_STMT_WALKER_COLLECT_COVERAGE
+} profiler_stmt_walker_mode;
+
 typedef struct PLpgSQL_stmt_stack_item
 {
 	PLpgSQL_stmt	   *stmt;
@@ -197,12 +205,6 @@ extern Oid plpgsql_check_pragma_func_oid(void);
 extern void plpgsql_check_info_init(plpgsql_check_info *cinfo, Oid fn_oid);
 
 /*
- * functions from profiler.c
- */
-extern void plpgsql_check_profiler_shmem_startup(void);
-extern void plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo);
-
-/*
  * functions from check_function.c
  */
 extern void plpgsql_check_function_internal(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo);
@@ -301,6 +303,8 @@ extern Oid plpgsql_check_parse_name_or_signature(char *name_or_signature);
 extern bool plpgsql_check_profiler;
 extern int plpgsql_check_profiler_max_shared_chunks;
 
+extern void plpgsql_check_profiler_shmem_startup(void);
+
 extern Size plpgsql_check_shmem_size(void);
 extern void plpgsql_check_profiler_init_hash_tables(void);
 
@@ -309,8 +313,10 @@ extern void plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_f
 extern void plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 extern void plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 
+extern void plpgsql_check_iterate_over_profile(plpgsql_check_info *cinfo, profiler_stmt_walker_mode mode,
+   plpgsql_check_result_info *ri, coverage_state *cs);
+
 extern void plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo);
-extern void plpgsql_check_profiler_show_profile_statements(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo, coverage_state *cs);
 
 extern void plpgsql_check_init_trace_info(PLpgSQL_execstate *estate);
 extern bool plpgsql_check_get_trace_info(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, PLpgSQL_execstate **outer_estate, int *frame_num, int *level, instr_time *start_time);
