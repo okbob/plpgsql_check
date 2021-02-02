@@ -409,7 +409,6 @@ plpgsql_check_get_trace_stmt_info(PLpgSQL_execstate *estate,
 	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 
 	Assert(pinfo && pinfo->pi_magic == PI_MAGIC);
-	Assert(stmt_id > 0);
 
 	/* Allow tracing only when it is explicitly allowed */
 	if (!plpgsql_check_enable_tracer)
