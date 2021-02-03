@@ -606,7 +606,6 @@ plpgsql_check_profiler_init_hash_tables(void)
 
 /*
  * Increase a branch couter - used for branch coverage
- *
  */
 static void
 increment_branch_counter(coverage_state *cs, int64 executed)
@@ -718,7 +717,8 @@ get_cycle_body(PLpgSQL_stmt *stmt)
  *      as measured total time substract child total time.
  *   c) iterate over all commands and prepare result for
  *      plpgsql_profiler_function_statements_tb function.
- *
+ *   d) iterate over all commands to collect code coverage
+ *      metrics
  */
 static void
 profiler_stmt_walker(profiler_info *pinfo,
@@ -865,9 +865,10 @@ profiler_stmt_walker(profiler_info *pinfo,
 					 opts);
 
 		if (count_exec_time)
+		{
 			nested_us_time = opts->nested_us_time;
-
-		if (collect_coverage)
+		}
+		else if (collect_coverage)
 		{
 			increment_branch_counter(opts->cs,
 									 opts->nested_exec_count);
@@ -888,7 +889,7 @@ profiler_stmt_walker(profiler_info *pinfo,
 			if (count_exec_time)
 				nested_us_time += opts->nested_us_time;
 
-			if (collect_coverage)
+			else if (collect_coverage)
 			{
 				increment_branch_counter(opts->cs,
 										 opts->nested_exec_count);
@@ -906,7 +907,7 @@ profiler_stmt_walker(profiler_info *pinfo,
 			if (count_exec_time)
 				nested_us_time += opts->nested_us_time;
 
-			if (collect_coverage)
+			else if (collect_coverage)
 				increment_branch_counter(opts->cs,
 										 opts->nested_exec_count);
 		}
@@ -939,7 +940,7 @@ profiler_stmt_walker(profiler_info *pinfo,
 			if (count_exec_time)
 				nested_us_time = opts->nested_us_time;
 
-			if (collect_coverage)
+			else if (collect_coverage)
 				increment_branch_counter(opts->cs,
 										 opts->nested_exec_count);
 		}
@@ -951,7 +952,7 @@ profiler_stmt_walker(profiler_info *pinfo,
 		if (count_exec_time)
 			nested_us_time = opts->nested_us_time;
 
-		if (collect_coverage)
+		else if (collect_coverage)
 			increment_branch_counter(opts->cs,
 									 opts->nested_exec_count);
 	}
@@ -1392,11 +1393,9 @@ update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
 
 			/*
 			 * We need to store statement statistics to chunks in natural order
-			 * next statistics should be related to statement on same or higher
-			 * line. Unfortunately buildin stmtid has inverse order based on
-			 * bison parser processing 
-			 * statement should to be on same or higher line)
-			 *
+			 * (next statistics should be related to statement on same or higher
+			 * line). Unfortunately buildin stmtid has inverse order based on
+			 * bison parser processing statement.
 			 */
 			int		n = profile->stmtid_reorder_map[i];
 
