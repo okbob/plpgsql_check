@@ -341,6 +341,13 @@ plpgsql_check_report_unused_variables(PLpgSQL_checkstate *cstate)
 					if (var->dtype == PLPGSQL_DTYPE_ROW ||
 						  var->dtype == PLPGSQL_DTYPE_REC)
 					{
+						/*
+						 * The result of function with more OUT variables (and one
+						 * should be an composite), is not possible simply assign to
+						 * outer variables. The related expression cannot be "simple"
+						 * expression, and then an evaluation is 10x slower. So there
+						 * is warning 
+						 */
 						initStringInfo(&message);
 						appendStringInfo(&message,
 									  OUT_COMPOSITE_IS_NOT_SINGLE_TEXT, var->refname);
