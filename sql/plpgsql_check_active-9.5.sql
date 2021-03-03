@@ -1,5 +1,6 @@
 LOAD 'plpgsql';
 CREATE EXTENSION  IF NOT EXISTS plpgsql_check;
+set client_min_messages to notice;
 
 -- check event trigger function 
 create or replace function f1() returns event_trigger as $$
