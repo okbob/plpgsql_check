@@ -1,5 +1,6 @@
 load 'plpgsql';
 load 'plpgsql_check';
+set client_min_messages to notice;
 -- enforce context's displaying
 -- emulate pre 9.6 behave
 \set SHOW_CONTEXT always
