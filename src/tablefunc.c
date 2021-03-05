@@ -27,6 +27,7 @@ PG_FUNCTION_INFO_V1(plpgsql_check_function_tb_name);
 PG_FUNCTION_INFO_V1(plpgsql_show_dependency_tb_name);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_function_tb_name);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_function_statements_tb_name);
+PG_FUNCTION_INFO_V1(plpgsql_profiler_functions_all_tb);
 
 #define ERR_NULL_OPTION(option)		ereport(ERROR, \
 									  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), \
@@ -609,4 +610,21 @@ plpgsql_profiler_function_statements_tb_name(PG_FUNCTION_ARGS)
 	fnoid = plpgsql_check_parse_name_or_signature(name_or_signature);
 
 	return profiler_function_statements_tb_internal(fnoid, fcinfo);
+}
+
+Datum
+plpgsql_profiler_functions_all_tb(PG_FUNCTION_ARGS)
+{
+	plpgsql_check_result_info ri;
+	ReturnSetInfo *rsinfo;
+
+	/* check to see if caller supports us returning a tuplestore */
+	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	SetReturningFunctionCheck(rsinfo);
+
+	plpgsql_check_init_ri(&ri, PLPGSQL_SHOW_PROFILE_FUNCTIONS_ALL_TABULAR, rsinfo);
+
+	plpgsql_check_profiler_iterate_over_all_profiles(&ri);
+
+	return (Datum) 0;
 }

@@ -103,6 +103,21 @@ static void put_error_tabular(plpgsql_check_result_info *ri, PLpgSQL_execstate *
 #define Anum_profiler_statements_processed_rows		10
 #define Anum_profiler_statements_stmtname			11
 
+/*
+ * columns of plpgsql_profiler_functions_all_tb result
+ *
+ */
+#define Natts_profiler_functions_all_tb		8
+
+#define Anum_profiler_functions_all_funcoid			0
+#define Anum_profiler_functions_all_datname			1
+#define Anum_profiler_functions_all_exec_count		2
+#define Anum_profiler_functions_all_total_time		3
+#define Anum_profiler_functions_all_avg_time		4
+#define Anum_profiler_functions_all_stddev_time		5
+#define Anum_profiler_functions_all_min_time		6
+#define Anum_profiler_functions_all_max_time		7
+
 
 #define SET_RESULT_NULL(anum) \
 	do { \
@@ -200,6 +215,9 @@ plpgsql_check_init_ri(plpgsql_check_result_info *ri,
 			break;
 		case PLPGSQL_SHOW_PROFILE_STATEMENTS_TABULAR:
 			natts = Natts_profiler_statements;
+			break;
+		case PLPGSQL_SHOW_PROFILE_FUNCTIONS_ALL_TABULAR:
+			natts = Natts_profiler_functions_all_tb;
 			break;
 		default:
 			elog(ERROR, "unknown format %d", format);
@@ -980,6 +998,35 @@ plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri,
 		SET_RESULT_FLOAT8(Anum_profiler_statements_avg_time, ceil(((float8) total_time) / exec_stmts) / 1000.0);
 	else
 		SET_RESULT_NULL(Anum_profiler_statements_avg_time);
+
+	tuplestore_putvalues(ri->tuple_store, ri->tupdesc, values, nulls);
+}
+
+void
+plpgsql_check_put_profiler_functions_all_tb(plpgsql_check_result_info *ri,
+											Oid funcoid,
+											char *datname,
+											int64 exec_count,
+											double total_time,
+											double avg_time,
+											double stddev_time,
+											double min_time,
+											double max_time)
+{
+	Datum	values[Natts_profiler_functions_all_tb];
+	bool	nulls[Natts_profiler_functions_all_tb];
+
+	Assert(ri->tuple_store);
+	Assert(ri->tupdesc);
+
+	SET_RESULT_OID(Anum_profiler_functions_all_funcoid, funcoid);
+	SET_RESULT_TEXT(Anum_profiler_functions_all_datname, datname);
+	SET_RESULT_INT64(Anum_profiler_functions_all_exec_count, exec_count);
+	SET_RESULT_FLOAT8(Anum_profiler_functions_all_total_time, total_time / 1000.0);
+	SET_RESULT_FLOAT8(Anum_profiler_functions_all_avg_time, avg_time / 1000.0);
+	SET_RESULT_FLOAT8(Anum_profiler_functions_all_stddev_time, stddev_time / 1000.0);
+	SET_RESULT_FLOAT8(Anum_profiler_functions_all_min_time, min_time / 1000.0);
+	SET_RESULT_FLOAT8(Anum_profiler_functions_all_max_time, max_time / 1000.0);
 
 	tuplestore_putvalues(ri->tuple_store, ri->tupdesc, values, nulls);
 }

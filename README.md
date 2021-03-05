@@ -512,6 +512,16 @@ The profile per statements (not per line) can be displayed by function plpgsql_p
     └────────┴───────────────┴─────────────┴────────┴────────────┴─────────────────┘
     (6 rows)
 
+All stored profiles can be displayed by calling function `plpgsql_profiler_functions_all`:
+
+    postgres=# select * from plpgsql_profiler_functions_all();
+    ┌───────────────────────┬────────────┬────────────┬──────────┬─────────────┬──────────┬──────────┐
+    │        funcoid        │ exec_count │ total_time │ avg_time │ stddev_time │ min_time │ max_time │
+    ╞═══════════════════════╪════════════╪════════════╪══════════╪═════════════╪══════════╪══════════╡
+    │ fxx(double precision) │          1 │       0.01 │     0.01 │        0.00 │     0.01 │     0.01 │
+    └───────────────────────┴────────────┴────────────┴──────────┴─────────────┴──────────┴──────────┘
+    (1 row)
+
 
 There are two functions for cleaning stored profiles: `plpgsql_profiler_reset_all()` and
 `plpgsql_profiler_reset(regprocedure)`.

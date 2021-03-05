@@ -34,7 +34,8 @@ enum
 	PLPGSQL_CHECK_FORMAT_JSON,
 	PLPGSQL_SHOW_DEPENDENCY_FORMAT_TABULAR,
 	PLPGSQL_SHOW_PROFILE_TABULAR,
-	PLPGSQL_SHOW_PROFILE_STATEMENTS_TABULAR
+	PLPGSQL_SHOW_PROFILE_STATEMENTS_TABULAR,
+	PLPGSQL_SHOW_PROFILE_FUNCTIONS_ALL_TABULAR
 };
 
 enum
@@ -189,6 +190,8 @@ extern void plpgsql_check_put_profile(plpgsql_check_result_info *ri, Datum query
 	int cmds_on_row, int exec_count, int64 us_total, Datum max_time_array, Datum processed_rows_array, char *source_row);
 extern void plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri, pc_queryid queryid, int stmtid, int parent_stmtid, const char *parent_note, int block_num, int lineno,
 	int64 exec_stmts, double total_time, double max_time, int64 processed_rows, char *stmtname);
+extern void plpgsql_check_put_profiler_functions_all_tb(plpgsql_check_result_info *ri, Oid funcoid, char *datname, int64 exec_count,
+	double total_time, double avg_time, double stddev_time, double min_time, double max_time);
 
 /*
  * function from catalog.c
@@ -317,6 +320,7 @@ extern void plpgsql_check_iterate_over_profile(plpgsql_check_info *cinfo, profil
    plpgsql_check_result_info *ri, coverage_state *cs);
 
 extern void plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo);
+extern void plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri);
 
 extern void plpgsql_check_init_trace_info(PLpgSQL_execstate *estate);
 extern bool plpgsql_check_get_trace_info(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, PLpgSQL_execstate **outer_estate, int *frame_num, int *level, instr_time *start_time);

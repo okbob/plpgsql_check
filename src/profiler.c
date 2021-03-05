@@ -8,12 +8,12 @@
  *
  *-------------------------------------------------------------------------
  */
-
 #include "plpgsql_check.h"
 #include "plpgsql_check_builtins.h"
 
 #include "access/htup_details.h"
 #include "catalog/pg_type.h"
+#include "commands/dbcommands.h"
 #include "nodes/pg_list.h"
 #include "parser/analyze.h"
 #include "storage/lwlock.h"
@@ -32,6 +32,14 @@
 #include "utils/lsyscache.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
+
+#if PG_VERSION_NUM >= 120000
+
+#include "utils/float.h"
+
+#endif
+
+#include <math.h>
 
 /*
  * Any instance of plpgsql function will have a own profile.
@@ -52,6 +60,29 @@ typedef struct profiler_hashkey
 } profiler_hashkey;
 
 /*
+ * We want to collect data about execution on function level. The
+ * possible issue can be more different profiles. On this level
+ * the version of function is not important, so the hash key is
+ * composed only from fn_oid and db_oid
+ */
+typedef struct fstats_hashkey
+{
+	Oid			fn_oid;
+	Oid			db_oid;
+} fstats_hashkey;
+
+typedef struct fstats
+{
+	fstats_hashkey key;
+	slock_t		mutex;
+	uint64		exec_count;
+	uint64		total_time;
+	double		total_time_xx;
+	uint64		min_time;
+	uint64		max_time;
+} fstats;
+
+/*
  * Attention - the commands that can contains nestested commands
  * has attached own time and nested statements time too.
  */
@@ -59,10 +90,10 @@ typedef struct profiler_stmt
 {
 	int		lineno;
 	pc_queryid	queryid;
-	uint64	us_max;
-	uint64	us_total;
-	uint64	rows;
-	uint64	exec_count;
+	uint64		us_max;
+	uint64		us_total;
+	uint64		rows;
+	uint64		exec_count;
 	instr_time	start_time;
 	instr_time	total;
 	bool		has_queryid;
@@ -72,10 +103,10 @@ typedef struct profiler_stmt_reduced
 {
 	int		lineno;
 	pc_queryid	queryid;
-	uint64	us_max;
-	uint64	us_total;
-	uint64	rows;
-	uint64	exec_count;
+	uint64		us_max;
+	uint64		us_total;
+	uint64		rows;
+	uint64		exec_count;
 	bool		has_queryid;
 } profiler_stmt_reduced;
 
@@ -94,6 +125,7 @@ typedef struct profiler_stmt_chunk
 typedef struct profiler_shared_state
 {
 	LWLock	   *lock;
+	LWLock	   *fstats_lock;
 } profiler_shared_state;
 
 /*
@@ -204,6 +236,8 @@ enum
 static HTAB *profiler_HashTable = NULL;
 static HTAB *shared_profiler_chunks_HashTable = NULL;
 static HTAB *profiler_chunks_HashTable = NULL;
+static HTAB *fstats_HashTable = NULL;
+static HTAB *shared_fstats_HashTable = NULL;
 
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 
@@ -245,6 +279,43 @@ static void profiler_update_map(profiler_profile *profile, profiler_stmt_walker_
 static int profiler_get_stmtid(profiler_profile *profile, PLpgSQL_function *function, PLpgSQL_stmt *stmt);
 
 #endif
+
+
+/*
+ * Use the Youngs-Cramer algorithm to incorporate the new value into the
+ * transition values.
+ */
+static void
+eval_stddev_accum(uint64 *_N, uint64 *_Sx, float8 *_Sxx, uint64 newval)
+{
+	uint64		N = *_N;
+	uint64		Sx = *_Sx;
+	float		Sxx = *_Sxx;
+	float		tmp;
+
+	/*
+	 * Use the Youngs-Cramer algorithm to incorporate the new value into the
+	 * transition values.
+	 */
+	N += 1;
+	Sx += newval;
+
+	if (N > 1)
+	{
+		tmp = newval * N - Sx;
+		Sxx += tmp * tmp / (N * (N - 1));
+
+		if (isinf(Sxx))
+			Sxx = get_float8_nan();
+
+	}
+	else
+		Sxx = 0.0;
+
+	*_N = N;
+	*_Sx = Sx;
+	*_Sxx = Sxx;
+}
 
 /*
  * Itereate over Error Context Stack and calculate deep of stack (used like frame number)
@@ -481,6 +552,7 @@ plpgsql_check_profiler_shmem_startup(void)
 	HASHCTL		info;
 
 	shared_profiler_chunks_HashTable = NULL;
+	shared_fstats_HashTable = NULL;
 
 	if (prev_shmem_startup_hook)
 		prev_shmem_startup_hook();
@@ -500,10 +572,12 @@ plpgsql_check_profiler_shmem_startup(void)
 #if PG_VERSION_NUM > 90600
 
 		profiler_ss->lock = &(GetNamedLWLockTranche("plpgsql_check profiler"))->lock;
+		profiler_ss->fstats_lock = &(GetNamedLWLockTranche("plpgsql_check fstats"))->lock;
 
 #else
 
 		profiler_ss->lock = LWLockAssign();
+		profiler_ss->fstats_lock = LWLockAssign();
 
 #endif
 
@@ -516,6 +590,16 @@ plpgsql_check_profiler_shmem_startup(void)
 	shared_profiler_chunks_HashTable = ShmemInitHash("plpgsql_check profiler chunks",
 													plpgsql_check_profiler_max_shared_chunks,
 													plpgsql_check_profiler_max_shared_chunks,
+													&info,
+													HASH_ELEM | HASH_BLOBS);
+
+	memset(&info, 0, sizeof(info));
+	info.keysize = sizeof(fstats_hashkey);
+	info.entrysize = sizeof(fstats);
+
+	shared_fstats_HashTable = ShmemInitHash("plpgsql_check fstats",
+													500,
+													1000,
 													&info,
 													HASH_ELEM | HASH_BLOBS);
 
@@ -581,6 +665,32 @@ profiler_chunks_HashTableInit(void)
 									HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 }
 
+static void
+fstats_init_hashkey(fstats_hashkey *fhk, Oid fn_oid)
+{
+	memset(fhk, 0, sizeof(fstats_hashkey));
+
+	fhk->db_oid = MyDatabaseId;
+	fhk->fn_oid = fn_oid;
+}
+
+static void
+fstats_HashTableInit(void)
+{
+	HASHCTL		ctl;
+
+	Assert(fstats_HashTable == NULL);
+
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.keysize = sizeof(fstats_hashkey);
+	ctl.entrysize = sizeof(fstats);
+	ctl.hcxt = profiler_mcxt;
+	fstats_HashTable = hash_create("plpgsql_check function execution statistics",
+									FUNCS_PER_USER,
+									&ctl,
+									HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+}
+
 void
 plpgsql_check_profiler_init_hash_tables(void)
 {
@@ -590,6 +700,7 @@ plpgsql_check_profiler_init_hash_tables(void)
 
 		profiler_HashTable = NULL;
 		profiler_chunks_HashTable = NULL;
+		fstats_HashTable = NULL;
 	}
 	else
 	{
@@ -602,6 +713,7 @@ plpgsql_check_profiler_init_hash_tables(void)
 
 	profiler_localHashTableInit();
 	profiler_chunks_HashTableInit();
+	fstats_HashTableInit();
 }
 
 /*
@@ -1016,8 +1128,9 @@ plpgsql_profiler_reset_all(PG_FUNCTION_ARGS)
 
 	if (shared_profiler_chunks_HashTable)
 	{
-		HASH_SEQ_STATUS			hash_seq;
-		profiler_stmt_chunk    *chunk;
+		HASH_SEQ_STATUS hash_seq;
+		profiler_stmt_chunk *chunk;
+		fstats	   *fstats_entry;
 
 		LWLockAcquire(profiler_ss->lock, LW_EXCLUSIVE);
 
@@ -1025,10 +1138,29 @@ plpgsql_profiler_reset_all(PG_FUNCTION_ARGS)
 
 		while ((chunk = hash_seq_search(&hash_seq)) != NULL)
 		{
-			hash_search(shared_profiler_chunks_HashTable, &(chunk->key), HASH_REMOVE, NULL);
+			hash_search(shared_profiler_chunks_HashTable,
+						&(chunk->key),
+						HASH_REMOVE,
+						NULL);
 		}
 
 		LWLockRelease(profiler_ss->lock);
+
+		Assert(shared_fstats_HashTable);
+
+		LWLockAcquire(profiler_ss->fstats_lock, LW_EXCLUSIVE);
+
+		hash_seq_init(&hash_seq, shared_fstats_HashTable);
+
+		while ((fstats_entry = hash_seq_search(&hash_seq)) != NULL)
+		{
+			hash_search(shared_fstats_HashTable,
+						&(fstats_entry->key),
+						HASH_REMOVE,
+						NULL);
+		}
+
+		LWLockRelease(profiler_ss->fstats_lock);
 	}
 	else
 		plpgsql_check_profiler_init_hash_tables();
@@ -1044,6 +1176,7 @@ plpgsql_profiler_reset(PG_FUNCTION_ARGS)
 {
 	Oid			funcoid = PG_GETARG_OID(0);
 	profiler_hashkey hk;
+	fstats_hashkey fhk;
 	HTAB	   *chunks;
 	HeapTuple	procTuple;
 	bool		found;
@@ -1085,6 +1218,19 @@ plpgsql_profiler_reset(PG_FUNCTION_ARGS)
 
 	if (shared_chunks)
 		LWLockRelease(profiler_ss->lock);
+
+	fstats_init_hashkey(&fhk, funcoid);
+
+	if (shared_fstats_HashTable)
+	{
+		LWLockAcquire(profiler_ss->fstats_lock, LW_EXCLUSIVE);
+
+		hash_search(shared_fstats_HashTable, (void *) &fhk, HASH_REMOVE, NULL);
+
+		LWLockRelease(profiler_ss->fstats_lock);
+	}
+	else
+		hash_search(fstats_HashTable, (void *) &fhk, HASH_REMOVE, NULL);
 
 	PG_RETURN_VOID();
 }
@@ -1224,7 +1370,94 @@ plpgsql_profiler_remove_fake_queryid_hook(PG_FUNCTION_ARGS)
 }
 
 static void
-update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func)
+update_persistent_fstats(PLpgSQL_function *func,
+						 uint64 elapsed)
+{
+	HTAB	   *fstats_ht;
+	bool		htab_is_shared;
+	fstats_hashkey fhk;
+	fstats	   *fstats_item;
+	bool		found;
+	bool		use_spinlock = false;
+
+	fstats_init_hashkey(&fhk, func->fn_oid);
+
+	/* try to find first chunk in shared (or local) memory */
+	if (shared_fstats_HashTable)
+	{
+		LWLockAcquire(profiler_ss->fstats_lock, LW_SHARED);
+		fstats_ht = shared_fstats_HashTable;
+		htab_is_shared = true;
+	}
+	else
+	{
+		fstats_ht = fstats_HashTable;
+		htab_is_shared = false;
+	}
+
+	fstats_item = (fstats *) hash_search(fstats_ht,
+										 (void *) &fhk,
+										 HASH_FIND,
+										 &found);
+
+	if (!found)
+	{
+		if (htab_is_shared)
+		{
+			LWLockRelease(profiler_ss->fstats_lock);
+			LWLockAcquire(profiler_ss->fstats_lock, LW_EXCLUSIVE);
+		}
+
+		fstats_item = (fstats *) hash_search(fstats_ht,
+											 (void *) &fhk,
+											 HASH_ENTER,
+											 &found);
+	}
+
+	if (!fstats_item)
+		elog(ERROR,
+			"cannot to insert new entry to profiler's function statistics");
+
+	if (htab_is_shared)
+	{
+		if (found)
+		{
+			SpinLockAcquire(&fstats_item->mutex);
+			use_spinlock = true;
+		}
+		else
+			SpinLockInit(&fstats_item->mutex);
+	}
+
+	if (!found)
+	{
+		fstats_item->exec_count = 0;
+		fstats_item->total_time = 0;
+		fstats_item->total_time_xx = 0.0;
+		fstats_item->min_time = elapsed;
+		fstats_item->max_time = elapsed;
+	}
+	else
+	{
+		fstats_item->min_time = fstats_item->min_time < elapsed ? fstats_item->min_time : elapsed;
+		fstats_item->max_time = fstats_item->max_time > elapsed ? fstats_item->max_time : elapsed;
+	}
+
+	eval_stddev_accum(&fstats_item->exec_count,
+					  &fstats_item->total_time,
+					  &fstats_item->total_time_xx,
+					  elapsed);
+
+	if (use_spinlock)
+		SpinLockRelease(&fstats_item->mutex);
+
+	if (htab_is_shared)
+		LWLockRelease(profiler_ss->fstats_lock);
+}
+
+static void
+update_persistent_profile(profiler_info *pinfo,
+						  PLpgSQL_function *func)
 {
 #if PG_VERSION_NUM >= 120000
 
@@ -2543,6 +2776,7 @@ plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *fun
 							 &opts);
 
 		update_persistent_profile(pinfo, func);
+		update_persistent_fstats(func, elapsed);
 
 		pfree(pinfo->stmts);
 	}
@@ -2661,4 +2895,67 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		pstmt->rows += estate->eval_processed;
 		pstmt->exec_count++;
 	}
+}
+
+void
+plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri)
+{
+	HASH_SEQ_STATUS seqstatus;
+	fstats		*fstats_item;
+
+	HTAB	   *fstats_ht;
+	bool		htab_is_shared;
+
+	/* try to find first chunk in shared (or local) memory */
+	if (shared_fstats_HashTable)
+	{
+		LWLockAcquire(profiler_ss->fstats_lock, LW_SHARED);
+		fstats_ht = shared_fstats_HashTable;
+		htab_is_shared = true;
+	}
+	else
+	{
+		fstats_ht = fstats_HashTable;
+		htab_is_shared = false;
+	}
+
+	hash_seq_init(&seqstatus, fstats_ht);
+
+	while ((fstats_item = (fstats *) hash_seq_search(&seqstatus)) != NULL)
+	{
+		Oid		fn_oid,
+				db_oid;
+		uint64	exec_count,
+				total_time,
+				min_time,
+				max_time;
+		float8	total_time_xx;
+
+		if (htab_is_shared)
+			SpinLockAcquire(&fstats_item->mutex);
+
+		fn_oid = fstats_item->key.fn_oid;
+		db_oid = fstats_item->key.db_oid;
+		exec_count = fstats_item->exec_count;
+		total_time = fstats_item->total_time;
+		total_time_xx = fstats_item->total_time_xx;
+		min_time = fstats_item->min_time;
+		max_time = fstats_item->max_time;
+
+		if (htab_is_shared)
+			SpinLockRelease(&fstats_item->mutex);
+
+		plpgsql_check_put_profiler_functions_all_tb(ri,
+													fn_oid,
+													get_database_name(db_oid),
+													exec_count,
+													total_time,
+													ceil(total_time / ((double) exec_count)),
+													ceil(sqrt(total_time_xx / exec_count)),
+													min_time,
+													max_time);
+	}
+
+	if (htab_is_shared)
+		LWLockRelease(profiler_ss->fstats_lock);
 }
