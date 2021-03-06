@@ -7152,6 +7152,12 @@ select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb
    1046 |             |            | end;
 (1046 rows)
 
+select funcoid, exec_count from plpgsql_profiler_functions_all();
+     funcoid     | exec_count 
+-----------------+------------
+ longfx(integer) |          2
+(1 row)
+
 create table testr(a int);
 create rule testr_rule as on insert to testr do nothing;
 create or replace function fx_testr()
