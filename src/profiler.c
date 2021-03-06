@@ -290,8 +290,8 @@ eval_stddev_accum(uint64 *_N, uint64 *_Sx, float8 *_Sxx, uint64 newval)
 {
 	uint64		N = *_N;
 	uint64		Sx = *_Sx;
-	float		Sxx = *_Sxx;
-	float		tmp;
+	float8		Sxx = *_Sxx;
+	float8		tmp;
 
 	/*
 	 * Use the Youngs-Cramer algorithm to incorporate the new value into the
@@ -302,12 +302,12 @@ eval_stddev_accum(uint64 *_N, uint64 *_Sx, float8 *_Sxx, uint64 newval)
 
 	if (N > 1)
 	{
-		tmp = newval * N - Sx;
+		tmp = ((float8 ) newval) * ((float8) N) - ((float8) Sx);
+
 		Sxx += tmp * tmp / (N * (N - 1));
 
 		if (isinf(Sxx))
 			Sxx = get_float8_nan();
-
 	}
 	else
 		Sxx = 0.0;

@@ -291,10 +291,11 @@ _PG_init(void)
 #if PG_VERSION_NUM >= 90600
 
 		RequestNamedLWLockTranche("plpgsql_check profiler", 1);
+		RequestNamedLWLockTranche("plpgsql_check fstats", 1);
 
 #else
 
-		RequestAddinLWLocks(1);
+		RequestAddinLWLocks(2);
 
 #endif
 
