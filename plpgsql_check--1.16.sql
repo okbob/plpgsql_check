@@ -243,7 +243,6 @@ LANGUAGE C VOLATILE;
 
 CREATE OR REPLACE FUNCTION plpgsql_profiler_functions_all()
 RETURNS TABLE(funcoid regprocedure,
-              datname text,
               exec_count int8,
               total_time double precision,
               avg_time double precision,

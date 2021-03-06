@@ -2930,6 +2930,7 @@ plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 				min_time,
 				max_time;
 		float8	total_time_xx;
+		HeapTuple	tp;
 
 		if (htab_is_shared)
 			SpinLockAcquire(&fstats_item->mutex);
@@ -2945,9 +2946,23 @@ plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 		if (htab_is_shared)
 			SpinLockRelease(&fstats_item->mutex);
 
+		/*
+		 * only function's statistics for current database can be displayed here,
+		 * Oid of functions from other databases has unassigned oids to current
+		 * system catalogue.
+		 */
+		if (db_oid != MyDatabaseId)
+			continue;
+
+		/* check if function has name */
+		tp = SearchSysCache1(PROCOID, ObjectIdGetDatum(fn_oid));
+		if (!HeapTupleIsValid(tp))
+			continue;
+
+		ReleaseSysCache(tp);
+
 		plpgsql_check_put_profiler_functions_all_tb(ri,
 													fn_oid,
-													get_database_name(db_oid),
 													exec_count,
 													total_time,
 													ceil(total_time / ((double) exec_count)),

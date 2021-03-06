@@ -3995,6 +3995,8 @@ select longfx(10);
 
 select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('longfx');
 
+select funcoid, exec_count from plpgsql_profiler_functions_all();
+
 create table testr(a int);
 create rule testr_rule as on insert to testr do nothing;
 

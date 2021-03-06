@@ -107,16 +107,15 @@ static void put_error_tabular(plpgsql_check_result_info *ri, PLpgSQL_execstate *
  * columns of plpgsql_profiler_functions_all_tb result
  *
  */
-#define Natts_profiler_functions_all_tb		8
+#define Natts_profiler_functions_all_tb		7
 
 #define Anum_profiler_functions_all_funcoid			0
-#define Anum_profiler_functions_all_datname			1
-#define Anum_profiler_functions_all_exec_count		2
-#define Anum_profiler_functions_all_total_time		3
-#define Anum_profiler_functions_all_avg_time		4
-#define Anum_profiler_functions_all_stddev_time		5
-#define Anum_profiler_functions_all_min_time		6
-#define Anum_profiler_functions_all_max_time		7
+#define Anum_profiler_functions_all_exec_count		1
+#define Anum_profiler_functions_all_total_time		2
+#define Anum_profiler_functions_all_avg_time		3
+#define Anum_profiler_functions_all_stddev_time		4
+#define Anum_profiler_functions_all_min_time		5
+#define Anum_profiler_functions_all_max_time		6
 
 
 #define SET_RESULT_NULL(anum) \
@@ -1005,7 +1004,6 @@ plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri,
 void
 plpgsql_check_put_profiler_functions_all_tb(plpgsql_check_result_info *ri,
 											Oid funcoid,
-											char *datname,
 											int64 exec_count,
 											double total_time,
 											double avg_time,
@@ -1020,7 +1018,6 @@ plpgsql_check_put_profiler_functions_all_tb(plpgsql_check_result_info *ri,
 	Assert(ri->tupdesc);
 
 	SET_RESULT_OID(Anum_profiler_functions_all_funcoid, funcoid);
-	SET_RESULT_TEXT(Anum_profiler_functions_all_datname, datname);
 	SET_RESULT_INT64(Anum_profiler_functions_all_exec_count, exec_count);
 	SET_RESULT_FLOAT8(Anum_profiler_functions_all_total_time, total_time / 1000.0);
 	SET_RESULT_FLOAT8(Anum_profiler_functions_all_avg_time, avg_time / 1000.0);

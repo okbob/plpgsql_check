@@ -190,7 +190,7 @@ extern void plpgsql_check_put_profile(plpgsql_check_result_info *ri, Datum query
 	int cmds_on_row, int exec_count, int64 us_total, Datum max_time_array, Datum processed_rows_array, char *source_row);
 extern void plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri, pc_queryid queryid, int stmtid, int parent_stmtid, const char *parent_note, int block_num, int lineno,
 	int64 exec_stmts, double total_time, double max_time, int64 processed_rows, char *stmtname);
-extern void plpgsql_check_put_profiler_functions_all_tb(plpgsql_check_result_info *ri, Oid funcoid, char *datname, int64 exec_count,
+extern void plpgsql_check_put_profiler_functions_all_tb(plpgsql_check_result_info *ri, Oid funcoid, int64 exec_count,
 	double total_time, double avg_time, double stddev_time, double min_time, double max_time);
 
 /*
