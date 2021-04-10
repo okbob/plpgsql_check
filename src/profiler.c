@@ -264,7 +264,16 @@ PG_FUNCTION_INFO_V1(plpgsql_profiler_remove_fake_queryid_hook);
 static void update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func);
 static PLpgSQL_expr *profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic);
 static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, bool *has_queryid);
+
+#if PG_VERSION_NUM >= 140000
+
+static void profiler_fake_queryid_hook(ParseState *pstate, Query *query, JumbleState *jstate);
+
+#else
+
 static void profiler_fake_queryid_hook(ParseState *pstate, Query *query);
+
+#endif
 
 static void profile_register_stmt(profiler_info *pinfo, profiler_stmt_walker_options *opts, PLpgSQL_stmt *stmt);
 static void stmts_walker(profiler_info *pinfo, profiler_stmt_walker_mode, List *stmts, PLpgSQL_stmt *parent_stmt,
@@ -2170,9 +2179,22 @@ profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
  * Generate simple queryid  for testing purpose.
  * DO NOT USE IN PRODUCTION.
  */
+#if PG_VERSION_NUM >= 140000
+
+static void
+profiler_fake_queryid_hook(ParseState *pstate, Query *query, JumbleState *jstate)
+{
+	(void) jstate;
+
+
+#else
+
 static void
 profiler_fake_queryid_hook(ParseState *pstate, Query *query)
 {
+
+#endif
+
 	(void) pstate;
 
 	Assert(query->queryId == NOQUERYID);
