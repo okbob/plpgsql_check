@@ -2186,7 +2186,6 @@ profiler_fake_queryid_hook(ParseState *pstate, Query *query, JumbleState *jstate
 {
 	(void) jstate;
 
-
 #else
 
 static void
