@@ -137,6 +137,8 @@ You can set level of warnings via function's parameters:
 
 ### Optional arguments
 
+* `relid DEFAULT 0` - oid of relation assigned with trigger function. It is necessary for check
+   of any trigger function.
 
 * `fatal_errors boolean DEFAULT true` - stop on first error
 
@@ -168,6 +170,9 @@ You can set level of warnings via function's parameters:
 * `without_warnings DEFAULT false` - disable all warnings
 
 * `all_warnings DEFAULT false` - enable all warnings
+
+* `newtable DEFAULT NULL`, `oldtable DEFAULT NULL` - the names of NEW or OLD transitive
+   tables. These parameters are required when transitive tables are used.
 
 ## Triggers
 
