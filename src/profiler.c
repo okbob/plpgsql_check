@@ -1922,11 +1922,13 @@ profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic)
 		case PLPGSQL_STMT_CALL:
 			expr = ((PLpgSQL_stmt_call *) stmt)->expr;
 			break;
+#if PG_VERSION_NUM < 140000
 		case PLPGSQL_STMT_SET:
 			expr = ((PLpgSQL_stmt_set *) stmt)->expr;
 			break;
+#endif			/* PG_VERSION_NUM < 140000 */
 
-#endif
+#endif			/* PG_VERSION_NUM >= 110000 */
 
 		case PLPGSQL_STMT_IF:
 			expr = ((PLpgSQL_stmt_if *) stmt)->cond;
