@@ -1265,12 +1265,14 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 #if PG_VERSION_NUM >= 110000
 
+#if PG_VERSION_NUM < 140000
 			case PLPGSQL_STMT_SET:
 				/*
 				 * We can not check this now, syntax should be ok.
 				 * The expression there has not plan.
 				 */
 				break;
+#endif			/* PG_VERSION_NUM < 140000 */
 
 			case PLPGSQL_STMT_COMMIT:
 			case PLPGSQL_STMT_ROLLBACK:
@@ -1307,7 +1309,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				}
 				break;
 
-#endif
+#endif			/* PG_VERSION_NUM >= 110000 */
 
 			default:
 				elog(ERROR, "unrecognized cmd_type: %d", stmt->cmd_type);
