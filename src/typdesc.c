@@ -75,6 +75,9 @@ plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *Cal
 
 		/* Extract function arguments, and expand any named-arg notation */
 		funcargs = expand_function_arguments(funcexpr->args,
+#if PG_VERSION_NUM >= 140000
+											 true,
+#endif
 											 funcexpr->funcresulttype,
 											 tuple);
 
