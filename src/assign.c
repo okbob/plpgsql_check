@@ -199,8 +199,6 @@ plpgsql_check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid
 				 * Target is an element of an array
 				 */
 				int			nsubscripts;
-				Oid			arrayelemtypeid;
-				Oid			arraytypeid;
 
 				/*
 				 * To handle constructs like x[1][2] := something, we have to
@@ -226,25 +224,31 @@ plpgsql_check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid
 					target = cstate->estate->datums[arrayelem->arrayparentno];
 				} while (target->dtype == PLPGSQL_DTYPE_ARRAYELEM);
 
-				/*
-				 * If target is domain over array, reduce to base type
-				 */
+				if (expected_typoid || expected_typmod)
+				{
+					int			arraytypmod;
+					Oid			arrayelemtypeid;
+					Oid			arraytypeid;
 
-				arraytypeid = plpgsql_check__exec_get_datum_type_p(cstate->estate, target);
-				arraytypeid = getBaseType(arraytypeid);
+					plpgsql_check_target(cstate, target->dno, &arraytypeid, &arraytypmod);
 
-				arrayelemtypeid = get_element_type(arraytypeid);
+					/*
+					 * If target is domain over array, reduce to base type
+					 */
+					arraytypeid = getBaseType(arraytypeid);
+					arrayelemtypeid = get_element_type(arraytypeid);
 
-				if (!OidIsValid(arrayelemtypeid))
-					ereport(ERROR,
-							(errcode(ERRCODE_DATATYPE_MISMATCH),
-							 errmsg("subscripted object is not an array")));
+					if (!OidIsValid(arrayelemtypeid))
+						ereport(ERROR,
+								(errcode(ERRCODE_DATATYPE_MISMATCH),
+								 errmsg("subscripted object is not an array")));
 
-				if (expected_typoid)
-					*expected_typoid = arrayelemtypeid;
+					if (expected_typoid)
+						*expected_typoid = arrayelemtypeid;
 
-				if (expected_typmod)
-					*expected_typmod = ((PLpgSQL_var *) target)->datatype->atttypmod;
+					if (expected_typmod)
+						*expected_typmod = arraytypmod;
+				}
 
 				plpgsql_check_record_variable_usage(cstate, target->dno, true);
 			}
