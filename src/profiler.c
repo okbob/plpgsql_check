@@ -262,7 +262,7 @@ PG_FUNCTION_INFO_V1(plpgsql_profiler_install_fake_queryid_hook);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_remove_fake_queryid_hook);
 
 static void update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func);
-static PLpgSQL_expr *profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic);
+static PLpgSQL_expr *profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic, List **params);
 static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, bool *has_queryid);
 
 #if PG_VERSION_NUM >= 140000
@@ -1902,10 +1902,11 @@ stmts_walker(profiler_info *pinfo,
  * queryid.
  */
 static PLpgSQL_expr  *
-profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic)
+profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic, List **params)
 {
 	PLpgSQL_expr *expr = NULL;
 
+	*params = NIL;
 	*dynamic = false;
 
 	switch(stmt->cmd_type)
@@ -1944,6 +1945,8 @@ profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic)
 			break;
 		case PLPGSQL_STMT_DYNFORS:
 			expr = ((PLpgSQL_stmt_dynfors *) stmt)->query;
+			*params = ((PLpgSQL_stmt_dynfors *) stmt)->params;
+			*dynamic = true;
 			break;
 		case PLPGSQL_STMT_FOREACH_A:
 			expr = ((PLpgSQL_stmt_foreach_a *) stmt)->expr;
@@ -1970,6 +1973,7 @@ profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic)
 				else
 				{
 					expr = q->dynquery;
+					*params = q->params;
 					*dynamic = true;
 				}
 			}
@@ -1982,6 +1986,7 @@ profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic)
 			break;
 		case PLPGSQL_STMT_DYNEXECUTE:
 			expr = ((PLpgSQL_stmt_dynexecute *) stmt)->query;
+			*params = ((PLpgSQL_stmt_dynexecute *) stmt)->params;
 			*dynamic = true;
 			break;
 		case PLPGSQL_STMT_OPEN:
@@ -2026,7 +2031,7 @@ profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic)
 }
 
 static pc_queryid
-profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
+profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, List *params)
 {
 	MemoryContext oldcxt;
 	Query	   *query;
@@ -2046,6 +2051,9 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 	PLpgSQL_var result;
 	PLpgSQL_type typ;
 	char	   *query_string = NULL;
+
+	if (params)
+		return NOQUERYID;
 
 	memset(&result, 0, sizeof(result));
 	memset(&typ, 0, sizeof(typ));
@@ -2138,8 +2146,9 @@ static pc_queryid
 profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
 					 bool *has_queryid)
 {
-	bool dynamic;
-	PLpgSQL_expr *expr = profiler_get_expr(stmt, &dynamic);
+	bool		dynamic;
+	List	   *params;
+	PLpgSQL_expr *expr = profiler_get_expr(stmt, &dynamic, &params);
 
 	*has_queryid = (expr != NULL);
 
@@ -2147,7 +2156,7 @@ profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
 	{
 		Assert(expr);
 
-		return profiler_get_dyn_queryid(estate, expr);
+		return profiler_get_dyn_queryid(estate, expr, params);
 	}
 
 	if (expr)
