@@ -83,6 +83,16 @@ typedef struct fstats
 } fstats;
 
 /*
+ * This is used as cache for types of expressions of USING clause
+ * (EXECUTE like statements).
+ */
+typedef struct
+{
+	int			nparams;
+	Oid			paramtypes[FLEXIBLE_ARRAY_MEMBER];
+} query_params;
+
+/*
  * Attention - the commands that can contains nestested commands
  * has attached own time and nested statements time too.
  */
@@ -97,6 +107,7 @@ typedef struct profiler_stmt
 	instr_time	start_time;
 	instr_time	total;
 	bool		has_queryid;
+	query_params *qparams;
 } profiler_stmt;
 
 typedef struct profiler_stmt_reduced
@@ -263,7 +274,7 @@ PG_FUNCTION_INFO_V1(plpgsql_profiler_remove_fake_queryid_hook);
 
 static void update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func);
 static PLpgSQL_expr *profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic, List **params);
-static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, bool *has_queryid);
+static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, bool *has_queryid, query_params **qparams);
 
 #if PG_VERSION_NUM >= 140000
 
@@ -1171,8 +1182,8 @@ plpgsql_profiler_reset_all(PG_FUNCTION_ARGS)
 
 		LWLockRelease(profiler_ss->fstats_lock);
 	}
-	else
-		plpgsql_check_profiler_init_hash_tables();
+
+	plpgsql_check_profiler_init_hash_tables();
 
 	PG_RETURN_VOID();
 }
@@ -2031,7 +2042,7 @@ profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic, List **params)
 }
 
 static pc_queryid
-profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, List *params)
+profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, query_params *qparams)
 {
 	MemoryContext oldcxt;
 	Query	   *query;
@@ -2051,9 +2062,14 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, List *pa
 	PLpgSQL_var result;
 	PLpgSQL_type typ;
 	char	   *query_string = NULL;
+	Oid		   *paramtypes = NULL;
+	int			nparams = 0;
 
-	if (params)
-		return NOQUERYID;
+	if (qparams)
+	{
+		paramtypes = qparams->paramtypes;
+		nparams = qparams->nparams;
+	}
 
 	memset(&result, 0, sizeof(result));
 	memset(&typ, 0, sizeof(typ));
@@ -2124,11 +2140,11 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, List *pa
 
 #if PG_VERSION_NUM >= 100000
 
-	query = parse_analyze(parsetree, query_string, NULL, 0, NULL);
+	query = parse_analyze(parsetree, query_string, paramtypes, nparams, NULL);
 
 #else 
 
-	query = parse_analyze(parsetree, query_string, NULL, 0);
+	query = parse_analyze(parsetree, query_string, paramtypes, nparams);
 
 #endif
 
@@ -2141,45 +2157,105 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, List *pa
 	return query->queryId;
 }
 
+/*
+ * Returns result type of already executed (has assigned plan) expression
+ */
+static bool
+get_expr_type(PLpgSQL_expr *expr, Oid *result_type)
+{
+	if (expr)
+	{
+		SPIPlanPtr ptr  = expr->plan;
+
+		if (ptr)
+		{
+			List	   *plan_sources = SPI_plan_get_plan_sources(ptr);
+
+			if (plan_sources && list_length(plan_sources) == 1)
+			{
+				CachedPlanSource *plan_source;
+				TupleDesc	tupdesc;
+
+				plan_source = (CachedPlanSource *) linitial(plan_sources);
+				tupdesc = plan_source->resultDesc;
+
+				if (tupdesc->natts == 1)
+				{
+					*result_type = TupleDescAttr(tupdesc, 0)->atttypid;
+
+					return true;
+				}
+			}
+		}
+	}
+
+	return false;
+}
+
+
 /* Return the first queryid found in the given PLpgSQL_stmt, if any. */
 static pc_queryid
 profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
-					 bool *has_queryid)
+					 bool *has_queryid, query_params **qparams)
 {
+	PLpgSQL_expr *expr;
 	bool		dynamic;
 	List	   *params;
-	PLpgSQL_expr *expr = profiler_get_expr(stmt, &dynamic, &params);
+	List	   *plan_sources;
 
+	expr = profiler_get_expr(stmt, &dynamic, &params);
 	*has_queryid = (expr != NULL);
+
+	/* fast leaving, when expression has not assigned plan */
+	if (!expr || !expr->plan)
+		return NOQUERYID;
 
 	if (dynamic)
 	{
 		Assert(expr);
 
-		return profiler_get_dyn_queryid(estate, expr, params);
+		if (params && !*qparams)
+		{
+			query_params *qps = NULL;
+			int		nparams = list_length(params);
+			int		paramno = 0;
+			MemoryContext oldcxt;
+			ListCell *lc;
+
+			/* build array of Oid used like dynamic query parameters */
+			oldcxt = MemoryContextSwitchTo(profiler_mcxt);
+			qps = (query_params *) palloc(sizeof(Oid) * nparams + sizeof(int));
+			MemoryContextSwitchTo(oldcxt);
+
+			foreach(lc, params)
+			{
+				PLpgSQL_expr *param_expr = (PLpgSQL_expr *) lfirst(lc);
+
+				if (!get_expr_type(param_expr, &qps->paramtypes[paramno++]))
+				{
+					free(qps);
+					return NOQUERYID;
+				}
+			}
+
+			qps->nparams = nparams;
+			*qparams = qps;
+		}
+
+		return profiler_get_dyn_queryid(estate, expr, *qparams);
 	}
 
-	if (expr)
+	plan_sources = SPI_plan_get_plan_sources(expr->plan);
+
+	if (plan_sources)
 	{
-		SPIPlanPtr ptr  = expr->plan;
-		List *sources;
+		CachedPlanSource *plan_source = (CachedPlanSource *) linitial(plan_sources);
 
-		if (!ptr)
-			return NOQUERYID;
-
-		sources = SPI_plan_get_plan_sources(ptr);
-
-		if (sources)
+		if (plan_source->query_list)
 		{
-			CachedPlanSource *source;
+			Query *q = linitial_node(Query, plan_source->query_list);
 
-			source = (CachedPlanSource *) linitial(sources);
-			if (source->query_list)
-			{
-				Query *q = linitial_node(Query, source->query_list);
-
-				return q->queryId;
-			}
+			return q->queryId;
 		}
 	}
 
@@ -2911,7 +2987,8 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 		if (pstmt->queryid == NOQUERYID)
 			pstmt->queryid = profiler_get_queryid(estate, stmt,
-												  &pstmt->has_queryid);
+												  &pstmt->has_queryid,
+												  &pstmt->qparams);
 
 		INSTR_TIME_SET_CURRENT(end_time);
 		end_time2 = end_time;
