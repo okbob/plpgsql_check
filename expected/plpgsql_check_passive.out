@@ -54,7 +54,7 @@ end;
 $$ language plpgsql;
 select f1();
 ERROR:  record "r" has no field "c"
-CONTEXT:  SQL statement "SELECT r.c"
+CONTEXT:  SQL expression "r.c"
 PL/pgSQL function f1() line 6 at RAISE
 drop function f1();
 drop function g1();
@@ -74,7 +74,7 @@ end;
 $$ language plpgsql;
 select f1();
 ERROR:  record "r" has no field "c"
-CONTEXT:  SQL statement "SELECT r.c"
+CONTEXT:  SQL expression "r.c"
 PL/pgSQL function f1() line 6 at RAISE
 create or replace function f1()
 returns void as $$
@@ -103,9 +103,9 @@ end;
 $$ language plpgsql;
 select f1();
 ERROR:  column "a" does not exist
-LINE 1: SELECT a + b
-               ^
-QUERY:  SELECT a + b
+LINE 1: r := a + b
+             ^
+QUERY:  r := a + b
 CONTEXT:  PL/pgSQL function f1() line 5 at assignment to variable "r" declared on line 2
 drop function f1();
 create or replace function f1()
@@ -119,10 +119,10 @@ end;
 $$ language plpgsql;
 select f1();
 ERROR:  column "c" does not exist
-LINE 1: SELECT c+10
-               ^
-QUERY:  SELECT c+10
-CONTEXT:  PL/pgSQL function f1() line 5 at assignment to element of variable "r" declared on line 2
+LINE 1: r[c+10] := 20
+          ^
+QUERY:  r[c+10] := 20
+CONTEXT:  PL/pgSQL function f1() line 5 at assignment to variable "r" declared on line 2
 drop function f1();
 create or replace function f1()
 returns void as $$
@@ -134,8 +134,11 @@ begin
 end;
 $$ language plpgsql;
 select f1();
-ERROR:  subscripted object is not an array
-CONTEXT:  PL/pgSQL function f1() line 5 at assignment to element of variable "r" declared on line 2
+ERROR:  cannot subscript type integer because it does not support subscripting
+LINE 1: r[10] := 20
+        ^
+QUERY:  r[10] := 20
+CONTEXT:  PL/pgSQL function f1() line 5 at assignment to variable "r" declared on line 2
 drop function f1();
 create or replace function f1()
 returns void as $$
@@ -241,7 +244,7 @@ begin
   end if;
 end;
 $$;
-WARNING:  query "SELECT 1,3" returned 2 columns
+WARNING:  query "1,3" returned 2 columns
 CONTEXT:  PL/pgSQL function inline_code_block line 5 at FOR with integer loop variable
 PL/pgSQL function inline_code_block line 5 at FOR with integer loop variable
 -- tests designed for 9.2
@@ -270,3 +273,74 @@ select f1();
 ERROR:  too few parameters specified for RAISE
 CONTEXT:  compilation of PL/pgSQL function "f1" near line 4
 drop function f1();
+create type _exception_type as (
+  state text,
+  message text,
+  detail text);
+create or replace function f1()
+returns void as $$
+declare
+  _exception record;
+begin
+  _exception := NULL::_exception_type;
+exception when others then
+  get stacked diagnostics
+        _exception.state = RETURNED_SQLSTATE,
+        _exception.message = MESSAGE_TEXT,
+        _exception.detail = PG_EXCEPTION_DETAIL,
+        _exception.hint = PG_EXCEPTION_HINT;
+end;
+$$ language plpgsql;
+select f1();
+WARNING:  record "_exception" has no field "hint"
+CONTEXT:  PL/pgSQL function f1() line 7 at GET STACKED DIAGNOSTICS
+PL/pgSQL function f1() line 7 at GET STACKED DIAGNOSTICS
+ f1 
+----
+ 
+(1 row)
+
+drop function f1();
+drop type _exception_type;
+create table footab(a int, b int, c int);
+create or replace function footab_trig_func()
+returns trigger as $$
+declare x int;
+begin
+  if false then
+    -- should be ok;
+    select count(*) from newtab into x; 
+
+    -- should fail;
+    select count(*) from newtab where d = 10 into x;
+  end if;
+  return null;
+end;
+$$ language plpgsql;
+create trigger footab_trigger
+  after insert on footab
+  referencing new table as newtab
+  for each statement execute procedure footab_trig_func();
+-- should to fail
+insert into footab values(1,2,3);
+WARNING:  column "d" does not exist
+LINE 1: select count(*) from newtab where d = 10
+                                          ^
+QUERY:  select count(*) from newtab where d = 10
+CONTEXT:  PL/pgSQL function footab_trig_func() line 9 at SQL statement
+PL/pgSQL function footab_trig_func() line 9 at SQL statement
+create or replace function footab_trig_func()
+returns trigger as $$
+declare x int;
+begin
+  if false then
+    -- should be ok;
+    select count(*) from newtab into x;
+  end if;
+  return null;
+end;
+$$ language plpgsql;
+-- should be ok
+insert into footab values(1,2,3);
+drop table footab;
+drop function footab_trig_func();

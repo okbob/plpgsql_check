@@ -195,4 +195,3 @@ plpgsql_check_pragma_apply(PLpgSQL_checkstate *cstate, char *pragma_str)
 	if (pragma_apply(&(cstate->pragma_vector), pragma_str))
 		cstate->was_pragma = true;
 }
-

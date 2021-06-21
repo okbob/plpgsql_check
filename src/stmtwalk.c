@@ -14,19 +14,9 @@
 #include "access/tupconvert.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
-
 #include "nodes/nodeFuncs.h"
 #include "parser/parse_node.h"
-
-#if PG_VERSION_NUM < 90600
-
-#include "parser/keywords.h"
-
-#else
-
 #include "common/keywords.h"
-
-#endif
 
 static void check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **exceptions);
 static PLpgSQL_stmt_stack_item * push_stmt_to_stmt_stack(PLpgSQL_checkstate *cstate);
@@ -1690,15 +1680,8 @@ exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond)
 		 */
 		if (_sqlerrstate == 0)
 		{
-			if (sqlerrstate != ERRCODE_QUERY_CANCELED
-
-#if PG_VERSION_NUM >= 90500
-
-				 && sqlerrstate != ERRCODE_ASSERT_FAILURE
-
-#endif
-
-				)
+			if (sqlerrstate != ERRCODE_QUERY_CANCELED &&
+				 sqlerrstate != ERRCODE_ASSERT_FAILURE)
 				return true;
 		}
 		/* Exact match? */
@@ -1873,13 +1856,11 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 		dynexpr->expr_rw_param = NULL;
 
-#elif PG_VERSION_NUM >= 90500
+#else
 
 		dynexpr->rwparam = -1;
 
 #endif
-
-
 
 		dynexpr->query = query;
 

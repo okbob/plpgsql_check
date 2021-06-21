@@ -30,7 +30,7 @@ I invite any ideas, patches, bugreports.
 plpgsql_check is next generation of plpgsql_lint. It allows to check source code by explicit call
 <i>plpgsql_check_function</i>.
 
-PostgreSQL PostgreSQL 9.5, 9.6, 10, 11, 12 and 13 are supported.
+PostgreSQL PostgreSQL 10, 11, 12, 13 and 14 are supported.
 
 The SQL statements inside PL/pgSQL functions are checked by validator for semantic errors. These errors
 can be found by plpgsql_check_function:

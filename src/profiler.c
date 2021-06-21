@@ -588,19 +588,8 @@ plpgsql_check_profiler_shmem_startup(void)
 
 	if (!found)
 	{
-
-#if PG_VERSION_NUM > 90600
-
 		profiler_ss->lock = &(GetNamedLWLockTranche("plpgsql_check profiler"))->lock;
 		profiler_ss->fstats_lock = &(GetNamedLWLockTranche("plpgsql_check fstats"))->lock;
-
-#else
-
-		profiler_ss->lock = LWLockAssign();
-		profiler_ss->fstats_lock = LWLockAssign();
-
-#endif
-
 	}
 
 	memset(&info, 0, sizeof(info));
@@ -2016,12 +2005,7 @@ profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic, List **params)
 					expr = o->argquery;
 			}
 		case PLPGSQL_STMT_BLOCK:
-
-#if PG_VERSION_NUM >= 100000
-
 		case PLPGSQL_STMT_FORS:
-
-#endif
 
 #if PG_VERSION_NUM >= 110000
 
@@ -2046,17 +2030,7 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, query_pa
 {
 	MemoryContext oldcxt;
 	Query	   *query;
-
-#if PG_VERSION_NUM >= 100000
-
 	RawStmt    *parsetree;
-
-#else
-
-	Node	   *parsetree;
-
-#endif
-
 	bool		snapshot_set;
 	List	   *parsetree_list;
 	PLpgSQL_var result;
@@ -2117,16 +2091,7 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, query_pa
 	}
 
 	/* Run through the raw parsetree and process it. */
-#if PG_VERSION_NUM >= 100000
-
 	parsetree = (RawStmt *) linitial(parsetree_list);
-
-#else
-
-	parsetree = (Node *) linitial(parsetree_list);
-
-#endif
-
 	snapshot_set = false;
 
 	/*
@@ -2138,15 +2103,7 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, query_pa
 		snapshot_set = true;
 	}
 
-#if PG_VERSION_NUM >= 100000
-
 	query = parse_analyze(parsetree, query_string, paramtypes, nparams, NULL);
-
-#else 
-
-	query = parse_analyze(parsetree, query_string, paramtypes, nparams);
-
-#endif
 
 	if (snapshot_set)
 		PopActiveSnapshot();
@@ -2629,13 +2586,9 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 				ArrayBuildState *max_time_abs = NULL;
 				ArrayBuildState *processed_rows_abs = NULL;
 
-#if PG_VERSION_NUM >= 90500
-
 				queryids_abs = initArrayResult(INT8OID, CurrentMemoryContext, true);
 				max_time_abs = initArrayResult(FLOAT8OID, CurrentMemoryContext, true);
 				processed_rows_abs = initArrayResult(INT8OID, CurrentMemoryContext, true);
-
-#endif
 
 				/* process all statements on this line */
 				for(;;)

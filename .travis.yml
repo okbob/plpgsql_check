@@ -2,12 +2,11 @@
 ---
 # run once for each of these
 env:
-  - PGVERSION=9.5
-  - PGVERSION=9.6
   - PGVERSION=10
   - PGVERSION=11
   - PGVERSION=12
   - PGVERSION=13
+  - PGVERSION=14
 
 language: C
 dist: xenial

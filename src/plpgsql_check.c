@@ -131,19 +131,9 @@ _PG_init(void)
 	plpgsql_check__stmt_typename_p = (plpgsql_check__stmt_typename_t)
 		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_stmt_typename");
 
-#if PG_VERSION_NUM >= 90600
-
 	AssertVariableIsOfType(&plpgsql_exec_get_datum_type, plpgsql_check__exec_get_datum_type_t);
 	plpgsql_check__exec_get_datum_type_p = (plpgsql_check__exec_get_datum_type_t)
 		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_exec_get_datum_type");
-
-#else
-
-	AssertVariableIsOfType(&exec_get_datum_type, plpgsql_check__exec_get_datum_type_t);
-	plpgsql_check__exec_get_datum_type_p = (plpgsql_check__exec_get_datum_type_t)
-		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "exec_get_datum_type");
-
-#endif
 
 	AssertVariableIsOfType(&plpgsql_recognize_err_condition, plpgsql_check__recognize_err_condition_t);
 	plpgsql_check__recognize_err_condition_p = (plpgsql_check__recognize_err_condition_t)
@@ -288,16 +278,8 @@ _PG_init(void)
 
 		RequestAddinShmemSpace(plpgsql_check_shmem_size());
 
-#if PG_VERSION_NUM >= 90600
-
 		RequestNamedLWLockTranche("plpgsql_check profiler", 1);
 		RequestNamedLWLockTranche("plpgsql_check fstats", 1);
-
-#else
-
-		RequestAddinLWLocks(2);
-
-#endif
 
 		/*
 		 * Install hooks.
