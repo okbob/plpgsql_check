@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	1.16.1
+Version:	1.17.0
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -43,10 +43,13 @@ rm -rf %{buildroot}
 %defattr(644,root,root,755)
 %doc README.md
 %{pginstdir}/lib/plpgsql_check.so
-%{pginstdir}/share/extension/plpgsql_check--1.7.sql
+%{pginstdir}/share/extension/plpgsql_check--1.17.sql
 %{pginstdir}/share/extension/plpgsql_check.control
 
 %changelog
+* Mon Jun 21 2021 - Pavel Stehule <pavel.stehule@gmail.com> 1.17.0
+- remove support for PostgreSQL 9.5 and 9.6
+
 * Sat Mar  6 2021 - Pavel Stehule <pavel.stehule@gmail.com> 1.16.0
 - plpgsql_profiler_functions_all
 
