@@ -943,6 +943,25 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 
 #endif
 
+	/*
+	 * SELECT INTO for composite target type doesn't do
+	 * expand.
+	 */
+	if (targetrec || targetrow)
+	{
+		if (cstate && cstate->estate)
+		{
+			PLpgSQL_stmt *stmt = cstate->estate->err_stmt;
+
+			if (stmt &&
+				(stmt->cmd_type == PLPGSQL_STMT_EXECSQL ||
+				 stmt->cmd_type == PLPGSQL_STMT_DYNEXECUTE))
+			{
+				expand = false;
+			}
+		}
+	}
+
 	oldowner = CurrentResourceOwner;
 	BeginInternalSubTransaction(NULL);
 	MemoryContextSwitchTo(oldCxt);
@@ -1119,6 +1138,7 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 		{
 			if (targetrow != NULL || targetrec != NULL)
 				plpgsql_check_assign_tupdesc_row_or_rec(cstate, targetrow, targetrec, tupdesc, is_immutable_null);
+
 			if (targetdno != -1)
 				plpgsql_check_assign_tupdesc_dno(cstate, targetdno, tupdesc, is_immutable_null);
 

@@ -280,14 +280,22 @@ plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 		return;
 
 	if (type_is_rowtype(value_typoid))
+	{
+		StringInfoData	str;
+
+		initStringInfo(&str);
+		appendStringInfo(&str, "cannot cast composite value of \"%s\" type to a scalar value of \"%s\" type",
+									format_type_be(value_typoid),
+									format_type_be(target_typoid));
+
 		plpgsql_check_put_error(cstate,
 					  ERRCODE_DATATYPE_MISMATCH, 0,
-					  "cannot cast composite value to a scalar type",
+					  str.data,
 					  NULL,
 					  NULL,
 					  PLPGSQL_CHECK_ERROR,
 					  0, NULL, NULL);
-
+	}
 	else if (target_typoid != value_typoid && !isnull)
 	{
 		StringInfoData	str;
@@ -771,6 +779,7 @@ compatible_tupdescs(TupleDesc src_tupdesc, TupleDesc dst_tupdesc)
 				return false;
 		}
 	}
+
 	return true;
 }
 

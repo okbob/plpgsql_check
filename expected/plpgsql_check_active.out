@@ -7855,3 +7855,31 @@ select * from plpgsql_check_function('dyntest');
 (1 row)
 
 drop function dyntest();
+-- should to report error
+create type typ2 as (a int, b int);
+create or replace function broken_into()
+returns void as $$
+declare v typ2;
+begin
+  -- should to fail
+  select (10,20)::typ2 into v;
+  -- should be ok
+  select ((10,20)::typ2).* into v;
+  -- should to fail
+  execute 'select (10,20)::typ2' into v;
+  -- should be ok
+  execute 'select ((10,20)::typ2).*' into v;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('broken_into', fatal_errors => false);
+                                           plpgsql_check_function                                           
+------------------------------------------------------------------------------------------------------------
+ error:42804:5:SQL statement:cannot cast composite value of "typ2" type to a scalar value of "integer" type
+ warning:00000:5:SQL statement:too few attributes for composite variable
+ error:42804:9:EXECUTE:cannot cast composite value of "typ2" type to a scalar value of "integer" type
+ warning:00000:9:EXECUTE:too few attributes for composite variable
+ warning extra:00000:2:DECLARE:never read variable "v"
+(5 rows)
+
+drop function broken_into();
+drop type typ2;

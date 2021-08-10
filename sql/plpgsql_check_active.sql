@@ -4515,3 +4515,27 @@ $$ language plpgsql;
 select * from plpgsql_check_function('dyntest');
 
 drop function dyntest();
+
+-- should to report error
+create type typ2 as (a int, b int);
+
+create or replace function broken_into()
+returns void as $$
+declare v typ2;
+begin
+  -- should to fail
+  select (10,20)::typ2 into v;
+  -- should be ok
+  select ((10,20)::typ2).* into v;
+  -- should to fail
+  execute 'select (10,20)::typ2' into v;
+  -- should be ok
+  execute 'select ((10,20)::typ2).*' into v;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('broken_into', fatal_errors => false);
+
+drop function broken_into();
+drop type typ2;
+
