@@ -300,6 +300,8 @@ extern PLpgSQL_row * plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *csta
  * functions from parse_name.c
  */
 extern Oid plpgsql_check_parse_name_or_signature(char *name_or_signature);
+extern bool plpgsql_check_is_ident_start(unsigned char c);
+extern bool plpgsql_check_is_ident_cont(unsigned char c);
 
 /*
  * functions from profiler.c

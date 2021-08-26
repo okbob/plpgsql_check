@@ -19,8 +19,8 @@
  * Is character a valid identifier start?
  * Must match scan.l's {ident_start} character class.
  */
-static bool
-is_ident_start(unsigned char c)
+bool
+plpgsql_check_is_ident_start(unsigned char c)
 {
 	/* Underscores and ASCII letters are OK */
 	if (c == '_')
@@ -37,14 +37,14 @@ is_ident_start(unsigned char c)
  * Is character a valid identifier continuation?
  * Must match scan.l's {ident_cont} character class.
  */
-static bool
-is_ident_cont(unsigned char c)
+bool
+plpgsql_check_is_ident_cont(unsigned char c)
 {
 	/* Can be digit or dollar sign ... */
 	if ((c >= '0' && c <= '9') || c == '$')
 		return true;
 	/* ... or an identifier start character */
-	return is_ident_start(c);
+	return plpgsql_check_is_ident_start(c);
 }
 
 /*
@@ -113,13 +113,13 @@ parse_name_or_signature(char *qualname, bool *is_signature)
 
 			missing_ident = false;
 		}
-		else if (is_ident_start((unsigned char) *nextp))
+		else if (plpgsql_check_is_ident_start((unsigned char) *nextp))
 		{
 			char	   *downname;
 			int			len;
 
 			curname = nextp++;
-			while (is_ident_cont((unsigned char) *nextp))
+			while (plpgsql_check_is_ident_cont((unsigned char) *nextp))
 				nextp++;
 
 			len = nextp - curname;
