@@ -47,7 +47,6 @@ static PLpgSQL_plugin plugin_funcs = { plpgsql_check_profiler_func_init,
 									   NULL};
 
 
-
 static const struct config_enum_entry plpgsql_check_mode_options[] = {
 	{"disabled", PLPGSQL_CHECK_MODE_DISABLED, false},
 	{"by_function", PLPGSQL_CHECK_MODE_BY_FUNCTION, false},
@@ -80,6 +79,9 @@ void			_PG_init(void);
 void			_PG_fini(void);
 
 shmem_startup_hook_type prev_shmem_startup_hook = NULL;
+
+bool plpgsql_check_regress_test_mode;
+
 
 /*
  * Linkage to function in plpgsql module
@@ -141,6 +143,14 @@ _PG_init(void)
 
 	plpgsql_check_plugin_var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable( "PLpgSQL_plugin");
 	*plpgsql_check_plugin_var_ptr = &plugin_funcs;
+
+	DefineCustomBoolVariable("plpgsql_check.regress_test_mode",
+					    "reduces volatile output",
+					    NULL,
+					    &plpgsql_check_regress_test_mode,
+					    false,
+					    PGC_USERSET, 0,
+					    NULL, NULL, NULL);
 
 	DefineCustomEnumVariable("plpgsql_check.mode",
 					    "choose a mode for enhanced checking",

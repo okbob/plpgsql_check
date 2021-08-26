@@ -231,6 +231,7 @@ plpgsql_check_init_ri(plpgsql_check_result_info *ri,
 
 	ri->tupdesc = CreateTupleDescCopy(rsinfo->expectedDesc);
 	ri->tuple_store = tuplestore_begin_heap(false, false, work_mem);
+	ri->query_ctx = per_query_ctx;
 
 	MemoryContextSwitchTo(oldctx);
 
@@ -632,16 +633,31 @@ init_tag(plpgsql_check_result_info *ri, Oid fn_oid)
 		if (ri->sinfo != NULL)
 			resetStringInfo(ri->sinfo);
 		else
+		{
+			MemoryContext	oldcxt;
+
+			/* StringInfo should be created in some longer life context */
+			oldcxt = MemoryContextSwitchTo(ri->query_ctx);
+
 			ri->sinfo = makeStringInfo();
+
+			MemoryContextSwitchTo(oldcxt);
+		}
 
 		if (ri->format == PLPGSQL_CHECK_FORMAT_XML)
 		{
 			/* create a initial tag */
-			appendStringInfo(ri->sinfo, "<Function oid=\"%d\">\n", fn_oid);
+			if (plpgsql_check_regress_test_mode)
+				appendStringInfo(ri->sinfo, "<Function>\n");
+			else
+				appendStringInfo(ri->sinfo, "<Function oid=\"%d\">\n", fn_oid);
 		}
 		else if (ri->format == PLPGSQL_CHECK_FORMAT_JSON) {
 			/* create a initial tag */
-			appendStringInfo(ri->sinfo, "{ \"function\":\"%d\",\n\"issues\":[\n", fn_oid);
+			if (plpgsql_check_regress_test_mode)
+				appendStringInfo(ri->sinfo, "{ \"issues\":[\n");
+			else
+				appendStringInfo(ri->sinfo, "{ \"function\":\"%d\",\n\"issues\":[\n", fn_oid);
 		}
 	}
 }

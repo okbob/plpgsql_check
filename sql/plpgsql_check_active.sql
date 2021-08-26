@@ -2,6 +2,8 @@ load 'plpgsql';
 create extension if not exists plpgsql_check;
 set client_min_messages to notice;
 
+set plpgsql_check.regress_test_mode = true;
+
 --
 -- check function statement tests
 --
@@ -4539,3 +4541,17 @@ select * from plpgsql_check_function('broken_into', fatal_errors => false);
 drop function broken_into();
 drop type typ2;
 
+-- check output in xml or json formats
+CREATE OR REPLACE FUNCTION test_function()
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+begin
+    insert into non_existing_table values (1);
+end
+$function$;
+
+select * from plpgsql_check_function('test_function', format => 'xml');
+select * from plpgsql_check_function('test_function', format => 'json');
+
+drop function test_function();

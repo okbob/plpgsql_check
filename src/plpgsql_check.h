@@ -75,6 +75,7 @@ typedef struct plpgsql_check_result_info
 	int			format;						/* produced / expected format */
 	Tuplestorestate	*tuple_store;			/* target tuple store */
 	TupleDesc	tupdesc;					/* target tuple store tuple descriptor */
+	MemoryContext			query_ctx;		/* memory context for string operations */
 	StringInfo	sinfo;						/* buffer for multi line one value output formats */
 	bool		init_tag;					/* true, when init tag should be created */
 } plpgsql_check_result_info;
@@ -346,6 +347,8 @@ extern int plpgsql_check_tracer_errlevel;
 
 extern PGErrorVerbosity plpgsql_check_tracer_verbosity;
 extern PGErrorVerbosity plpgsql_check_trace_assert_verbosity;
+
+extern bool plpgsql_check_regress_test_mode;
 
 extern void plpgsql_check_tracer_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func);
 extern void plpgsql_check_tracer_on_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func);
