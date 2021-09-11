@@ -335,8 +335,18 @@ ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 							{
 								A_Const *ac = (A_Const *) arg;
 
+#if PG_VERSION_NUM < 150000
+
 								if (ac->val.type == T_String)
 									plpgsql_check_pragma_apply(cstate, strVal(&(ac->val)));
+
+#else
+
+								if (!ac->isnull && IsA(&ac->val, String))
+									plpgsql_check_pragma_apply(cstate, strVal(&(ac->val)));
+
+#endif
+
 							}
 						}
 					}
