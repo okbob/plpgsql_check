@@ -29,243 +29,6 @@ plpgsql_check_pragma_vector plpgsql_check_runtime_pragma_vector;
 
 bool plpgsql_check_runtime_pragma_vector_changed = false;
 
-static char *get_record(char *str, bool *iserror, bool istop);
-
-
-
-//extern bool plpgsql_check_is_ident_start(unsigned char c);
-//extern bool plpgsql_check_is_ident_cont(unsigned char c);
-
-/*
- * Parser of typeset and typecheck pragmas.
- *
- *    Example: 'set_type:"xxx"."yyy":(f1 int, (f2 int, f3 int))'
- *             'set_type_and_check:r:(a int, b int)'
- *
- * These pragmas can be used only for record type. These pragmas
- * will have block scope. The pragma will have higher priority
- * than real type.
- */
-
-#define		TOKEN_IDENT			1
-
-
-/*
- * Returns
- */
-static char *
-get_token(char *str,
-		  char **name,
-		  int *token,
-		  bool *iserror)
-{
-	*iserror = false;
-
-	/* skip leading whitespace */
-	while (scanner_isspace(*str))
-		str++;
-
-	if (*str == '\0')
-	{
-		*token = 0;
-		return NULL;
-	}
-	else if (strchr("().,", *str))
-	{
-		*token = *str;
-		return str + 1;
-	}
-	else if (*str == '"')
-	{
-		char	   *ptr;
-
-		ptr = *name = palloc(sizeof(str));
-
-		str += 1;
-		while (*str)
-		{
-			if (*str == '"')
-			{
-				if (str[1] == '"')
-				{
-					str++;
-				}
-				else
-				{
-					if (ptr != *name)
-					{
-						*ptr = '\0';
-						*token = TOKEN_IDENT;
-						return str;
-					}
-					else
-					{
-						ereport(WARNING,
-								 errmsg("string is not a valid identifier"),
-								 errdetail("Quoted identifier must not be empty."));
-						*iserror = false;
-						return NULL;
-					}
-				}
-			}
-
-			*ptr++ = *str++;
-		}
-
-		ereport(WARNING,
-				errmsg("string is not a valid identifier"),
-				errdetail("String has unclosed double quotes."));
-		*iserror = false;
-		return NULL;
-	}
-	else if (plpgsql_check_is_ident_start((unsigned char) *str))
-	{
-		char	   *ptr;
-
-		ptr = *name = palloc(sizeof(str));
-
-		*ptr = *str++;
-		while (plpgsql_check_is_ident_cont((unsigned char) *str))
-			*ptr++ = *str++;
-
-		*ptr = '\0';
-		*token = TOKEN_IDENT;
-
-		return str;
-	}
-
-	elog(WARNING, "unexpected string \"%s\"", str);
-	*iserror = true;
-	return NULL;
-}
-
-static char *
-get_field_name(char *str, bool *iserror)
-{
-	char	   *name;
-	int		   token;
-
-	str = get_token(str, &name, &token, iserror);
-	if (iserror)
-		return NULL;
-
-	if (token != TOKEN_IDENT)
-	{
-		elog(WARNING, "missing identifier");
-		*iserror = true;
-		return NULL;
-	}
-
-	str = get_token(str, &name, &token, iserror);
-	if (iserror)
-		return NULL;
-
-	if (token == '.')
-	{
-		str = get_token(str, &name, &token, iserror);
-		if (iserror)
-			return NULL;
-
-		if (token != TOKEN_IDENT)
-		{
-			elog(WARNING, "missing identifier");
-			*iserror = true;
-			return NULL;
-		}
-	}
-	else
-		str -= 1;
-
-	*iserror = false;
-
-	return str;
-}
-
-static char *
-get_type(char *str, bool *iserror)
-{
-	char	   *name;
-	int			token;
-
-	str = get_token(str, &name, &token, iserror);
-	if (iserror)
-		return NULL;
-
-	if (token == '(')
-	{
-		str -= 1;
-		return get_record(str, iserror, false);
-	}
-
-	while (token == TOKEN_IDENT)
-	{
-		str = get_token(str, &name, &token, iserror);
-		if (iserror)
-			return NULL;
-	}
-
-	str -= 1;
-	*iserror = false;
-
-	return str;
-}
-
-static char *
-get_record(char *str, bool *iserror, bool istop)
-{
-	char	   *name;
-	int			token;
-
-	str = get_token(str, &name, &token, iserror);
-	if (iserror)
-		return NULL;
-
-	if (token != '(')
-	{
-		elog(WARNING, "expecting '(')");
-		*iserror = true;
-		return NULL;
-	}
-
-field:
-
-	str = get_field_name(str, iserror);
-	if (iserror)
-		return NULL;
-
-	str = get_type(str, iserror);
-	if (iserror)
-		return NULL;
-
-	str = get_token(str, &name, &token, iserror);
-	if (token == ',')
-		goto field;
-
-	if (token != ')')
-	{
-		elog(WARNING, "expecting ')'");
-		*iserror = true;
-		return NULL;
-	}
-
-	if (istop)
-	{
-		str = get_token(str, &name, &token, iserror);
-		if (iserror)
-			return NULL;
-		if (token != 0)
-		{
-			elog(WARNING, "unexpected content after ')'");
-			*iserror = true;
-			return NULL;
-		}
-	}
-
-	*iserror = false;
-	return str;
-}
-
-
 static bool
 pragma_apply(plpgsql_check_pragma_vector *pv, char *pragma_str)
 {
@@ -377,6 +140,33 @@ pragma_apply(plpgsql_check_pragma_vector *pv, char *pragma_str)
 	else if ((strncasecmp(pragma_str, "SET_TYPE:", 9) == 0) ||
 			 (strncasecmp(pragma_str, "SET_TYPE_AND_CHECK:", 19) == 0))
 	{
+		bool check_type;
+		const char *str;
+		int		start;
+		int		varno;
+		Oid		vartyp;
+		int32	vartypmod;
+
+		if (strncasecmp(pragma_str, "SET_TYPE_AND_CHECK:", 19) == 0)
+		{
+			str = pragma_str + 20;
+			start = 20;
+			check_type = true;
+		}
+		else
+		{
+			str = pragma_str + 10;
+			start = 10;
+			check_type = false;
+		}
+
+		if (plpgsql_check_parse_pragma_settype(pragma_str, start, &varno, &vartyp, &vartypmod))
+		{
+elog(NOTICE, "PRAGMA \"%s\" IS VALID", pragma_str);
+			is_valid = true;
+		}
+		else
+			is_valid = false;
 	}
 	else
 	{
