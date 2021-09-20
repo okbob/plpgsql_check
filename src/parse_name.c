@@ -600,17 +600,91 @@ get_type(TokenizerState *state, Oid *typtype, int32 *typmod)
 	return true;
 }
 
+static int
+get_varno(PLpgSQL_nsitem *cur_ns, List *names)
+{
+	char	   *name1 = NULL;
+	char	   *name2 = NULL;
+	char	   *name3 = NULL;
+	int			names_used;
+	PLpgSQL_nsitem *nsitem;
+
+	switch (list_length(names))
+	{
+		case 1:
+		{
+			name1 = (char *) linitial(names);
+			break;
+		}
+		case 2:
+		{
+			name1 = (char *) linitial(names);
+			name2 = (char *) lsecond(names);
+			break;
+		}
+		case 3:
+		{
+			name1 = (char *) linitial(names);
+			name2 = (char *) lsecond(names);
+			name3 = (char *) lthird(names);
+			break;
+		}
+		default:
+			return -1;
+	}
+
+	nsitem = plpgsql_check__ns_lookup_p(cur_ns, false, name1, name2, name3, &names_used);
+
+	return nsitem ? nsitem->itemno : -1;
+}
+
+static char *
+get_name(List *names)
+{
+	bool	is_first = true;
+	ListCell *lc;
+
+	StringInfoData sinfo;
+
+	initStringInfo(&sinfo);
+
+	foreach(lc, names)
+	{
+		if (is_first)
+			is_first = false;
+		else
+			appendStringInfoChar(&sinfo, '.');
+
+		appendStringInfoString(&sinfo, (char *) lfirst(lc));
+	}
+
+	return sinfo.data;
+}
+
 bool
-plpgsql_check_parse_pragma_settype(const char *str, int start, int *varno, Oid *typtype, int32 *typmod)
+plpgsql_check_parse_pragma_settype(const char *str, int start, PLpgSQL_nsitem *ns, int *varno, Oid *typtype, int32 *typmod)
 {
 	List	   *names;
 	TokenizerState state;
+
+	/*
+	 * namespace is available only in compile check mode, and only in this mode
+	 * this pragma can be used.
+	 */
+	if (!ns)
+		return true;
 
 	initialize_tokenizer(&state, str, start);
 
 	names = get_qualified_identifier(&state, NULL);
 	if (state.is_error)
 		return false;
+
+	if (get_varno(ns, names) == -1)
+	{
+		elog(WARNING, "Cannot to find variable \"%s\" used in set_type pragma", get_name(names));
+		return false;
+	}
 
 	if (!get_type(&state, typtype, typmod))
 		return false;

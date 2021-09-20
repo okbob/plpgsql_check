@@ -300,7 +300,7 @@ extern PLpgSQL_row * plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *csta
  * functions from parse_name.c
  */
 extern Oid plpgsql_check_parse_name_or_signature(char *name_or_signature);
-extern bool plpgsql_check_parse_pragma_settype(const char *str, int start, int *varno, Oid *typtype, int32 *typmod);
+extern bool plpgsql_check_parse_pragma_settype(const char *str, int start, PLpgSQL_nsitem *ns, int *varno, Oid *typtype, int32 *typmod);
 
 /*
  * functions from profiler.c
@@ -362,7 +362,7 @@ extern void plpgsql_check_set_stmt_group_number(PLpgSQL_stmt *stmt, int *group_n
 /*
  * variables from pragma.c
  */
-extern void plpgsql_check_pragma_apply(PLpgSQL_checkstate *cstate, char *pragma_str);
+extern void plpgsql_check_pragma_apply(PLpgSQL_checkstate *cstate, char *pragma_str, PLpgSQL_nsitem *ns);
 
 extern plpgsql_check_pragma_vector plpgsql_check_runtime_pragma_vector;
 extern bool plpgsql_check_runtime_pragma_vector_changed;
@@ -382,7 +382,7 @@ extern PLpgSQL_plugin **plpgsql_check_plugin_var_ptr;
 #endif
 
 /*
- * Linkage to function in plpgsql module
+ * Links to function in plpgsql module
  */
 
 #ifdef PLPGSQL_BUILD_DATATYPE_4
@@ -406,6 +406,11 @@ typedef Oid (*plpgsql_check__exec_get_datum_type_t) (PLpgSQL_execstate *estate, 
 extern plpgsql_check__exec_get_datum_type_t plpgsql_check__exec_get_datum_type_p;
 typedef int (*plpgsql_check__recognize_err_condition_t) (const char *condname, bool allow_sqlstate);
 extern plpgsql_check__recognize_err_condition_t plpgsql_check__recognize_err_condition_p;
+
+typedef PLpgSQL_nsitem *(*plpgsql_check__ns_lookup_t) (PLpgSQL_nsitem *ns_cur, bool localmode,
+													  const char *name1, const char *name2, const char *name3,
+													  int *names_used);
+extern plpgsql_check__ns_lookup_t plpgsql_check__ns_lookup_p;
 
 #define NEVER_READ_VARIABLE_TEXT		"never read variable \"%s\""
 #define NEVER_READ_VARIABLE_TEXT_CHECK_LENGTH		19

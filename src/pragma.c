@@ -30,7 +30,7 @@ plpgsql_check_pragma_vector plpgsql_check_runtime_pragma_vector;
 bool plpgsql_check_runtime_pragma_vector_changed = false;
 
 static bool
-pragma_apply(plpgsql_check_pragma_vector *pv, char *pragma_str)
+pragma_apply(plpgsql_check_pragma_vector *pv, char *pragma_str, PLpgSQL_nsitem *ns)
 {
 	bool	is_valid = true;
 
@@ -141,7 +141,6 @@ pragma_apply(plpgsql_check_pragma_vector *pv, char *pragma_str)
 			 (strncasecmp(pragma_str, "SET_TYPE_AND_CHECK:", 19) == 0))
 	{
 		bool check_type;
-		const char *str;
 		int		start;
 		int		varno;
 		Oid		vartyp;
@@ -149,20 +148,17 @@ pragma_apply(plpgsql_check_pragma_vector *pv, char *pragma_str)
 
 		if (strncasecmp(pragma_str, "SET_TYPE_AND_CHECK:", 19) == 0)
 		{
-			str = pragma_str + 20;
 			start = 20;
 			check_type = true;
 		}
 		else
 		{
-			str = pragma_str + 10;
 			start = 10;
 			check_type = false;
 		}
 
-		if (plpgsql_check_parse_pragma_settype(pragma_str, start, &varno, &vartyp, &vartypmod))
+		if (plpgsql_check_parse_pragma_settype(pragma_str, start, ns, &varno, &vartyp, &vartypmod))
 		{
-elog(NOTICE, "PRAGMA \"%s\" IS VALID", pragma_str);
 			is_valid = true;
 		}
 		else
@@ -209,7 +205,7 @@ plpgsql_check_pragma(PG_FUNCTION_ARGS)
 
 		pragma_str = TextDatumGetCString(value);
 
-		pragma_apply(&plpgsql_check_runtime_pragma_vector, pragma_str);
+		pragma_apply(&plpgsql_check_runtime_pragma_vector, pragma_str, NULL);
 
 		plpgsql_check_runtime_pragma_vector_changed = true;
 
@@ -222,8 +218,8 @@ plpgsql_check_pragma(PG_FUNCTION_ARGS)
 }
 
 void
-plpgsql_check_pragma_apply(PLpgSQL_checkstate *cstate, char *pragma_str)
+plpgsql_check_pragma_apply(PLpgSQL_checkstate *cstate, char *pragma_str, PLpgSQL_nsitem *ns)
 {
-	if (pragma_apply(&(cstate->pragma_vector), pragma_str))
+	if (pragma_apply(&(cstate->pragma_vector), pragma_str, ns))
 		cstate->was_pragma = true;
 }

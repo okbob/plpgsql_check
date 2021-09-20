@@ -84,7 +84,7 @@ bool plpgsql_check_regress_test_mode;
 
 
 /*
- * Linkage to function in plpgsql module
+ * Links to function in plpgsql module
  */
 plpgsql_check__build_datatype_t plpgsql_check__build_datatype_p;
 plpgsql_check__compile_t plpgsql_check__compile_p;
@@ -92,6 +92,8 @@ plpgsql_check__parser_setup_t plpgsql_check__parser_setup_p;
 plpgsql_check__stmt_typename_t plpgsql_check__stmt_typename_p;
 plpgsql_check__exec_get_datum_type_t plpgsql_check__exec_get_datum_type_p;
 plpgsql_check__recognize_err_condition_t plpgsql_check__recognize_err_condition_p;
+plpgsql_check__ns_lookup_t plpgsql_check__ns_lookup_p;
+
 
 /*
  * load_external_function retursn PGFunctions - we need generic function, so
@@ -140,6 +142,10 @@ _PG_init(void)
 	AssertVariableIsOfType(&plpgsql_recognize_err_condition, plpgsql_check__recognize_err_condition_t);
 	plpgsql_check__recognize_err_condition_p = (plpgsql_check__recognize_err_condition_t)
 		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_recognize_err_condition");
+
+	AssertVariableIsOfType(&plpgsql_ns_lookup, plpgsql_check__ns_lookup_t);
+	plpgsql_check__ns_lookup_p = (plpgsql_check__ns_lookup_t)
+		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_ns_lookup");
 
 	plpgsql_check_plugin_var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable( "PLpgSQL_plugin");
 	*plpgsql_check_plugin_var_ptr = &plugin_funcs;
