@@ -405,6 +405,44 @@ initialize_tokenizer(TokenizerState *state, const char *str, int start)
 	state->saved_token_is_valid = false;
 }
 
+static char *
+make_ident(TokenType *token)
+{
+	if (token->value == TOKEN_IDENTIF)
+	{
+		return downcase_truncate_identifier(token->start_token,
+											token->size,
+											false);
+	}
+	else if (token->value == TOKEN_QIDENTIF)
+	{
+		char	   *result = palloc(token->size);
+		const char *ptr = token->start_token + 1;
+		char	   *write_ptr;
+		int			n = token->size - 2;
+
+		write_ptr = result;
+
+		while (n-- > 0)
+		{
+			*write_ptr++ = *ptr;
+			if (*ptr++ == '"')
+			{
+				ptr += 1;
+				n -= 1;
+			}
+		}
+
+		*write_ptr = '\0';
+
+		truncate_identifier(result, write_ptr - result, false);
+
+		return result;
+	}
+
+	return NULL;
+}
+
 static List *
 get_qualified_identifier(TokenizerState *state, List *result)
 {
@@ -424,7 +462,7 @@ get_qualified_identifier(TokenizerState *state, List *result)
 			return NULL;
 		}
 
-		result = lappend(result, pnstrdup(_token->start_token, _token->size));
+		result = lappend(result, make_ident(_token));
 		read_atleast_one = true;
 
 		_token = get_token(state, &token);
@@ -523,7 +561,7 @@ get_type(TokenizerState *state, Oid *typtype, int32 *typmod)
 		{
 			if (_token2->value == '.')
 			{
-				names = list_make1(pnstrdup(_token->start_token, _token->size));
+				names = list_make1(make_ident(_token));
 
 				names = get_qualified_identifier(state, names);
 				if (state->is_error)
@@ -655,23 +693,25 @@ get_name(List *names)
 		else
 			appendStringInfoChar(&sinfo, '.');
 
-		appendStringInfoString(&sinfo, (char *) lfirst(lc));
+		appendStringInfo(&sinfo, "\"%s\"", (char *) lfirst(lc));
 	}
 
 	return sinfo.data;
 }
 
 bool
-plpgsql_check_parse_pragma_settype(const char *str, int start, PLpgSQL_nsitem *ns, int *varno, Oid *typtype, int32 *typmod)
+plpgsql_check_parse_pragma_settype(PLpgSQL_checkstate *cstate, const char *str, int start, PLpgSQL_nsitem *ns, int *varno, Oid *typtype, int32 *typmod)
 {
 	List	   *names;
 	TokenizerState state;
+	int			target_dno;
+	PLpgSQL_datum *target;
 
 	/*
 	 * namespace is available only in compile check mode, and only in this mode
 	 * this pragma can be used.
 	 */
-	if (!ns)
+	if (!ns || !cstate)
 		return true;
 
 	initialize_tokenizer(&state, str, start);
@@ -680,9 +720,16 @@ plpgsql_check_parse_pragma_settype(const char *str, int start, PLpgSQL_nsitem *n
 	if (state.is_error)
 		return false;
 
-	if (get_varno(ns, names) == -1)
+	if ((target_dno = get_varno(ns, names)) == -1)
 	{
-		elog(WARNING, "Cannot to find variable \"%s\" used in set_type pragma", get_name(names));
+		elog(WARNING, "Cannot to find variable \"%s\" used in settype pragma", get_name(names));
+		return false;
+	}
+
+	target = cstate->estate->datums[target_dno];
+	if (target->dtype != PLPGSQL_DTYPE_REC)
+	{
+		elog(WARNING, "Pragma \"settype\" can be applied only on variable of record type");
 		return false;
 	}
 
