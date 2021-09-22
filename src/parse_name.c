@@ -14,7 +14,15 @@
 
 #include "catalog/namespace.h"
 #include "parser/scansup.h"
+#include "parser/parse_type.h"
 #include "utils/builtins.h"
+
+#if PG_VERSION_NUM < 110000
+
+#include "utils/typcache.h"
+
+#endif
+
 
 /*
  * Is character a valid identifier start?
@@ -242,43 +250,9 @@ typedef struct
 typedef struct
 {
 	const char *str;
-	const char *laststr;
-	const char *fullstr;
-	int start;
 	TokenType	saved_token;
 	bool		saved_token_is_valid;
-	bool	is_error;
 } TokenizerState;
-
-static void
-pragma_tokenizer_error(TokenizerState *state, const char *errdetail)
-{
-	/* Raise warning only when it was not yet */
-	if (!state->is_error)
-	{
-		if (state->laststr && *state->laststr)
-		{
-			/*
-			 * 20 is length of name "plpgsql_check_pragma",
-			 * This is little bit smutty, because we have not
-			 * real initial position of pragma expression
-			 */
-			ereport(WARNING,
-				(errmsg("Syntax error in pragma (%s)", errdetail),
-				 errposition(state->laststr - state->fullstr + 20 + state->start)));
-		}
-		else if (state->str && *state->str)
-		{
-			ereport(WARNING,
-				(errmsg("Syntax error in pragma (%s)", errdetail),
-				 errposition(state->str - state->fullstr + 20 + state->start)));
-		}
-		else
-			elog(WARNING, "Unexpected end of pragma (%s)", errdetail);
-
-		state->is_error = true;
-	}
-}
 
 /*
  * Tokenize text. Only one error is possible here - unclosed double quotes.
@@ -287,9 +261,6 @@ pragma_tokenizer_error(TokenizerState *state, const char *errdetail)
 static TokenType *
 get_token(TokenizerState *state, TokenType *token)
 {
-	if (state->is_error)
-		return NULL;
-
 	if (state->saved_token_is_valid)
 	{
 		state->saved_token_is_valid = false;
@@ -299,8 +270,6 @@ get_token(TokenizerState *state, TokenType *token)
 	/* skip inital spaces */
 	while (*state->str == ' ')
 		state->str++;
-
-	state->laststr = state->str;
 
 	if (!*state->str)
 		return NULL;
@@ -352,10 +321,7 @@ get_token(TokenizerState *state, TokenType *token)
 		}
 
 		if (is_error)
-		{
-			pragma_tokenizer_error(state, "unclosed quoted identifier");
-			return NULL;
-		}
+			elog(ERROR, "Syntax error (unclosed quoted identifier)");
 	}
 	else if (is_ident_start(*state->str))
 	{
@@ -370,38 +336,28 @@ get_token(TokenizerState *state, TokenType *token)
 
 	token->size = state->str - token->start_token;
 
-
 	return token;
 }
 
 static void
 unget_token(TokenizerState *state, TokenType *token)
 {
-	if (!state->is_error)
+	if (token)
 	{
-		if (token)
-		{
-			state->saved_token.value = token->value;
-			state->saved_token.start_token = token->start_token;
-			state->saved_token.size = token->size;
+		state->saved_token.value = token->value;
+		state->saved_token.start_token = token->start_token;
+		state->saved_token.size = token->size;
 
-			state->laststr = token->start_token;
-
-			state->saved_token_is_valid = true;
-		}
-		else
-			state->saved_token_is_valid = false;
+		state->saved_token_is_valid = true;
 	}
+	else
+		state->saved_token_is_valid = false;
 }
 
 static void
-initialize_tokenizer(TokenizerState *state, const char *str, int start)
+initialize_tokenizer(TokenizerState *state, const char *str)
 {
-	state->str = str + start;
-	state->fullstr = str;
-	state->laststr = NULL;
-	state->start = start;
-	state->is_error = false;
+	state->str = str;
 	state->saved_token_is_valid = false;
 }
 
@@ -443,6 +399,9 @@ make_ident(TokenType *token)
 	return NULL;
 }
 
+/*
+ * Returns list of strings used in qualified identifiers
+ */
 static List *
 get_qualified_identifier(TokenizerState *state, List *result)
 {
@@ -455,12 +414,8 @@ get_qualified_identifier(TokenizerState *state, List *result)
 		if (!_token)
 			break;
 
-		if (_token->value != TOKEN_IDENTIF &&
-			_token->value != TOKEN_QIDENTIF)
-		{
-			pragma_tokenizer_error(state, "expected identifier");
-			return NULL;
-		}
+		if (_token->value != TOKEN_IDENTIF && _token->value != TOKEN_QIDENTIF)
+			elog(ERROR, "Syntax error (expected identifier)");
 
 		result = lappend(result, make_ident(_token));
 		read_atleast_one = true;
@@ -476,34 +431,84 @@ get_qualified_identifier(TokenizerState *state, List *result)
 		}
 	}
 
-	if (!read_atleast_one || state->is_error)
-	{
-		pragma_tokenizer_error(state, "expected identifier");
-		return NULL;
-	}
+	if (!read_atleast_one)
+		elog(ERROR, "Syntax error (expected identifier)");
 
 	return result;
 }
 
-static bool
-get_type(TokenizerState *state, Oid *typtype, int32 *typmod)
+/*
+ * Set start position and length of qualified identifier. Returns true,
+ * if parsed identifier is valid.
+ */
+static void
+parse_qualified_identifier(TokenizerState *state, const char **startptr, int *size)
+{
+	TokenType	token, *_token;
+	bool		read_atleast_one = false;
+	const char	   *_startptr = *startptr;
+	int			_size = *size;
+
+	while (1)
+	{
+		_token = get_token(state, &token);
+		if (!_token)
+			break;
+
+		if (_token->value != TOKEN_IDENTIF && _token->value != TOKEN_QIDENTIF)
+			elog(ERROR, "Syntax error (expected identifier)");
+
+		if (!_startptr)
+		{
+			_startptr = _token->start_token;
+			_size = _token->size;
+		}
+		else
+			_size = _token->start_token - _startptr + _token->size;
+
+		read_atleast_one = true;
+
+		_token = get_token(state, &token);
+		if (!_token)
+			break;
+
+		if (_token->value != '.')
+		{
+			unget_token(state, _token);
+			break;
+		}
+	}
+
+	if (!read_atleast_one)
+		elog(ERROR, "Syntax error (expected identifier)");
+
+	*startptr = _startptr;
+	*size = _size;
+}
+
+
+static Oid
+get_type(TokenizerState *state, int32 *typmod)
 {
 	TokenType	token, *_token;
 	const char	   *typename_start = NULL;
 	int			typename_length = 0;
-	const char	   *typmod_start = NULL;
-	int			typmod_length = 0;
-	List	   *names = NULL;
+	const char *typestr;
+	TypeName   *typeName = NULL;
+	Oid			typtype;
 
 	_token = get_token(state, &token);
 	if (!_token)
-	{
-		pragma_tokenizer_error(state, "expected identifier");
-		return false;
-	}
+		elog(ERROR, "Syntax error (expected identifier)");
 
 	if (_token->value == '(')
 	{
+		TupleDesc	resultTupleDesc;
+		List	   *names = NIL;
+		List	   *types = NIL;
+		List	   *typmods = NIL;
+		List	   *collations = NIL;
+
 		while (1)
 		{
 			Oid		_typtype;
@@ -513,59 +518,55 @@ get_type(TokenizerState *state, Oid *typtype, int32 *typmod)
 			if (!_token ||
 				(_token->value != TOKEN_IDENTIF &&
 				 _token->value != TOKEN_QIDENTIF))
-			{
-				pragma_tokenizer_error(state, "expected identifier");
-				return false;
-			}
+				elog(ERROR, "Syntax error (expected identifier)");
 
-			if (get_type(state, &_typtype, &_typmod))
-			{
-			}
-			else
-				return false;
+			names = lappend(names, makeString(make_ident(_token)));
+
+			_typtype = get_type(state, &_typmod);
+
+			types = lappend_oid(types, _typtype);
+			typmods = lappend_int(typmods, _typmod);
+			collations = lappend_oid(collations, InvalidOid);
 
 			_token = get_token(state, &token);
 			if (!_token)
+				elog(ERROR, "Syntax error (unclosed composite type definition - expected \")\")");
+
+			if (_token->value == ')')
 			{
-				pragma_tokenizer_error(state, "unclosed composite type definition - expected \")\"");
-				return false;
-			}
-			else if (_token->value == ')')
-			{
-				return true;
+				break;
 			}
 			else if (_token->value != ',')
-			{
-				pragma_tokenizer_error(state, "expected \",\"");
-				return false;
-			}
+				elog(ERROR, "Syntax error (expected \",\")");
 		}
+
+		resultTupleDesc = BuildDescFromLists(names, types, typmods, collations);
+		resultTupleDesc = BlessTupleDesc(resultTupleDesc);
+
+		*typmod = resultTupleDesc->tdtypmod;
+
+		return resultTupleDesc->tdtypeid;
 	}
 	else if (_token->value == TOKEN_QIDENTIF)
 	{
 		unget_token(state, _token);
 
-		names = get_qualified_identifier(state, NULL);
-		if (state->is_error)
-			return false;
+		parse_qualified_identifier(state, &typename_start, &typename_length);
 	}
 	else if (_token->value == TOKEN_IDENTIF)
 	{
 		TokenType	token2, *_token2;
 
 		_token2 = get_token(state, &token2);
-		if (state->is_error)
-			return false;
 
 		if (_token2)
 		{
 			if (_token2->value == '.')
 			{
-				names = list_make1(make_ident(_token));
+				typename_start = _token->start_token;
+				typename_length = _token->size;
 
-				names = get_qualified_identifier(state, names);
-				if (state->is_error)
-					return false;
+				parse_qualified_identifier(state, &typename_start, &typename_length);
 			}
 			else
 			{
@@ -578,27 +579,22 @@ get_type(TokenizerState *state, Oid *typtype, int32 *typmod)
 					typename_length = _token2->start_token + _token2->size - typename_start;
 
 					_token2 = get_token(state, &token2);
-					if (state->is_error)
-						return false;
 				}
 
 				unget_token(state, _token2);
 			}
 		}
+		else
+		{
+			typename_start = _token->start_token;
+			typename_length = _token->size;
+		}
 	}
 	else
-	{
-		pragma_tokenizer_error(state, "expected identifier");
-		return false;
-	}
+		elog(ERROR, "Syntax error (expected identifier)");
 
 	/* get typmod */
-	typmod_start = state->str;
-
 	_token = get_token(state, &token);
-	if (state->is_error)
-		return InvalidOid;
-
 	if (_token)
 	{
 		if (_token->value == '(')
@@ -607,35 +603,31 @@ get_type(TokenizerState *state, Oid *typtype, int32 *typmod)
 			{
 				_token = get_token(state, &token);
 				if (!_token || _token->value != TOKEN_NUMBER)
-				{
-					pragma_tokenizer_error(state, "expected number for typmod specification");
-					return false;
-				}
+					elog(ERROR, "Syntax error (expected number for typmod specification)");
 
 				_token = get_token(state, &token);
 				if (!_token)
-				{
-					pragma_tokenizer_error(state, "unclosed typmod specification");
-					return false;
-				}
+					elog(ERROR, "Syntax error (unclosed typmod specification)");
 
 				if (_token->value == ')')
 				{
-					typmod_length = _token->start_token + _token->size - typmod_start;
 					break;
 				}
 				else if (_token->value != ',')
-				{
-					pragma_tokenizer_error(state, "expected \",\" in typmod list");
-					return false;
-				}
+					elog(ERROR, "Syntax error (expected \",\" in typmod list)");
 			}
+
+			typename_length = _token->start_token + _token->size - typename_start;
 		}
 		else
 			unget_token(state, _token);
 	}
 
-	return true;
+	typestr = pnstrdup(typename_start, typename_length);
+	typeName = typeStringToTypeName(typestr);
+	typenameTypeIdAndMod(NULL, typeName, &typtype, typmod);
+
+	return typtype;
 }
 
 static int
@@ -700,12 +692,14 @@ get_name(List *names)
 }
 
 bool
-plpgsql_check_parse_pragma_settype(PLpgSQL_checkstate *cstate, const char *str, int start, PLpgSQL_nsitem *ns, int *varno, Oid *typtype, int32 *typmod)
+plpgsql_check_pragma_settype(PLpgSQL_checkstate *cstate,
+							 const char *str,
+							 PLpgSQL_nsitem *ns,
+							 int lineno)
 {
-	List	   *names;
-	TokenizerState state;
-	int			target_dno;
-	PLpgSQL_datum *target;
+	MemoryContext oldCxt;
+	ResourceOwner oldowner;
+	volatile bool result = true;
 
 	/*
 	 * namespace is available only in compile check mode, and only in this mode
@@ -714,46 +708,80 @@ plpgsql_check_parse_pragma_settype(PLpgSQL_checkstate *cstate, const char *str, 
 	if (!ns || !cstate)
 		return true;
 
-	initialize_tokenizer(&state, str, start);
+	oldCxt = CurrentMemoryContext;
 
-	names = get_qualified_identifier(&state, NULL);
-	if (state.is_error)
-		return false;
+	oldowner = CurrentResourceOwner;
+	BeginInternalSubTransaction(NULL);
+	MemoryContextSwitchTo(cstate->check_cxt);
 
-	if ((target_dno = get_varno(ns, names)) == -1)
+	PG_TRY();
 	{
-		elog(WARNING, "Cannot to find variable \"%s\" used in settype pragma", get_name(names));
-		return false;
-	}
+		TokenizerState tstate;
+		int		target_dno;
+		PLpgSQL_datum *target;
+		List	   *names;
+		Oid			typtype;
+		int32		typmod;
+		TupleDesc	typtupdesc;
 
-	target = cstate->estate->datums[target_dno];
-	if (target->dtype != PLPGSQL_DTYPE_REC)
-	{
-		elog(WARNING, "Pragma \"settype\" can be applied only on variable of record type");
-		return false;
-	}
+		initialize_tokenizer(&tstate, str);
 
-	if (!get_type(&state, typtype, typmod))
-		return false;
+		names = get_qualified_identifier(&tstate, NULL);
+		if ((target_dno = get_varno(ns, names)) == -1)
+			elog(ERROR, "Cannot to find variable \"%s\" used in settype pragma", get_name(names));
 
-	if (state.saved_token_is_valid)
-	{
-		pragma_tokenizer_error(&state, "unexpected chars after type specification");
-		return false;
-	}
+		target = cstate->estate->datums[target_dno];
+		if (target->dtype != PLPGSQL_DTYPE_REC)
+			elog(ERROR, "Pragma \"settype\" can be applied only on variable of record type");
 
-	state.laststr = NULL;
+		typtype = get_type(&tstate, &typmod);
 
-	while (*state.str)
-	{
-		if (!isspace(*state.str))
+		if (tstate.saved_token_is_valid)
+			elog(ERROR, "Syntax error (unexpected chars after type specification)");
+
+		while (*tstate.str)
 		{
-			pragma_tokenizer_error(&state, "unexpected chars after type specification");
-			return false;
+			if (!isspace(*tstate.str))
+				elog(ERROR, "Syntax error (unexpected chars after type specification)");
+
+			tstate.str += 1;
 		}
 
-		state.str += 1;
-	}
+		typtupdesc = lookup_rowtype_tupdesc_copy(typtype, typmod);
+		plpgsql_check_assign_tupdesc_dno(cstate, target_dno, typtupdesc, false);
 
-	return true;
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldCxt);
+		CurrentResourceOwner = oldowner;
+
+		SPI_restore_connection();
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		MemoryContextSwitchTo(cstate->check_cxt);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		MemoryContextSwitchTo(oldCxt);
+		FlushErrorState();
+
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldCxt);
+		CurrentResourceOwner = oldowner;
+
+		/* reconnect spi */
+		SPI_restore_connection();
+
+		/* raise warning (errors in pragma can be ignored instead */
+		ereport(WARNING,
+				(errmsg("Pragma \"settype\" on line %d is not processed.", lineno),
+				 errdetail("%s", edata->message)));
+
+		result = false;
+	}
+	PG_END_TRY();
+
+	return result;
 }

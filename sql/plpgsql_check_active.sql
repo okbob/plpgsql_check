@@ -4555,3 +4555,81 @@ select * from plpgsql_check_function('test_function', format => 'xml');
 select * from plpgsql_check_function('test_function', format => 'json');
 
 drop function test_function();
+
+-- test settype pragma
+create or replace function test_function()
+returns void as $$
+declare r record;
+begin
+  raise notice '%', r.a;
+end;
+$$ language plpgsql;
+
+-- should to detect error
+select * from plpgsql_check_function('test_function');
+
+create type ctype as (a int, b int);
+
+create or replace function test_function()
+returns void as $$
+declare r record;
+begin
+  perform plpgsql_check_pragma('settype: r ctype');
+  raise notice '%', r.a;
+end;
+$$ language plpgsql;
+
+-- should to be ok
+select * from plpgsql_check_function('test_function');
+
+create or replace function test_function()
+returns void as $$
+<<x>>declare r record;
+begin
+  perform plpgsql_check_pragma('settype: x.r public."ctype"');
+  raise notice '%', r.a;
+end;
+$$ language plpgsql;
+
+-- should to be ok
+select * from plpgsql_check_function('test_function');
+
+
+create or replace function test_function()
+returns void as $$
+<<x>>declare r record;
+begin
+  perform plpgsql_check_pragma('settype: "x".r (a int, b int)');
+  raise notice '%', r.a;
+end;
+$$ language plpgsql;
+
+-- should to be ok
+select * from plpgsql_check_function('test_function');
+
+create or replace function test_function()
+returns void as $$
+<<x>>declare r record;
+begin
+  perform plpgsql_check_pragma('settype: "x".r (a int, b int');
+  raise notice '%', r.a;
+end;
+$$ language plpgsql;
+
+-- should to be ok
+select * from plpgsql_check_function('test_function');
+
+create or replace function test_function()
+returns void as $$
+<<x>>declare r record;
+begin
+  perform plpgsql_check_pragma('settype: "x".r (a int, b int)x');
+  raise notice '%', r.a;
+end;
+$$ language plpgsql;
+
+-- should to be ok
+select * from plpgsql_check_function('test_function');
+
+drop function test_function();
+drop type ctype;

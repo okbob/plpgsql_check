@@ -300,7 +300,7 @@ extern PLpgSQL_row * plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *csta
  * functions from parse_name.c
  */
 extern Oid plpgsql_check_parse_name_or_signature(char *name_or_signature);
-extern bool plpgsql_check_parse_pragma_settype(PLpgSQL_checkstate *cstate, const char *str, int start, PLpgSQL_nsitem *ns, int *varno, Oid *typtype, int32 *typmod);
+extern bool plpgsql_check_pragma_settype(PLpgSQL_checkstate *cstate, const char *str, PLpgSQL_nsitem *ns, int lineno);
 
 /*
  * functions from profiler.c
@@ -362,7 +362,7 @@ extern void plpgsql_check_set_stmt_group_number(PLpgSQL_stmt *stmt, int *group_n
 /*
  * variables from pragma.c
  */
-extern void plpgsql_check_pragma_apply(PLpgSQL_checkstate *cstate, char *pragma_str, PLpgSQL_nsitem *ns);
+extern void plpgsql_check_pragma_apply(PLpgSQL_checkstate *cstate, char *pragma_str, PLpgSQL_nsitem *ns, int lineno);
 
 extern plpgsql_check_pragma_vector plpgsql_check_runtime_pragma_vector;
 extern bool plpgsql_check_runtime_pragma_vector_changed;

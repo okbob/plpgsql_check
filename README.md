@@ -324,6 +324,15 @@ variables and cannot to check a dependent SQLs and expressions. Don't use record
 as target for dynamic queries or disable <i>plpgsql_check</i> for functions that use dynamic
 queries.
 
+When type of record's variable is not know, you can assign it explicitly with pragma `settype`:
+
+    DECLARE r record;
+    BEGIN
+      EXECUTE format('SELECT * FROM %I', _tablename) INTO r;
+      PERFORM plpgsql_check_pragma('settype: r (id int, processed bool)');
+      IF NOT r.processed THEN
+        ...
+
 <b>
 Attention: The SQL injection check can detect only some SQL injection vulnerabilities. This tool
 cannot be used for security audit! Some issues should not be detected. This check can raise false
@@ -704,6 +713,8 @@ Using pragma function in declaration part of top block sets options on function 
 * `enable:check`,`enable:tracer`, `enable:other_warnings`, `enable:performance_warnings`, `enable:extra_warnings`,`enable:security_warnings`
 
 * `disable:check`,`disable:tracer`, `disable:other_warnings`, `disable:performance_warnings`, `disable:extra_warnings`,`disable:security_warnings`
+
+* `settype:varname typename` or `settype:varname (fieldname type, ...)` - set type to variable of record type
 
 Pragmas `enable:tracer` and `disable:tracer`are active for Postgres 12 and higher
 
