@@ -338,12 +338,12 @@ ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 #if PG_VERSION_NUM < 150000
 
 								if (ac->val.type == T_String)
-									plpgsql_check_pragma_apply(cstate, strVal(&(ac->val)));
+									plpgsql_check_pragma_apply(cstate, strVal(&(ac->val)), expr->ns, cstate->estate->err_stmt->lineno);
 
 #else
 
 								if (!ac->isnull && IsA(&ac->val, String))
-									plpgsql_check_pragma_apply(cstate, strVal(&(ac->val)));
+									plpgsql_check_pragma_apply(cstate, strVal(&(ac->val)), expr->ns, cstate->estate->err_stmt->lineno);
 
 #endif
 

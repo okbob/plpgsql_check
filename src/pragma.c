@@ -14,6 +14,7 @@
 
 #include "utils/builtins.h"
 #include "utils/array.h"
+#include "parser/scansup.h"
 
 #ifdef _MSC_VER
 
@@ -29,7 +30,11 @@ plpgsql_check_pragma_vector plpgsql_check_runtime_pragma_vector;
 bool plpgsql_check_runtime_pragma_vector_changed = false;
 
 static bool
-pragma_apply(plpgsql_check_pragma_vector *pv, char *pragma_str)
+pragma_apply(PLpgSQL_checkstate *cstate,
+			 plpgsql_check_pragma_vector *pv,
+			 char *pragma_str,
+			 PLpgSQL_nsitem *ns,
+			 int lineno)
 {
 	bool	is_valid = true;
 
@@ -136,6 +141,10 @@ pragma_apply(plpgsql_check_pragma_vector *pv, char *pragma_str)
 		else
 			elog(WARNING, "unsuported pragma: %s", pragma_str);
 	}
+	else if (strncasecmp(pragma_str, "SETTYPE:", 8) == 0)
+	{
+		is_valid = plpgsql_check_pragma_settype(cstate, pragma_str + 9, ns, lineno);
+	}
 	else
 	{
 		elog(WARNING, "unsupported pragma: %s", pragma_str);
@@ -177,7 +186,7 @@ plpgsql_check_pragma(PG_FUNCTION_ARGS)
 
 		pragma_str = TextDatumGetCString(value);
 
-		pragma_apply(&plpgsql_check_runtime_pragma_vector, pragma_str);
+		pragma_apply(NULL, &plpgsql_check_runtime_pragma_vector, pragma_str, NULL, -1);
 
 		plpgsql_check_runtime_pragma_vector_changed = true;
 
@@ -190,8 +199,8 @@ plpgsql_check_pragma(PG_FUNCTION_ARGS)
 }
 
 void
-plpgsql_check_pragma_apply(PLpgSQL_checkstate *cstate, char *pragma_str)
+plpgsql_check_pragma_apply(PLpgSQL_checkstate *cstate, char *pragma_str, PLpgSQL_nsitem *ns, int lineno)
 {
-	if (pragma_apply(&(cstate->pragma_vector), pragma_str))
+	if (pragma_apply(cstate, &(cstate->pragma_vector), pragma_str, ns, lineno))
 		cstate->was_pragma = true;
 }
