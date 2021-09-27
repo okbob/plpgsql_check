@@ -297,7 +297,7 @@ extern PLpgSQL_row * plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *csta
 #endif
 
 /*
- * functions from parse_name.c
+ * functions from parser.c
  */
 extern Oid plpgsql_check_parse_name_or_signature(char *name_or_signature);
 extern bool plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate, const char *str, PLpgSQL_nsitem *ns, int lineno);
