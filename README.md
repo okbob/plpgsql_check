@@ -320,9 +320,7 @@ it only in develop or preprod environments.</i>
 
 This module doesn't check queries that are assembled in runtime. It is not possible
 to identify results of dynamic queries - so <i>plpgsql_check</i> cannot to set correct type to record
-variables and cannot to check a dependent SQLs and expressions. Don't use record variable
-as target for dynamic queries or disable <i>plpgsql_check</i> for functions that use dynamic
-queries.
+variables and cannot to check a dependent SQLs and expressions. 
 
 When type of record's variable is not know, you can assign it explicitly with pragma `type`:
 
