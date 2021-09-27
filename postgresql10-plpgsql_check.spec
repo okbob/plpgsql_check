@@ -42,10 +42,14 @@ rm -rf %{buildroot}
 %defattr(644,root,root,755)
 %doc README.md
 %{pginstdir}/lib/plpgsql_check.so
-%{pginstdir}/share/extension/plpgsql_check--1.17.sql
+%{pginstdir}/share/extension/plpgsql_check--2.0.sql
 %{pginstdir}/share/extension/plpgsql_check.control
 
 %changelog
+* Mon Sep 27 2021 - Pavel Stehule <pavel.stehule@gmail.com> 2.0.0
+- pragma type for setting type to record variable
+- pragma table for creating ephemeral table
+
 * Mon Jun 21 2021 - Pavel Stehule <pavel.stehule@gmail.com> 1.17.0
 - remove support for PostgreSQL 9.5 and 9.6
 
