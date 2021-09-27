@@ -1176,8 +1176,6 @@ setup_estate(PLpgSQL_execstate *estate,
 
 #endif
 
-#if PG_VERSION_NUM > 100000
-
 	if (cinfo->oldtable)
 	{
 		EphemeralNamedRelation enr = palloc(sizeof(EphemeralNamedRelationData));
@@ -1209,12 +1207,6 @@ setup_estate(PLpgSQL_execstate *estate,
 		rc = SPI_register_relation(enr);
 		Assert(rc >= 0);
 	}
-
-#else
-
-		(void) cinfo;
-
-#endif
 
 	estate->err_stmt = NULL;
 	estate->err_text = NULL;

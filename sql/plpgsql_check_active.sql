@@ -4574,7 +4574,7 @@ create or replace function test_function()
 returns void as $$
 declare r record;
 begin
-  perform plpgsql_check_pragma('settype: r ctype');
+  perform plpgsql_check_pragma('type: r ctype');
   raise notice '%', r.a;
 end;
 $$ language plpgsql;
@@ -4586,7 +4586,7 @@ create or replace function test_function()
 returns void as $$
 <<x>>declare r record;
 begin
-  perform plpgsql_check_pragma('settype: x.r public."ctype"');
+  perform plpgsql_check_pragma('type: x.r public."ctype"');
   raise notice '%', r.a;
 end;
 $$ language plpgsql;
@@ -4599,7 +4599,7 @@ create or replace function test_function()
 returns void as $$
 <<x>>declare r record;
 begin
-  perform plpgsql_check_pragma('settype: "x".r (a int, b int)');
+  perform plpgsql_check_pragma('type: "x".r (a int, b int)');
   raise notice '%', r.a;
 end;
 $$ language plpgsql;
@@ -4611,7 +4611,7 @@ create or replace function test_function()
 returns void as $$
 <<x>>declare r record;
 begin
-  perform plpgsql_check_pragma('settype: "x".r (a int, b int');
+  perform plpgsql_check_pragma('type: "x".r (a int, b int');
   raise notice '%', r.a;
 end;
 $$ language plpgsql;
@@ -4623,7 +4623,7 @@ create or replace function test_function()
 returns void as $$
 <<x>>declare r record;
 begin
-  perform plpgsql_check_pragma('settype: "x".r (a int, b int)x');
+  perform plpgsql_check_pragma('type: "x".r (a int, b int)x');
   raise notice '%', r.a;
 end;
 $$ language plpgsql;
@@ -4633,3 +4633,31 @@ select * from plpgsql_check_function('test_function');
 
 drop function test_function();
 drop type ctype;
+
+create or replace function test_function()
+returns void as $$
+declare r pg_class;
+begin
+  create temp table foo(like pg_class);
+  select * from foo into r;
+end;
+$$ language plpgsql;
+
+-- should to raise an error
+select * from plpgsql_check_function('test_function');
+
+create or replace function test_function()
+returns void as $$
+declare r record;
+begin
+  create temp table foo(like pg_class);
+  perform plpgsql_check_pragma('table: foo(like pg_class)');
+  select * from foo into r;
+  raise notice '%', r.relname;
+end;
+$$ language plpgsql;
+
+-- should be ok
+select * from plpgsql_check_function('test_function');
+
+

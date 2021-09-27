@@ -519,13 +519,9 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 
 	cplan = GetCachedPlan(plansource, NULL, NULL, NULL);
 
-#elif PG_VERSION_NUM >= 100000
-
-	cplan = GetCachedPlan(plansource, NULL, true, NULL);
-
 #else
 
-	cplan = GetCachedPlan(plansource, NULL, true);
+	cplan = GetCachedPlan(plansource, NULL, true, NULL);
 
 #endif
 		_stmt = (PlannedStmt *) linitial(cplan->stmt_list);

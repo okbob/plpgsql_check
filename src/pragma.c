@@ -16,6 +16,9 @@
 #include "utils/array.h"
 #include "parser/scansup.h"
 
+#include "tcop/tcopprot.h"
+#include "tcop/utility.h"
+
 #ifdef _MSC_VER
 
 #define strcasecmp _stricmp
@@ -141,9 +144,13 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 		else
 			elog(WARNING, "unsuported pragma: %s", pragma_str);
 	}
-	else if (strncasecmp(pragma_str, "SETTYPE:", 8) == 0)
+	else if (strncasecmp(pragma_str, "TYPE:", 5) == 0)
 	{
-		is_valid = plpgsql_check_pragma_settype(cstate, pragma_str + 9, ns, lineno);
+		is_valid = plpgsql_check_pragma_type(cstate, pragma_str + 6, ns, lineno);
+	}
+	else if (strncasecmp(pragma_str, "TABLE:", 6) == 0)
+	{
+		is_valid = plpgsql_check_pragma_table(cstate, pragma_str + 7, lineno);
 	}
 	else
 	{

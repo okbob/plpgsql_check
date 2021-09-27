@@ -324,12 +324,12 @@ variables and cannot to check a dependent SQLs and expressions. Don't use record
 as target for dynamic queries or disable <i>plpgsql_check</i> for functions that use dynamic
 queries.
 
-When type of record's variable is not know, you can assign it explicitly with pragma `settype`:
+When type of record's variable is not know, you can assign it explicitly with pragma `type`:
 
     DECLARE r record;
     BEGIN
       EXECUTE format('SELECT * FROM %I', _tablename) INTO r;
-      PERFORM plpgsql_check_pragma('settype: r (id int, processed bool)');
+      PERFORM plpgsql_check_pragma('type: r (id int, processed bool)');
       IF NOT r.processed THEN
         ...
 
@@ -404,6 +404,14 @@ tables. So you can do (with following trick safetly):
 
 This trick emulates GLOBAL TEMP tables partially and it allows a statical validation.
 Other possibility is using a [template foreign data wrapper] (https://github.com/okbob/template_fdw)
+
+You can use pragma `table` and create ephemeral table:
+
+    BEGIN
+       CREATE TEMP TABLE xxx(a int);
+       PERFORM plpgsql_check_pragma('table: xxx(a int)');
+       INSERT INTO xxx VALUES(10);
+
 
 # Dependency list
 
@@ -714,7 +722,9 @@ Using pragma function in declaration part of top block sets options on function 
 
 * `disable:check`,`disable:tracer`, `disable:other_warnings`, `disable:performance_warnings`, `disable:extra_warnings`,`disable:security_warnings`
 
-* `settype:varname typename` or `settype:varname (fieldname type, ...)` - set type to variable of record type
+* `type:varname typename` or `type:varname (fieldname type, ...)` - set type to variable of record type
+
+* `table: name (column_name type, ...)` or `table: name (like tablename)` - create ephereal table
 
 Pragmas `enable:tracer` and `disable:tracer`are active for Postgres 12 and higher
 

@@ -292,23 +292,12 @@ ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 	/* the test of PRAGMA function call */
 	if (result->commandType == CMD_SELECT)
 	{
-
-#if PG_VERSION_NUM < 100000
-
-		if (plansource->raw_parse_tree &&
-			IsA(plansource->raw_parse_tree, SelectStmt))
-		{
-			SelectStmt *selectStmt = (SelectStmt *) plansource->raw_parse_tree;
-
-#else
-
 		if (plansource->raw_parse_tree &&
 			plansource->raw_parse_tree->stmt &&
 			IsA(plansource->raw_parse_tree->stmt, SelectStmt))
 		{
 			SelectStmt *selectStmt = (SelectStmt *) plansource->raw_parse_tree->stmt;
 
-#endif
 			if (selectStmt->targetList && IsA(linitial(selectStmt->targetList), ResTarget))
 			{
 				ResTarget *rt = (ResTarget *) linitial(selectStmt->targetList);
@@ -381,13 +370,9 @@ get_cached_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *has_result
 
 	cplan = GetCachedPlan(plansource, NULL, NULL, NULL);
 
-#elif PG_VERSION_NUM >= 100000
-
-	cplan = GetCachedPlan(plansource, NULL, true, NULL);
-
 #else
 
-	cplan = GetCachedPlan(plansource, NULL, true);
+	cplan = GetCachedPlan(plansource, NULL, true, NULL);
 
 #endif
 
@@ -425,15 +410,7 @@ prohibit_write_plan(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_s
 	foreach(lc, cplan->stmt_list)
 	{
 
-#if PG_VERSION_NUM >= 100000
-
 		PlannedStmt *pstmt = (PlannedStmt *) lfirst(lc);
-
-#else
-
-		Node *pstmt = (Node *) lfirst(lc);
-
-#endif
 
 		if (!CommandIsReadOnly(pstmt))
 		{
@@ -481,8 +458,6 @@ prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *q
 	{
 		Node *pstmt = (Node *) lfirst(lc);
 
-#if PG_VERSION_NUM >= 100000
-
 		/* PostgtreSQL 10 can have one level of nesting more */
 		if (IsA(pstmt, PlannedStmt))
 		{
@@ -491,8 +466,6 @@ prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *q
 			if (planstmt->commandType == CMD_UTILITY)
 				pstmt = (Node *) planstmt->utilityStmt;
 		}
-
-#endif
 
 		if (IsA(pstmt, TransactionStmt))
 		{

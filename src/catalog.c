@@ -31,12 +31,7 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
-
-#if PG_VERSION_NUM >= 100000
-
 #include "utils/regproc.h"
-
-#endif
 
 #if PG_VERSION_NUM >= 110000
 

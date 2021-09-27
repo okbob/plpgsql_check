@@ -16,6 +16,7 @@
 #include "parser/scansup.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
 
 #if PG_VERSION_NUM < 110000
 
@@ -243,8 +244,8 @@ plpgsql_check_parse_name_or_signature(char *name_or_signature)
 typedef struct
 {
 	int		value;
-	const char *start_token;
-	int		size;
+	const char *substr;
+	size_t		size;
 } TokenType;
 
 typedef struct
@@ -279,7 +280,7 @@ get_token(TokenizerState *state, TokenType *token)
 		bool	have_dot = false;
 
 		token->value = TOKEN_NUMBER;
-		token->start_token = state->str++;
+		token->substr = state->str++;
 
 		while (isdigit(*state->str) || (*state->str == '.'))
 		{
@@ -294,14 +295,14 @@ get_token(TokenizerState *state, TokenType *token)
 			state->str += 1;
 		}
 
-		token->size = state->str - token->start_token;
+		token->size = state->str - token->substr;
 	}
 	else if (*state->str == '"')
 	{
 		bool	is_error = true;
 
 		token->value = TOKEN_QIDENTIF;
-		token->start_token = state->str++;
+		token->substr = state->str++;
 
 		is_error = true;
 
@@ -326,7 +327,7 @@ get_token(TokenizerState *state, TokenType *token)
 	else if (is_ident_start(*state->str))
 	{
 		token->value = TOKEN_IDENTIF;
-		token->start_token = state->str++;
+		token->substr = state->str++;
 
 		while (is_ident_cont(*state->str))
 			state->str += 1;
@@ -334,7 +335,7 @@ get_token(TokenizerState *state, TokenType *token)
 	else
 		token->value = *state->str++;
 
-	token->size = state->str - token->start_token;
+	token->size = state->str - token->substr;
 
 	return token;
 }
@@ -345,13 +346,47 @@ unget_token(TokenizerState *state, TokenType *token)
 	if (token)
 	{
 		state->saved_token.value = token->value;
-		state->saved_token.start_token = token->start_token;
+		state->saved_token.substr = token->substr;
 		state->saved_token.size = token->size;
 
 		state->saved_token_is_valid = true;
 	}
 	else
 		state->saved_token_is_valid = false;
+}
+
+static bool
+token_is_keyword(TokenType *token, const char *str)
+{
+	if (!token)
+		return false;
+
+	if (token->value == TOKEN_IDENTIF &&
+			token->size == strlen(str) &&
+			strncasecmp(token->substr, str, token->size) == 0)
+		return true;
+
+	return false;
+}
+
+/*
+ * Returns true if all tokens was read
+ */
+static bool
+tokenizer_eol(TokenizerState *state)
+{
+	if (state->saved_token_is_valid)
+		return false;
+
+	while (*state->str)
+	{
+		if (!isspace(*state->str))
+			return false;
+
+		state->str += 1;
+	}
+
+	return true;
 }
 
 static void
@@ -366,14 +401,14 @@ make_ident(TokenType *token)
 {
 	if (token->value == TOKEN_IDENTIF)
 	{
-		return downcase_truncate_identifier(token->start_token,
+		return downcase_truncate_identifier(token->substr,
 											token->size,
 											false);
 	}
 	else if (token->value == TOKEN_QIDENTIF)
 	{
 		char	   *result = palloc(token->size);
-		const char *ptr = token->start_token + 1;
+		const char *ptr = token->substr + 1;
 		char	   *write_ptr;
 		int			n = token->size - 2;
 
@@ -460,11 +495,11 @@ parse_qualified_identifier(TokenizerState *state, const char **startptr, int *si
 
 		if (!_startptr)
 		{
-			_startptr = _token->start_token;
+			_startptr = _token->substr;
 			_size = _token->size;
 		}
 		else
-			_size = _token->start_token - _startptr + _token->size;
+			_size = _token->substr - _startptr + _token->size;
 
 		read_atleast_one = true;
 
@@ -508,6 +543,24 @@ get_type(TokenizerState *state, int32 *typmod)
 		List	   *types = NIL;
 		List	   *typmods = NIL;
 		List	   *collations = NIL;
+
+		_token = get_token(state, &token);
+		if (token_is_keyword(_token, "like"))
+		{
+			typtype = get_type(state, typmod);
+			if (!type_is_rowtype(typtype))
+				elog(ERROR, "\"%s\" is not composite type",
+								  format_type_be(typtype));
+
+			_token = get_token(state, &token);
+			if (!_token ||
+					_token->value != ')')
+				elog(ERROR, "Syntax error (expected \")\")");
+
+			return typtype;
+		}
+		else
+			unget_token(state, _token);
 
 		while (1)
 		{
@@ -563,7 +616,7 @@ get_type(TokenizerState *state, int32 *typmod)
 		{
 			if (_token2->value == '.')
 			{
-				typename_start = _token->start_token;
+				typename_start = _token->substr;
 				typename_length = _token->size;
 
 				parse_qualified_identifier(state, &typename_start, &typename_length);
@@ -571,12 +624,12 @@ get_type(TokenizerState *state, int32 *typmod)
 			else
 			{
 				/* multi word type name */
-				typename_start = _token->start_token;
+				typename_start = _token->substr;
 				typename_length = _token->size;
 
 				while (_token2 && _token2->value == TOKEN_IDENTIF)
 				{
-					typename_length = _token2->start_token + _token2->size - typename_start;
+					typename_length = _token2->substr + _token2->size - typename_start;
 
 					_token2 = get_token(state, &token2);
 				}
@@ -586,7 +639,7 @@ get_type(TokenizerState *state, int32 *typmod)
 		}
 		else
 		{
-			typename_start = _token->start_token;
+			typename_start = _token->substr;
 			typename_length = _token->size;
 		}
 	}
@@ -617,7 +670,7 @@ get_type(TokenizerState *state, int32 *typmod)
 					elog(ERROR, "Syntax error (expected \",\" in typmod list)");
 			}
 
-			typename_length = _token->start_token + _token->size - typename_start;
+			typename_length = _token->substr + _token->size - typename_start;
 		}
 		else
 			unget_token(state, _token);
@@ -692,7 +745,7 @@ get_name(List *names)
 }
 
 bool
-plpgsql_check_pragma_settype(PLpgSQL_checkstate *cstate,
+plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate,
 							 const char *str,
 							 PLpgSQL_nsitem *ns,
 							 int lineno)
@@ -736,16 +789,8 @@ plpgsql_check_pragma_settype(PLpgSQL_checkstate *cstate,
 
 		typtype = get_type(&tstate, &typmod);
 
-		if (tstate.saved_token_is_valid)
+		if (!tokenizer_eol(&tstate))
 			elog(ERROR, "Syntax error (unexpected chars after type specification)");
-
-		while (*tstate.str)
-		{
-			if (!isspace(*tstate.str))
-				elog(ERROR, "Syntax error (unexpected chars after type specification)");
-
-			tstate.str += 1;
-		}
 
 		typtupdesc = lookup_rowtype_tupdesc_copy(typtype, typmod);
 		plpgsql_check_assign_tupdesc_dno(cstate, target_dno, typtupdesc, false);
@@ -776,7 +821,96 @@ plpgsql_check_pragma_settype(PLpgSQL_checkstate *cstate,
 
 		/* raise warning (errors in pragma can be ignored instead */
 		ereport(WARNING,
-				(errmsg("Pragma \"settype\" on line %d is not processed.", lineno),
+				(errmsg("Pragma \"type\" on line %d is not processed.", lineno),
+				 errdetail("%s", edata->message)));
+
+		result = false;
+	}
+	PG_END_TRY();
+
+	return result;
+}
+
+bool
+plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int lineno)
+{
+	MemoryContext oldCxt;
+	ResourceOwner oldowner;
+	volatile bool result = true;
+
+	if (!cstate)
+		return true;
+
+	oldCxt = CurrentMemoryContext;
+
+	oldowner = CurrentResourceOwner;
+	BeginInternalSubTransaction(NULL);
+	MemoryContextSwitchTo(cstate->check_cxt);
+
+	PG_TRY();
+	{
+		TokenizerState tstate;
+		TokenType token, *_token;
+		EphemeralNamedRelation enr = palloc0(sizeof(EphemeralNamedRelationData));
+		Oid			typtype;
+		int32		typmod;
+		TupleDesc	typtupdesc;
+
+		initialize_tokenizer(&tstate, str);
+
+		_token = get_token(&tstate, &token);
+		if (!_token || (_token->value != TOKEN_IDENTIF
+				&& _token->value != TOKEN_QIDENTIF))
+			elog(ERROR, "Syntax error (expected identifier)");
+
+		enr->md.name = make_ident(_token);
+
+		_token = get_token(&tstate, &token);
+		if (!_token || _token->value != '(')
+			elog(ERROR, "Syntax error (expected table specification)");
+
+		unget_token(&tstate, _token);
+
+		typtype = get_type(&tstate, &typmod);
+
+		if (!tokenizer_eol(&tstate))
+			elog(ERROR, "Syntax error (unexpected chars after table specification)");
+
+		typtupdesc = lookup_rowtype_tupdesc_copy(typtype, typmod);
+
+		enr->md.tupdesc = typtupdesc;
+		enr->md.enrtype = ENR_NAMED_TUPLESTORE;
+
+		if (SPI_register_relation(enr) != SPI_OK_REL_REGISTER)
+			elog(ERROR, "Cannot to register ephemeral table \"%s\"", enr->md.name);
+
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldCxt);
+		CurrentResourceOwner = oldowner;
+
+		SPI_restore_connection();
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		MemoryContextSwitchTo(cstate->check_cxt);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		MemoryContextSwitchTo(oldCxt);
+		FlushErrorState();
+
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldCxt);
+		CurrentResourceOwner = oldowner;
+
+		/* reconnect spi */
+		SPI_restore_connection();
+
+		/* raise warning (errors in pragma can be ignored instead */
+		ereport(WARNING,
+				(errmsg("Pragma \"table\" on line %d is not processed.", lineno),
 				 errdetail("%s", edata->message)));
 
 		result = false;
