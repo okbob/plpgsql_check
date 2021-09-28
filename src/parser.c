@@ -795,6 +795,8 @@ plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate,
 		typtupdesc = lookup_rowtype_tupdesc_copy(typtype, typmod);
 		plpgsql_check_assign_tupdesc_dno(cstate, target_dno, typtupdesc, false);
 
+		cstate->typed_variables = bms_add_member(cstate->typed_variables, target_dno);
+
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
@@ -831,12 +833,19 @@ plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate,
 	return result;
 }
 
+/*
+ * Unfortunately the ephemeral tables introduced in PostgreSQL 10 cannot be
+ * used for this purpose, because any DML operations are prohibited, and others
+ * DML catalogue operations doesn't calculate with Ephemeral space.
+ */
 bool
 plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int lineno)
 {
 	MemoryContext oldCxt;
 	ResourceOwner oldowner;
 	volatile bool result = true;
+
+elog(NOTICE, ">>>%s<<<<", str);
 
 	if (!cstate)
 		return true;

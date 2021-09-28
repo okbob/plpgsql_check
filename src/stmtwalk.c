@@ -2022,13 +2022,24 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 #endif
 
 		{
-			plpgsql_check_put_error(cstate,
-									0, 0,
-									"cannot determinate a result of dynamic SQL",
-									"There is a risk of related false alarms.",
-						  "Don't use dynamic SQL and record type together, when you would check function.",
-									PLPGSQL_CHECK_WARNING_OTHERS,
-									0, NULL, NULL);
+
+#if PG_VERSION_NUM >= 110000
+
+			if (!bms_is_member(target->dno, cstate->typed_variables))
+
+#else
+
+			if (!bms_is_member(rec->dno, cstate->typed_variables))
+
+#endif
+
+				plpgsql_check_put_error(cstate,
+										0, 0,
+										"cannot determinate a result of dynamic SQL",
+										"There is a risk of related false alarms.",
+							  "Don't use dynamic SQL and record type together, when you would check function.",
+										PLPGSQL_CHECK_WARNING_OTHERS,
+										0, NULL, NULL);
 		}
 	}
 }

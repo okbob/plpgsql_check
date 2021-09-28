@@ -140,6 +140,7 @@ typedef struct PLpgSQL_checkstate
 	Bitmapset	   *out_variables;			/* what variables are used as OUT variables */
 	Bitmapset	   *protected_variables;	/* what variables should be assigned internal only */
 	Bitmapset	   *auto_variables;			/* variables initialized, used by runtime */
+	Bitmapset	   *typed_variables;		/* record variables with assigned type by pragma TYPE */
 	bool			stop_check;				/* true after error when fatal_errors option is active */
 	bool			allow_mp;				/* true, when multiple plans in plancache are allowed */
 	bool			has_mp;					/* true, when multiple plan was used */

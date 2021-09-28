@@ -1276,6 +1276,7 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->safe_variables = NULL;
 	cstate->protected_variables = NULL;
 	cstate->auto_variables = NULL;
+	cstate->typed_variables = NULL;
 
 	cstate->stop_check = false;
 	cstate->allow_mp = false;

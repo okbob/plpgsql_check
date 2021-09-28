@@ -146,11 +146,11 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 	}
 	else if (strncasecmp(pragma_str, "TYPE:", 5) == 0)
 	{
-		is_valid = plpgsql_check_pragma_type(cstate, pragma_str + 6, ns, lineno);
+		is_valid = plpgsql_check_pragma_type(cstate, pragma_str + 5, ns, lineno);
 	}
 	else if (strncasecmp(pragma_str, "TABLE:", 6) == 0)
 	{
-		is_valid = plpgsql_check_pragma_table(cstate, pragma_str + 7, lineno);
+		is_valid = plpgsql_check_pragma_table(cstate, pragma_str + 6, lineno);
 	}
 	else
 	{
