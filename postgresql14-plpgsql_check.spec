@@ -1,9 +1,9 @@
-%global pgmajorversion 13
-%global pginstdir /usr/pgsql-13
+%global pgmajorversion 14
+%global pginstdir /usr/pgsql-14
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	1.17.0
+Version:	2.0.1
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
