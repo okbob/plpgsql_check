@@ -522,8 +522,12 @@ parse_qualified_identifier(TokenizerState *state, const char **startptr, int *si
 }
 
 
+/*
+ * When rectype is not allowed, then composite type is allowed only
+ * on top level.
+ */
 static Oid
-get_type(TokenizerState *state, int32 *typmod)
+get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool istop)
 {
 	TokenType	token, *_token;
 	const char	   *typename_start = NULL;
@@ -544,10 +548,13 @@ get_type(TokenizerState *state, int32 *typmod)
 		List	   *typmods = NIL;
 		List	   *collations = NIL;
 
+		if (!allow_rectype && !istop)
+			elog(ERROR, "Cannot to create table with pseudo-type record.");
+
 		_token = get_token(state, &token);
 		if (token_is_keyword(_token, "like"))
 		{
-			typtype = get_type(state, typmod);
+			typtype = get_type_internal(state, typmod, allow_rectype, false);
 			if (!type_is_rowtype(typtype))
 				elog(ERROR, "\"%s\" is not composite type",
 								  format_type_be(typtype));
@@ -575,7 +582,7 @@ get_type(TokenizerState *state, int32 *typmod)
 
 			names = lappend(names, makeString(make_ident(_token)));
 
-			_typtype = get_type(state, &_typmod);
+			_typtype = get_type_internal(state, &_typmod, allow_rectype, false);
 
 			types = lappend_oid(types, _typtype);
 			typmods = lappend_int(typmods, _typmod);
@@ -683,6 +690,13 @@ get_type(TokenizerState *state, int32 *typmod)
 	return typtype;
 }
 
+static Oid
+get_type(TokenizerState *state, int32 *typmod, bool allow_rectype)
+{
+	return get_type_internal(state, typmod, allow_rectype, true);
+}
+
+
 static int
 get_varno(PLpgSQL_nsitem *cur_ns, List *names)
 {
@@ -787,7 +801,7 @@ plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate,
 		if (target->dtype != PLPGSQL_DTYPE_REC)
 			elog(ERROR, "Pragma \"settype\" can be applied only on variable of record type");
 
-		typtype = get_type(&tstate, &typmod);
+		typtype = get_type(&tstate, &typmod, true);
 
 		if (!tokenizer_eol(&tstate))
 			elog(ERROR, "Syntax error (unexpected chars after type specification)");
@@ -845,8 +859,6 @@ plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int line
 	ResourceOwner oldowner;
 	volatile bool result = true;
 
-elog(NOTICE, ">>>%s<<<<", str);
-
 	if (!cstate)
 		return true;
 
@@ -860,10 +872,8 @@ elog(NOTICE, ">>>%s<<<<", str);
 	{
 		TokenizerState tstate;
 		TokenType token, *_token;
-		EphemeralNamedRelation enr = palloc0(sizeof(EphemeralNamedRelationData));
-		Oid			typtype;
+		StringInfoData query;
 		int32		typmod;
-		TupleDesc	typtupdesc;
 
 		initialize_tokenizer(&tstate, str);
 
@@ -872,28 +882,26 @@ elog(NOTICE, ">>>%s<<<<", str);
 				&& _token->value != TOKEN_QIDENTIF))
 			elog(ERROR, "Syntax error (expected identifier)");
 
-		enr->md.name = make_ident(_token);
-
 		_token = get_token(&tstate, &token);
 		if (!_token || _token->value != '(')
 			elog(ERROR, "Syntax error (expected table specification)");
 
 		unget_token(&tstate, _token);
 
-		typtype = get_type(&tstate, &typmod);
+		(void) get_type(&tstate, &typmod, false);
 
 		if (!tokenizer_eol(&tstate))
 			elog(ERROR, "Syntax error (unexpected chars after table specification)");
 
-		typtupdesc = lookup_rowtype_tupdesc_copy(typtype, typmod);
+		/* In this case we use parser just for syntax check and security check */
+		initStringInfo(&query);
+		appendStringInfoString(&query, "CREATE TEMP TABLE ");
+		appendStringInfoString(&query, str);
 
-		enr->md.tupdesc = typtupdesc;
-		enr->md.enrtype = ENR_NAMED_TUPLESTORE;
+		if (SPI_execute(query.data, false, 0) != SPI_OK_UTILITY)
+			elog(NOTICE, "Cannot to create temporary table");
 
-		if (SPI_register_relation(enr) != SPI_OK_REL_REGISTER)
-			elog(ERROR, "Cannot to register ephemeral table \"%s\"", enr->md.name);
-
-		RollbackAndReleaseCurrentSubTransaction();
+		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
 

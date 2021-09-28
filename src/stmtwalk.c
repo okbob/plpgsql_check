@@ -1307,7 +1307,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 		pop_stmt_from_stmt_stack(cstate);
 
-		RollbackAndReleaseCurrentSubTransaction();
+		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
 

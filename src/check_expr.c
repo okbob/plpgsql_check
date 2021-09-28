@@ -732,7 +732,7 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
 
 		ReleaseTupleDesc(tupdesc);
 
-		RollbackAndReleaseCurrentSubTransaction();
+		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
 
@@ -848,7 +848,7 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 			ReleaseTupleDesc(tupdesc);
 		}
 
-		RollbackAndReleaseCurrentSubTransaction();
+		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
 
@@ -1150,7 +1150,7 @@ no_other_check:
 		if (tupdesc)
 			ReleaseTupleDesc(tupdesc);
 
-		RollbackAndReleaseCurrentSubTransaction();
+		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
 
@@ -1244,7 +1244,7 @@ plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 			ReleaseTupleDesc(tupdesc);
 		}
 
-		RollbackAndReleaseCurrentSubTransaction();
+		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
 
