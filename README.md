@@ -710,6 +710,16 @@ Using pragma function in declaration part of top block sets options on function 
       ...
 
 
+Shorter syntax for pragma is supported too:
+
+    CREATE OR REPLACE FUNCTION test()
+    RETURNS void AS $$
+    DECLARE r record;
+    BEGIN
+      PERFORM 'PRAGMA:TYPE:r (a int, b int)';
+      PERFORM 'PRAGMA:TABLE: x (like pg_class)';
+      ...
+
 ## Supported pragmas
 
 * `echo:str` - print string (for testing)

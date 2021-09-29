@@ -225,7 +225,7 @@ plpgsql_check_get_plan_source(PLpgSQL_checkstate *cstate, SPIPlanPtr plan)
 			cstate->has_mp = true;
 		}
 		else
-			elog(ERROR, "plan is not single execution planyy");
+			elog(ERROR, "plan is not single execution plany");
 	}
 	else
 		plansource = (CachedPlanSource *) linitial(plan->plancache_list);
@@ -302,7 +302,42 @@ ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 			{
 				ResTarget *rt = (ResTarget *) linitial(selectStmt->targetList);
 
-				if (rt->val && IsA(rt->val, FuncCall))
+				if (rt->val && IsA(rt->val, A_Const))
+				{
+					A_Const	   *ac = (A_Const *) rt->val;
+					bool		is_perform_stmt;
+					char *str = NULL;
+
+					is_perform_stmt = (cstate->estate &&
+									   cstate->estate->err_stmt &&
+									   cstate->estate->err_stmt->cmd_type == PLPGSQL_STMT_PERFORM);
+
+#if PG_VERSION_NUM < 150000
+
+					if (ac->val.type == T_String)
+						str = strVal(&(ac->val));
+
+#else
+
+					if (!ac->isnull && IsA(&ac->val, String))
+						str = strVal(&(ac->val));
+
+#endif
+
+					if (str && is_perform_stmt)
+					{
+						while (*str == ' ')
+							str++;
+
+						if (strncasecmp(str, "pragma:", 7) == 0)
+						{
+							cstate->was_pragma = true;
+
+							plpgsql_check_pragma_apply(cstate, str + 7, expr->ns, cstate->estate->err_stmt->lineno);
+						}
+					}
+				}
+				else if (rt->val && IsA(rt->val, FuncCall))
 				{
 					char	   *funcname;
 					char	   *schemaname;
