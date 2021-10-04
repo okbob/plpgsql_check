@@ -683,6 +683,28 @@ get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool
 			unget_token(state, _token);
 	}
 
+	/* get array symbols */
+	_token = get_token(state, &token);
+	if (_token)
+	{
+		if (_token->value == '[')
+		{
+			_token = get_token(state, &token);
+			if (_token && _token->value == TOKEN_NUMBER)
+				_token = get_token(state, &token);
+
+			if (!_token)
+				elog(ERROR, "Syntax error (unclosed array specification)");
+
+			if (_token->value != ']')
+					elog(ERROR, "Syntax error (expected \"]\")");
+
+			typename_length = _token->substr + _token->size - typename_start;
+		}
+		else
+			unget_token(state, _token);
+	}
+
 	typestr = pnstrdup(typename_start, typename_length);
 	typeName = typeStringToTypeName(typestr);
 	typenameTypeIdAndMod(NULL, typeName, &typtype, typmod);
