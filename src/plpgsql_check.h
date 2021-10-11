@@ -458,3 +458,10 @@ extern plpgsql_check__ns_lookup_t plpgsql_check__ns_lookup_p;
 #endif
 
 #define FUNCS_PER_USER		128 /* initial table size */
+
+#ifdef _MSC_VER
+
+#define strcasecmp _stricmp
+#define strncasecmp _strnicmp
+
+#endif

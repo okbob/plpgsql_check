@@ -204,7 +204,7 @@ collect_volatility(PLpgSQL_checkstate *cstate, Query *query)
 CachedPlanSource *
 plpgsql_check_get_plan_source(PLpgSQL_checkstate *cstate, SPIPlanPtr plan)
 {
-	CachedPlanSource *plansource;
+	CachedPlanSource *plansource = NULL;
 
 	if (plan == NULL || plan->magic != _SPI_PLAN_MAGIC)
 		elog(ERROR, "cached plan is not valid plan");

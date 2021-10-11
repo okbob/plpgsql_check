@@ -2558,7 +2558,7 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 
 			int			stmt_lineno = -1;
 			int64		us_total = 0;
-			int64		exec_count = 0;
+			int64			exec_count = 0;
 			Datum		queryids_array = (Datum) 0;
 			Datum		max_time_array = (Datum) 0;
 			Datum		processed_rows_array = (Datum) 0;
@@ -2674,7 +2674,7 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 								   lineno,
 								   stmt_lineno,
 								   cmds_on_row,
-								   exec_count,
+								   (int) exec_count,
 								   us_total,
 								   max_time_array,
 								   processed_rows_array,
@@ -2991,6 +2991,7 @@ plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 				total_time,
 				min_time,
 				max_time;
+
 		float8	total_time_xx;
 		HeapTuple	tp;
 
@@ -3026,11 +3027,11 @@ plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 		plpgsql_check_put_profiler_functions_all_tb(ri,
 													fn_oid,
 													exec_count,
-													total_time,
+													(double) total_time,
 													ceil(total_time / ((double) exec_count)),
 													ceil(sqrt(total_time_xx / exec_count)),
-													min_time,
-													max_time);
+													(double) min_time,
+													(double) max_time);
 	}
 
 	if (htab_is_shared)

@@ -237,21 +237,25 @@ plpgsql_check_parse_name_or_signature(char *name_or_signature)
 												CStringGetDatum(name_or_signature)));
 }
 
-#define		TOKEN_IDENTIF		128
-#define		TOKEN_QIDENTIF		129
-#define		TOKEN_NUMBER		130
+#define		PRAGMA_TOKEN_IDENTIF		128
+#define		PRAGMA_TOKEN_QIDENTIF		129
+#define		PRAGMA_TOKEN_NUMBER		130
 
+/*
+ * Originaly this structure was named TokenType, but this is in collision
+ * with name from NT SDK. So it is renamed to PragmaTokenType.
+ */
 typedef struct
 {
 	int		value;
 	const char *substr;
 	size_t		size;
-} TokenType;
+} PragmaTokenType;
 
 typedef struct
 {
 	const char *str;
-	TokenType	saved_token;
+	PragmaTokenType	saved_token;
 	bool		saved_token_is_valid;
 } TokenizerState;
 
@@ -259,8 +263,8 @@ typedef struct
  * Tokenize text. Only one error is possible here - unclosed double quotes.
  * Returns NULL, when found EOL or on error.
  */
-static TokenType *
-get_token(TokenizerState *state, TokenType *token)
+static PragmaTokenType *
+get_token(TokenizerState *state, PragmaTokenType *token)
 {
 	if (state->saved_token_is_valid)
 	{
@@ -279,7 +283,7 @@ get_token(TokenizerState *state, TokenType *token)
 	{
 		bool	have_dot = false;
 
-		token->value = TOKEN_NUMBER;
+		token->value = PRAGMA_TOKEN_NUMBER;
 		token->substr = state->str++;
 
 		while (isdigit(*state->str) || (*state->str == '.'))
@@ -301,7 +305,7 @@ get_token(TokenizerState *state, TokenType *token)
 	{
 		bool	is_error = true;
 
-		token->value = TOKEN_QIDENTIF;
+		token->value = PRAGMA_TOKEN_QIDENTIF;
 		token->substr = state->str++;
 
 		is_error = true;
@@ -326,7 +330,7 @@ get_token(TokenizerState *state, TokenType *token)
 	}
 	else if (is_ident_start(*state->str))
 	{
-		token->value = TOKEN_IDENTIF;
+		token->value = PRAGMA_TOKEN_IDENTIF;
 		token->substr = state->str++;
 
 		while (is_ident_cont(*state->str))
@@ -341,7 +345,7 @@ get_token(TokenizerState *state, TokenType *token)
 }
 
 static void
-unget_token(TokenizerState *state, TokenType *token)
+unget_token(TokenizerState *state, PragmaTokenType *token)
 {
 	if (token)
 	{
@@ -356,12 +360,12 @@ unget_token(TokenizerState *state, TokenType *token)
 }
 
 static bool
-token_is_keyword(TokenType *token, const char *str)
+token_is_keyword(PragmaTokenType *token, const char *str)
 {
 	if (!token)
 		return false;
 
-	if (token->value == TOKEN_IDENTIF &&
+	if (token->value == PRAGMA_TOKEN_IDENTIF &&
 			token->size == strlen(str) &&
 			strncasecmp(token->substr, str, token->size) == 0)
 		return true;
@@ -397,15 +401,15 @@ initialize_tokenizer(TokenizerState *state, const char *str)
 }
 
 static char *
-make_ident(TokenType *token)
+make_ident(PragmaTokenType *token)
 {
-	if (token->value == TOKEN_IDENTIF)
+	if (token->value == PRAGMA_TOKEN_IDENTIF)
 	{
 		return downcase_truncate_identifier(token->substr,
 											token->size,
 											false);
 	}
-	else if (token->value == TOKEN_QIDENTIF)
+	else if (token->value == PRAGMA_TOKEN_QIDENTIF)
 	{
 		char	   *result = palloc(token->size);
 		const char *ptr = token->substr + 1;
@@ -440,7 +444,7 @@ make_ident(TokenType *token)
 static List *
 get_qualified_identifier(TokenizerState *state, List *result)
 {
-	TokenType	token, *_token;
+	PragmaTokenType	token, *_token;
 	bool	read_atleast_one = false;
 
 	while (1)
@@ -449,7 +453,7 @@ get_qualified_identifier(TokenizerState *state, List *result)
 		if (!_token)
 			break;
 
-		if (_token->value != TOKEN_IDENTIF && _token->value != TOKEN_QIDENTIF)
+		if (_token->value != PRAGMA_TOKEN_IDENTIF && _token->value != PRAGMA_TOKEN_QIDENTIF)
 			elog(ERROR, "Syntax error (expected identifier)");
 
 		result = lappend(result, make_ident(_token));
@@ -479,7 +483,7 @@ get_qualified_identifier(TokenizerState *state, List *result)
 static void
 parse_qualified_identifier(TokenizerState *state, const char **startptr, int *size)
 {
-	TokenType	token, *_token;
+	PragmaTokenType	token, *_token;
 	bool		read_atleast_one = false;
 	const char	   *_startptr = *startptr;
 	int			_size = *size;
@@ -490,7 +494,7 @@ parse_qualified_identifier(TokenizerState *state, const char **startptr, int *si
 		if (!_token)
 			break;
 
-		if (_token->value != TOKEN_IDENTIF && _token->value != TOKEN_QIDENTIF)
+		if (_token->value != PRAGMA_TOKEN_IDENTIF && _token->value != PRAGMA_TOKEN_QIDENTIF)
 			elog(ERROR, "Syntax error (expected identifier)");
 
 		if (!_startptr)
@@ -521,7 +525,6 @@ parse_qualified_identifier(TokenizerState *state, const char **startptr, int *si
 	*size = _size;
 }
 
-
 /*
  * When rectype is not allowed, then composite type is allowed only
  * on top level.
@@ -529,7 +532,7 @@ parse_qualified_identifier(TokenizerState *state, const char **startptr, int *si
 static Oid
 get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool istop)
 {
-	TokenType	token, *_token;
+	PragmaTokenType	token, *_token;
 	const char	   *typename_start = NULL;
 	int			typename_length = 0;
 	const char *typestr;
@@ -576,8 +579,8 @@ get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool
 
 			_token = get_token(state, &token);
 			if (!_token ||
-				(_token->value != TOKEN_IDENTIF &&
-				 _token->value != TOKEN_QIDENTIF))
+				(_token->value != PRAGMA_TOKEN_IDENTIF &&
+				 _token->value != PRAGMA_TOKEN_QIDENTIF))
 				elog(ERROR, "Syntax error (expected identifier)");
 
 			names = lappend(names, makeString(make_ident(_token)));
@@ -607,15 +610,15 @@ get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool
 
 		return resultTupleDesc->tdtypeid;
 	}
-	else if (_token->value == TOKEN_QIDENTIF)
+	else if (_token->value == PRAGMA_TOKEN_QIDENTIF)
 	{
 		unget_token(state, _token);
 
 		parse_qualified_identifier(state, &typename_start, &typename_length);
 	}
-	else if (_token->value == TOKEN_IDENTIF)
+	else if (_token->value == PRAGMA_TOKEN_IDENTIF)
 	{
-		TokenType	token2, *_token2;
+		PragmaTokenType	token2, *_token2;
 
 		_token2 = get_token(state, &token2);
 
@@ -634,7 +637,7 @@ get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool
 				typename_start = _token->substr;
 				typename_length = _token->size;
 
-				while (_token2 && _token2->value == TOKEN_IDENTIF)
+				while (_token2 && _token2->value == PRAGMA_TOKEN_IDENTIF)
 				{
 					typename_length = _token2->substr + _token2->size - typename_start;
 
@@ -662,7 +665,7 @@ get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool
 			while (1)
 			{
 				_token = get_token(state, &token);
-				if (!_token || _token->value != TOKEN_NUMBER)
+				if (!_token || _token->value != PRAGMA_TOKEN_NUMBER)
 					elog(ERROR, "Syntax error (expected number for typmod specification)");
 
 				_token = get_token(state, &token);
@@ -690,7 +693,7 @@ get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool
 		if (_token->value == '[')
 		{
 			_token = get_token(state, &token);
-			if (_token && _token->value == TOKEN_NUMBER)
+			if (_token && _token->value == PRAGMA_TOKEN_NUMBER)
 				_token = get_token(state, &token);
 
 			if (!_token)
@@ -893,15 +896,15 @@ plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int line
 	PG_TRY();
 	{
 		TokenizerState tstate;
-		TokenType token, *_token;
+		PragmaTokenType token, *_token;
 		StringInfoData query;
 		int32		typmod;
 
 		initialize_tokenizer(&tstate, str);
 
 		_token = get_token(&tstate, &token);
-		if (!_token || (_token->value != TOKEN_IDENTIF
-				&& _token->value != TOKEN_QIDENTIF))
+		if (!_token || (_token->value != PRAGMA_TOKEN_IDENTIF
+				&& _token->value != PRAGMA_TOKEN_QIDENTIF))
 			elog(ERROR, "Syntax error (expected identifier)");
 
 		_token = get_token(&tstate, &token);
