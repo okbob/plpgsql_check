@@ -4660,4 +4660,29 @@ $$ language plpgsql;
 -- should be ok
 select * from plpgsql_check_function('test_function');
 
+drop function test_function();
 
+-- now plpgsql_check can do some other checks when statement EXECUTE
+-- contains only format function with constant fmt.
+create or replace function test_function()
+returns void as $$
+begin
+  execute format('create table zzz %I(a int, b int)', 'zzz');
+end;
+$$ language plpgsql;
+
+-- should to detect bad expression
+select * from plpgsql_check_function('test_function');
+
+-- should to correctly detect type
+create or replace function test_function()
+returns void as $$
+declare r record;
+begin
+  execute format('select %L::date + 1 as x', current_date) into r;
+  raise notice '%',  extract(dow from r.x);
+end;
+$$ language plpgsql;
+
+-- should be ok
+select * from plpgsql_check_function('test_function');

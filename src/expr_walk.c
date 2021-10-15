@@ -133,17 +133,6 @@ plpgsql_check_detect_dependency(PLpgSQL_checkstate *cstate, Query *query)
 }
 
 /*
- * Expecting persistent oid of nextval, currval and setval functions.
- * Ensured by regress tests.
- */
-#define NEXTVAL_OID		1574
-#define CURRVAL_OID		1575
-#define SETVAL_OID		1576
-#define SETVAL2_OID		1765
-#define FORMAT_0PARAM_OID	3540
-#define FORMAT_NPARAM_OID	3539
-
-/*
  * When sequence related functions has constant oid parameter, then ensure, so
  * this oid is related to some sequnce object.
  *

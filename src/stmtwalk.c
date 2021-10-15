@@ -15,7 +15,9 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
 #include "nodes/nodeFuncs.h"
+#include "nodes/value.h"
 #include "parser/parse_node.h"
+#include "parser/parser.h"
 #include "common/keywords.h"
 
 static void check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **exceptions);
@@ -1808,11 +1810,15 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 				  List *params)
 {
-	bool		prev_has_execute_stmt = cstate->has_execute_stmt;
 	Node	   *expr_node;
 	ListCell   *l;
 	int			loc = -1;
+	char	   *dynquery = NULL;
+	bool		prev_has_execute_stmt = cstate->has_execute_stmt;
+	bool		expr_is_const = false;
+
 	volatile bool raise_unknown_rec_warning = false;
+	volatile bool known_type_of_dynexpr = false;
 
 	/*
 	 * possible checks:
@@ -1824,6 +1830,10 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	 * 2. When expression is real expression, then we should to check any string
 	 *    kind parameters if are sanitized by functions quote_ident, qoute_literal,
 	 *    or format.
+	 *
+	 * 3. When expression is based on calling format function, and there are used
+	 *    only placeholders %I and %L, then we can try to check syntax of embeded
+	 *    query.
 	 */
 
 	cstate->has_execute_stmt = true;
@@ -1836,12 +1846,110 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	plpgsql_check_expr(cstate, query);
 	expr_node = plpgsql_check_expr_get_node(cstate, query, false);
 
-	if (IsA(expr_node, Const))
+	if (IsA(expr_node, FuncExpr))
 	{
-		char *query = plpgsql_check_const_to_string((Const *) expr_node);
-		PLpgSQL_expr	   *dynexpr;
-		DynSQLParams		dsp;
-		bool				is_mp;
+		FuncExpr *fexpr = (FuncExpr *) expr_node;
+
+		if (fexpr->funcid == FORMAT_0PARAM_OID ||
+			fexpr->funcid == FORMAT_NPARAM_OID)
+		{
+			if (fexpr->args && IsA(linitial(fexpr->args), Const))
+			{
+				StringInfoData	sinfo;
+				char		c, *fmt;
+				bool		subst_is_ok = true;
+				bool		found_ident_placeholder = false;
+				bool		found_literal_placeholder = false;
+
+				expr_is_const = fexpr->funcid == FORMAT_0PARAM_OID;
+				fmt = plpgsql_check_const_to_string((Const *) linitial(fexpr->args));
+
+				/*
+				 * The placeholders can be used only in FORMAT_NPARAM function,
+				 * but for simplicity and consistency we check FORMAT_0PARAM and
+				 * FORMAT_NPARAM together
+				 */
+				initStringInfo(&sinfo);
+
+				while ((c = *fmt++))
+				{
+					if (c == '%')
+					{
+						c = *fmt++;
+
+						if (c == '%')
+						{
+							appendStringInfoChar(&sinfo, c);
+						}
+						else if (c == 'I')
+						{
+							appendStringInfoString(&sinfo, "\"%I\"");
+							expr_is_const = false;
+							found_ident_placeholder = true;
+						}
+						else if (c == 'L')
+						{
+							/*
+							 * Original idea was used external parameter,
+							 * but external parameters requires known type,
+							 * so most safe value is NULL instead.
+							 */
+							appendStringInfo(&sinfo, " null ");
+							found_literal_placeholder = false;
+							expr_is_const = false;
+						}
+						else
+						{
+							/*
+							 * Because %s is used, we know nothing about form
+							 * of output string, and has not any sense to continue
+							 * in check.
+							 */
+							subst_is_ok = false;
+							expr_is_const = false;
+							break;
+						}
+					}
+					else
+						appendStringInfoChar(&sinfo, c);
+				}
+
+				if (subst_is_ok)
+				{
+					if (!found_literal_placeholder)
+					{
+
+#if PG_VERSION_NUM >= 140000
+
+						/* in this case we can do only basic parser check */
+						raw_parser(sinfo.data, RAW_PARSE_DEFAULT);
+
+#else
+
+						raw_parser(sinfo.data);
+
+#endif
+
+					}
+
+					if (!found_ident_placeholder)
+						dynquery = sinfo.data;
+				}
+			}
+		}
+	}
+	else if (IsA(expr_node, Const))
+	{
+		expr_is_const = true;
+		dynquery = plpgsql_check_const_to_string((Const *) expr_node);
+	}
+
+	if (dynquery)
+	{
+		PLpgSQL_expr *dynexpr = NULL;
+		DynSQLParams dsp;
+		bool		is_mp;
+		volatile 	bool is_ok = true;
 
 		dynexpr = palloc0(sizeof(PLpgSQL_expr));
 
@@ -1862,34 +1970,95 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 #endif
 
-		dynexpr->query = query;
+		dynexpr->query = dynquery;
 
 		dsp.args = params;
 		dsp.cstate = cstate;
 		dsp.use_params = false;
 
-		PG_TRY();
+		/*
+		 * When dynquery is not really constant, then there are
+		 * possible false alarms because we try to replace string
+		 * literal by parameter, so we can use it just for type
+		 * detection when check is ok.
+		 */
+		if (expr_is_const)
 		{
-			cstate->allow_mp = true;
+			PG_TRY();
+			{
+				cstate->allow_mp = true;
 
-			plpgsql_check_expr_generic_with_parser_setup(cstate,
+				plpgsql_check_expr_generic_with_parser_setup(cstate,
 													 dynexpr,
 													 (ParserSetupHook) dynsql_parser_setup,
 													 &dsp);
 
-			is_mp = cstate->has_mp;
-			cstate->has_mp = false;
+				is_mp = cstate->has_mp;
+				cstate->has_mp = false;
+			}
+			PG_CATCH();
+			{
+				cstate->allow_mp = false;
+				cstate->has_mp = false;
+
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
 		}
-		PG_CATCH();
+		else
 		{
-			cstate->allow_mp = false;
-			cstate->has_mp = false;
+			MemoryContext oldCxt;
+			ResourceOwner oldowner;
 
-			PG_RE_THROW();
+			/*
+			 * When dynquery is not really constant, then there are
+			 * possible false alarms because we try to replace string
+			 * literal by parameter, so we can use it just for type
+			 * detection when check is ok.
+			 */
+
+			oldCxt = CurrentMemoryContext;
+
+			oldowner = CurrentResourceOwner;
+			BeginInternalSubTransaction(NULL);
+			MemoryContextSwitchTo(cstate->check_cxt);
+
+			PG_TRY();
+			{
+				cstate->allow_mp = true;
+
+				plpgsql_check_expr_generic_with_parser_setup(cstate,
+													 dynexpr,
+													 (ParserSetupHook) dynsql_parser_setup,
+													 &dsp);
+
+				is_mp = cstate->has_mp;
+				cstate->has_mp = false;
+
+				RollbackAndReleaseCurrentSubTransaction();
+				MemoryContextSwitchTo(oldCxt);
+				CurrentResourceOwner = oldowner;
+
+				SPI_restore_connection();
+			}
+			PG_CATCH();
+			{
+				is_ok = false;
+
+				cstate->allow_mp = false;
+				cstate->has_mp = false;
+
+				MemoryContextSwitchTo(oldCxt);
+				FlushErrorState();
+
+				RollbackAndReleaseCurrentSubTransaction();
+				MemoryContextSwitchTo(oldCxt);
+				CurrentResourceOwner = oldowner;
+			}
+			PG_END_TRY();
 		}
-		PG_END_TRY();
 
-		if (!is_mp && (!params || !dsp.use_params))
+		if (is_ok && expr_is_const && !is_mp && (!params || !dsp.use_params))
 		{
 
 			/* probably useless dynamic command */
@@ -1902,7 +2071,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 									0, NULL, NULL);
 		}
 
-		if (params && !dsp.use_params)
+		if (is_ok && params && !dsp.use_params)
 		{
 			plpgsql_check_put_error(cstate,
 									0, 0,
@@ -1913,8 +2082,10 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 									0, NULL, NULL);
 		}
 
-		if (dynexpr->plan)
+		if (is_ok && dynexpr->plan)
 		{
+			known_type_of_dynexpr = true;
+
 			if (stmt->cmd_type == PLPGSQL_STMT_RETURN_QUERY)
 			{
 				plpgsql_check_returned_expr(cstate, dynexpr, false);
@@ -1942,7 +2113,8 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		if (!is_mp)
 			cstate->has_execute_stmt = prev_has_execute_stmt;
 	}
-	else
+
+	if (!expr_is_const)
 	{
 		/*
 		 * execute string is not constant (is not safe),
@@ -1974,7 +2146,8 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		}
 
 		/* in this case we don't know number of output columns */
-		if (stmt->cmd_type == PLPGSQL_STMT_RETURN_QUERY)
+		if (stmt->cmd_type == PLPGSQL_STMT_RETURN_QUERY &&
+			!known_type_of_dynexpr)
 		{
 			cstate->found_return_dyn_query = true;
 		}
@@ -1983,7 +2156,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		 * In this case, we don't know a result type, and we should
 		 * to raise warning about this situation.
 		 */
-		if (into)
+		if (into && !known_type_of_dynexpr)
 		{
 
 #if PG_VERSION_NUM >= 110000

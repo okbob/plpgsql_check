@@ -431,6 +431,17 @@ extern plpgsql_check__ns_lookup_t plpgsql_check__ns_lookup_p;
 #define OUT_COMPOSITE_IS_NOT_SINGLE_TEXT	"composite OUT variable \"%s\" is not single argument"
 #define UNSAFE_EXECUTE					"the expression used by EXECUTE command is possibly sql injection vulnerable"
 
+/*
+ * Expecting persistent oid of nextval, currval and setval functions.
+ * Ensured by regress tests.
+ */
+#define NEXTVAL_OID		1574
+#define CURRVAL_OID		1575
+#define SETVAL_OID		1576
+#define SETVAL2_OID		1765
+#define FORMAT_0PARAM_OID	3540
+#define FORMAT_NPARAM_OID	3539
+
 #ifndef TupleDescAttr
 #define TupleDescAttr(tupdesc, i) ((tupdesc)->attrs[(i)])
 #endif
