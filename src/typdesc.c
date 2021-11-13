@@ -630,7 +630,16 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 
 							FreeTupleDesc(tupdesc);
 
+#if PG_VERSION_NUM >= 140000
+
+							if (c->consttype == RECORDOID && c->consttypmod == -1 && !c->constisnull)
+
+#else
+
 							if (c->consttype == RECORDOID && c->consttypmod == -1)
+
+#endif
+
 							{
 								Oid		tupType;
 								int32	tupTypmod;

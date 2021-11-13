@@ -4686,3 +4686,14 @@ $$ language plpgsql;
 
 -- should be ok
 select * from plpgsql_check_function('test_function');
+
+-- should not to crash
+create or replace function test_function()
+returns void as $$
+declare r record;
+begin
+  r := null;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('test_function');
