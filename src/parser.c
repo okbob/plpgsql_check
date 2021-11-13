@@ -298,8 +298,6 @@ get_token(TokenizerState *state, PragmaTokenType *token)
 
 			state->str += 1;
 		}
-
-		token->size = state->str - token->substr;
 	}
 	else if (*state->str == '"')
 	{

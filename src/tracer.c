@@ -1400,6 +1400,18 @@ plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 			{
 				int startpos;
 
+#if PG_VERSION_NUM >= 140000
+
+				if (strcmp(exprname, "perform") == 0)
+				{
+					startpos = 7;
+					exprname = "expr";
+				}
+				else
+					startpos = 0;
+
+#else
+
 				if (strcmp(exprname, "perform") == 0)
 				{
 					startpos = 7;
@@ -1409,6 +1421,8 @@ plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 					startpos = 0;
 				else
 					startpos = STREXPR_START;
+
+#endif
 
 				if (is_assignment)
 				{

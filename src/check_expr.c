@@ -967,7 +967,7 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 	 */
 	if (targetrec || targetrow)
 	{
-		if (cstate && cstate->estate)
+		if (cstate->estate)
 		{
 			PLpgSQL_stmt *stmt = cstate->estate->err_stmt;
 

@@ -451,7 +451,7 @@ text_format_parse_format(const char *start_ptr,
 	else
 	{
 		/* Check for direct width specification */
-		found = text_format_parse_digits(&cp, end_ptr, &n, location, wp, is_error);
+		(void) text_format_parse_digits(&cp, end_ptr, &n, location, wp, is_error);
 		if (*is_error)
 			return NULL;
 	}
@@ -575,9 +575,10 @@ check_fmt_string(const char *fmt,
 				/* this is usually called after format check, but better be safe*/
 				if (argn <= nargs)
 				{
-					Node *arg = list_nth(args, argn - 1);
-
-					if (plpgsql_check_is_sql_injection_vulnerable(wp->cstate, wp->expr, arg, unsafe_expr_location))
+					if (plpgsql_check_is_sql_injection_vulnerable(wp->cstate,
+																  wp->expr,
+																  list_nth(args, argn - 1),
+																  unsafe_expr_location))
 					{
 						/* found vulnerability, stop */
 						*is_error = false;

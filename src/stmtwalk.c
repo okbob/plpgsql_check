@@ -128,7 +128,6 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 {
 	TupleDesc	tupdesc = NULL;
 	PLpgSQL_function *func;
-	ListCell   *l;
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
 	PLpgSQL_stmt_stack_item *outer_stmt;
@@ -289,7 +288,8 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						if (*closing == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
 						{
 							ListCell   *lc;
-							int			i = 0;
+							ListCell   *l;
+							int		errn = 0;
 							int    *err_codes = NULL;
 							int		nerr_codes = 0;
 
@@ -299,7 +299,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 							foreach(lc, *exceptions)
 							{
-								err_codes[i++] = lfirst_int(lc);
+								err_codes[errn++] = lfirst_int(lc);
 							}
 
 							foreach(l, stmt_block->exceptions->exc_list)
@@ -312,11 +312,11 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 								if (*exceptions != NIL)
 								{
-									int		i;
+									int		idx;
 
-									for (i = 0; i < nerr_codes; i++)
+									for (idx = 0; idx < nerr_codes; idx++)
 									{
-										int		err_code = err_codes[i];
+										int		err_code = err_codes[idx];
 
 										if (err_code != -1 &&
 											exception_matches_conditions(err_code, exception->conditions))
@@ -325,7 +325,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 																			 &exceptions_transformed, exceptions_local,
 																			 err_code);
 											*exceptions = list_delete_int(*exceptions, err_code);
-											err_codes[i] = -1;
+											err_codes[idx] = -1;
 										}
 									}
 								}
@@ -345,6 +345,8 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						}
 						else
 						{
+							ListCell   *l;
+
 							closing_handlers = *closing;
 
 							foreach(l, stmt_block->exceptions->exc_list)
@@ -508,8 +510,9 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				{
 					PLpgSQL_stmt_case *stmt_case = (PLpgSQL_stmt_case *) stmt;
 					Oid			result_oid;
-					int		closing_local;
-					List	*exceptions_local;
+					int			closing_local;
+					List	    *exceptions_local;
+					ListCell    *l;
 					int		closing_all_paths = PLPGSQL_CHECK_UNKNOWN;
 
 					if (stmt_case->t_expr != NULL)
@@ -558,6 +561,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 						ReleaseTupleDesc(tupdesc);
 					}
+
 					foreach(l, stmt_case->case_when_list)
 					{
 						PLpgSQL_case_when *cwt = (PLpgSQL_case_when *) lfirst(l);
@@ -891,7 +895,6 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					{
 						PLpgSQL_datum *retvar = cstate->estate->datums[stmt_rn->retvarno];
 						PLpgSQL_execstate *estate = cstate->estate;
-						TupleDesc	tupdesc;
 						int		natts;
 
 						cstate->used_variables = bms_add_member(cstate->used_variables, stmt_rn->retvarno);
@@ -1041,6 +1044,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				{
 					PLpgSQL_stmt_raise *stmt_raise = (PLpgSQL_stmt_raise *) stmt;
 					ListCell   *current_param;
+					ListCell   *l;
 					char	   *cp;
 					int			err_code = 0;
 
@@ -1185,11 +1189,12 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				{
 					PLpgSQL_stmt_open *stmt_open = (PLpgSQL_stmt_open *) stmt;
 					PLpgSQL_var *var = (PLpgSQL_var *) (cstate->estate->datums[stmt_open->curvar]);
+					ListCell	*l;
 
 					plpgsql_check_expr_as_sqlstmt_data(cstate, var->cursor_explicit_expr);
 					plpgsql_check_expr_as_sqlstmt_data(cstate, stmt_open->query);
 
-					if (var != NULL && stmt_open->query != NULL)
+					if (stmt_open->query != NULL)
 						var->cursor_explicit_expr = stmt_open->query;
 
 					plpgsql_check_expr_as_sqlstmt_data(cstate, stmt_open->argquery);
@@ -1365,7 +1370,7 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 	ListCell   *lc;
 	int			closing_local;
 	List	   *exceptions_local;
-	bool		dead_code_alert = false;
+	volatile bool		dead_code_alert = false;
 	plpgsql_check_pragma_vector		prev_pragma_vector = cstate->pragma_vector;
 
 	*closing = PLPGSQL_CHECK_UNCLOSED;
@@ -1815,7 +1820,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	int			loc = -1;
 	char	   *dynquery = NULL;
 	bool		prev_has_execute_stmt = cstate->has_execute_stmt;
-	bool		expr_is_const = false;
+	volatile bool expr_is_const = false;
 
 	volatile bool raise_unknown_rec_warning = false;
 	volatile bool known_type_of_dynexpr = false;
@@ -1948,8 +1953,8 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	{
 		PLpgSQL_expr *dynexpr = NULL;
 		DynSQLParams dsp;
-		bool		is_mp;
-		volatile 	bool is_ok = true;
+		volatile bool		is_mp;
+		volatile bool is_ok = true;
 
 		dynexpr = palloc0(sizeof(PLpgSQL_expr));
 

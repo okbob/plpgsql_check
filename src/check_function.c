@@ -890,12 +890,11 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 
 	if (nargs > 0)
 	{
-		Oid		argtype = InvalidOid;
 		int		i;
 
 		for (i = 0; i < nargs; i++)
 		{
-			argtype = InvalidOid;
+			Oid		argtype = InvalidOid;
 
 			if (argmodes)
 			{
@@ -951,8 +950,7 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 			for (i = 0; i < nargs; i++)
 			{
 				bool	is_variadic = false;
-
-				argtype = InvalidOid;
+				Oid		argtype = InvalidOid;
 
 				if (argmodes)
 				{

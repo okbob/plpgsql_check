@@ -325,14 +325,13 @@ plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 		else
 		{
 			/* highly probably only performance issue */
-			if (!isnull)
-				plpgsql_check_put_error(cstate,
-							  ERRCODE_DATATYPE_MISMATCH, 0,
-							  "target type is different type than source type",
-							  str.data,
-							  "Hidden casting can be a performance issue.",
-							  PLPGSQL_CHECK_WARNING_PERFORMANCE,
-							  0, NULL, NULL);
+			plpgsql_check_put_error(cstate,
+						  ERRCODE_DATATYPE_MISMATCH, 0,
+						  "target type is different type than source type",
+						  str.data,
+						  "Hidden casting can be a performance issue.",
+						  PLPGSQL_CHECK_WARNING_PERFORMANCE,
+						  0, NULL, NULL);
 		}
 
 		pfree(str.data);
@@ -464,8 +463,7 @@ plpgsql_check_assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 		plpgsql_check_recval_release(target);
 		plpgsql_check_recval_assign_tupdesc(cstate, target, tupdesc, isnull);
 	}
-
-	else if (row != NULL && tupdesc != NULL)
+	else if (row != NULL)
 	{
 		int			td_natts = tupdesc->natts;
 		int			fnum;
@@ -620,8 +618,8 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 
 	if (!is_null && tupdesc != NULL && !compatible_tupdescs(var_tupdesc, tupdesc))
 	{
-		int		i = 0;
-		int		j = 0;
+		int		attn1 = 0;
+		int		attn2 = 0;
 		int		target_nfields = 0;
 		int		src_nfields = 0;
 		bool	src_field_is_valid = false;
@@ -629,26 +627,26 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 		Form_pg_attribute sattr = NULL;
 		Form_pg_attribute tattr = NULL;
 
-		while (i < var_tupdesc->natts || j < tupdesc->natts)
+		while (attn1 < var_tupdesc->natts || attn2 < tupdesc->natts)
 		{
-			if (!target_field_is_valid && i < var_tupdesc->natts)
+			if (!target_field_is_valid && attn1 < var_tupdesc->natts)
 			{
-				tattr = TupleDescAttr(var_tupdesc, i);
+				tattr = TupleDescAttr(var_tupdesc, attn1);
 				if (tattr->attisdropped)
 				{
-					i += 1;
+					attn1 += 1;
 					continue;
 				}
 				target_field_is_valid = true;
 				target_nfields += 1;
 			}
 
-			if (!src_field_is_valid && j < tupdesc->natts)
+			if (!src_field_is_valid && attn2 < tupdesc->natts)
 			{
-				sattr = TupleDescAttr(tupdesc, j);
+				sattr = TupleDescAttr(tupdesc, attn2);
 				if (sattr->attisdropped)
 				{
-					j += 1;
+					attn2 += 1;
 					continue;
 				}
 				src_field_is_valid = true;
@@ -665,8 +663,8 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 				/* try to search next tuple of fields */
 				src_field_is_valid =  false;
 				target_field_is_valid = false;
-				i += 1;
-				j += 1;
+				attn1 += 1;
+				attn2 += 1;
 			}
 			else
 				break;

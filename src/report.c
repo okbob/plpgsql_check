@@ -335,11 +335,11 @@ plpgsql_check_report_unused_variables(PLpgSQL_checkstate *cstate)
 				for (fnum = 0; fnum < row->nfields; fnum++)
 				{
 					int		varno2 = row->varnos[fnum];
-					PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[varno2];
+					PLpgSQL_variable *var2 = (PLpgSQL_variable *) estate->datums[varno2];
 					StringInfoData message;
 
-					if (var->dtype == PLPGSQL_DTYPE_ROW ||
-						  var->dtype == PLPGSQL_DTYPE_REC)
+					if (var2->dtype == PLPGSQL_DTYPE_ROW ||
+						  var2->dtype == PLPGSQL_DTYPE_REC)
 					{
 						/*
 						 * The result of function with more OUT variables (and one
@@ -350,7 +350,7 @@ plpgsql_check_report_unused_variables(PLpgSQL_checkstate *cstate)
 						 */
 						initStringInfo(&message);
 						appendStringInfo(&message,
-									  OUT_COMPOSITE_IS_NOT_SINGLE_TEXT, var->refname);
+									  OUT_COMPOSITE_IS_NOT_SINGLE_TEXT, var2->refname);
 						plpgsql_check_put_error(cstate,
 								  0, 0,
 								  message.data,
@@ -372,7 +372,7 @@ plpgsql_check_report_unused_variables(PLpgSQL_checkstate *cstate)
 								  "cannot to determine result of dynamic SQL" : NULL;
 
 						initStringInfo(&message);
-						appendStringInfo(&message, fmt, var->refname);
+						appendStringInfo(&message, fmt, var2->refname);
 						plpgsql_check_put_error(cstate,
 								  0, 0,
 								  message.data,
@@ -390,7 +390,6 @@ plpgsql_check_report_unused_variables(PLpgSQL_checkstate *cstate)
 			{
 				if (!datum_is_used(cstate, varno, true))
 				{
-					PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[varno];
 					StringInfoData message;
 
 					const char *fmt = cstate->found_return_dyn_query ?
