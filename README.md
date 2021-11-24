@@ -749,10 +749,6 @@ result:
     rm -f plpgsql_check.so   libplpgsql_check.a  libplpgsql_check.pc
     rm -f plpgsql_check.o
     rm -rf results/ regression.diffs regression.out tmp_check/ log/
-    [pavel@localhost plpgsql_check]$ make USE_PGXS=1 clean
-    rm -f plpgsql_check.so   libplpgsql_check.a  libplpgsql_check.pc
-    rm -f plpgsql_check.o
-    rm -rf results/ regression.diffs regression.out tmp_check/ log/
     [pavel@localhost plpgsql_check]$ make USE_PGXS=1 all
     clang -O2 -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Wendif-labels -Wmissing-format-attribute -Wformat-security -fno-strict-aliasing -fwrapv -fpic -I/usr/local/pgsql/lib/pgxs/src/makefiles/../../src/pl/plpgsql/src -I. -I./ -I/usr/local/pgsql/include/server -I/usr/local/pgsql/include/internal -D_GNU_SOURCE   -c -o plpgsql_check.o plpgsql_check.c
     clang -O2 -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Wendif-labels -Wmissing-format-attribute -Wformat-security -fno-strict-aliasing -fwrapv -fpic -I/usr/local/pgsql/lib/pgxs/src/makefiles/../../src/pl/plpgsql/src -shared -o plpgsql_check.so plpgsql_check.o -L/usr/local/pgsql/lib -Wl,--as-needed -Wl,-rpath,'/usr/local/pgsql/lib',--enable-new-dtags  
