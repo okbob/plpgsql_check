@@ -47,6 +47,10 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/plpgsql_check.control
 
 %changelog
+* Wed Dec 29 2021 - Pavel Stehule <pavel.stehule@gmail.com> 2.1.0
+- possibility to count statement's aborted execution
+- possibility to count "unfinished" statements due exception
+
 * Mon Sep 27 2021 - Pavel Stehule <pavel.stehule@gmail.com> 2.0.0
 - pragma type for setting type to record variable
 - pragma table for creating ephemeral table
