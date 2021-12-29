@@ -15,6 +15,7 @@ typedef uint32 pc_queryid;
 #define NOQUERYID	(0)
 #endif
 
+extern Oid plpgsql_check_PLpgSQLlanguageId;
 
 enum
 {
@@ -203,6 +204,7 @@ extern void plpgsql_check_get_function_info(HeapTuple procTuple, Oid *rettype, c
 extern void plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo);
 extern char *plpgsql_check_get_src(HeapTuple procTuple);
 extern Oid plpgsql_check_pragma_func_oid(void);
+extern bool plpgsql_check_is_plpgsql_function(Oid foid);
 
 /*
  * functions from tablefunc.c
@@ -310,6 +312,9 @@ extern bool plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *s
 extern bool plpgsql_check_profiler;
 extern int plpgsql_check_profiler_max_shared_chunks;
 
+extern needs_fmgr_hook_type		plpgsql_check_next_needs_fmgr_hook;
+extern fmgr_hook_type			plpgsql_check_next_fmgr_hook;
+
 extern void plpgsql_check_profiler_shmem_startup(void);
 
 extern Size plpgsql_check_shmem_size(void);
@@ -329,6 +334,8 @@ extern void plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_resul
 extern void plpgsql_check_init_trace_info(PLpgSQL_execstate *estate);
 extern bool plpgsql_check_get_trace_info(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, PLpgSQL_execstate **outer_estate, int *frame_num, int *level, instr_time *start_time);
 
+extern bool plpgsql_check_needs_fmgr_hook(Oid fn_oid);
+extern void plpgsql_check_fmgr_hook(FmgrHookEventType event, FmgrInfo *flinfo, Datum *private);
 
 #if PG_VERSION_NUM >= 120000
 

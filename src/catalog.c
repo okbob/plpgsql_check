@@ -153,24 +153,16 @@ void
 plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo)
 {
 	Form_pg_proc proc;
-	Form_pg_language languageStruct;
-	HeapTuple	languageTuple;
 	char	   *funcname;
 
 	proc = (Form_pg_proc) GETSTRUCT(cinfo->proctuple);
 	funcname = format_procedure(cinfo->fn_oid);
 
 	/* used language must be plpgsql */
-	languageTuple = SearchSysCache1(LANGOID, ObjectIdGetDatum(proc->prolang));
-	Assert(HeapTupleIsValid(languageTuple));
-
-	languageStruct = (Form_pg_language) GETSTRUCT(languageTuple);
-	if (strcmp(NameStr(languageStruct->lanname), "plpgsql") != 0)
+	if (proc->prolang != plpgsql_check_PLpgSQLlanguageId)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("%s is not a plpgsql function", funcname)));
-
-	ReleaseSysCache(languageTuple);
 
 	/* profiler doesn't require trigger data check */
 	if (!cinfo->show_profile)
@@ -307,3 +299,27 @@ plpgsql_check_pragma_func_oid(void)
 
 	return result;
 }
+
+/*
+ * Returns true, if function specified by oid is plpgsql function.
+ */
+bool
+plpgsql_check_is_plpgsql_function(Oid foid)
+{
+	HeapTuple	procTuple;
+	Form_pg_proc procStruct;
+	bool		result;
+
+	procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(foid));
+	if (!HeapTupleIsValid(procTuple))
+		return false;
+
+	procStruct = (Form_pg_proc) GETSTRUCT(procTuple);
+
+	result = procStruct->prolang == plpgsql_check_PLpgSQLlanguageId;
+
+	ReleaseSysCache(procTuple);
+
+	return result;
+}
+

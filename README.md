@@ -434,9 +434,6 @@ a access to shared memory. It depends on `shared_preload_libraries` config. When
 by `shared_preload_libraries`, then it can allocate shared memory, and function's profiles are stored there.
 When plpgsql_check cannot to allocate shared momory, the profile is stored in session memory.
 
-The profile of any function is updated after successful execution of function. When function was canceled
-or it fails, the profiles is not updated.
-
 Due dependencies, `shared_preload_libraries` should to contains `plpgsql` first
 
     postgres=# show shared_preload_libraries ;

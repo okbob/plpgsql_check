@@ -26,6 +26,7 @@
 #include "plpgsql_check.h"
 #include "plpgsql_check_builtins.h"
 
+#include "commands/proclang.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
 #include "utils/guc.h"
@@ -36,7 +37,6 @@ PG_MODULE_MAGIC;
 #endif
 
 PLpgSQL_plugin **plpgsql_check_plugin_var_ptr;
-
 
 static PLpgSQL_plugin plugin_funcs = { plpgsql_check_profiler_func_init,
 									   plpgsql_check_on_func_beg,
@@ -81,6 +81,7 @@ void			_PG_fini(void);
 shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 
 bool plpgsql_check_regress_test_mode;
+Oid plpgsql_check_PLpgSQLlanguageId;
 
 
 /*
@@ -304,6 +305,14 @@ _PG_init(void)
 		shmem_startup_hook = plpgsql_check_profiler_shmem_startup;
 	}
 
+	plpgsql_check_PLpgSQLlanguageId = get_language_oid("plpgsql", false);
+
+	plpgsql_check_next_needs_fmgr_hook = needs_fmgr_hook;
+	plpgsql_check_next_fmgr_hook = fmgr_hook;
+
+	needs_fmgr_hook = plpgsql_check_needs_fmgr_hook;
+	fmgr_hook = plpgsql_check_fmgr_hook;
+
 	inited = true;
 }
 
@@ -317,4 +326,7 @@ _PG_fini(void)
 
 	/* Be more correct, and clean rendezvous variable */
 	*plpgsql_check_plugin_var_ptr = NULL;
+
+	needs_fmgr_hook = plpgsql_check_next_needs_fmgr_hook;
+	fmgr_hook = plpgsql_check_next_fmgr_hook;
 }
