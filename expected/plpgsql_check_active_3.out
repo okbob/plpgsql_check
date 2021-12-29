@@ -8105,3 +8105,81 @@ select * from plpgsql_check_function('test_function');
  warning extra:00000:2:DECLARE:never read variable "r"
 (1 row)
 
+drop function test_function();
+-- aborted function has profile too
+create or replace function test_function(a int)
+returns int as $$
+begin
+  if (a > 5) then
+    a := a + 10;
+    return a;
+  else
+    raise exception 'a < 5';
+  end if;
+end;
+$$ language plpgsql;
+set plpgsql_check.profiler to on;
+select test_function(1);
+ERROR:  a < 5
+select test_function(10);
+ test_function 
+---------------
+            20
+(1 row)
+
+select lineno, exec_stmts, exec_stmts_err, source from plpgsql_profiler_function_tb('test_function');
+ lineno | exec_stmts | exec_stmts_err |            source            
+--------+------------+----------------+------------------------------
+      1 |            |                | 
+      2 |          2 |              0 | begin
+      3 |          2 |              0 |   if (a > 5) then
+      4 |          1 |              0 |     a := a + 10;
+      5 |          1 |              0 |     return a;
+      6 |            |                |   else
+      7 |          1 |              1 |     raise exception 'a < 5';
+      8 |            |                |   end if;
+      9 |            |                | end;
+(9 rows)
+
+create or replace function test_function1(a int)
+returns int as $$
+begin
+  if (a > 5) then
+    a := a + 10;
+    return a;
+  else
+    raise exception 'a < 5';
+  end if;
+  exeception when others then
+    raise notice 'do warning';
+    return -1;
+end;
+$$ language plpgsql;
+select test_function1(1);
+ERROR:  a < 5
+select test_function1(10);
+ test_function1 
+----------------
+             20
+(1 row)
+
+select lineno, exec_stmts, exec_stmts_err, source from plpgsql_profiler_function_tb('test_function1');
+ lineno | exec_stmts | exec_stmts_err |             source             
+--------+------------+----------------+--------------------------------
+      1 |            |                | 
+      2 |          2 |              0 | begin
+      3 |          2 |              0 |   if (a > 5) then
+      4 |          1 |              0 |     a := a + 10;
+      5 |          1 |              0 |     return a;
+      6 |            |                |   else
+      7 |          1 |              1 |     raise exception 'a < 5';
+      8 |            |                |   end if;
+      9 |          0 |              0 |   exeception when others then
+     10 |            |                |     raise notice 'do warning';
+     11 |          0 |              0 |     return -1;
+     12 |            |                | end;
+(12 rows)
+
+drop function test_function(int);
+drop function test_function1(int);
+set plpgsql_check.profiler to off;

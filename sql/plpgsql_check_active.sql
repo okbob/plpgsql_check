@@ -4697,3 +4697,51 @@ end;
 $$ language plpgsql;
 
 select * from plpgsql_check_function('test_function');
+
+drop function test_function();
+
+-- aborted function has profile too
+create or replace function test_function(a int)
+returns int as $$
+begin
+  if (a > 5) then
+    a := a + 10;
+    return a;
+  else
+    raise exception 'a < 5';
+  end if;
+end;
+$$ language plpgsql;
+
+set plpgsql_check.profiler to on;
+
+select test_function(1);
+select test_function(10);
+
+select lineno, exec_stmts, exec_stmts_err, source from plpgsql_profiler_function_tb('test_function');
+
+create or replace function test_function1(a int)
+returns int as $$
+begin
+  if (a > 5) then
+    a := a + 10;
+    return a;
+  else
+    raise exception 'a < 5';
+  end if;
+  exeception when others then
+    raise notice 'do warning';
+    return -1;
+end;
+$$ language plpgsql;
+
+select test_function1(1);
+select test_function1(10);
+
+select lineno, exec_stmts, exec_stmts_err, source from plpgsql_profiler_function_tb('test_function1');
+
+drop function test_function(int);
+drop function test_function1(int);
+
+set plpgsql_check.profiler to off;
+

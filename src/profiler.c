@@ -76,6 +76,7 @@ typedef struct fstats
 	fstats_hashkey key;
 	slock_t		mutex;
 	uint64		exec_count;
+	uint64		exec_count_err;
 	uint64		total_time;
 	double		total_time_xx;
 	uint64		min_time;
@@ -104,6 +105,7 @@ typedef struct profiler_stmt
 	uint64		us_total;
 	uint64		rows;
 	uint64		exec_count;
+	uint64		exec_count_err;
 	instr_time	start_time;
 	instr_time	total;
 	bool		has_queryid;
@@ -118,6 +120,7 @@ typedef struct profiler_stmt_reduced
 	uint64		us_total;
 	uint64		rows;
 	uint64		exec_count;
+	uint64		exec_count_err;
 	bool		has_queryid;
 } profiler_stmt_reduced;
 
@@ -787,7 +790,7 @@ increment_branch_counter(coverage_state *cs, int64 executed)
  */
 #if PG_VERSION_NUM < 120000
 
-#define STMTID(stmt)		(profiler_get_stmtid(pinfo->profile, pinfo->function, ((PLpgSQL_stmt *) stmt)))
+#define STMTID(stmt)		(profiler_get_stmtid(pinfo->profile, pinfo->func, ((PLpgSQL_stmt *) stmt)))
 #define FUNC_NSTATEMENTS(pinfo)	(pinfo->profile->nstatements)
 #define NATURAL_STMTID(pinfo, id) (id)
 
@@ -979,6 +982,7 @@ profiler_stmt_walker(profiler_info *pinfo,
 														stmt_block_num,
 														stmt->lineno,
 														ppstmt ? ppstmt->exec_count : 0,
+														ppstmt ? ppstmt->exec_count_err : 0,
 														ppstmt ? ppstmt->us_total : 0.0,
 														ppstmt ? ppstmt->us_max : 0.0,
 														ppstmt ? ppstmt->rows : 0,
@@ -1485,6 +1489,7 @@ update_persistent_fstats(PLpgSQL_function *func,
 	if (!found)
 	{
 		fstats_item->exec_count = 0;
+		fstats_item->exec_count_err = 0;
 		fstats_item->total_time = 0;
 		fstats_item->total_time_xx = 0.0;
 		fstats_item->min_time = elapsed;
@@ -1625,6 +1630,7 @@ update_persistent_profile(profiler_info *pinfo,
 			prstmt->us_total = pstmt->us_total;
 			prstmt->rows = pstmt->rows;
 			prstmt->exec_count = pstmt->exec_count;
+			prstmt->exec_count_err = pstmt->exec_count_err;
 		}
 
 		/* clean unused stmts in chunk */
@@ -1723,6 +1729,7 @@ update_persistent_profile(profiler_info *pinfo,
 			prstmt->us_total += pstmt->us_total;
 			prstmt->rows += pstmt->rows;
 			prstmt->exec_count += pstmt->exec_count;
+			prstmt->exec_count_err += pstmt->exec_count_err;
 		}
 	}
 	PG_CATCH();
@@ -1822,7 +1829,7 @@ profile_register_stmt(profiler_info *pinfo,
 {
 #if PG_VERSION_NUM < 120000
 
-		profiler_update_map(pinfo->profile, opts, pinfo->function, stmt);
+		profiler_update_map(pinfo->profile, opts, pinfo->func, stmt);
 
 #else
 
@@ -2376,7 +2383,7 @@ prepare_profile(profiler_info *pinfo,
 	 */
 	for (i = 0; i < profile->n_mapped_functions; i++)
 	{
-		if (profile->mapped_functions[i] == function)
+		if (profile->mapped_functions[i] == func)
 		{
 			found = true;
 			break;
@@ -2406,7 +2413,7 @@ prepare_profile(profiler_info *pinfo,
 
 		opts.stmtid = 0;
 		profiler_stmt_walker(pinfo, PLPGSQL_CHECK_STMT_WALKER_PREPARE_PROFILE,
-							 (PLpgSQL_stmt *) function->action, NULL, NULL, 1,
+							 (PLpgSQL_stmt *) func->action, NULL, NULL, 1,
 							 &opts);
 
 		if (profile->nstatements > 0 && profile->nstatements != opts.stmtid)
@@ -2602,7 +2609,8 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 
 			int			stmt_lineno = -1;
 			int64		us_total = 0;
-			int64			exec_count = 0;
+			int64		exec_count = 0;
+			int64		exec_count_err = 0;
 			Datum		queryids_array = (Datum) 0;
 			Datum		max_time_array = (Datum) 0;
 			Datum		processed_rows_array = (Datum) 0;
@@ -2670,6 +2678,7 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 
 						us_total += prstmt->us_total;
 						exec_count += prstmt->exec_count;
+						exec_count_err += prstmt->exec_count_err;
 
 						stmt_lineno = lineno;
 
@@ -2718,7 +2727,8 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 								   lineno,
 								   stmt_lineno,
 								   cmds_on_row,
-								   (int) exec_count,
+								   exec_count,
+								   exec_count_err,
 								   us_total,
 								   max_time_array,
 								   processed_rows_array,
@@ -2895,6 +2905,7 @@ plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *fun
 		if (pinfo->stmts[entry_stmtid].exec_count == 0)
 		{
 			pinfo->stmts[entry_stmtid].exec_count = 1;
+			pinfo->stmts[entry_stmtid].exec_count_err = 0;
 			pinfo->stmts[entry_stmtid].us_total = elapsed;
 			pinfo->stmts[entry_stmtid].us_max = elapsed;
 		}
@@ -3025,7 +3036,7 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
 	profiler_info *pinfo;
 	bool	cleaning_mode = false;
-//	bool	is_error_stmt = false;
+	bool	is_error_stmt = false;
 
 	if (!estate)
 	{
@@ -3039,7 +3050,7 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 		estate = pinfo->estate;
 		stmt = errstmt->stmt;
-//		is_error_stmt = errstmt->is_error_stmt;
+		is_error_stmt = errstmt->is_error_stmt;
 
 		cleaning_mode = true;
 	}
@@ -3141,6 +3152,9 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 			pstmt->rows += estate->eval_processed;
 
 		pstmt->exec_count++;
+
+		if (is_error_stmt)
+			pstmt->exec_count_err++;
 	}
 }
 
@@ -3173,6 +3187,7 @@ plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 		Oid		fn_oid,
 				db_oid;
 		uint64	exec_count,
+				exec_count_err,
 				total_time,
 				min_time,
 				max_time;
@@ -3186,6 +3201,7 @@ plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 		fn_oid = fstats_item->key.fn_oid;
 		db_oid = fstats_item->key.db_oid;
 		exec_count = fstats_item->exec_count;
+		exec_count_err = fstats_item->exec_count_err;
 		total_time = fstats_item->total_time;
 		total_time_xx = fstats_item->total_time_xx;
 		min_time = fstats_item->min_time;
@@ -3212,6 +3228,7 @@ plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 		plpgsql_check_put_profiler_functions_all_tb(ri,
 													fn_oid,
 													exec_count,
+													exec_count_err,
 													(double) total_time,
 													ceil(total_time / ((double) exec_count)),
 													ceil(sqrt(total_time_xx / exec_count)),
