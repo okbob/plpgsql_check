@@ -275,15 +275,6 @@ typedef struct profiler_stack
 	int			nested_stmts_count;
 } profiler_stack;
 
-typedef struct error_statement
-{
-	int			cmd_type;
-	int			lineno;
-	unsigned int stmtid;
-	PLpgSQL_stmt *stmt;
-	bool		is_error_stmt;
-} error_statement;
-
 static HTAB *profiler_HashTable = NULL;
 static HTAB *shared_profiler_chunks_HashTable = NULL;
 static HTAB *profiler_chunks_HashTable = NULL;
@@ -2848,16 +2839,6 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 	}
 }
 
-static void
-init_error_statement(error_statement *errstmt, PLpgSQL_stmt *stmt, bool is_error_stmt)
-{
-	errstmt->cmd_type = 1000;		/* magic number */
-	errstmt->lineno = -1;
-	errstmt->stmtid = 0;
-	errstmt->stmt = stmt;
-	errstmt->is_error_stmt = is_error_stmt;
-}
-
 void
 plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 {
@@ -2938,12 +2919,14 @@ plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 			if (estate->cur_error)
 			{
 				int		i;
-				bool	is_top = true;
+				bool	found = false;
 
 				/*
 				 * detected exception handler. We have to close
 				 * all statements from stack, until we find common
-				 * eval_context.
+				 * eval_context. The reduction is possible, only when
+				 * we found common eval_context. We can lost if if this
+				 * shared context is over then NESTED_STMTS_STACK_SIZE.
 				 */
 				for (i = top_pinfo->nested_stmts_count - 1; i >= 0; i--)
 				{
@@ -2951,19 +2934,27 @@ plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 					{
 						if (top_pinfo->eval_econtext[i] == estate->eval_econtext)
 						{
-							top_pinfo->nested_stmts_count = i + 1;
+							found = true;
 							break;
 						}
-						else
-						{
-							error_statement errstmt;
+					}
+				}
 
-							init_error_statement(&errstmt, top_pinfo->nested_stmts[i], is_top);
-							plpgsql_check_profiler_stmt_end(NULL, (PLpgSQL_stmt *) &errstmt);
+				if (found)
+				{
+					for (i = top_pinfo->nested_stmts_count - 1; i >= 0; i--)
+					{
+						if (i < NESTED_STMTS_STACK_SIZE)
+						{
+							if (top_pinfo->eval_econtext[i] == estate->eval_econtext)
+							{
+								top_pinfo->nested_stmts_count = i + 1;
+								break;
+							}
+							else
+								plpgsql_check_profiler_stmt_end(NULL, top_pinfo->nested_stmts[i]);
 						}
 					}
-
-					is_top = false;
 				}
 			}
 
@@ -3040,18 +3031,12 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 	if (!estate)
 	{
-		/* unpack error statement */
-		error_statement *errstmt = (error_statement *) stmt;
-
-		Assert(errstmt->cmd_type == 1000);
 		Assert(top_pinfo && top_pinfo->pinfo);
 
 		pinfo = top_pinfo->pinfo;
 
 		estate = pinfo->estate;
-		stmt = errstmt->stmt;
-		is_error_stmt = errstmt->is_error_stmt;
-
+		is_error_stmt = estate->err_stmt == stmt;
 		cleaning_mode = true;
 	}
 	else
@@ -3060,6 +3045,7 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	if (top_pinfo && top_pinfo->pinfo && !cleaning_mode)
 	{
 		int		i;
+		bool	found = false;
 
 		top_pinfo->nested_stmts_count--;
 
@@ -3074,22 +3060,25 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 			{
 				if (top_pinfo->nested_stmts[i] == stmt)
 				{
-					int		j = top_pinfo->nested_stmts_count;
-
-					while (j > i)
-					{
-						if (j < NESTED_STMTS_STACK_SIZE)
-						{
-							error_statement	errstmt;
-
-							init_error_statement(&errstmt, top_pinfo->nested_stmts[j], false);
-							plpgsql_check_profiler_stmt_end(NULL, (PLpgSQL_stmt *) &errstmt);
-						}
-					}
-
-					top_pinfo->nested_stmts_count = i;
-
+					found = true;
 					break;
+				}
+			}
+		}
+
+		if (found)
+		{
+			for (i = top_pinfo->nested_stmts_count; i >= 0; i--)
+			{
+				if (i < NESTED_STMTS_STACK_SIZE)
+				{
+					if (top_pinfo->nested_stmts[i] == stmt)
+					{
+						top_pinfo->nested_stmts_count = i;
+						break;
+					}
+					else
+						plpgsql_check_profiler_stmt_end(NULL, top_pinfo->nested_stmts[i]);
 				}
 			}
 		}
@@ -3306,24 +3295,14 @@ plpgsql_check_fmgr_hook(FmgrHookEventType event,
 				if (event == FHET_ABORT)
 				{
 					profiler_info *pinfo = top_pinfo->pinfo;
-					bool	is_top = true;
 					int		i;
 
 					if (pinfo)
 					{
-						pinfo->estate = NULL;
-
 						for (i = top_pinfo->nested_stmts_count - 1; i >= 0; i--)
 						{
 							if (i < NESTED_STMTS_STACK_SIZE)
-							{
-								error_statement errstmt;
-
-								init_error_statement(&errstmt, top_pinfo->nested_stmts[i], is_top);
-								plpgsql_check_profiler_stmt_end(NULL, (PLpgSQL_stmt *) &errstmt);
-							}
-
-							is_top = false;
+								plpgsql_check_profiler_stmt_end(NULL, top_pinfo->nested_stmts[i]);
 						}
 
 						plpgsql_check_profiler_func_end(NULL, pinfo->func);
