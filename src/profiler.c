@@ -1137,6 +1137,10 @@ profiler_stmt_walker(profiler_info *pinfo,
 
 		if (stmt_block->exceptions)
 		{
+			if (collect_coverage_mode)
+				increment_branch_counter(opts->cs,
+										 opts->nested_exec_count);
+
 			foreach(lc, stmt_block->exceptions->exc_list)
 			{
 				stmts = ((PLpgSQL_exception *) lfirst(lc))->action;
@@ -1149,6 +1153,9 @@ profiler_stmt_walker(profiler_info *pinfo,
 
 				if (count_exec_time_mode)
 					nested_us_time += opts->nested_us_time;
+				else if (collect_coverage_mode)
+					increment_branch_counter(opts->cs,
+											 opts->nested_exec_count);
 			}
 		}
 	}
