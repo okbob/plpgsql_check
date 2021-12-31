@@ -15,8 +15,6 @@ typedef uint32 pc_queryid;
 #define NOQUERYID	(0)
 #endif
 
-extern Oid plpgsql_check_PLpgSQLlanguageId;
-
 enum
 {
 	PLPGSQL_CHECK_ERROR,

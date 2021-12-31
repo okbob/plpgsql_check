@@ -26,6 +26,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "commands/extension.h"
+#include "commands/proclang.h"
 #include "utils/builtins.h"
 #include "utils/catcache.h"
 #include "utils/fmgroids.h"
@@ -45,8 +46,9 @@
 
 #endif
 
-
 #include "utils/syscache.h"
+
+static Oid plpgsql_check_PLpgSQLlanguageId = InvalidOid;
 
 /*
  * Fix - change of typename in Postgres 14
@@ -157,6 +159,14 @@ plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo)
 
 	proc = (Form_pg_proc) GETSTRUCT(cinfo->proctuple);
 	funcname = format_procedure(cinfo->fn_oid);
+
+	/*
+	 * The plpgsql_check can be loaded by shared_proload_libraries. That means
+	 * so in init time the access to system catalog can be impossible. So
+	 * plpgsql_check_PLpgSQLlanguageId should be initialized here.
+	 */
+	if (!OidIsValid(plpgsql_check_PLpgSQLlanguageId))
+		plpgsql_check_PLpgSQLlanguageId = get_language_oid("plpgsql", false);
 
 	/* used language must be plpgsql */
 	if (proc->prolang != plpgsql_check_PLpgSQLlanguageId)
@@ -315,6 +325,14 @@ plpgsql_check_is_plpgsql_function(Oid foid)
 		return false;
 
 	procStruct = (Form_pg_proc) GETSTRUCT(procTuple);
+
+	/*
+	 * The plpgsql_check can be loaded by shared_proload_libraries. That means
+	 * so in init time the access to system catalog can be impossible. So
+	 * plpgsql_check_PLpgSQLlanguageId should be initialized here.
+	 */
+	if (!OidIsValid(plpgsql_check_PLpgSQLlanguageId))
+		plpgsql_check_PLpgSQLlanguageId = get_language_oid("plpgsql", false);
 
 	result = procStruct->prolang == plpgsql_check_PLpgSQLlanguageId;
 
