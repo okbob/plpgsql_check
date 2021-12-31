@@ -260,6 +260,14 @@ typedef struct profiler_stack
 {
 	profiler_info *pinfo;
 	struct profiler_stack *prev_pinfo;
+
+	/*
+	 * The behaviour of estate->err_stmt is different across
+	 * pg releases, so the most easy way is hold own err_stmt
+	 * initilized in stmt_beg.
+	 */
+	PLpgSQL_stmt *err_stmt;
+
 	PLpgSQL_stmt *nested_stmts[NESTED_STMTS_STACK_SIZE];
 
 	/*
@@ -2968,6 +2976,7 @@ plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		}
 
 		top_pinfo->nested_stmts_count++;
+		top_pinfo->err_stmt = stmt;
 	}
 
 
@@ -3035,8 +3044,10 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 		pinfo = top_pinfo->pinfo;
 
+
 		estate = pinfo->estate;
-		is_error_stmt = estate->err_stmt == stmt;
+
+		is_error_stmt = top_pinfo->err_stmt == stmt;
 		cleaning_mode = true;
 	}
 	else
@@ -3082,6 +3093,8 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 				}
 			}
 		}
+
+		top_pinfo->err_stmt = NULL;
 	}
 
 	if (plpgsql_check_tracer && pinfo)
