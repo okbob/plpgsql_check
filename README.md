@@ -285,7 +285,7 @@ Functions should be checked on start - plpgsql_check module must be loaded.
     plpgsql_check.show_performance_warnings = false
 
 Default mode is <i>by_function</i>, that means that the enhanced check is done only in
-active mode - by <i>plpgsql_check_function</i>.
+active mode - by <i>plpgsql_check_function</i>. `fresh_start` means cold start.
 
 You can enable passive mode by
 
