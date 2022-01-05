@@ -827,6 +827,8 @@ or compile by self:
   1. copy `plpgsql_check.dll` to `PostgreSQL\9.3\lib`
   2. copy `plpgsql_check.control` and `plpgsql_check--0.8.sql` to `PostgreSQL\9.3\share\extension`
 
+The points 4-6 are not necessary for current code.
+
 ## Checked on
 
 * gcc on Linux (against all supported PostgreSQL)
