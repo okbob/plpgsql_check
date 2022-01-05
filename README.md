@@ -785,11 +785,6 @@ ICU support)
 
     sudo apt install libicu-dev
 
-## Compilation plpgsql_check on OS X
-
-use `-undefined dynamic_lookup` to the last line of the `Makefile ("override CFLAGS += ...")` allowed it to build
-(It should not be necessary for current code).
-
 ## Compilation plpgsql_check on Windows
 
 You can check precompiled dll libraries http://okbob.blogspot.cz/2015/02/plpgsqlcheck-is-available-for-microsoft.html
@@ -799,41 +794,16 @@ or compile by self:
 1. Download and install PostgreSQL for Win32 from http://www.enterprisedb.com
 2. Download and install Microsoft Visual C++ Express
 3. Lern tutorial http://blog.2ndquadrant.com/compiling-postgresql-extensions-visual-studio-windows
-4. The plpgsql_check depends on plpgsql and we need to add plpgsql.lib to the library list. Unfortunately PostgreSQL 9.4.3 does not contain this library.
-5. Create a plpgsql.lib from plpgsql.dll as described in http://adrianhenke.wordpress.com/2008/12/05/create-lib-file-from-dll (this step is not necessary now)
-6. Change `plpgsql_check.c` file, add `PGDLLEXPORT` line before evry extension function, as described in http://blog.2ndquadrant.com/compiling-postgresql-extensions-visual-studio-windows 
-   (Skip this step if you have a version with "plpgsql_check_builtins.h" header file).
-   <pre>
-    ...PGDLLEXPORT
-    Datum plpgsql_check_function_tb(PG_FUNCTION_ARGS);
-    PGDLLEXPORT
-    Datum plpgsql_check_function(PG_FUNCTION_ARGS);
-    ...
-    PGDLLEXPORT
-    Datum
-    plpgsql_check_function(PG_FUNCTION_ARGS)
-    {
-    Oid            funcoid = PG_GETARG_OID(0);
-    ...
-    PGDLLEXPORT
-    Datum
-    plpgsql_check_function_tb(PG_FUNCTION_ARGS)
-    {
-    Oid            funcoid = PG_GETARG_OID(0);
-    ...
-   </pre>
-7. Build plpgsql_check.dll
-8. Install plugin
-  1. copy `plpgsql_check.dll` to `PostgreSQL\9.3\lib`
-  2. copy `plpgsql_check.control` and `plpgsql_check--0.8.sql` to `PostgreSQL\9.3\share\extension`
-
-The points 4-6 are not necessary for current code.
+4. Build plpgsql_check.dll
+5. Install plugin
+  1. copy `plpgsql_check.dll` to `PostgreSQL\14\lib`
+  2. copy `plpgsql_check.control` and `plpgsql_check--2.1.sql` to `PostgreSQL\14\share\extension`
 
 ## Checked on
 
 * gcc on Linux (against all supported PostgreSQL)
-* clang 3.4 on Linux (against PostgreSQL 9.5)
-* for success regress tests the PostgreSQL 9.5 or higher is required
+* clang 3.4 on Linux (against PostgreSQL 10)
+* for success regress tests the PostgreSQL 10 or higher is required
 
 Compilation against PostgreSQL 10 requires libICU!
 
