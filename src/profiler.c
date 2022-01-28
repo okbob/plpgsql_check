@@ -3308,7 +3308,12 @@ plpgsql_check_fmgr_hook(FmgrHookEventType event,
 		case FHET_ABORT:
 			stack = (fmgr_hook_private *) DatumGetPointer(*private);
 
-			if (stack->use_plpgsql)
+			/*
+			 * When plpgsql_check is loaded due dependency on some executed function,
+			 * then FHET_START and FHET_END (or FHET_ABORT) can be assymetric. So
+			 * stack can be NULL. See issue #101
+			 */
+			if (stack && stack->use_plpgsql)
 			{
 				profiler_stack *pstack = top_pinfo->prev_pinfo;
 
