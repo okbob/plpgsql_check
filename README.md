@@ -411,7 +411,7 @@ You can use pragma `table` and create ephemeral table:
 
 # Dependency list
 
-A function <i>plpgsql_show_dependency_tb</i> can show all functions and relations used
+A function <i>plpgsql_show_dependency_tb</i> can show all functions, operators and relations used
 inside processed function:
 
     postgres=# select * from plpgsql_show_dependency_tb('testfunc(int,float)');
@@ -420,6 +420,7 @@ inside processed function:
     ╞══════════╪═══════╪════════╪═════════╪════════════════════════════╡
     │ FUNCTION │ 36008 │ public │ myfunc1 │ (integer,double precision) │
     │ FUNCTION │ 35999 │ public │ myfunc2 │ (integer,double precision) │
+    │ OPERATOR │ 36007 │ public │ **      │ (integer,integer)          │
     │ RELATION │ 36005 │ public │ myview  │                            │
     │ RELATION │ 36002 │ public │ mytable │                            │
     └──────────┴───────┴────────┴─────────┴────────────────────────────┘

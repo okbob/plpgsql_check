@@ -2392,6 +2392,9 @@ create function myfunc2(a int, b float) returns integer as $$ begin end $$ langu
 create function myfunc3(a int, b float) returns integer as $$ begin end $$ language plpgsql;
 create function myfunc4(a int, b float) returns integer as $$ begin end $$ language plpgsql;
 
+create function opfunc1(a int, b float) returns integer as $$ begin end $$ language plpgsql;
+create operator *** (procedure = opfunc1, leftarg = int, rightarg = float);
+
 create table mytable(a int);
 create table myview as select * from mytable;
 
@@ -2400,7 +2403,7 @@ returns void as $$
 declare x integer;
 begin
   raise notice '%', myfunc1(a, b);
-  x := myfunc2(a, b);
+  x := myfunc2(a, b) operator(public.***) 1;
   perform myfunc3(m.a, b) from myview m;
   insert into mytable select myfunc4(a, b);
 end;
