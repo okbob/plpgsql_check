@@ -203,6 +203,7 @@ extern void plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo);
 extern char *plpgsql_check_get_src(HeapTuple procTuple);
 extern Oid plpgsql_check_pragma_func_oid(void);
 extern bool plpgsql_check_is_plpgsql_function(Oid foid);
+extern Oid plpgsql_check_get_op_namespace(Oid opno);
 
 /*
  * functions from tablefunc.c

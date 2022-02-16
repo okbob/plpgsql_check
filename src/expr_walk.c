@@ -40,7 +40,7 @@ static int check_fmt_string(const char *fmt,
 							bool no_error);
 
 /*
- * Send to ouput all not yet displayed relations and functions.
+ * Send to ouput all not yet displayed relations, operators and functions.
  */
 static bool
 detect_dependency_walker(Node *node, void *context)
@@ -117,6 +117,41 @@ detect_dependency_walker(Node *node, void *context)
 
 				cstate->func_oids = bms_add_member(cstate->func_oids, fexpr->funcid);
 			}
+		}
+	}
+
+	if (IsA(node, OpExpr))
+	{
+		OpExpr *opexpr = (OpExpr *) node;
+
+		if (plpgsql_check_get_op_namespace(opexpr->opno) != PG_CATALOG_NAMESPACE)
+		{
+				StringInfoData		str;
+				Oid					lefttype;
+				Oid					righttype;
+
+				op_input_types(opexpr->opno, &lefttype, &righttype);
+
+				initStringInfo(&str);
+				appendStringInfoChar(&str, '(');
+				if (lefttype != InvalidOid)
+					appendStringInfoString(&str, format_type_be(lefttype));
+				else
+					appendStringInfoChar(&str, '-');
+				appendStringInfoChar(&str, ',');
+				if (righttype != InvalidOid)
+					appendStringInfoString(&str, format_type_be(righttype));
+				else
+					appendStringInfoChar(&str, '-');
+				appendStringInfoChar(&str, ')');
+
+				plpgsql_check_put_dependency(ri,
+											 "OPERATOR",
+											 opexpr->opno,
+											 get_namespace_name(plpgsql_check_get_op_namespace(opexpr->opno)),
+											 get_opname(opexpr->opno),
+											 str.data);
+				pfree(str.data);
 		}
 	}
 

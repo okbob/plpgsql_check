@@ -23,6 +23,7 @@
 #include "catalog/pg_extension.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_language.h"
+#include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "commands/extension.h"
@@ -341,3 +342,22 @@ plpgsql_check_is_plpgsql_function(Oid foid)
 	return result;
 }
 
+/*
+ * plpgsql_check_get_op_namespace
+ *	  returns the name space of the operator with the given opno
+ */
+Oid
+plpgsql_check_get_op_namespace(Oid opno)
+{
+	HeapTuple	tp;
+
+	tp = SearchSysCache1(OPEROID, ObjectIdGetDatum(opno));
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_operator optup = (Form_pg_operator) GETSTRUCT(tp);
+		ReleaseSysCache(tp);
+		return optup->oprnamespace;
+	}
+	else
+		return InvalidOid;
+}
