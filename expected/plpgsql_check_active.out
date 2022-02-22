@@ -8187,3 +8187,15 @@ select lineno, exec_stmts, exec_stmts_err, source from plpgsql_profiler_function
 drop function test_function(int);
 drop function test_function1(int);
 set plpgsql_check.profiler to off;
+-- ignores syntax errors when literals placehodlers are used
+create function test_function()
+returns void as $$
+begin
+    execute format('do %L', 'begin end');
+end
+$$ language plpgsql;
+select * from plpgsql_check_function('test_function');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+

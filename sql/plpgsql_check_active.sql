@@ -4748,3 +4748,12 @@ drop function test_function1(int);
 
 set plpgsql_check.profiler to off;
 
+-- ignores syntax errors when literals placehodlers are used
+create function test_function()
+returns void as $$
+begin
+    execute format('do %L', 'begin end');
+end
+$$ language plpgsql;
+
+select * from plpgsql_check_function('test_function');
