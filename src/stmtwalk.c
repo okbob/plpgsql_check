@@ -1900,7 +1900,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 							 * so most safe value is NULL instead.
 							 */
 							appendStringInfo(&sinfo, " null ");
-							found_literal_placeholder = false;
+							found_literal_placeholder = true;
 							expr_is_const = false;
 						}
 						else
