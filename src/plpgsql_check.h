@@ -15,6 +15,10 @@ typedef uint32 pc_queryid;
 #define NOQUERYID	(0)
 #endif
 
+#if PG_VERSION_NUM < 150000
+#define parse_analyze_fixedparams	parse_analyze
+#endif
+
 enum
 {
 	PLPGSQL_CHECK_ERROR,

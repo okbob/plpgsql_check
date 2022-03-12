@@ -2160,7 +2160,7 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, query_pa
 		snapshot_set = true;
 	}
 
-	query = parse_analyze(parsetree, query_string, paramtypes, nparams, NULL);
+	query = parse_analyze_fixedparams(parsetree, query_string, paramtypes, nparams, NULL);
 
 	if (snapshot_set)
 		PopActiveSnapshot();
