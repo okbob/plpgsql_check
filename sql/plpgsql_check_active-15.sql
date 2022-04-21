@@ -266,3 +266,62 @@ $$ language plpgsql;
 select trace_test(4);
 
 drop function trace_test(int);
+
+create or replace function fxtest()
+returns void as $$
+declare
+  v_sqlstate text;
+  v_message text;
+  v_context text;
+begin
+  get stacked diagnostics
+    v_sqlstate = returned_sqlstate,
+    v_message = message_text,
+    v_context = pg_exception_context;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fxtest');
+
+drop function fxtest();
+
+create or replace procedure prtest()
+as $$
+begin
+  commit;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('prtest'); --ok
+
+create or replace procedure prtest()
+as $$
+begin
+  begin
+    begin
+      commit;
+    end;
+  end;
+exception when others then
+  raise;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('prtest'); --error
+
+create or replace procedure prtest()
+as $$
+begin
+  raise exception 'error';
+exception when others then
+  begin
+    begin
+      commit;
+    end;
+  end;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('prtest'); --ok
+
+drop procedure prtest();

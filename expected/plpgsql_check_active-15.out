@@ -483,3 +483,70 @@ NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
 (1 row)
 
 drop function trace_test(int);
+create or replace function fxtest()
+returns void as $$
+declare
+  v_sqlstate text;
+  v_message text;
+  v_context text;
+begin
+  get stacked diagnostics
+    v_sqlstate = returned_sqlstate,
+    v_message = message_text,
+    v_context = pg_exception_context;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fxtest');
+                                          plpgsql_check_function                                           
+-----------------------------------------------------------------------------------------------------------
+ error:0Z002:7:GET STACKED DIAGNOSTICS:GET STACKED DIAGNOSTICS cannot be used outside an exception handler
+(1 row)
+
+drop function fxtest();
+create or replace procedure prtest()
+as $$
+begin
+  commit;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('prtest'); --ok
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace procedure prtest()
+as $$
+begin
+  begin
+    begin
+      commit;
+    end;
+  end;
+exception when others then
+  raise;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('prtest'); --error
+                       plpgsql_check_function                        
+---------------------------------------------------------------------
+ error:2D000:5:COMMIT:cannot commit while a subtransaction is active
+(1 row)
+
+create or replace procedure prtest()
+as $$
+begin
+  raise exception 'error';
+exception when others then
+  begin
+    begin
+      commit;
+    end;
+  end;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('prtest'); --ok
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop procedure prtest();
