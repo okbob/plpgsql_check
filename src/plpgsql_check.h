@@ -71,6 +71,7 @@ typedef struct PLpgSQL_stmt_stack_item
 	PLpgSQL_stmt	   *stmt;
 	char			   *label;
 	struct PLpgSQL_stmt_stack_item *outer;
+	bool				is_exception_handler;
 } PLpgSQL_stmt_stack_item;
 
 typedef struct plpgsql_check_result_info

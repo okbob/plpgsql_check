@@ -43,7 +43,17 @@ static PLpgSQL_plugin plugin_funcs = { plpgsql_check_profiler_func_init,
 									   plpgsql_check_profiler_stmt_beg,
 									   plpgsql_check_profiler_stmt_end,
 									   NULL,
-									   NULL};
+									   NULL
+
+#if PG_VERSION_NUM >= 150000
+
+									  , NULL,
+									  NULL,
+									  NULL
+
+#endif
+
+									  };
 
 
 static const struct config_enum_entry plpgsql_check_mode_options[] = {
