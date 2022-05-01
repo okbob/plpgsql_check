@@ -124,6 +124,17 @@ plpgsql_check_is_assignable(PLpgSQL_execstate *estate, int dno)
 			plpgsql_check_is_assignable(estate,
 								  ((PLpgSQL_recfield *) datum)->recparentno);
 			break;
+
+#if PG_VERSION_NUM < 140000
+
+		case PLPGSQL_DTYPE_ARRAYELEM:
+			/* assignable if parent record is */
+			plpgsql_check_is_assignable(estate,
+								  ((PLpgSQL_arrayelem *) datum)->arrayparentno);
+			break;
+
+#endif
+
 		default:
 			elog(ERROR, "unrecognized dtype: %d", datum->dtype);
 			break;
