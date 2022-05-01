@@ -95,6 +95,56 @@ plpgsql_check_row_or_rec(PLpgSQL_checkstate *cstate, PLpgSQL_row *row, PLpgSQL_r
 	}
 }
 
+static void
+exec_check_assignable(PLpgSQL_execstate *estate, int dno)
+{
+	PLpgSQL_datum *datum;
+
+	Assert(dno >= 0 && dno < estate->ndatums);
+	datum = estate->datums[dno];
+
+#if PG_VERSION_NUM >= 110000
+
+	switch (datum->dtype)
+	{
+		case PLPGSQL_DTYPE_VAR:
+		case PLPGSQL_DTYPE_PROMISE:
+		case PLPGSQL_DTYPE_REC:
+			if (((PLpgSQL_variable *) datum)->isconst)
+				ereport(ERROR,
+						(errcode(ERRCODE_ERROR_IN_ASSIGNMENT),
+						 errmsg("variable \"%s\" is declared CONSTANT",
+								((PLpgSQL_variable *) datum)->refname)));
+			break;
+		case PLPGSQL_DTYPE_ROW:
+			/* always assignable; member vars were checked at compile time */
+			break;
+		case PLPGSQL_DTYPE_RECFIELD:
+			/* assignable if parent record is */
+			exec_check_assignable(estate,
+								  ((PLpgSQL_recfield *) datum)->recparentno);
+			break;
+		default:
+			elog(ERROR, "unrecognized dtype: %d", datum->dtype);
+			break;
+	}
+
+#else
+
+elog(NOTICE, "kuku");
+
+
+	if (datum->dtype == PLPGSQL_DTYPE_VAR)
+		if (((PLpgSQL_var *) datum)->isconst)
+			ereport(ERROR,
+					(errcode(ERRCODE_ERROR_IN_ASSIGNMENT),
+					 errmsg("variable \"%s\" is declared CONSTANT",
+							((PLpgSQL_var *) datum)->refname)));
+
+#endif
+
+}
+
 /*
  * Verify lvalue It doesn't repeat a checks that are done. Checks a subscript
  * expressions, verify a validity of record's fields.
@@ -104,6 +154,7 @@ plpgsql_check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid
 {
 	PLpgSQL_datum *target = cstate->estate->datums[varno];
 
+	exec_check_assignable(cstate->estate, varno);
 	plpgsql_check_record_variable_usage(cstate, varno, true);
 
 	switch (target->dtype)

@@ -1215,6 +1215,8 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						plpgsql_check_expr(cstate, (PLpgSQL_expr *) lfirst(l));
 					}
 
+					plpgsql_check_target(cstate, stmt_open->curvar, NULL, NULL);
+
 					cstate->modif_variables = bms_add_member(cstate->modif_variables,
 									 stmt_open->curvar);
 				}
@@ -1326,6 +1328,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					if (target != NULL)
 					{
 						check_variable(cstate, (PLpgSQL_variable *) target);
+
 						plpgsql_check_assignment_to_variable(cstate, stmt_call->expr,
 																(PLpgSQL_variable *) target, -1);
 
