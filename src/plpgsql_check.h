@@ -181,6 +181,8 @@ extern void plpgsql_check_assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 extern void plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec, TupleDesc tupdesc, bool is_null);
 extern void plpgsql_check_recval_init(PLpgSQL_rec *rec);
 extern void plpgsql_check_recval_release(PLpgSQL_rec *rec);
+extern void plpgsql_check_is_assignable(PLpgSQL_execstate *estate, int dno);
+
 
 /*
  * functions from format.c

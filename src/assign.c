@@ -95,8 +95,8 @@ plpgsql_check_row_or_rec(PLpgSQL_checkstate *cstate, PLpgSQL_row *row, PLpgSQL_r
 	}
 }
 
-static void
-exec_check_assignable(PLpgSQL_execstate *estate, int dno)
+void
+plpgsql_check_is_assignable(PLpgSQL_execstate *estate, int dno)
 {
 	PLpgSQL_datum *datum;
 
@@ -121,7 +121,7 @@ exec_check_assignable(PLpgSQL_execstate *estate, int dno)
 			break;
 		case PLPGSQL_DTYPE_RECFIELD:
 			/* assignable if parent record is */
-			exec_check_assignable(estate,
+			plpgsql_check_is_assignable(estate,
 								  ((PLpgSQL_recfield *) datum)->recparentno);
 			break;
 		default:
@@ -130,9 +130,6 @@ exec_check_assignable(PLpgSQL_execstate *estate, int dno)
 	}
 
 #else
-
-elog(NOTICE, "kuku");
-
 
 	if (datum->dtype == PLPGSQL_DTYPE_VAR)
 		if (((PLpgSQL_var *) datum)->isconst)
@@ -154,7 +151,7 @@ plpgsql_check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid
 {
 	PLpgSQL_datum *target = cstate->estate->datums[varno];
 
-	exec_check_assignable(cstate->estate, varno);
+	plpgsql_check_is_assignable(cstate->estate, varno);
 	plpgsql_check_record_variable_usage(cstate, varno, true);
 
 	switch (target->dtype)

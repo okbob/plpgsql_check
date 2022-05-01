@@ -46,14 +46,14 @@ plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *Cal
 	{
 		PLpgSQL_row *row;
 		CachedPlanSource *plansource;
-		HeapTuple		tuple;
-		List	   *funcargs;
+		CallStmt   *stmt;
+		HeapTuple	tuple;
 		Oid		   *argtypes;
 		char	  **argnames;
 		char	   *argmodes;
-		ListCell   *lc;
 		int			i;
 		int			nfields = 0;
+		int			numargs;
 
 		plansource = plpgsql_check_get_plan_source(cstate, CallExpr->plan);
 
@@ -64,7 +64,8 @@ plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *Cal
 		if (!IsA(node, CallStmt))
 			elog(ERROR, "returned row from not a CallStmt");
 
-		funcexpr = castNode(CallStmt, node)->funcexpr;
+		stmt = castNode(CallStmt, node);
+		funcexpr = stmt->funcexpr;
 
 		/*
 		 * Get the argument modes
@@ -73,43 +74,45 @@ plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *Cal
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for function %u", funcexpr->funcid);
 
-		/* Extract function arguments, and expand any named-arg notation */
-		funcargs = expand_function_arguments(funcexpr->args,
-#if PG_VERSION_NUM >= 140000
-											 true,
-#endif
-											 funcexpr->funcresulttype,
-											 tuple);
-
-		get_func_arg_info(tuple, &argtypes, &argnames, &argmodes);
+		/*
+		 * Get the argument names and modes, so that we can deliver on-point error
+		 * messages when something is wrong.
+		 */
+		numargs = get_func_arg_info(tuple, &argtypes, &argnames, &argmodes);
 
 		ReleaseSysCache(tuple);
 
-		row = palloc0(sizeof(PLpgSQL_row));
+		row = (PLpgSQL_row *) palloc0(sizeof(PLpgSQL_row));
 		row->dtype = PLPGSQL_DTYPE_ROW;
-		row->dno = -1;
 		row->refname = NULL;
-		row->lineno = 0;
-		row->varnos = palloc(sizeof(int) * list_length(funcargs));
+		row->dno = -1;
+		row->lineno = -1;
+		row->varnos = (int *) palloc(numargs * sizeof(int));
 
 		/*
-		 * Construct row
+		 * Examine procedure's argument list.  Each output arg position should be
+		 * an unadorned plpgsql variable (Datum), which we can insert into the row
+		 * Datum.
 		 */
-		i = 0;
-		foreach(lc, funcargs)
+		nfields = 0;
+		for (i = 0; i < numargs; i++)
 		{
-			Node	   *n = lfirst(lc);
-
 			if (argmodes &&
 				(argmodes[i] == PROARGMODE_INOUT ||
 				 argmodes[i] == PROARGMODE_OUT))
 			{
+				Node	   *n = list_nth(stmt->outargs, nfields);
+
 				if (IsA(n, Param))
 				{
 					Param	   *param = (Param *) n;
+					int			dno;
 
 					/* paramid is offset by 1 (see make_datum_param()) */
-					row->varnos[nfields++] = param->paramid - 1;
+					dno = param->paramid - 1;
+					/* must check assignability now, because grammar can't */
+					plpgsql_check_is_assignable(cstate->estate, dno);
+					row->varnos[nfields++] = dno;
 				}
 				else
 				{
@@ -126,8 +129,9 @@ plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *Cal
 										i + 1)));
 				}
 			}
-			i++;
 		}
+
+		Assert(nfields == list_length(stmt->outargs));
 
 		row->nfields = nfields;
 
