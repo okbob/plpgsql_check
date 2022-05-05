@@ -361,3 +361,14 @@ select * from plpgsql_check_function('f1');
 
 drop function f1();
 drop procedure p1(int, int);
+
+create or replace function f1()
+returns int as $$
+declare c constant int default 100;
+begin
+  return c;
+end;
+$$ language plpgsql;
+
+-- should be ok
+select * from plpgsql_check_function('f1');

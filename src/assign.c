@@ -162,7 +162,13 @@ plpgsql_check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid
 {
 	PLpgSQL_datum *target = cstate->estate->datums[varno];
 
-	plpgsql_check_is_assignable(cstate->estate, varno);
+	/*
+	 * The target should be not constant, but we can allow assignment to
+	 * constant variable at block statement - it is using default value.
+	 */
+	if (cstate->estate->err_stmt->cmd_type != PLPGSQL_STMT_BLOCK)
+		plpgsql_check_is_assignable(cstate->estate, varno);
+
 	plpgsql_check_record_variable_usage(cstate, varno, true);
 
 	switch (target->dtype)
