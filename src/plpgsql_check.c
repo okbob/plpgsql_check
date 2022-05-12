@@ -85,7 +85,12 @@ static const struct config_enum_entry tracer_level_options[] = {
 };
 
 void			_PG_init(void);
+
+#if PG_VERSION_NUM < 150000
+
 void			_PG_fini(void);
+
+#endif
 
 shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 
@@ -321,6 +326,8 @@ _PG_init(void)
 	inited = true;
 }
 
+#if PG_VERSION_NUM < 150000
+
 /*
  * Module unload callback
  */
@@ -335,3 +342,5 @@ _PG_fini(void)
 	needs_fmgr_hook = plpgsql_check_next_needs_fmgr_hook;
 	fmgr_hook = plpgsql_check_next_fmgr_hook;
 }
+
+#endif
