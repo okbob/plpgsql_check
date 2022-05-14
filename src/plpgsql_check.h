@@ -321,6 +321,9 @@ extern int plpgsql_check_profiler_max_shared_chunks;
 extern needs_fmgr_hook_type		plpgsql_check_next_needs_fmgr_hook;
 extern fmgr_hook_type			plpgsql_check_next_fmgr_hook;
 
+#if PG_VERSION_NUM >= 150000
+extern void plpgsql_check_profiler_shmem_request(void);
+#endif
 extern void plpgsql_check_profiler_shmem_startup(void);
 
 extern Size plpgsql_check_shmem_size(void);
@@ -386,6 +389,9 @@ extern bool plpgsql_check_runtime_pragma_vector_changed;
  * functions from plpgsql_check.c
  */
 
+#if PG_VERSION_NUM >= 150000
+extern shmem_request_hook_type prev_shmem_request_hook;
+#endif
 extern shmem_startup_hook_type prev_shmem_startup_hook;
 
 extern PLpgSQL_plugin **plpgsql_check_plugin_var_ptr;

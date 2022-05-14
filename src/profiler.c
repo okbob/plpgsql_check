@@ -607,6 +607,26 @@ plpgsql_check_shmem_size(void)
 }
 
 /*
+ * Request additional shared memory resources.
+ *
+ * If you change code here, don't forget to also report the modifications in
+ * _PG_init() for pg14 and below.
+ */
+#if PG_VERSION_NUM >= 150000
+void
+plpgsql_check_profiler_shmem_request(void)
+{
+	if (prev_shmem_request_hook)
+		prev_shmem_request_hook();
+
+	RequestAddinShmemSpace(plpgsql_check_shmem_size());
+
+	RequestNamedLWLockTranche("plpgsql_check profiler", 1);
+	RequestNamedLWLockTranche("plpgsql_check fstats", 1);
+}
+#endif
+
+/*
  * Initialize shared memory used like permanent profile storage.
  * No other parts use shared memory, so this code is completly here.
  *
