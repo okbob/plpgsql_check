@@ -92,6 +92,9 @@ void			_PG_fini(void);
 
 #endif
 
+#if PG_VERSION_NUM >= 150000
+shmem_request_hook_type prev_shmem_request_hook = NULL;
+#endif
 shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 
 bool plpgsql_check_regress_test_mode;
@@ -305,14 +308,25 @@ _PG_init(void)
 						    PGC_POSTMASTER, 0,
 						    NULL, NULL, NULL);
 
+#if PG_VERSION_NUM < 150000
+		/*
+		 * If you change code here, don't forget to also report the
+		 * modifications in plpgsql_check_profiler_shmem_request() for pg15 and
+		 * later.
+		 */
 		RequestAddinShmemSpace(plpgsql_check_shmem_size());
 
 		RequestNamedLWLockTranche("plpgsql_check profiler", 1);
 		RequestNamedLWLockTranche("plpgsql_check fstats", 1);
+#endif
 
 		/*
 		 * Install hooks.
 		 */
+#if PG_VERSION_NUM >= 150000
+		prev_shmem_startup_hook = shmem_request_hook;
+		shmem_request_hook = plpgsql_check_profiler_shmem_request;
+#endif
 		prev_shmem_startup_hook = shmem_startup_hook;
 		shmem_startup_hook = plpgsql_check_profiler_shmem_startup;
 	}
@@ -334,6 +348,9 @@ _PG_init(void)
 void
 _PG_fini(void)
 {
+#if PG_VERSION_NUM >= 150000
+	shmem_request_hook = prev_shmem_request_hook;
+#endif
 	shmem_startup_hook = prev_shmem_startup_hook;
 
 	/* Be more correct, and clean rendezvous variable */
