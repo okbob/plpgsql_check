@@ -613,6 +613,7 @@ plpgsql_check_shmem_size(void)
  * _PG_init() for pg14 and below.
  */
 #if PG_VERSION_NUM >= 150000
+
 void
 plpgsql_check_profiler_shmem_request(void)
 {
@@ -624,6 +625,7 @@ plpgsql_check_profiler_shmem_request(void)
 	RequestNamedLWLockTranche("plpgsql_check profiler", 1);
 	RequestNamedLWLockTranche("plpgsql_check fstats", 1);
 }
+
 #endif
 
 /*

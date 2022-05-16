@@ -309,6 +309,7 @@ _PG_init(void)
 						    NULL, NULL, NULL);
 
 #if PG_VERSION_NUM < 150000
+
 		/*
 		 * If you change code here, don't forget to also report the
 		 * modifications in plpgsql_check_profiler_shmem_request() for pg15 and
@@ -318,15 +319,19 @@ _PG_init(void)
 
 		RequestNamedLWLockTranche("plpgsql_check profiler", 1);
 		RequestNamedLWLockTranche("plpgsql_check fstats", 1);
+
 #endif
 
 		/*
 		 * Install hooks.
 		 */
 #if PG_VERSION_NUM >= 150000
+
 		prev_shmem_startup_hook = shmem_request_hook;
 		shmem_request_hook = plpgsql_check_profiler_shmem_request;
+
 #endif
+
 		prev_shmem_startup_hook = shmem_startup_hook;
 		shmem_startup_hook = plpgsql_check_profiler_shmem_startup;
 	}
