@@ -1480,7 +1480,7 @@ push_stmt_to_stmt_stack(PLpgSQL_checkstate *cstate)
 	PLpgSQL_stmt_stack_item *stmt_stack_item;
 	PLpgSQL_stmt_stack_item *current = cstate->top_stmt_stack;
 
-	stmt_stack_item = (PLpgSQL_stmt_stack_item *) palloc(sizeof(PLpgSQL_stmt_stack_item));
+	stmt_stack_item = (PLpgSQL_stmt_stack_item *) palloc0(sizeof(PLpgSQL_stmt_stack_item));
 	stmt_stack_item->stmt = stmt;
 
 	switch (PLPGSQL_STMT_TYPES stmt->cmd_type)
