@@ -3413,8 +3413,9 @@ $$ language plpgsql;
 create type record03 as (a int, b int);
 create or replace function rrecord03()
 returns record03 as $$
-declare r record := row(1);
+declare r record;
 begin
+  r := row(1);
   return r;
 end;
 $$ language plpgsql;
@@ -3433,7 +3434,7 @@ select * from plpgsql_check_function('rrecord02');
 select * from plpgsql_check_function('rrecord03', fatal_errors => false);
                               plpgsql_check_function                              
 ----------------------------------------------------------------------------------
- error:42804:4:RETURN:returned record type does not match expected record type
+ error:42804:5:RETURN:returned record type does not match expected record type
  Detail: Number of returned columns (1) does not match expected column count (2).
 (2 rows)
 

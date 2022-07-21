@@ -2496,8 +2496,9 @@ create type record03 as (a int, b int);
 
 create or replace function rrecord03()
 returns record03 as $$
-declare r record := row(1);
+declare r record;
 begin
+  r := row(1);
   return r;
 end;
 $$ language plpgsql;
