@@ -829,6 +829,8 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				{
 					PLpgSQL_stmt_return *stmt_rt = (PLpgSQL_stmt_return *) stmt;
 
+					*closing = PLPGSQL_CHECK_CLOSED;
+
 					if (stmt_rt->retvarno >= 0)
 					{
 						PLpgSQL_datum *retvar = cstate->estate->datums[stmt_rt->retvarno];
@@ -893,8 +895,6 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 								;		/* nope */
 						}
 					}
-
-					*closing = PLPGSQL_CHECK_CLOSED;
 
 					if (stmt_rt->expr)
 						plpgsql_check_returned_expr(cstate, stmt_rt->expr, true);
