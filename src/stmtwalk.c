@@ -855,13 +855,18 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 									if (recvar_tupdesc(rec) && estate->rsi && IsA(estate->rsi, ReturnSetInfo))
 									{
 										TupleDesc	rettupdesc = estate->rsi->expectedDesc;
-										TupleConversionMap *tupmap ;
 
-										tupmap = convert_tuples_by_position(recvar_tupdesc(rec), rettupdesc,
-											 gettext_noop("returned record type does not match expected record type"));
+										// There are no meaningsful checks if the return type is the anonymous record
+										if (rettupdesc->tdtypeid != RECORDOID)
+										{
+											TupleConversionMap *tupmap;
 
-										if (tupmap)
-											free_conversion_map(tupmap);
+											tupmap = convert_tuples_by_position(recvar_tupdesc(rec), rettupdesc,
+												 gettext_noop("returned record type does not match expected record type"));
+
+											if (tupmap)
+												free_conversion_map(tupmap);
+										}
 									}
 								}
 								break;
@@ -873,13 +878,18 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 									if (row->rowtupdesc && estate->rsi && IsA(estate->rsi, ReturnSetInfo))
 									{
 										TupleDesc	rettupdesc = estate->rsi->expectedDesc;
-										TupleConversionMap *tupmap ;
 
-										tupmap = convert_tuples_by_position(row->rowtupdesc, rettupdesc,
-											 gettext_noop("returned record type does not match expected record type"));
+										// There are no meaningsful checks if the return type is the anonymous record
+										if (rettupdesc->tdtypeid != RECORDOID)
+										{
+											TupleConversionMap *tupmap;
 
-										if (tupmap)
-											free_conversion_map(tupmap);
+											tupmap = convert_tuples_by_position(row->rowtupdesc, rettupdesc,
+												 gettext_noop("returned record type does not match expected record type"));
+
+											if (tupmap)
+												free_conversion_map(tupmap);
+										}
 									}
 								}
 								break;

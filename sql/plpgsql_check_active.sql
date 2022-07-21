@@ -2492,12 +2492,25 @@ begin
 end;
 $$ language plpgsql;
 
+create type record04 as (a int, b int);
+
+create or replace function rrecord04()
+returns record as $$
+declare r record04 := row(10,20);
+begin
+  return r;
+end;
+$$ language plpgsql;
+
 -- should not to raise false alarms
 select * from plpgsql_check_function('rrecord01');
 select * from plpgsql_check_function('rrecord02');
+select * from plpgsql_check_function('rrecord04');
 
 drop function rrecord01();
 drop function rrecord02();
+drop function rrecord04();
+drop type record04;
 
 create or replace function bugfunc01()
 returns void as $$
