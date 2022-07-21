@@ -3410,6 +3410,14 @@ begin
   return row(10,20,30);
 end;
 $$ language plpgsql;
+create type record03 as (a int, b int);
+create or replace function rrecord03()
+returns record03 as $$
+declare r record := row(1);
+begin
+  return r;
+end;
+$$ language plpgsql;
 -- should not to raise false alarms
 select * from plpgsql_check_function('rrecord01');
  plpgsql_check_function 
@@ -3421,8 +3429,18 @@ select * from plpgsql_check_function('rrecord02');
 ------------------------
 (0 rows)
 
+-- should detect different return but still detect return
+select * from plpgsql_check_function('rrecord03', fatal_errors => false);
+                              plpgsql_check_function                              
+----------------------------------------------------------------------------------
+ error:42804:4:RETURN:returned record type does not match expected record type
+ Detail: Number of returned columns (1) does not match expected column count (2).
+(2 rows)
+
 drop function rrecord01();
 drop function rrecord02();
+drop function rrecord03();
+drop type record03;
 create or replace function bugfunc01()
 returns void as $$
 declare

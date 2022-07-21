@@ -2492,12 +2492,26 @@ begin
 end;
 $$ language plpgsql;
 
+create type record03 as (a int, b int);
+
+create or replace function rrecord03()
+returns record03 as $$
+declare r record := row(1);
+begin
+  return r;
+end;
+$$ language plpgsql;
+
 -- should not to raise false alarms
 select * from plpgsql_check_function('rrecord01');
 select * from plpgsql_check_function('rrecord02');
+-- should detect different return but still detect return
+select * from plpgsql_check_function('rrecord03', fatal_errors => false);
 
 drop function rrecord01();
 drop function rrecord02();
+drop function rrecord03();
+drop type record03;
 
 create or replace function bugfunc01()
 returns void as $$
