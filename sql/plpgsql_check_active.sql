@@ -4757,3 +4757,60 @@ end
 $$ language plpgsql;
 
 select * from plpgsql_check_function('test_function');
+
+drop function test_function();
+
+load 'plpgsql_check';
+
+drop type testtype cascade;
+
+create type testtype as (a int, b int);
+
+create function test_function()
+returns record as $$
+declare r record;
+begin
+  r := (10,20);
+  if false then
+    return r;
+  end if;
+
+  return null;
+end;
+$$ language plpgsql;
+
+create function test_function33()
+returns record as $$
+declare r testtype;
+begin
+  r := (10,20);
+  if false then
+    return r;
+  end if;
+
+  return null;
+end;
+$$ language plpgsql;
+
+-- should not to raise false alarm due check against fake result type
+select plpgsql_check_function('test_function');
+select plpgsql_check_function('test_function33');
+
+-- try to check in passive mode
+set plpgsql_check.mode = 'every_start';
+select test_function();
+select test_function33();
+
+select * from test_function() as (a int, b int);
+select * from test_function33() as (a int, b int);
+
+-- should to identify error
+select * from test_function() as (a int, b int, c int);
+select * from test_function33() as (a int, b int, c int);
+
+drop function test_function();
+drop function test_function33();
+
+drop type testtype;
+
+set plpgsql_check.mode = 'disabled';

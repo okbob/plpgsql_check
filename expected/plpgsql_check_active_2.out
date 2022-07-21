@@ -8198,3 +8198,77 @@ select * from plpgsql_check_function('test_function');
 ------------------------
 (0 rows)
 
+drop function test_function();
+load 'plpgsql_check';
+drop type testtype cascade;
+create type testtype as (a int, b int);
+create function test_function()
+returns record as $$
+declare r record;
+begin
+  r := (10,20);
+  if false then
+    return r;
+  end if;
+
+  return null;
+end;
+$$ language plpgsql;
+create function test_function33()
+returns record as $$
+declare r testtype;
+begin
+  r := (10,20);
+  if false then
+    return r;
+  end if;
+
+  return null;
+end;
+$$ language plpgsql;
+-- should not to raise false alarm due check against fake result type
+select plpgsql_check_function('test_function');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select plpgsql_check_function('test_function33');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+-- try to check in passive mode
+set plpgsql_check.mode = 'every_start';
+select test_function();
+ test_function 
+---------------
+ 
+(1 row)
+
+select test_function33();
+ test_function33 
+-----------------
+ 
+(1 row)
+
+select * from test_function() as (a int, b int);
+ a | b 
+---+---
+   |  
+(1 row)
+
+select * from test_function33() as (a int, b int);
+ a | b 
+---+---
+   |  
+(1 row)
+
+-- should to identify error
+select * from test_function() as (a int, b int, c int);
+ERROR:  returned record type does not match expected record type
+select * from test_function33() as (a int, b int, c int);
+ERROR:  returned record type does not match expected record type
+drop function test_function();
+drop function test_function33();
+drop type testtype;
+set plpgsql_check.mode = 'disabled';

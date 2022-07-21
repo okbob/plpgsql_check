@@ -852,7 +852,10 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 								{
 									PLpgSQL_rec *rec = (PLpgSQL_rec *) retvar;
 
-									if (recvar_tupdesc(rec) && estate->rsi && IsA(estate->rsi, ReturnSetInfo))
+									/* don't do next check, when result tuple desc is fake */
+									if (recvar_tupdesc(rec) &&
+										!cstate->fake_rtd &&
+										estate->rsi && IsA(estate->rsi, ReturnSetInfo))
 									{
 										TupleDesc	rettupdesc = estate->rsi->expectedDesc;
 										TupleConversionMap *tupmap ;
@@ -870,7 +873,9 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 								{
 									PLpgSQL_row *row = (PLpgSQL_row *) retvar;
 
-									if (row->rowtupdesc && estate->rsi && IsA(estate->rsi, ReturnSetInfo))
+									if (row->rowtupdesc &&
+										!cstate->fake_rtd &&
+										estate->rsi && IsA(estate->rsi, ReturnSetInfo))
 									{
 										TupleDesc	rettupdesc = estate->rsi->expectedDesc;
 										TupleConversionMap *tupmap ;
