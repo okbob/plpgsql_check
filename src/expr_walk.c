@@ -28,9 +28,6 @@ typedef struct
 	char *query_str;
 } check_funcexpr_walker_params;
 
-typedef bool (*check_function_callback) (Oid func_id, void *context);
-
-
 static int check_fmt_string(const char *fmt,
 							List *args,
 							int location,
