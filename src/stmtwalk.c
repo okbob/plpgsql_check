@@ -13,6 +13,7 @@
 
 #include "access/tupconvert.h"
 #include "catalog/pg_collation.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/value.h"
@@ -1237,6 +1238,18 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						PLpgSQL_diag_item *diag_item = (PLpgSQL_diag_item *) lfirst(lc);
 
 						plpgsql_check_target(cstate, diag_item->target, NULL, NULL);
+
+						/*
+						 * Using GET DIAGNOSTICS stack = PG_CONTEXT is like using
+						 * other VOLATILE function.
+						 */
+						if (!cstate->skip_volatility_check &&
+							cstate->cinfo->performance_warnings &&
+							!stmt_getdiag->is_stacked)
+						{
+							if (diag_item->kind == PLPGSQL_GETDIAG_CONTEXT)
+								cstate->volatility = PROVOLATILE_VOLATILE;
+						}
 					}
 
 					if (stmt_getdiag->is_stacked &&

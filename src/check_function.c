@@ -1234,7 +1234,8 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 
 #endif
 
-									 plpgsql_check_is_eventtriggeroid(cinfo->rettype));
+									 plpgsql_check_is_eventtriggeroid(cinfo->rettype) ||
+									 cinfo->is_procedure);
 	cstate->estate = NULL;
 	cstate->result_info = result_info;
 	cstate->cinfo = cinfo;

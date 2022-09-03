@@ -372,3 +372,29 @@ $$ language plpgsql;
 
 -- should be ok
 select * from plpgsql_check_function('f1');
+
+drop function f1();
+
+-- do not raise false warning
+create or replace function test_function()
+returns text as $$
+declare s text;
+begin
+  get diagnostics s = PG_CONTEXT;
+  return s;
+end;
+$$ language plpgsql;
+
+create or replace procedure test_procedure()
+as $$
+begin
+  null;
+end;
+$$ language plpgsql;
+
+-- should be without any warnings
+select * from plpgsql_check_function('test_function', performance_warnings=>true);
+select * from plpgsql_check_function('test_procedure', performance_warnings=>true);
+
+drop function test_function();
+drop procedure test_procedure();
