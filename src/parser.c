@@ -895,6 +895,7 @@ plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int line
 	{
 		TokenizerState tstate;
 		PragmaTokenType token, *_token;
+		PragmaTokenType token2, *_token2;
 		StringInfoData query;
 		int32		typmod;
 
@@ -905,11 +906,27 @@ plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int line
 				&& _token->value != PRAGMA_TOKEN_QIDENTIF))
 			elog(ERROR, "Syntax error (expected identifier)");
 
-		_token = get_token(&tstate, &token);
-		if (!_token || _token->value != '(')
+		_token2 = get_token(&tstate, &token2);
+
+		if (_token2 && _token2->value == '.')
+		{
+			char *nsname = make_ident(_token);
+
+			if (strcmp(nsname, "pg_temp") != 0)
+				elog(ERROR, "only \"pg_temp\" schema is allowed");
+
+			_token = get_token(&tstate, &token);
+			if (!_token || (_token->value != PRAGMA_TOKEN_IDENTIF
+					&& _token->value != PRAGMA_TOKEN_QIDENTIF))
+				elog(ERROR, "Syntax error (expected identifier)");
+
+			_token2 = get_token(&tstate, &token2);
+		}
+
+		if (!_token2 || _token2->value != '(')
 			elog(ERROR, "Syntax error (expected table specification)");
 
-		unget_token(&tstate, _token);
+		unget_token(&tstate, _token2);
 
 		(void) get_type(&tstate, &typmod, false);
 
