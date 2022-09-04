@@ -913,7 +913,7 @@ plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int line
 			char *nsname = make_ident(_token);
 
 			if (strcmp(nsname, "pg_temp") != 0)
-				elog(ERROR, "only \"pg_temp\" schema is allowed");
+				elog(ERROR, "schema \"%s\" cannot be used in pragma \"table\" (only \"pg_temp\" schema is allowed)", nsname);
 
 			_token = get_token(&tstate, &token);
 			if (!_token || (_token->value != PRAGMA_TOKEN_IDENTIF
