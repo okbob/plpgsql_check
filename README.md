@@ -728,7 +728,7 @@ Shorter syntax for pragma is supported too:
 
 * `type:varname typename` or `type:varname (fieldname type, ...)` - set type to variable of record type
 
-* `table: name (column_name type, ...)` or `table: name (like tablename)` - create ephereal table
+* `table: name (column_name type, ...)` or `table: name (like tablename)` - create ephereal temporal table (if you want to specify schema, then only `pg_temp` schema is allowed.
 
 Pragmas `enable:tracer` and `disable:tracer`are active for Postgres 12 and higher
 
