@@ -309,6 +309,8 @@ plpgsql_check_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	int closing;
 	List		*exceptions;
 
+	plpgsql_check_profiler_func_beg(estate, func);
+
 	if (plpgsql_check_tracer)
 		plpgsql_check_tracer_on_func_beg(estate, func);
 

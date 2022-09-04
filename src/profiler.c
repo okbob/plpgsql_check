@@ -222,6 +222,8 @@ typedef struct profiler_info
 
 #endif
 
+	void	   *prev_plugin_info;
+
 } profiler_info;
 
 typedef struct profiler_iterator
@@ -2805,6 +2807,34 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 {
 	profiler_info *pinfo = NULL;
 
+	if (prev_plpgsql_plugin)
+	{
+		prev_plpgsql_plugin->error_callback = (*plpgsql_check_plugin_var_ptr)->error_callback;
+		prev_plpgsql_plugin->assign_expr = (*plpgsql_check_plugin_var_ptr)->assign_expr;
+		prev_plpgsql_plugin->assign_value = (*plpgsql_check_plugin_var_ptr)->assign_value;
+		prev_plpgsql_plugin->eval_datum = (*plpgsql_check_plugin_var_ptr)->eval_datum;
+		prev_plpgsql_plugin->cast_value = (*plpgsql_check_plugin_var_ptr)->cast_value;
+
+		pinfo = init_profiler_info(pinfo, func);
+
+		PG_TRY();
+		{
+			if ((prev_plpgsql_plugin)->func_setup)
+				(prev_plpgsql_plugin->func_setup) (estate, func);
+
+			pinfo->prev_plugin_info = estate->plugin_info;
+			estate->plugin_info = pinfo;
+		}
+		PG_CATCH();
+		{
+			pinfo->prev_plugin_info = estate->plugin_info;
+			estate->plugin_info = pinfo;
+
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+	}
+
 	if (plpgsql_check_tracer)
 	{
 
@@ -2877,12 +2907,65 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 }
 
 void
+plpgsql_check_profiler_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
+{
+	if (prev_plpgsql_plugin && prev_plpgsql_plugin->func_beg)
+	{
+		profiler_info *pinfo = estate->plugin_info;
+
+		PG_TRY();
+		{
+
+			Assert(pinfo);
+
+			estate->plugin_info = pinfo->prev_plugin_info;
+			(prev_plpgsql_plugin->func_beg) (estate, func);
+
+			pinfo->prev_plugin_info = estate->plugin_info;
+			estate->plugin_info = pinfo;
+		}
+		PG_CATCH();
+		{
+			pinfo->prev_plugin_info = estate->plugin_info;
+			estate->plugin_info = pinfo;
+
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+	}
+}
+
+void
 plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 {
 	profiler_info *pinfo = NULL;
 
 	if (estate)
+	{
 		pinfo = (profiler_info *) estate->plugin_info;
+
+		if (prev_plpgsql_plugin && prev_plpgsql_plugin->func_end)
+		{
+			PG_TRY();
+			{
+				Assert(pinfo);
+
+				estate->plugin_info = pinfo->prev_plugin_info;
+				(prev_plpgsql_plugin->func_end) (estate, func);
+
+				pinfo->prev_plugin_info = estate->plugin_info;
+				estate->plugin_info = pinfo;
+			}
+			PG_CATCH();
+			{
+				pinfo->prev_plugin_info = estate->plugin_info;
+				estate->plugin_info = pinfo;
+
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
+		}
+	}
 	else if (top_pinfo)
 		pinfo = top_pinfo->pinfo;
 
@@ -2948,6 +3031,28 @@ void
 plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
 	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
+
+	if (prev_plpgsql_plugin && prev_plpgsql_plugin->stmt_beg)
+	{
+		PG_TRY();
+		{
+			Assert(pinfo);
+
+			estate->plugin_info = pinfo->prev_plugin_info;
+			(prev_plpgsql_plugin->stmt_beg) (estate, stmt);
+
+			pinfo->prev_plugin_info = estate->plugin_info;
+			estate->plugin_info = pinfo;
+		}
+		PG_CATCH();
+		{
+			pinfo->prev_plugin_info = estate->plugin_info;
+			estate->plugin_info = pinfo;
+
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+	}
 
 	if (top_pinfo && top_pinfo->pinfo)
 	{
@@ -3080,7 +3185,31 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		cleaning_mode = true;
 	}
 	else
+	{
 		pinfo = (profiler_info *) estate->plugin_info;
+
+		if (prev_plpgsql_plugin && prev_plpgsql_plugin->stmt_end)
+		{
+			PG_TRY();
+			{
+				Assert(pinfo);
+
+				estate->plugin_info = pinfo->prev_plugin_info;
+				(prev_plpgsql_plugin->stmt_end) (estate, stmt);
+
+				pinfo->prev_plugin_info = estate->plugin_info;
+				estate->plugin_info = pinfo;
+			}
+			PG_CATCH();
+			{
+				pinfo->prev_plugin_info = estate->plugin_info;
+				estate->plugin_info = pinfo;
+
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
+		}
+	}
 
 	if (top_pinfo && top_pinfo->pinfo && !cleaning_mode)
 	{

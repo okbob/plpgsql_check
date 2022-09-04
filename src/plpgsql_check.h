@@ -330,6 +330,7 @@ extern Size plpgsql_check_shmem_size(void);
 extern void plpgsql_check_profiler_init_hash_tables(void);
 
 extern void plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *func);
+extern void plpgsql_check_profiler_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func);
 extern void plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func);
 extern void plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 extern void plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
@@ -395,6 +396,7 @@ extern shmem_request_hook_type prev_shmem_request_hook;
 extern shmem_startup_hook_type prev_shmem_startup_hook;
 
 extern PLpgSQL_plugin **plpgsql_check_plugin_var_ptr;
+extern PLpgSQL_plugin *prev_plpgsql_plugin;
 
 #if PG_VERSION_NUM > 110005
 

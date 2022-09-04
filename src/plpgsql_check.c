@@ -36,6 +36,7 @@ PG_MODULE_MAGIC;
 #endif
 
 PLpgSQL_plugin **plpgsql_check_plugin_var_ptr;
+PLpgSQL_plugin *prev_plpgsql_plugin;
 
 static PLpgSQL_plugin plugin_funcs = { plpgsql_check_profiler_func_init,
 									   plpgsql_check_on_func_beg,
@@ -167,6 +168,7 @@ _PG_init(void)
 		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_ns_lookup");
 
 	plpgsql_check_plugin_var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable( "PLpgSQL_plugin");
+	prev_plpgsql_plugin = *plpgsql_check_plugin_var_ptr;
 	*plpgsql_check_plugin_var_ptr = &plugin_funcs;
 
 	DefineCustomBoolVariable("plpgsql_check.regress_test_mode",
