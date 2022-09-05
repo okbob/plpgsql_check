@@ -2,7 +2,7 @@
    "name": "plpgsql_check",
    "abstract": "Additional tools for plpgsql functions validation",
    "description": "The plpgsql_check is PostgreSQL extension with functionality for direct or indirect extra validation of functions in plpgsql language. It verifies a validity of SQL identifiers used in plpgsql code. It try to identify a performance issues. Modern versions has integrated profiler. The table and function dependencies can be displayed",
-   "version": "2.1.9",
+   "version": "2.1.10",
    "maintainer": "Pavel STEHULE <pavel.stehule@gmail.com>",
    "license": "bsd",
    "provides": {
@@ -10,7 +10,7 @@
          "abstract": "Additional tools for plpgsql functions validation",
          "file": "sql/plpgsql_check_active.sql",
          "docfile": "README.md",
-         "version": "2.1.9"
+         "version": "2.1.10"
       }
    },
    "prereqs": {
