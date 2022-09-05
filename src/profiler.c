@@ -2811,9 +2811,14 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 	{
 		prev_plpgsql_plugin->error_callback = (*plpgsql_check_plugin_var_ptr)->error_callback;
 		prev_plpgsql_plugin->assign_expr = (*plpgsql_check_plugin_var_ptr)->assign_expr;
+
+#if PG_VERSION_NUM >= 150000
+
 		prev_plpgsql_plugin->assign_value = (*plpgsql_check_plugin_var_ptr)->assign_value;
 		prev_plpgsql_plugin->eval_datum = (*plpgsql_check_plugin_var_ptr)->eval_datum;
 		prev_plpgsql_plugin->cast_value = (*plpgsql_check_plugin_var_ptr)->cast_value;
+
+#endif
 
 		pinfo = init_profiler_info(pinfo, func);
 
