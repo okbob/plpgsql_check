@@ -661,6 +661,14 @@ It can be used, although the assertions are disabled in plpgsql runtime.
     NOTICE:  #0 PL/pgSQL function inline_code_block line 1 at PERFORM
     DO
 
+## Using with plugin_debugger
+
+If you use `plugin_debugger` (plpgsql debugger) together with `plpgsql_check`, then
+`plpgsql_check` should be initialized after `plugin_debugger` (because `plugin_debugger`
+doesn't supports sharing of PL/pgSQL's debug API). For example (`postgresql.conf`):
+
+    shared_preload_libraries = 'plugin_debugger,plpgsql,plpgsql_check'
+
 
 ## Attention - SECURITY
 
