@@ -179,9 +179,9 @@ You can set level of warnings via function's parameters:
 * `newtable DEFAULT NULL`, `oldtable DEFAULT NULL` - the names of NEW or OLD transition
    tables. These parameters are required when transition tables are used in trigger functions.
 
-* `use_incomment_options` - when it is true (default), then in-comment options are active
+* `use_incomment_options DEFAULT true` - when it is true, then in-comment options are active
 
-* `incomment_options_usage_warning` - when it is true (default is false), then the warning is raised when
+* `incomment_options_usage_warning DEFAULT false` - when it is true, then the warning is raised when
    in-comment option is used.
 
 ## Triggers
