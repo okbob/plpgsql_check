@@ -5,7 +5,7 @@
  *			  workhorse functionality of this extension - expression
  *			  and query validator
  *
- * by Pavel Stehule 2013-2021
+ * by Pavel Stehule 2013-2022
  *
  *-------------------------------------------------------------------------
  */
@@ -338,23 +338,19 @@ plpgsql_check_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 		plpgsql_check_mark_as_checked(func);
 
 		memset(&ri, 0, sizeof(ri));
-		memset(&cinfo, 0, sizeof(cinfo));
+
+		plpgsql_check_info_init(&cinfo, func->fn_oid);
 
 		if (OidIsValid(func->fn_oid))
 		{
-			HeapTuple	procTuple;
-
-			procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(func->fn_oid));
-			if (!HeapTupleIsValid(procTuple))
+			cinfo.proctuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(func->fn_oid));
+			if (!HeapTupleIsValid(cinfo.proctuple))
 				elog(ERROR, "cache lookup failed for function %u", func->fn_oid);
 
-			plpgsql_check_get_function_info(procTuple,
-											&cinfo.rettype,
-											&cinfo.volatility,
-											&cinfo.trigtype,
-											&cinfo.is_procedure);
+			plpgsql_check_get_function_info(&cinfo);
 
-			ReleaseSysCache(procTuple);
+			ReleaseSysCache(cinfo.proctuple);
+			cinfo.proctuple = NULL;
 
 			cinfo.fn_oid = func->fn_oid;
 		}

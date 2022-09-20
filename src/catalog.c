@@ -4,7 +4,7 @@
  *
  *			  routines for working with Postgres's catalog and caches
  *
- * by Pavel Stehule 2013-2021
+ * by Pavel Stehule 2013-2022
  *
  *-------------------------------------------------------------------------
  */
@@ -75,28 +75,24 @@ plpgsql_check_is_eventtriggeroid(Oid typoid)
  * Prepare metadata necessary for plpgsql_check
  */
 void
-plpgsql_check_get_function_info(HeapTuple procTuple,
-								Oid *rettype,
-								char *volatility,
-								PLpgSQL_trigtype *trigtype,
-								bool *is_procedure)
+plpgsql_check_get_function_info(plpgsql_check_info *cinfo)
 {
 	Form_pg_proc proc;
 	char		functyptype;
 
-	proc = (Form_pg_proc) GETSTRUCT(procTuple);
+	proc = (Form_pg_proc) GETSTRUCT(cinfo->proctuple);
 
 	functyptype = get_typtype(proc->prorettype);
 
-	*trigtype = PLPGSQL_NOT_TRIGGER;
+	cinfo->trigtype = PLPGSQL_NOT_TRIGGER;
 
 #if PG_VERSION_NUM >= 110000
 
-	*is_procedure = proc->prokind == PROKIND_PROCEDURE;
+	cinfo->is_procedure = proc->prokind == PROKIND_PROCEDURE;
 
 #else
 
-	*is_procedure = false;
+	cinfo->is_procedure = false;
 
 #endif
 
@@ -116,9 +112,9 @@ plpgsql_check_get_function_info(HeapTuple procTuple,
 #endif
 
 			)
-			*trigtype = PLPGSQL_DML_TRIGGER;
+			cinfo->trigtype = PLPGSQL_DML_TRIGGER;
 		else if (plpgsql_check_is_eventtriggeroid(proc->prorettype))
-			*trigtype = PLPGSQL_EVENT_TRIGGER;
+			cinfo->trigtype = PLPGSQL_EVENT_TRIGGER;
 		else if (proc->prorettype != RECORDOID &&
 				 proc->prorettype != VOIDOID &&
 				 !IsPolymorphicType(proc->prorettype))
@@ -129,8 +125,8 @@ plpgsql_check_get_function_info(HeapTuple procTuple,
 	}
 
 
-	*volatility = ((Form_pg_proc) GETSTRUCT(procTuple))->provolatile;
-	*rettype = ((Form_pg_proc) GETSTRUCT(procTuple))->prorettype;
+	cinfo->volatility = proc->provolatile;
+	cinfo->rettype = proc->prorettype;
 }
 
 char *

@@ -105,8 +105,14 @@ typedef struct plpgsql_check_info
 	bool		extra_warnings;
 	bool		security_warnings;
 	bool		show_profile;
+
+	bool		all_warnings;
+	bool		without_warnings;
+
 	char	   *oldtable;
 	char	   *newtable;
+
+	bool		incomment_options_usage_warning;
 } plpgsql_check_info;
 
 typedef struct
@@ -183,7 +189,6 @@ extern void plpgsql_check_recval_init(PLpgSQL_rec *rec);
 extern void plpgsql_check_recval_release(PLpgSQL_rec *rec);
 extern void plpgsql_check_is_assignable(PLpgSQL_execstate *estate, int dno);
 
-
 /*
  * functions from format.c
  */
@@ -205,7 +210,7 @@ extern void plpgsql_check_put_profiler_functions_all_tb(plpgsql_check_result_inf
  * function from catalog.c
  */
 extern bool plpgsql_check_is_eventtriggeroid(Oid typoid);
-extern void plpgsql_check_get_function_info(HeapTuple procTuple, Oid *rettype, char *volatility, PLpgSQL_trigtype *trigtype, bool *is_procedure);
+extern void plpgsql_check_get_function_info(plpgsql_check_info *cinfo);
 extern void plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo);
 extern char *plpgsql_check_get_src(HeapTuple procTuple);
 extern Oid plpgsql_check_pragma_func_oid(void);
@@ -216,6 +221,8 @@ extern Oid plpgsql_check_get_op_namespace(Oid opno);
  * functions from tablefunc.c
  */
 extern void plpgsql_check_info_init(plpgsql_check_info *cinfo, Oid fn_oid);
+extern void plpgsql_check_set_all_warnings(plpgsql_check_info *cinfo);
+extern void plpgsql_check_set_without_warnings(plpgsql_check_info *cinfo);
 
 /*
  * functions from check_function.c
@@ -311,6 +318,7 @@ extern PLpgSQL_row * plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *csta
 extern Oid plpgsql_check_parse_name_or_signature(char *name_or_signature);
 extern bool plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate, const char *str, PLpgSQL_nsitem *ns, int lineno);
 extern bool plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int lineno);
+extern void plpgsql_check_search_comment_options(plpgsql_check_info *cinfo);
 
 /*
  * functions from profiler.c

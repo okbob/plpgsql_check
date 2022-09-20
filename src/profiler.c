@@ -4,7 +4,7 @@
  *
  *			  profiler accessories code
  *
- * by Pavel Stehule 2013-2021
+ * by Pavel Stehule 2013-2022
  *
  *-------------------------------------------------------------------------
  */
@@ -1340,11 +1340,7 @@ coverage_internal(Oid fnoid, int coverage_type)
 	if (!HeapTupleIsValid(cinfo.proctuple))
 		elog(ERROR, "cache lookup failed for function %u", cinfo.fn_oid);
 
-	plpgsql_check_get_function_info(cinfo.proctuple,
-									&cinfo.rettype,
-									&cinfo.volatility,
-									&cinfo.trigtype,
-									&cinfo.is_procedure);
+	plpgsql_check_get_function_info(&cinfo);
 
 	plpgsql_check_precheck_conditions(&cinfo);
 

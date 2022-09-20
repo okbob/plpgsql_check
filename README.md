@@ -172,6 +172,11 @@ You can set level of warnings via function's parameters:
 * `newtable DEFAULT NULL`, `oldtable DEFAULT NULL` - the names of NEW or OLD transitive
    tables. These parameters are required when transitive tables are used.
 
+* `use_incomment_options` - when it is true (default), then in-comment options are active
+
+* `incomment_options_usage_warning` - when it is true (default is false), then the warning is raised when
+   in-comment option is used.
+
 ## Triggers
 
 When you want to check any trigger, you have to enter a relation that will be
@@ -222,6 +227,30 @@ For triggers with transitive tables you can set a `oldtable` or `newtable` param
     $$ language plpgsql;
 
     select * from plpgsql_check_function('footab_trig_func','footab', newtable := 'newtab');
+
+
+## In-comment options
+
+plpgsql_check allows persistent setting written in comments. These options are taken from
+function's source code before checking. The syntax is:
+
+    @plpgsql_check_option: optioname [=] value [, optname [=] value ...]
+
+The settings from comment options has top high priority, but generally it can be disabled
+by option `use_incomment_options` to `false`.
+
+Example:
+
+    create or replace function fx(anyelement)
+    returns text as $$
+    begin
+      /*
+       * rewrite default polymorphic type to text */
+       * @plpgsql_check_options: anyelementtype = text
+       */
+      return $1;
+    end;
+    $$ language plpgsql;
 
 
 ## Mass check

@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	2.1.10
+Version:	2.2.0
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -49,6 +49,9 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/*.control
 
 %changelog
+* Tue Sep 20 2022 - Pavel Stehule <pavel.stehule@gmail.com> 2.2.0
+- possibility to use in comment options
+
 * Wed Dec 29 2021 - Pavel Stehule <pavel.stehule@gmail.com> 2.1.0
 - possibility to count statement's aborted execution
 - possibility to count "unfinished" statements due exception

@@ -4,7 +4,7 @@
  *
  *			  deduction result tupdesc from expression
  *
- * by Pavel Stehule 2013-2021
+ * by Pavel Stehule 2013-2022
  *
  *-------------------------------------------------------------------------
  */

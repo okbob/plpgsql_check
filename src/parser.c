@@ -5,18 +5,21 @@
  *			  parse function signature
  *			  parse identifier, and type name
  *
- * by Pavel Stehule 2013-2021
+ * by Pavel Stehule 2013-2022
  *
  *-------------------------------------------------------------------------
  */
 
 #include "plpgsql_check.h"
 
+#include <string.h>
+
 #include "catalog/namespace.h"
 #include "parser/scansup.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+#include "utils/regproc.h"
 
 #if PG_VERSION_NUM < 110000
 
@@ -24,6 +27,32 @@
 
 #endif
 
+/*
+ * Originaly this structure was named TokenType, but this is in collision
+ * with name from NT SDK. So it is renamed to PragmaTokenType.
+ */
+typedef struct
+{
+	int		value;
+	const char *substr;
+	size_t		size;
+} PragmaTokenType;
+
+typedef struct
+{
+	const char *str;
+	PragmaTokenType	saved_token;
+	bool		saved_token_is_valid;
+} TokenizerState;
+
+static char *make_string(PragmaTokenType *token);
+
+static const char *tagstr = "@plpgsql_check_options:";
+
+#define		PRAGMA_TOKEN_IDENTIF		128
+#define		PRAGMA_TOKEN_QIDENTIF		129
+#define		PRAGMA_TOKEN_NUMBER			130
+#define		PRAGMA_TOKEN_STRING			131
 
 /*
  * Is character a valid identifier start?
@@ -56,6 +85,7 @@ is_ident_cont(unsigned char c)
 	/* ... or an identifier start character */
 	return is_ident_start(c);
 }
+
 
 /*
  * parse_ident - returns list of Strings when input is valid name.
@@ -237,28 +267,6 @@ plpgsql_check_parse_name_or_signature(char *name_or_signature)
 												CStringGetDatum(name_or_signature)));
 }
 
-#define		PRAGMA_TOKEN_IDENTIF		128
-#define		PRAGMA_TOKEN_QIDENTIF		129
-#define		PRAGMA_TOKEN_NUMBER		130
-
-/*
- * Originaly this structure was named TokenType, but this is in collision
- * with name from NT SDK. So it is renamed to PragmaTokenType.
- */
-typedef struct
-{
-	int		value;
-	const char *substr;
-	size_t		size;
-} PragmaTokenType;
-
-typedef struct
-{
-	const char *str;
-	PragmaTokenType	saved_token;
-	bool		saved_token_is_valid;
-} TokenizerState;
-
 /*
  * Tokenize text. Only one error is possible here - unclosed double quotes.
  * Returns NULL, when found EOL or on error.
@@ -314,6 +322,33 @@ get_token(TokenizerState *state, PragmaTokenType *token)
 			{
 				state->str += 1;
 				if (*state->str != '"')
+				{
+					is_error = false;
+					break;
+				}
+			}
+
+			state->str += 1;
+		}
+
+		if (is_error)
+			elog(ERROR, "Syntax error (unclosed quoted identifier)");
+	}
+	else if (*state->str == '\'')
+	{
+		bool	is_error = true;
+
+		token->value = PRAGMA_TOKEN_STRING;
+		token->substr = state->str++;
+
+		is_error = true;
+
+		while (*state->str)
+		{
+			if (*state->str == '\'')
+			{
+				state->str += 1;
+				if (*state->str != '\'')
 				{
 					is_error = false;
 					break;
@@ -429,6 +464,50 @@ make_ident(PragmaTokenType *token)
 		*write_ptr = '\0';
 
 		truncate_identifier(result, write_ptr - result, false);
+
+		return result;
+	}
+	else if (token->value == PRAGMA_TOKEN_STRING)
+	{
+		char	   *str = make_string(token);
+
+		/* does same conversion like varchar->name */
+		truncate_identifier(str, strlen(str), false);
+
+		return str;
+	}
+
+	return NULL;
+}
+
+static char *
+make_string(PragmaTokenType *token)
+{
+	if (token->value == PRAGMA_TOKEN_IDENTIF ||
+		token->value == PRAGMA_TOKEN_QIDENTIF)
+		return make_ident(token);
+	else if (token->value == PRAGMA_TOKEN_NUMBER)
+		return pnstrdup(token->substr, token->size);
+	else if (token->value == PRAGMA_TOKEN_STRING)
+	{
+		char	   *result = palloc(token->size);
+		const char *ptr = token->substr + 1;
+		char	   *write_ptr;
+		int			n = token->size - 2;
+
+		write_ptr = result;
+
+		while (n-- > 0)
+		{
+			*write_ptr++ = *ptr;
+			if (*ptr++ == '\'')
+			{
+				ptr += 1;
+				n -= 1;
+			}
+		}
+
+		*write_ptr = '\0';
 
 		return result;
 	}
@@ -719,7 +798,6 @@ get_type(TokenizerState *state, int32 *typmod, bool allow_rectype)
 	return get_type_internal(state, typmod, allow_rectype, true);
 }
 
-
 static int
 get_varno(PLpgSQL_nsitem *cur_ns, List *names)
 {
@@ -975,4 +1053,487 @@ plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int line
 	PG_END_TRY();
 
 	return result;
+}
+
+static bool
+get_boolean_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_info *cinfo)
+{
+	PragmaTokenType token, *_token;
+
+	_token = get_token(tstate, &token);
+	if (!_token)
+		return true;
+
+	if (_token->value == ',')
+	{
+		unget_token(tstate, _token);
+		return true;
+	}
+
+	if (_token->value == '=')
+	{
+		_token = get_token(tstate, &token);
+		if (!_token)
+			elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected boolean value after \"=\")",
+				 name, cinfo->fn_oid);
+	}
+
+	if (token_is_keyword(_token, "true") ||
+		token_is_keyword(_token, "yes") ||
+		token_is_keyword(_token, "t") ||
+		token_is_keyword(_token, "on"))
+		return true;
+	else if (token_is_keyword(_token, "false") ||
+			 token_is_keyword(_token, "no") ||
+			 token_is_keyword(_token, "f") ||
+			 token_is_keyword(_token, "off"))
+		return false;
+	else
+		elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected boolean value)",
+			 name, cinfo->fn_oid);
+}
+
+static char *
+get_name_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_info *cinfo)
+{
+	PragmaTokenType token, *_token;
+
+	_token = get_token(tstate, &token);
+	if (!_token)
+		elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected option's argument of name type)",
+			 name, cinfo->fn_oid);
+
+	if (_token->value == '=')
+	{
+		_token = get_token(tstate, &token);
+		if (!_token)
+			elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected name value after \"=\")",
+				 name, cinfo->fn_oid);
+	}
+
+	if (_token->value == PRAGMA_TOKEN_IDENTIF ||
+		_token->value == PRAGMA_TOKEN_QIDENTIF ||
+		_token->value == PRAGMA_TOKEN_STRING)
+	{
+		return pstrdup(make_ident(_token));
+	}
+	else
+		elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected SQL identifier as argument)",
+			 name, cinfo->fn_oid);
+}
+
+static Oid
+get_type_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_info *cinfo)
+{
+	PragmaTokenType token, *_token;
+
+	_token = get_token(tstate, &token);
+	if (!_token)
+		elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected option's argument of type name)",
+			 name, cinfo->fn_oid);
+
+	if (_token->value == '=')
+	{
+		_token = get_token(tstate, &token);
+		if (!_token)
+			elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected type name after \"=\")",
+				 name, cinfo->fn_oid);
+	}
+
+	if (_token->value == PRAGMA_TOKEN_IDENTIF ||
+		_token->value == PRAGMA_TOKEN_QIDENTIF)
+	{
+		const char *typname_start = NULL;
+		int			typname_length;
+		char	   *typestr;
+		Oid			typid;
+		int32		typmod;
+
+		unget_token(tstate, _token);
+
+		parse_qualified_identifier(tstate, &typname_start, &typname_length);
+
+		typestr = pnstrdup(typname_start, typname_length);
+		parseTypeString(typestr, &typid, &typmod, false);
+
+		return typid;
+	}
+	else
+		elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected type identifier)",
+			 name, cinfo->fn_oid);
+}
+
+static Oid
+get_table_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_info *cinfo)
+{
+	PragmaTokenType token, *_token;
+
+	_token = get_token(tstate, &token);
+	if (!_token)
+		elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected option's argument of table name)",
+			 name, cinfo->fn_oid);
+
+	if (_token->value == '=')
+	{
+		_token = get_token(tstate, &token);
+		if (!_token)
+			elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected table name after \"=\")",
+				 name, cinfo->fn_oid);
+	}
+
+	if (_token->value == PRAGMA_TOKEN_IDENTIF ||
+		_token->value == PRAGMA_TOKEN_QIDENTIF)
+	{
+		List	   *names;
+		const char *tablename_start = NULL;
+		int			tablename_length;
+		char	   *tablenamestr;
+		Oid			result;
+
+		unget_token(tstate, _token);
+
+		parse_qualified_identifier(tstate, &tablename_start, &tablename_length);
+
+		tablenamestr = pnstrdup(tablename_start, tablename_length);
+		names = stringToQualifiedNameList(tablenamestr);
+
+		/* We might not even have permissions on this relation; don't lock it. */
+		result = RangeVarGetRelid(makeRangeVarFromNameList(names), NoLock, false);
+
+		return result;
+	}
+	else
+		elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected table identifier)",
+			 name, cinfo->fn_oid);
+}
+
+static void
+comment_options_parser(char *str, plpgsql_check_info *cinfo)
+{
+	TokenizerState tstate;
+	PragmaTokenType token, *_token;
+
+	initialize_tokenizer(&tstate, str);
+
+	do
+	{
+		_token = get_token(&tstate, &token);
+
+		if (!_token || (_token->value != PRAGMA_TOKEN_IDENTIF))
+			elog(ERROR, "Syntax error (fnoid: %u) (expected option name)", cinfo->fn_oid);
+
+		if (cinfo->incomment_options_usage_warning)
+			elog(WARNING, "comment option \"%s\" is used (oid: %u)", make_ident(_token), cinfo->fn_oid);
+
+		if (token_is_keyword(_token, "relid"))
+		{
+			cinfo->relid = get_table_comment_option(&tstate, "relid", cinfo);
+		}
+		else if (token_is_keyword(_token, "fatal_errors"))
+		{
+			cinfo->fatal_errors = get_boolean_comment_option(&tstate, "fatal_errors", cinfo);
+		}
+		else if (token_is_keyword(_token, "other_warnings"))
+		{
+			cinfo->other_warnings = get_boolean_comment_option(&tstate, "other_warnings", cinfo);
+		}
+		else if (token_is_keyword(_token, "extra_warnings"))
+		{
+			cinfo->extra_warnings = get_boolean_comment_option(&tstate, "extra_warnings", cinfo);
+		}
+		else if (token_is_keyword(_token, "performance_warnings"))
+		{
+			cinfo->performance_warnings = get_boolean_comment_option(&tstate, "performance_warnings", cinfo);
+		}
+		else if (token_is_keyword(_token, "security_warnings"))
+		{
+			cinfo->security_warnings = get_boolean_comment_option(&tstate, "security_warnings", cinfo);
+		}
+		else if (token_is_keyword(_token, "anyelementtype"))
+		{
+			cinfo->anyelementoid = get_type_comment_option(&tstate, "anyelementtype",cinfo);
+		}
+		else if (token_is_keyword(_token, "anyenumtype"))
+		{
+			cinfo->anyenumoid = get_type_comment_option(&tstate, "anyenumtype", cinfo);
+		}
+		else if (token_is_keyword(_token, "anyrangetype"))
+		{
+			cinfo->anyrangeoid = get_type_comment_option(&tstate, "anyrangetype", cinfo);
+			if (!type_is_range(cinfo->anyrangeoid))
+				elog(ERROR, "the type specified by \"anyrangetype\" comment option is not range (fnoid: %u)",
+					 cinfo->fn_oid);
+		}
+		else if (token_is_keyword(_token, "anycompatibletype"))
+		{
+			cinfo->anycompatibleoid = get_type_comment_option(&tstate, "anycompatibletype", cinfo);
+		}
+		else if (token_is_keyword(_token, "anycompatiblerangetype"))
+		{
+			cinfo->anycompatiblerangeoid = get_type_comment_option(&tstate, "anycompatiblerangetype", cinfo);
+			if (!type_is_range(cinfo->anycompatiblerangeoid))
+				elog(ERROR, "the type specified by \"anycompatiblerangetype\" comment option is not range (fnoid: %u)",
+					 cinfo->fn_oid);
+		}
+		else if (token_is_keyword(_token, "without_warnings"))
+		{
+			cinfo->without_warnings = get_boolean_comment_option(&tstate, "without_warnings", cinfo);
+		}
+		else if (token_is_keyword(_token, "all_warnings"))
+		{
+			cinfo->all_warnings = get_boolean_comment_option(&tstate, "all_warnings", cinfo);
+		}
+		else if (token_is_keyword(_token, "newtable"))
+		{
+			cinfo->newtable = get_name_comment_option(&tstate, "newtable", cinfo);
+		}
+		else if (token_is_keyword(_token, "oldtable"))
+		{
+			cinfo->oldtable = get_name_comment_option(&tstate, "oldtable", cinfo);
+		}
+		else if (token_is_keyword(_token, "echo"))
+		{
+			_token = get_token(&tstate, &token);
+			if (!_token)
+				elog(ERROR, "missing argument of option \"echo\"");
+
+			if (_token->value == '=')
+			{
+				_token = get_token(&tstate, &token);
+				if (!_token)
+					elog(ERROR, "expected value after \"=\"");
+			}
+
+			if (_token->value == PRAGMA_TOKEN_IDENTIF)
+				elog(NOTICE, "comment option \"echo\" is %s", make_string(_token));
+			else if (_token->value == PRAGMA_TOKEN_QIDENTIF)
+				elog(NOTICE, "comment option \"echo\" is \"%s\"", make_string(_token));
+			else if (_token->value == PRAGMA_TOKEN_NUMBER)
+				elog(NOTICE, "comment option \"echo\" is %s", make_string(_token));
+			else if (_token->value == PRAGMA_TOKEN_STRING)
+				elog(NOTICE, "comment option \"echo\" is '%s'", make_string(_token));
+			else
+				elog(NOTICE, "comment option \"echo\" is '%c'", _token->value);
+		}
+		else
+			elog(ERROR, "unsupported option \"%.*s\" specified by \"@plpgsql_check_options\" (fnoid: %u)",
+				 (int) _token->size, _token->substr, cinfo->fn_oid);
+
+		_token = get_token(&tstate, &token);
+		if (!_token)
+			break;
+
+		if (_token->value != ',')
+			elog(ERROR, "expected \",\" or end of line on line with \"@plpgsql_check_options\" options (fnoid: %u)",
+				 cinfo->fn_oid);
+	}
+	while (_token);
+}
+
+static void
+comment_options_parsecontent(char *str, size_t bytes, plpgsql_check_info *cinfo)
+{
+	char *endchar = str + bytes;
+
+	do
+	{
+		char	   *ptr, *optsline;
+		bool		found_eol;
+
+		str += strlen(tagstr);
+
+		Assert(str <= endchar);
+
+		/* find end of line */
+		ptr = str; found_eol = false;
+
+		while (ptr < endchar && *ptr)
+		{
+			if (*ptr == '\n')
+			{
+				found_eol = true;
+				break;
+			}
+
+			ptr += 1;
+		}
+
+		optsline = pnstrdup(str, found_eol ? ptr - str : endchar - str);
+
+		comment_options_parser(optsline, cinfo);
+
+		pfree(optsline);
+
+		if (!found_eol || ptr >= endchar)
+			break;
+
+		str = memmem(ptr + 1, endchar - (ptr + 1),
+					 tagstr, strlen(tagstr));
+	}
+	while (str);
+}
+
+static char *
+search_comment_options_linecomment(char *src, plpgsql_check_info *cinfo)
+{
+	char	   *start = src;
+
+	while (*src)
+	{
+		if (*src == '\n')
+		{
+			char *tag;
+
+			tag = memmem(start, src - start,
+						 tagstr, strlen(tagstr));
+			if (tag)
+				comment_options_parsecontent(tag, src - tag, cinfo);
+
+			return src + 1;
+		}
+
+		src += 1;
+	}
+
+	return src;
+}
+
+static char *
+search_comment_options_multilinecomment(char *src, plpgsql_check_info *cinfo)
+{
+	char	   *start = src;
+
+	while (*src)
+	{
+		if (*src == '*' && src[1] == '/')
+		{
+			char *tag;
+
+			tag = memmem(start, src - start,
+						 tagstr, strlen(tagstr));
+			if (tag)
+				comment_options_parsecontent(tag, src - tag, cinfo);
+
+			return src + 1;
+		}
+
+		src += 1;
+	}
+
+	return src;
+}
+
+/*
+ * Try to read plpgsql_check options.
+ *
+ */
+void
+plpgsql_check_search_comment_options(plpgsql_check_info *cinfo)
+{
+	char *src = plpgsql_check_get_src(cinfo->proctuple);
+
+	cinfo->all_warnings = false;
+	cinfo->without_warnings = false;
+
+	while (*src)
+	{
+		if (*src == '-' && src[1] == '-')
+			src = search_comment_options_linecomment(src + 2, cinfo);
+
+		else if (*src == '/' && src[1] == '*')
+			src = search_comment_options_multilinecomment(src + 2, cinfo);
+
+		else if (*src == '\'')
+		{
+			src++;
+
+			while (*src)
+			{
+				if (*src++ == '\'')
+				{
+					if (*src == '\'')
+						src += 1;
+					else
+						break;
+				}
+			}
+		}
+
+		else if (*src == '"')
+		{
+			src++;
+
+			while (*src)
+			{
+				if (*src++ == '"')
+				{
+					if (*src == '"')
+						src += 1;
+					else
+						break;
+				}
+			}
+		}
+
+		else if (*src == '$')
+		{
+			char	   *start = src++;
+			bool		is_custom_string = false;
+
+			while (*src)
+			{
+				if (isblank(*src))
+				{
+					is_custom_string = false;
+					break;
+				}
+				else if (*src == '$')
+				{
+					is_custom_string = true;
+					break;
+				}
+
+				src += 1;
+			}
+
+			if (is_custom_string)
+			{
+				int			cust_str_length = 0;
+
+				cust_str_length = src - start + 1;
+
+next_char:
+
+				src += 1;
+
+				while (*src)
+				{
+					int		i;
+
+					for (i = 0; i < cust_str_length; i++)
+					{
+						if (src[i] != start[i])
+							goto next_char;
+					}
+
+					/* found complete custom string separator */
+					src += cust_str_length;
+					break;
+				}
+			}
+			else
+				src = start + 1;
+		}
+		else
+			src += 1;
+	}
+
+	if (cinfo->all_warnings && cinfo->without_warnings)
+		elog(ERROR, "all_warnings and without_warnings cannot be used together (fnoid: %u)",
+			 cinfo->fn_oid);
+
+	if (cinfo->all_warnings)
+		plpgsql_check_set_all_warnings(cinfo);
+	else if (cinfo->without_warnings)
+		plpgsql_check_set_without_warnings(cinfo);
 }
