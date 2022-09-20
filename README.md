@@ -2,7 +2,7 @@ plpgsql_check
 =============
 
 This extension is a full linter for plpgsql for PostgreSQL.  It leverages only the internal 
-PostgreSQL parser/evaluator so you see exactly the errors that would occur at runtime.
+PostgreSQL parser/evaluator so you see exactly the errors would occur at runtime.
 Furthermore, it parses the SQL inside your routines and finds errors not usually found during
 the "CREATE PROCEDURE/FUNCTION" command.  You can control the levels of many warnings and hints.
 Finally, you can add PRAGAMA type markers to turn off/on many aspects allowing you to hide
@@ -172,9 +172,9 @@ You can set level of warnings via function's parameters:
 
 * `anycompatiblerangetype DEFAULT 'int4range'` - an actual range type to be used when testing the anycompatible range type
 
-* `without_warnings DEFAULT false` - disable all warnings (Ignores other warning parameters) ???
+* `without_warnings DEFAULT false` - disable all warnings (Ignores all xxxx_warning parameters, a quick override)
 
-* `all_warnings DEFAULT false` - enable all warnings (Ignores other warning parameters) ???
+* `all_warnings DEFAULT false` - enable all warnings (Ignores other xxx_warning parameters, a quick positive)
 
 * `newtable DEFAULT NULL`, `oldtable DEFAULT NULL` - the names of NEW or OLD transition
    tables. These parameters are required when transition tables are used in trigger functions.
@@ -280,7 +280,7 @@ or
 
 # Passive mode (only recommended for development or preproduction)
 
-Functions should be checked on start??? (when executed? when PG is started?) - plpgsql_check module must be loaded (via postgresql.conf).
+Functions can be checked upon execution - plpgsql_check module must be loaded (via postgresql.conf).
 
 ## Configuration Settings
 
@@ -291,7 +291,7 @@ Functions should be checked on start??? (when executed? when PG is started?) - p
     plpgsql_check.show_performance_warnings = false
 
 Default mode is <i>by_function</i>, that means that the enhanced check is done only in
-active mode - by calling the <i>plpgsql_check_function</i>. `fresh_start` means cold start (first time it is started, only???).
+active mode - by calling the <i>plpgsql_check_function</i>. `fresh_start` means cold start (first the function is called).
 
 You can enable passive mode by
 
@@ -443,7 +443,7 @@ access to shared memory. It depends on `shared_preload_libraries` config. When p
 by `shared_preload_libraries`, then it can allocate shared memory, and function's profiles are stored there.
 When plpgsql_check cannot to allocate shared momory, the profile is stored in session memory.
 
-Due to dependencies, `shared_preload_libraries` should to contain `plpgsql` first  [PAVEL]True in for Version 1.1? (or always)???
+Due to dependencies, `shared_preload_libraries` should to contain `plpgsql` first
 
     postgres=# show shared_preload_libraries ;
     ┌──────────────────────────┐
@@ -561,7 +561,7 @@ plpgsql_check provides two functions:
 
 ## Note
 
-There is another very good PLpgSQL profiler - https://bitbucket.org/openscg/plprofiler (Missing) [PAVEL]???   Is this: https://github.com/glynastill/plprofiler
+There is another very good PLpgSQL profiler - https://github.com/glynastill/plprofiler
 
 My extension is designed to be simple for use and practical. Nothing more or less.
 
