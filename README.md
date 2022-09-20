@@ -1,27 +1,34 @@
 plpgsql_check
 =============
 
-I founded this project, because I wanted to publish the code I wrote in the last two years,
+This extension is a full linter for plpgsql for PostgreSQL.  It leverages only the internal 
+PostgreSQL parser/evaluator so you see exactly the errors would occur at runtime.
+Furthermore, it parses the SQL inside your routines and finds errors not usually found during
+the "CREATE PROCEDURE/FUNCTION" command.  You can control the levels of many warnings and hints.
+Finally, you can add PRAGAMA type markers to turn off/on many aspects allowing you to hide
+messages you already know about, or to remind you to come back for deeper cleaning later.
+
+I founded this project, because I wanted to publish the code I wrote for the last two years,
 when I tried to write enhanced checking for PostgreSQL upstream. It was not fully
 successful - integration into upstream requires some larger plpgsql refactoring - probably
-it will not be done in next years (now is Dec 2013). But written code is fully functional
+it will not be done for many years (now is Dec 2013). But the code is fully functional
 and can be used in production (and it is used in production). So, I created this extension to
 be available for all plpgsql developers.
 
-If you like it and if you would to join to development of this extension, register
-yourself to [postgresql extension hacking](https://groups.google.com/forum/#!forum/postgresql-extensions-hacking)
+If if you want to join our group to help the further development of this extension, register
+yourself at that [postgresql extension hacking](https://groups.google.com/forum/#!forum/postgresql-extensions-hacking)
 google group.
 
 # Features
 
-* check fields of referenced database objects and types inside embedded SQL
-* using correct types of function parameters
-* unused variables and function argumens, unmodified OUT argumens
-* partially detection of dead code (due RETURN command)
-* detection of missing RETURN command in function
-* try to identify unwanted hidden casts, that can be performance issue like unused indexes
-* possibility to collect relations and functions used by function
-* possibility to check EXECUTE stmt agaist SQL injection vulnerability
+* checks fields of referenced database objects and types inside embedded SQL
+* validates you are using the correct types for function parameters
+* identifies unused variables and function arguments, unmodified OUT arguments
+* partial detection of dead code (code after an unqualified RETURN command)
+* detection of missing RETURN command in function (common after exception handlers, complex logic)
+* tries to identify unwanted hidden casts, which can be a performance issue like unused indexes
+* ability to collect relations and functions used by function
+* ability to check EXECUTE stmt agaist SQL injection vulnerability
 
 I invite any ideas, patches, bugreports.
 
@@ -30,8 +37,8 @@ plpgsql_check is next generation of plpgsql_lint. It allows to check source code
 
 PostgreSQL PostgreSQL 10 - 15 are supported.
 
-The SQL statements inside PL/pgSQL functions are checked by validator for semantic errors. These errors
-can be found by plpgsql_check_function:
+The SQL statements inside PL/pgSQL functions are checked by the validator for semantic errors. These errors
+can be found by calling the plpgsql_check_function:
 
 # Active mode
 
@@ -92,7 +99,7 @@ can be found by plpgsql_check_function:
     9       $function$
 
 
-Function plpgsql_check_function() has three possible formats: text, json or xml
+Function plpgsql_check_function() has three possible output formats: text, json or xml
 
     select * from plpgsql_check_function('f1()', fatal_errors := false);
                              plpgsql_check_function                         
@@ -123,10 +130,10 @@ Function plpgsql_check_function() has three possible formats: text, json or xml
 ## Arguments
 
 You can set level of warnings via function's parameters:
+            
+### Mandatory argument
 
-### Mandatory arguments
-
-* function name or function signature - these functions requires function specification.
+* `funcoid oid` - function name or function signature - functions require a function specification.
   Any function in PostgreSQL can be specified by Oid or by name or by signature. When
   you know oid or complete function's signature, you can use a regprocedure type parameter
   like `'fx()'::regprocedure` or `16799::regprocedure`. Possible alternative is using
@@ -135,42 +142,42 @@ You can set level of warnings via function's parameters:
 
 ### Optional arguments
 
-* `relid DEFAULT 0` - oid of relation assigned with trigger function. It is necessary for check
-   of any trigger function.
+* `relid DEFAULT 0` - oid of relation assigned with trigger function. It is necessary to check
+   any trigger function.  You are sending the table in that the trigger operates on.
 
-* `fatal_errors boolean DEFAULT true` - stop on first error
+* `fatal_errors boolean DEFAULT true` - stop on first error (prevents massive error reports)
 
 * `other_warnings boolean DEFAULT true` - show warnings like different attributes number
   in assignmenet on left and right side, variable overlaps function's parameter, unused
-  variables, unwanted casting, ..
+  variables, unwanted casting, etc.
 
 * `extra_warnings boolean DEFAULT true` - show warnings like missing `RETURN`,
   shadowed variables, dead code, never read (unused) function's parameter,
-  unmodified variables, modified auto variables, ..
+  unmodified variables, modified auto variables, etc.
 
 * `performance_warnings boolean DEFAULT false` - performance related warnings like
-  declared type with type modificator, casting, implicit casts in where clause (can be
-  reason why index is not used), ..
+  declared type with type modifier, casting, implicit casts in where clause (can be
+  the reason why an index is not used), etc.
 
 * `security_warnings boolean DEFAULT false` - security related checks like SQL injection
   vulnerability detection
 
-* `anyelementtype regtype DEFAULT 'int'` - a real type used instead anyelement type
+* `anyelementtype regtype DEFAULT 'int'` - an actual type to be used when testing the anyelement type
 
-* `anyenumtype regtype DEFAULT '-'` - a real type used instead anyenum type
+* `anyenumtype regtype DEFAULT '-'` - an actual type to be used when testing the anyenum type
 
-* `anyrangetype regtype DEFAULT 'int4range'` - a real type used instead anyrange type
+* `anyrangetype regtype DEFAULT 'int4range'` - an actual type to be used when testing the anyrange type
 
-* `anycompatibletype DEFAULT 'int'` - a real type used instead anycompatible type
+* `anycompatibletype DEFAULT 'int'` - an actual type to be used when testing the anycompatible type
 
-* `anycompatiblerangetype DEFAULT 'int4range'` - a real type used instead anycompatible range type
+* `anycompatiblerangetype DEFAULT 'int4range'` - an actual range type to be used when testing the anycompatible range type
 
-* `without_warnings DEFAULT false` - disable all warnings
+* `without_warnings DEFAULT false` - disable all warnings (Ignores all xxxx_warning parameters, a quick override)
 
-* `all_warnings DEFAULT false` - enable all warnings
+* `all_warnings DEFAULT false` - enable all warnings (Ignores other xxx_warning parameters, a quick positive)
 
-* `newtable DEFAULT NULL`, `oldtable DEFAULT NULL` - the names of NEW or OLD transitive
-   tables. These parameters are required when transitive tables are used.
+* `newtable DEFAULT NULL`, `oldtable DEFAULT NULL` - the names of NEW or OLD transition
+   tables. These parameters are required when transition tables are used in trigger functions.
 
 * `use_incomment_options` - when it is true (default), then in-comment options are active
 
@@ -209,7 +216,7 @@ Correct trigger checking (with specified relation)
      error:42703:3:assignment:record "new" has no field "c"
     (1 row)
 
-For triggers with transitive tables you can set a `oldtable` or `newtable` parameters:
+For triggers with transitive tables you can set the `oldtable` and `newtable` parameters:
 
     create or replace function footab_trig_func()
     returns trigger as $$
@@ -253,10 +260,10 @@ Example:
     $$ language plpgsql;
 
 
-## Mass check
+## Checking all of your code
 
-You can use the plpgsql_check_function for mass check functions and mass check
-triggers. Please, test following queries:
+You can use the plpgsql_check_function for mass checking of functions/procedures and mass checking
+of triggers. Please, test following queries:
 
     -- check all nontrigger plpgsql functions
     SELECT p.oid, p.proname, plpgsql_check_function(p.oid)
@@ -267,13 +274,14 @@ triggers. Please, test following queries:
 
 or
 
+    -- check all trigger plpgsql functions
     SELECT p.proname, tgrelid::regclass, cf.*
        FROM pg_proc p
             JOIN pg_trigger t ON t.tgfoid = p.oid 
             JOIN pg_language l ON p.prolang = l.oid
             JOIN pg_namespace n ON p.pronamespace = n.oid,
             LATERAL plpgsql_check_function(p.oid, t.tgrelid) cf
-      WHERE n.nspname = 'public' and l.lanname = 'plpgsql'
+      WHERE n.nspname = 'public' and l.lanname = 'plpgsql';
 
 or
 
@@ -297,13 +305,13 @@ or
              pg_trigger.tgfoid IS NOT NULL)
         OFFSET 0
     ) ss
-    ORDER BY (pcf).functionid::regprocedure::text, (pcf).lineno
+    ORDER BY (pcf).functionid::regprocedure::text, (pcf).lineno;
 
-# Passive mode
+# Passive mode (only recommended for development or preproduction)
 
-Functions should be checked on start - plpgsql_check module must be loaded.
+Functions can be checked upon execution - plpgsql_check module must be loaded (via postgresql.conf).
 
-## Configuration
+## Configuration Settings
 
     plpgsql_check.mode = [ disabled | by_function | fresh_start | every_start ]
     plpgsql_check.fatal_errors = [ yes | no ]
@@ -312,19 +320,19 @@ Functions should be checked on start - plpgsql_check module must be loaded.
     plpgsql_check.show_performance_warnings = false
 
 Default mode is <i>by_function</i>, that means that the enhanced check is done only in
-active mode - by <i>plpgsql_check_function</i>. `fresh_start` means cold start.
+active mode - by calling the <i>plpgsql_check_function</i>. `fresh_start` means cold start (first the function is called).
 
 You can enable passive mode by
 
     load 'plpgsql'; -- 1.1 and higher doesn't need it
     load 'plpgsql_check';
-    set plpgsql_check.mode = 'every_start';
+    set plpgsql_check.mode = 'every_start';  -- This scans all code before it is executed
 
     SELECT fx(10); -- run functions - function is checked before runtime starts it
 
 # Limits
 
-<i>plpgsql_check</i> should find almost all errors on really static code. When developer use some
+<i>plpgsql_check</i> should find almost all errors on really static code. When developers use
 PLpgSQL's dynamic features like dynamic SQL or record data type, then false positives are
 possible. These should be rare - in well written code - and then the affected function
 should be redesigned or plpgsql_check should be disabled for this function.
@@ -340,8 +348,8 @@ should be redesigned or plpgsql_check should be disabled for this function.
     END;
     $$ LANGUAGE plpgsql SET plpgsql.enable_check TO false;
 
-<i>A usage of plpgsql_check adds a small overhead (in enabled passive mode) and you should use
-it only in develop or preprod environments.</i>
+<i>A usage of plpgsql_check adds a small overhead (when passive mode is enabled) and you should use
+that setting only in development or preproduction environments.</i>
 
 ## Dynamic SQL
 
@@ -360,18 +368,18 @@ When type of record's variable is not know, you can assign it explicitly with pr
 
 <b>
 Attention: The SQL injection check can detect only some SQL injection vulnerabilities. This tool
-cannot be used for security audit! Some issues should not be detected. This check can raise false
-alarms too - probably when variable is sanitized by other command or when value is of some compose
+cannot be used for security audit! Some issues will not be detected. This check can raise false
+alarms too - probably when variable is sanitized by other command or when the value is of some composite
 type.
 </b>
 
 ## Refcursors
 
-<i>plpgsql_check</i> should not to detect structure of referenced cursors. A reference on cursor
+<i>plpgsql_check</i> cannot be used to detect structure of referenced cursors. A reference on cursor
 in PLpgSQL is implemented as name of global cursor. In check time, the name is not known (not in
-all possibilities), and global cursor doesn't exist. It is significant break for any static analyse.
-PLpgSQL cannot to set correct type for record variables and cannot to check a dependent SQLs and
-expressions. A solution is same like dynamic SQL. Don't use record variable
+all possibilities), and global cursor doesn't exist. It is a significant issue for any static analysis.
+PLpgSQL cannot know how to set the correct type for the record variables and cannot to check the dependent 
+SQL statements and expressions. A solution is the same for dynamic SQL. Don't use record variable
 as target when you use <i>refcursor</i> type or disable <i>plpgsql_check</i> for these functions.
 
     CREATE OR REPLACE FUNCTION foo(refcur_var refcursor)
@@ -407,13 +415,13 @@ tables. So you can do (with following trick safetly):
     BEGIN
       RAISE EXCEPTION SQLSTATE '42P01'
          USING message = format('this instance of %I table doesn''t allow any DML operation', TG_TABLE_NAME),
-               hint = format('you should to run "CREATE TEMP TABLE %1$I(LIKE %1$I INCLUDING ALL);" statement',
+               hint = format('you should use "CREATE TEMP TABLE %1$I(LIKE %1$I INCLUDING ALL);" statement',
                              TG_TABLE_NAME);
       RETURN NULL;
     END;
     $function$;
     
-    CREATE TABLE foo(a int, b int); -- doesn't hold data ever
+    CREATE TABLE foo(a int, b int); -- doesn't hold data, ever
     CREATE TRIGGER foo_disable_dml
        BEFORE INSERT OR UPDATE OR DELETE ON foo
        EXECUTE PROCEDURE disable_dml();
@@ -436,11 +444,13 @@ You can use pragma `table` and create ephemeral table:
        CREATE TEMP TABLE xxx(a int);
        PERFORM plpgsql_check_pragma('table: xxx(a int)');
        INSERT INTO xxx VALUES(10);
+       PERFORM plpgsql_check_pragma('table: [pg_temp].zzz(like schemaname.table1 including all)');
+       ...
 
 
 # Dependency list
 
-A function <i>plpgsql_show_dependency_tb</i> can show all functions, operators and relations used
+A function <i>plpgsql_show_dependency_tb</i> will show all functions, operators and relations used
 inside processed function:
 
     postgres=# select * from plpgsql_show_dependency_tb('testfunc(int,float)');
@@ -458,11 +468,11 @@ inside processed function:
 # Profiler
 
 The plpgsql_check contains simple profiler of plpgsql functions and procedures. It can work with/without
-a access to shared memory. It depends on `shared_preload_libraries` config. When plpgsql_check was initialized
+access to shared memory. It depends on `shared_preload_libraries` config. When plpgsql_check is initialized
 by `shared_preload_libraries`, then it can allocate shared memory, and function's profiles are stored there.
 When plpgsql_check cannot to allocate shared momory, the profile is stored in session memory.
 
-Due dependencies, `shared_preload_libraries` should to contains `plpgsql` first
+Due to dependencies, `shared_preload_libraries` should to contain `plpgsql` first
 
     postgres=# show shared_preload_libraries ;
     ┌──────────────────────────┐
@@ -473,7 +483,7 @@ Due dependencies, `shared_preload_libraries` should to contains `plpgsql` first
     (1 row)
 
 The profiler is active when GUC `plpgsql_check.profiler` is on. The profiler doesn't require shared memory,
-but if there are not shared memory, then the profile is limmitted just to active session.
+but if there is not enough shared memory, then the profiler is limited just to active session.
 
 When plpgsql_check is initialized by `shared_preload_libraries`, another GUC is
 available to configure the amount of shared memory used by the profiler:
@@ -482,7 +492,7 @@ statements chunk that can be stored in shared memory.  For each plpgsql
 function (or procedure), the whole content is split into chunks of 30
 statements.  If needed, multiple chunks can be used to store the whole content
 of a single function.  A single chunk is 1704 bytes.  The default value for
-this GUC is 15000, which should be enough for big projects containing hundred
+this GUC is 15000, which should be enough for big projects containing hundreds
 of thousands of statements in plpgsql, and will consume about 24MB of memory.
 If your project doesn't require that much number of chunks, you can set this
 parameter to a smaller number in order to decrease the memory usage.  The
@@ -507,7 +517,7 @@ There are some limitations to the query identifier retrieval:
   expressions.  This means that plpgsql_profiler_function_tb() function can
   report less query identifier than instructions on a single line.
 
-Attention: A update of shared profiles can decrease performance on servers under higher load.
+Attention: An update of shared profiles can decrease performance on servers under higher load.
 
 The profile can be displayed by function `plpgsql_profiler_function_tb`:
 
@@ -580,14 +590,14 @@ plpgsql_check provides two functions:
 
 ## Note
 
-There is another very good PLpgSQL profiler - https://bitbucket.org/openscg/plprofiler
+There is another very good PLpgSQL profiler - https://github.com/glynastill/plprofiler
 
 My extension is designed to be simple for use and practical. Nothing more or less.
 
-plprofiler is more complex. It build call graphs and from this graph it can creates
+plprofiler is more complex. It builds call graphs and from this graph it can create
 flame graph of execution times.
 
-Both extensions can be used together with buildin PostgreSQL's feature - tracking functions.
+Both extensions can be used together with the builtin PostgreSQL's feature - tracking functions.
 
     set track_functions to 'pl';
     ...
@@ -612,8 +622,8 @@ is displayed. The content of related variables are displayed when verbosity is v
     NOTICE:  #2   <<- end of function fx (elapsed time=0.399 ms)
     NOTICE:  #0 <<- end of block (elapsed time=0.754 ms)
 
-The number after `#` is a execution frame counter (this number is related to deep of error context stack).
-It allows to pair start end and of function.
+The number after `#` is a execution frame counter (this number is related to depth of error context stack).
+It allows to pair start and end of function.
 
 Tracing is enabled by setting `plpgsql_check.tracer` to `on`. Attention - enabling this behaviour
 has significant negative impact on performance (unlike the profiler). You can set a level for output used by
@@ -658,7 +668,7 @@ In verbose mode the output is extended about statement details:
     NOTICE:  #0.1          <-- end of PERFORM (elapsed time=1.147 ms)
     NOTICE:  #0            <<- end of block (elapsed time=1.286 ms)
 
-Special feature of tracer is tracing of `ASSERT` statement when `plpgsql_check.trace_assert` is `on`. When
+A special feature of tracer is tracing of the `ASSERT` statement when `plpgsql_check.trace_assert` is `on`. When
 `plpgsql_check.trace_assert_verbosity` is `DEFAULT`, then all function's or procedure's variables are
 displayed when assert expression is false. When this configuration is `VERBOSE` then all variables
 from all plpgsql frames are displayed. This behaviour is independent on `plpgsql.check_asserts` value.
@@ -694,7 +704,7 @@ It can be used, although the assertions are disabled in plpgsql runtime.
 
 If you use `plugin_debugger` (plpgsql debugger) together with `plpgsql_check`, then
 `plpgsql_check` should be initialized after `plugin_debugger` (because `plugin_debugger`
-doesn't supports sharing of PL/pgSQL's debug API). For example (`postgresql.conf`):
+doesn't support the sharing of PL/pgSQL's debug API). For example (`postgresql.conf`):
 
     shared_preload_libraries = 'plugin_debugger,plpgsql,plpgsql_check'
 
@@ -707,10 +717,10 @@ be enabled only with super user rights `plpgsql_check.enable_tracer`.
 
 # Pragma
 
-You can configure plpgsql_check behave inside checked function with "pragma" function. This
+You can configure plpgsql_check behaviour inside a checked function with "pragma" function. This
 is a analogy of PL/SQL or ADA language of PRAGMA feature. PLpgSQL doesn't support PRAGMA, but
-plpgsql_check detects function named `plpgsql_check_pragma` and get options from parameters of
-this function. These plpgsql_check options are valid to end of group of statements.
+plpgsql_check detects function named `plpgsql_check_pragma` and takes options from the parameters of
+this function. These plpgsql_check options are valid to the end of this group of statements.
 
     CREATE OR REPLACE FUNCTION test()
     RETURNS void AS $$
@@ -758,14 +768,16 @@ Shorter syntax for pragma is supported too:
 * `echo:str` - print string (for testing)
 
 * `status:check`,`status:tracer`, `status:other_warnings`, `status:performance_warnings`, `status:extra_warnings`,`status:security_warnings`
+  This outputs the current value (e.g. other_warnings enabled)
 
 * `enable:check`,`enable:tracer`, `enable:other_warnings`, `enable:performance_warnings`, `enable:extra_warnings`,`enable:security_warnings`
 
 * `disable:check`,`disable:tracer`, `disable:other_warnings`, `disable:performance_warnings`, `disable:extra_warnings`,`disable:security_warnings`
-
+  This can be used to disable the Hint in returning from an anylement function.  Just put the pragma before the RETURN statement.
+  
 * `type:varname typename` or `type:varname (fieldname type, ...)` - set type to variable of record type
 
-* `table: name (column_name type, ...)` or `table: name (like tablename)` - create ephereal temporal table (if you want to specify schema, then only `pg_temp` schema is allowed.
+* `table: name (column_name type, ...)` or `table: name (like tablename)` - create ephemeral temporary table (if you want to specify schema, then only `pg_temp` schema is allowed.
 
 Pragmas `enable:tracer` and `disable:tracer`are active for Postgres 12 and higher
 
