@@ -90,9 +90,9 @@ BEGIN
             parm1 := TRIM(SUBSTR(fdecl, pos, POSITION(')' IN fdecl) - pos + 1));
             --       RETURN NEXT (ts , concat('#### ', fdecl ));  -- Really Just Debug!
             BEGIN
-                SELECT TO_REGPROC(fname)::oid INTO foid;  -- This function will not throw an exception, just returns NULL
+                foid := TO_REGPROC(fname)::oid;  -- This function will not throw an exception, just returns NULL
                 -- REPLACES the error block
-                IF (foid IS NULL) THEN
+                IF foid IS NULL THEN
                     check_msg := '#### Either No Such function or No Paramters!';
                     RETURN NEXT;
                     CONTINUE;
