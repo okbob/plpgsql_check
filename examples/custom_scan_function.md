@@ -14,7 +14,7 @@ This is a starting point... Make it your own.
 # Why the timestamp
 FWIW, I return the timestamp ts with the message because I have 10+ windows open, each with it's own code+output.  And after fixing a bunch of stuff in another window, that timestamp ALSO tells me how "dated" the scan is.  It also confirms it refreshed (sometimes it runs so fast, and gives you the same output, you are not sure if it actually refreshed!).  The great part is that once you have a RECORD() type setup for output, adding more columns is easy.
 
-# Why the procedure name as a row and not a column
+# Why the procedure name a row and not a column
 Honestly, we have horribly long names: long_schema_name.Really_Long_package_name.Really_long_function_name()!
 While they are clear and make coding easier, it is quickly a waste of screen real-estate.  I would rather have *one* long column in my output.
 It's a personal preference.  And that is the beauty of PG and of this tool.
@@ -25,6 +25,7 @@ It only tells you what the code is trying to do.  It does not make it clear WHIC
 I was able to add the full parameter details (including DEF it that parameter has a DEF value).  As well as the expected TYPE...
 
 # Output
+<pre>
 `
 #### 
 #### Error in: schema.pkg_name$update_user() at Line: 16       PARAMETER TYPING ISSUE?
@@ -37,7 +38,7 @@ I was able to add the full parameter details (including DEF it that parameter ha
 #### val                  IN        bigint         text           
 #### addrmv               IN        bigint         integer        
 #### 
-`
+`</pre>
 
 # Future Ideas
 Now that this actually exists, I have a few more ideas.  I will actually see how to integrate this better with my DataGrip.
