@@ -25,6 +25,7 @@ It only tells you what the code is trying to do.  It does not make it clear WHIC
 I was able to add the full parameter details (including DEF it that parameter has a DEF value).  As well as the expected TYPE...
 
 # Output
+<pre>
 `
 #### 
 #### Error in: schema.pkg_name$update_user() at Line: 16       PARAMETER TYPING ISSUE?
@@ -37,7 +38,7 @@ I was able to add the full parameter details (including DEF it that parameter ha
 #### val                  IN        bigint         text           
 #### addrmv               IN        bigint         integer        
 #### 
-`
+`</pre>
 
 # Future Ideas
 Now that this actually exists, I have a few more ideas.  I will actually see how to integrate this better with my DataGrip.
