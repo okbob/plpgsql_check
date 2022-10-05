@@ -54,6 +54,31 @@ static const char *tagstr = "@plpgsql_check_options:";
 #define		PRAGMA_TOKEN_NUMBER			130
 #define		PRAGMA_TOKEN_STRING			131
 
+#ifdef _MSC_VER
+
+static void *
+memmem(const void *haystack, size_t haystack_len,
+	   const void * const needle, const size_t needle_len)
+{
+	if (haystack == NULL) return NULL; // or assert(haystack != NULL);
+	if (haystack_len == 0) return NULL;
+	if (needle == NULL) return NULL; // or assert(needle != NULL);
+	if (needle_len == 0) return NULL;
+
+	for (const char *h = haystack;
+		 haystack_len >= needle_len;
+		 ++h, --haystack_len)
+	{
+		if (!memcmp(h, needle, needle_len))
+		{
+			return h;
+		}
+	}
+	return NULL;
+}
+
+#endif
+
 /*
  * Is character a valid identifier start?
  * Must match scan.l's {ident_start} character class.
@@ -1207,6 +1232,63 @@ get_table_comment_option(TokenizerState *tstate, const char *name, plpgsql_check
 			 name, cinfo->fn_oid);
 }
 
+static bool
+is_keyword(char *str, size_t bytes, const char *keyword)
+{
+	if (bytes != strlen(keyword))
+		return false;
+
+	if (strncasecmp(str, keyword, bytes) != 0)
+		return false;
+
+	return true;
+}
+
+char *
+plpgsql_check_process_echo_string(char *str, plpgsql_check_info *cinfo)
+{
+	StringInfoData sinfo;
+
+	initStringInfo(&sinfo);
+
+	while (*str)
+	{
+		if (*str == '@' && str[1] == '@')
+		{
+			char	   *start;
+			size_t		bytes;
+
+			str += 2;
+			start = str;
+
+			while (*str && isalpha(*str))
+			{
+				str += 1;
+			}
+
+			bytes = str - start;
+			if (is_keyword(start, bytes, "id"))
+			{
+				appendStringInfo(&sinfo, "%u", cinfo->fn_oid);
+			}
+			else if (is_keyword(start, bytes, "name"))
+			{
+				appendStringInfoString(&sinfo, get_func_name(cinfo->fn_oid));
+			}
+			else if (is_keyword(start, bytes, "signature"))
+			{
+				appendStringInfoString(&sinfo, format_procedure(cinfo->fn_oid));
+			}
+			else
+				appendStringInfo(&sinfo, "@@%.*s", (int) bytes, start);
+		}
+		else
+			appendStringInfoChar(&sinfo, *str++);
+	}
+
+	return sinfo.data;
+}
+
 static void
 comment_options_parser(char *str, plpgsql_check_info *cinfo)
 {
@@ -1305,13 +1387,13 @@ comment_options_parser(char *str, plpgsql_check_info *cinfo)
 			}
 
 			if (_token->value == PRAGMA_TOKEN_IDENTIF)
-				elog(NOTICE, "comment option \"echo\" is %s", make_string(_token));
+				elog(NOTICE, "comment option \"echo\" is %s", plpgsql_check_process_echo_string(make_string(_token), cinfo));
 			else if (_token->value == PRAGMA_TOKEN_QIDENTIF)
-				elog(NOTICE, "comment option \"echo\" is \"%s\"", make_string(_token));
+				elog(NOTICE, "comment option \"echo\" is \"%s\"", plpgsql_check_process_echo_string(make_string(_token), cinfo));
 			else if (_token->value == PRAGMA_TOKEN_NUMBER)
-				elog(NOTICE, "comment option \"echo\" is %s", make_string(_token));
+				elog(NOTICE, "comment option \"echo\" is %s", plpgsql_check_process_echo_string(make_string(_token), cinfo));
 			else if (_token->value == PRAGMA_TOKEN_STRING)
-				elog(NOTICE, "comment option \"echo\" is '%s'", make_string(_token));
+				elog(NOTICE, "comment option \"echo\" is '%s'", plpgsql_check_process_echo_string(make_string(_token), cinfo));
 			else
 				elog(NOTICE, "comment option \"echo\" is '%c'", _token->value);
 		}
@@ -1330,30 +1412,6 @@ comment_options_parser(char *str, plpgsql_check_info *cinfo)
 	while (_token);
 }
 
-#ifdef _MSC_VER
-
-static void *
-memmem(const void *haystack, size_t haystack_len,
-	   const void * const needle, const size_t needle_len)
-{
-	if (haystack == NULL) return NULL; // or assert(haystack != NULL);
-	if (haystack_len == 0) return NULL;
-	if (needle == NULL) return NULL; // or assert(needle != NULL);
-	if (needle_len == 0) return NULL;
-
-	for (const char *h = haystack;
-		 haystack_len >= needle_len;
-		 ++h, --haystack_len)
-	{
-		if (!memcmp(h, needle, needle_len))
-		{
-			return h;
-		}
-	}
-	return NULL;
-}
-
-#endif
 
 static void
 comment_options_parsecontent(char *str, size_t bytes, plpgsql_check_info *cinfo)

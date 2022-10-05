@@ -44,10 +44,9 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 	while (*pragma_str == ' ')
 		pragma_str++;
 
-
 	if (strncasecmp(pragma_str, "ECHO:", 5) == 0)
 	{
-		elog(NOTICE, "%s", pragma_str + 5);
+		elog(NOTICE, "%s", plpgsql_check_process_echo_string(pragma_str + 5, cstate->cinfo));
 	}
 	else if (strncasecmp(pragma_str, "STATUS:", 7) == 0)
 	{

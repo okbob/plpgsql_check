@@ -765,7 +765,7 @@ Shorter syntax for pragma is supported too:
 
 ## Supported pragmas
 
-* `echo:str` - print string (for testing)
+* `echo:str` - print string (for testing). Inside string, there can be used "variables": @@id, @@name, @@signature
 
 * `status:check`,`status:tracer`, `status:other_warnings`, `status:performance_warnings`, `status:extra_warnings`,`status:security_warnings`
   This outputs the current value (e.g. other_warnings enabled)

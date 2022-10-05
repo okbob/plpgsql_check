@@ -319,6 +319,7 @@ extern Oid plpgsql_check_parse_name_or_signature(char *name_or_signature);
 extern bool plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate, const char *str, PLpgSQL_nsitem *ns, int lineno);
 extern bool plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int lineno);
 extern void plpgsql_check_search_comment_options(plpgsql_check_info *cinfo);
+extern char *plpgsql_check_process_echo_string(char *str, plpgsql_check_info *cinfo);
 
 /*
  * functions from profiler.c
