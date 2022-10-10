@@ -73,6 +73,17 @@ detect_dependency_walker(Node *node, void *context)
 			}
 		}
 
+#if PG_VERSION_NUM >= 110000
+
+		if (query->utilityStmt && IsA(query->utilityStmt, CallStmt))
+		{
+			CallStmt *callstmt = (CallStmt *) query->utilityStmt;
+
+			detect_dependency_walker((Node *) callstmt->funcexpr, context);
+		}
+
+#endif
+
 		return query_tree_walker((Query *) node,
 								 detect_dependency_walker,
 								 context, 0);
@@ -90,6 +101,12 @@ detect_dependency_walker(Node *node, void *context)
 				ListCell		   *lc;
 				int		i = 0;
 
+#if PG_VERSION_NUM >= 110000
+
+				char		prokind = get_func_prokind(fexpr->funcid);
+
+#endif
+
 				initStringInfo(&str);
 				appendStringInfoChar(&str, '(');
 				foreach(lc, fexpr->args)
@@ -103,12 +120,25 @@ detect_dependency_walker(Node *node, void *context)
 				}
 				appendStringInfoChar(&str, ')');
 
+#if PG_VERSION_NUM >= 110000
+
+				plpgsql_check_put_dependency(ri,
+											  prokind == PROKIND_PROCEDURE ? "PROCEDURE" : "FUNCTION",
+											  fexpr->funcid,
+											  get_namespace_name(get_func_namespace(fexpr->funcid)),
+											  get_func_name(fexpr->funcid),
+											  str.data);
+
+#else
+
 				plpgsql_check_put_dependency(ri,
 											  "FUNCTION",
 											  fexpr->funcid,
 											  get_namespace_name(get_func_namespace(fexpr->funcid)),
 											  get_func_name(fexpr->funcid),
 											  str.data);
+
+#endif
 
 				pfree(str.data);
 

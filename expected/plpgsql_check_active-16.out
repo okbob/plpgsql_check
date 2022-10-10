@@ -630,3 +630,32 @@ select * from plpgsql_check_function('test_procedure', performance_warnings=>tru
 
 drop function test_function();
 drop procedure test_procedure();
+-- detect dependecy in CALL statement
+create or replace function fx1_dep(int)
+returns int as $$
+begin
+  return $1;
+end;
+$$ language plpgsql;
+create or replace procedure px1_dep(int)
+as $$
+begin
+end;
+$$ language plpgsql;
+create or replace function test_function()
+returns void as $$
+begin
+  call px1_dep(fx1_dep(10));
+end;
+$$ language plpgsql;
+select type, schema, name, params from plpgsql_show_dependency_tb('test_function');
+   type    | schema |  name   |  params   
+-----------+--------+---------+-----------
+ FUNCTION  | public | fx1_dep | (integer)
+ PROCEDURE | public | px1_dep | (integer)
+(2 rows)
+
+drop function test_function();
+drop procedure px1_dep();
+ERROR:  procedure px1_dep() does not exist
+drop function fx1_dep(int);
