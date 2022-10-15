@@ -632,7 +632,7 @@ specified by `plpgsql_check.tracer_variable_max_length` configuration variable.
 
 First, the usage of tracer should be explicitly enabled by superuser by setting `set plpgsql_check.enable_tracer to on;`
 or `plpgsql_check.enable_tracer to on` in `postgresql.conf`. This is a security safeguard. The tracer shows content of
-plpgsql's variables, and then some security sensitive information can be displayed to unprivileged user (when he run
+plpgsql's variables, and then some security sensitive information can be displayed to an unprivileged user (when he runs
 security definer function). Second, the extension `plpgsql_check` should be loaded. It can be done by execution of some
 `plpgsql_check` function or explicitly by command `load 'plpgsql_check';`. You can use configuration's option
 `shared_preload_libraries`, `local_preload_libraries` or `session_preload_libraries`.
