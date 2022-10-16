@@ -3412,7 +3412,8 @@ plpgsql_check_needs_fmgr_hook(Oid fn_oid)
 		(*plpgsql_check_next_needs_fmgr_hook)(fn_oid))
 		return true;
 
-	if (!plpgsql_check_profiler)
+	if (!plpgsql_check_profiler &&
+		!plpgsql_check_tracer)
 		return false;
 
 	return plpgsql_check_is_plpgsql_function(fn_oid);
