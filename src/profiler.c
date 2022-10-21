@@ -3292,7 +3292,11 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 		Assert(pinfo->pi_magic == PI_MAGIC);
 
-		if (pstmt->queryid == NOQUERYID && estate)
+		/*
+		 * We can get query id only if stmt_end is not executed
+		 * in cleaning mode, because we need to execute expression
+		 */
+		if (pstmt->queryid == NOQUERYID && !cleaning_mode)
 			pstmt->queryid = profiler_get_queryid(estate, stmt,
 												  &pstmt->has_queryid,
 												  &pstmt->qparams);
