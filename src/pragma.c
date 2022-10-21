@@ -32,6 +32,63 @@ plpgsql_check_pragma_vector plpgsql_check_runtime_pragma_vector;
 
 bool plpgsql_check_runtime_pragma_vector_changed = false;
 
+static void
+runtime_pragma_apply(plpgsql_check_pragma_vector *pv,
+					 char *pragma_str)
+{
+	while (*pragma_str == ' ')
+		pragma_str++;
+
+	if (strncasecmp(pragma_str, "STATUS:", 7) == 0)
+	{
+		pragma_str += 7;
+
+		while (*pragma_str == ' ')
+			pragma_str++;
+
+		if (strcasecmp(pragma_str, "TRACER") == 0)
+			elog(NOTICE, "tracer is %s",
+					pv->disable_tracer ? "disabled" : "enabled");
+	}
+	else if (strncasecmp(pragma_str, "ENABLE:", 7) == 0)
+	{
+		pragma_str += 7;
+
+		while (*pragma_str == ' ')
+			pragma_str++;
+
+		if (strcasecmp(pragma_str, "TRACER") == 0)
+		{
+			pv->disable_tracer = false;
+
+#if PG_VERSION_NUM < 120000
+
+			elog(WARNING, "pragma ENABLE:TRACER is ignored on PostgreSQL 11 and older");
+
+#endif
+
+		}
+	}
+	else if (strncasecmp(pragma_str, "DISABLE:", 8) == 0)
+	{
+		pragma_str += 8;
+
+		while (*pragma_str == ' ')
+			pragma_str++;
+
+		if (strcasecmp(pragma_str, "TRACER") == 0)
+		{
+			pv->disable_tracer = true;
+
+#if PG_VERSION_NUM < 120000
+
+			elog(WARNING, "pragma DISABLE:TRACER is ignored on PostgreSQL 11 and older");
+
+#endif
+		}
+	}
+}
+
 static bool
 pragma_apply(PLpgSQL_checkstate *cstate,
 			 plpgsql_check_pragma_vector *pv,
@@ -40,6 +97,8 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 			 int lineno)
 {
 	bool	is_valid = true;
+
+	Assert(cstate);
 
 	while (*pragma_str == ' ')
 		pragma_str++;
@@ -192,7 +251,7 @@ plpgsql_check_pragma(PG_FUNCTION_ARGS)
 
 		pragma_str = TextDatumGetCString(value);
 
-		pragma_apply(NULL, &plpgsql_check_runtime_pragma_vector, pragma_str, NULL, -1);
+		runtime_pragma_apply(&plpgsql_check_runtime_pragma_vector, pragma_str);
 
 		plpgsql_check_runtime_pragma_vector_changed = true;
 
