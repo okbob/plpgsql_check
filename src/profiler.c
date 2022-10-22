@@ -3178,8 +3178,6 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		Assert(top_pinfo && top_pinfo->pinfo);
 
 		pinfo = top_pinfo->pinfo;
-
-
 		estate = pinfo->estate;
 
 		is_error_stmt = top_pinfo->err_stmt == stmt;
