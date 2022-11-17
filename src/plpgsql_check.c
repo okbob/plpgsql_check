@@ -332,7 +332,7 @@ _PG_init(void)
 		 */
 #if PG_VERSION_NUM >= 150000
 
-		prev_shmem_startup_hook = shmem_startup_hook;
+		prev_shmem_request_hook = shmem_request_hook;
 		shmem_request_hook = plpgsql_check_profiler_shmem_request;
 
 #endif
