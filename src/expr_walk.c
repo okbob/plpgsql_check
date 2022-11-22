@@ -1058,11 +1058,15 @@ contain_mutable_functions_walker(Node *node, void *context)
 								context))
 		return true;
 
+#if PG_VERSION_NUM < 160000
+
 	if (IsA(node, SQLValueFunction))
 	{
 		/* all variants of SQLValueFunction are stable */
 		return true;
 	}
+
+#endif
 
 	if (IsA(node, NextValueExpr))
 	{

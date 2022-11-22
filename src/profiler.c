@@ -300,7 +300,7 @@ static MemoryContext profiler_queryid_mcxt = NULL;
 static profiler_stack *top_pinfo = NULL;
 static ExprContext *curr_eval_econtext = NULL;
 
-bool plpgsql_check_profiler = true;
+bool plpgsql_check_profiler = false;
 
 needs_fmgr_hook_type	plpgsql_check_next_needs_fmgr_hook = NULL;
 fmgr_hook_type			plpgsql_check_next_fmgr_hook = NULL;
