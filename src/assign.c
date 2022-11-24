@@ -341,10 +341,11 @@ plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 	(void) target_typmod;
 
 	/* the overhead UNKONWNOID --> TEXT is low */
-	if (target_typoid == TEXTOID && value_typoid == UNKNOWNOID)
+	if ((target_typoid == value_typoid) ||
+		(target_typoid == TEXTOID && value_typoid == UNKNOWNOID))
 		return;
 
-	if (type_is_rowtype(value_typoid))
+	if (type_is_rowtype(value_typoid) && !type_is_rowtype(target_typoid))
 	{
 		StringInfoData	str;
 

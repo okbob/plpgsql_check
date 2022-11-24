@@ -4828,4 +4828,33 @@ drop function test_function33();
 
 drop type testtype;
 
-set plpgsql_check.mode = 'disabled';
+
+-- should not to raise false alarm
+create type c1 as (
+  a text
+);
+
+create table t1 (
+  a c1,
+  b c1
+);
+
+insert into t1 (values ('(abc)', '(def)'));
+alter table t1 drop column a;
+
+create or replace function test_function()
+returns t1 as $$
+declare myrow t1%rowtype;
+begin
+  select * into myrow from t1 limit 1;
+  return myrow;
+end;
+$$ language plpgsql;
+
+select * from test_function();
+select * from plpgsql_check_function('public.test_function()');
+
+drop function test_function();
+
+drop table t1;
+drop type c1;
