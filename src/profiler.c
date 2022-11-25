@@ -2020,6 +2020,9 @@ profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic, List **params)
 		case PLPGSQL_STMT_FORC:
 			expr = ((PLpgSQL_stmt_forc *) stmt)->argquery;
 			break;
+		case PLPGSQL_STMT_FORS:
+			expr = ((PLpgSQL_stmt_fors *) stmt)->query;
+			break;
 		case PLPGSQL_STMT_DYNFORS:
 			expr = ((PLpgSQL_stmt_dynfors *) stmt)->query;
 			*params = ((PLpgSQL_stmt_dynfors *) stmt)->params;
@@ -2082,7 +2085,6 @@ profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic, List **params)
 					expr = o->argquery;
 			}
 		case PLPGSQL_STMT_BLOCK:
-		case PLPGSQL_STMT_FORS:
 
 #if PG_VERSION_NUM >= 110000
 
