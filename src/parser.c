@@ -71,7 +71,7 @@ memmem(const void *haystack, size_t haystack_len,
 	{
 		if (!memcmp(h, needle, needle_len))
 		{
-			return h;
+			return (void *) h;
 		}
 	}
 	return NULL;
@@ -181,7 +181,7 @@ parse_name_or_signature(char *qualname, bool *is_signature)
 		else if (is_ident_start((unsigned char) *nextp))
 		{
 			char	   *downname;
-			int			len;
+			size_t		len;
 
 			curname = nextp++;
 			while (is_ident_cont((unsigned char) *nextp))
@@ -195,7 +195,7 @@ parse_name_or_signature(char *qualname, bool *is_signature)
 			 * being too long. It's easy enough for the user to get the
 			 * truncated names by casting our output to name[].
 			 */
-			downname = downcase_truncate_identifier(curname, len, false);
+			downname = downcase_truncate_identifier(curname, (int) len, false);
 			result = lappend(result, makeString(downname));
 			missing_ident = false;
 		}
@@ -464,7 +464,7 @@ make_ident(PragmaTokenType *token)
 	if (token->value == PRAGMA_TOKEN_IDENTIF)
 	{
 		return downcase_truncate_identifier(token->substr,
-											token->size,
+											(int) token->size,
 											false);
 	}
 	else if (token->value == PRAGMA_TOKEN_QIDENTIF)
@@ -472,7 +472,7 @@ make_ident(PragmaTokenType *token)
 		char	   *result = palloc(token->size);
 		const char *ptr = token->substr + 1;
 		char	   *write_ptr;
-		int			n = token->size - 2;
+		size_t		n = token->size - 2;
 
 		write_ptr = result;
 
@@ -488,7 +488,7 @@ make_ident(PragmaTokenType *token)
 
 		*write_ptr = '\0';
 
-		truncate_identifier(result, write_ptr - result, false);
+		truncate_identifier(result, (int) (write_ptr - result), false);
 
 		return result;
 	}
@@ -497,7 +497,7 @@ make_ident(PragmaTokenType *token)
 		char	   *str = make_string(token);
 
 		/* does same conversion like varchar->name */
-		truncate_identifier(str, strlen(str), false);
+		truncate_identifier(str, (int) strlen(str), false);
 
 		return str;
 	}
@@ -518,7 +518,7 @@ make_string(PragmaTokenType *token)
 		char	   *result = palloc(token->size);
 		const char *ptr = token->substr + 1;
 		char	   *write_ptr;
-		int			n = token->size - 2;
+		size_t		n = token->size - 2;
 
 		write_ptr = result;
 
@@ -583,12 +583,12 @@ get_qualified_identifier(TokenizerState *state, List *result)
  * if parsed identifier is valid.
  */
 static void
-parse_qualified_identifier(TokenizerState *state, const char **startptr, int *size)
+parse_qualified_identifier(TokenizerState *state, const char **startptr, size_t *size)
 {
 	PragmaTokenType	token, *_token;
 	bool		read_atleast_one = false;
 	const char	   *_startptr = *startptr;
-	int			_size = *size;
+	size_t			_size = *size;
 
 	while (1)
 	{
@@ -636,7 +636,7 @@ get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool
 {
 	PragmaTokenType	token, *_token;
 	const char	   *typename_start = NULL;
-	int			typename_length = 0;
+	size_t			typename_length = 0;
 	const char *typestr;
 	TypeName   *typeName = NULL;
 	Oid			typtype;
@@ -1116,6 +1116,10 @@ get_boolean_comment_option(TokenizerState *tstate, const char *name, plpgsql_che
 	else
 		elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected boolean value)",
 			 name, cinfo->fn_oid);
+
+	/* fix warning C4715 on msvc */
+	Assert(0);
+	return false;
 }
 
 static char *
@@ -1145,6 +1149,10 @@ get_name_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_
 	else
 		elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected SQL identifier as argument)",
 			 name, cinfo->fn_oid);
+
+	/* fix warning C4715 on msvc */
+	Assert(0);
+	return NULL;
 }
 
 static Oid
@@ -1169,7 +1177,7 @@ get_type_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_
 		_token->value == PRAGMA_TOKEN_QIDENTIF)
 	{
 		const char *typname_start = NULL;
-		int			typname_length;
+		size_t		typname_length;
 		char	   *typestr;
 		Oid			typid;
 		int32		typmod;
@@ -1186,6 +1194,10 @@ get_type_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_
 	else
 		elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected type identifier)",
 			 name, cinfo->fn_oid);
+
+	/* fix warning C4715 on msvc */
+	Assert(0);
+	return InvalidOid;
 }
 
 static Oid
@@ -1211,7 +1223,7 @@ get_table_comment_option(TokenizerState *tstate, const char *name, plpgsql_check
 	{
 		List	   *names;
 		const char *tablename_start = NULL;
-		int			tablename_length;
+		size_t		tablename_length;
 		char	   *tablenamestr;
 		Oid			result;
 
@@ -1230,6 +1242,10 @@ get_table_comment_option(TokenizerState *tstate, const char *name, plpgsql_check
 	else
 		elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected table identifier)",
 			 name, cinfo->fn_oid);
+
+	/* fix warning C4715 on msvc */
+	Assert(0);
+	return InvalidOid;
 }
 
 static bool
@@ -1581,7 +1597,7 @@ plpgsql_check_search_comment_options(plpgsql_check_info *cinfo)
 
 			if (is_custom_string)
 			{
-				int			cust_str_length = 0;
+				size_t			cust_str_length = 0;
 
 				cust_str_length = src - start + 1;
 
@@ -1591,7 +1607,7 @@ next_char:
 
 				while (*src)
 				{
-					int		i;
+					size_t		i;
 
 					for (i = 0; i < cust_str_length; i++)
 					{
