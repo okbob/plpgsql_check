@@ -1318,6 +1318,9 @@ load_configuration(HeapTuple procTuple, bool *reload_config)
 			new_nest_level = NewGUCNestLevel();
 			*reload_config = true;
 			ProcessGUCArray(set_items,
+#if PG_VERSION_NUM >= 160000
+							NULL,
+#endif
 							(superuser() ? PGC_SUSET : PGC_USERSET),
 							PGC_S_SESSION,
 							GUC_ACTION_SAVE);
