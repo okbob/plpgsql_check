@@ -811,7 +811,18 @@ get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool
 	}
 
 	typestr = pnstrdup(typename_start, typename_length);
+
+
+#if PG_VERSION_NUM >= 160000
+
+	typeName = typeStringToTypeName(typestr, NULL);
+
+#else
+
 	typeName = typeStringToTypeName(typestr);
+
+#endif
+
 	typenameTypeIdAndMod(NULL, typeName, &typtype, typmod);
 
 	return typtype;
@@ -1232,7 +1243,16 @@ get_table_comment_option(TokenizerState *tstate, const char *name, plpgsql_check
 		parse_qualified_identifier(tstate, &tablename_start, &tablename_length);
 
 		tablenamestr = pnstrdup(tablename_start, tablename_length);
+
+#if PG_VERSION_NUM >= 160000
+
+		names = stringToQualifiedNameList(tablenamestr, NULL);
+
+#else
+
 		names = stringToQualifiedNameList(tablenamestr);
+
+#endif
 
 		/* We might not even have permissions on this relation; don't lock it. */
 		result = RangeVarGetRelid(makeRangeVarFromNameList(names), NoLock, false);
