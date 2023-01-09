@@ -849,9 +849,9 @@ Shorter syntax for pragma is supported too:
 
 Pragmas `enable:tracer` and `disable:tracer`are active for Postgres 12 and higher
 
-# Upgrade
+# Update
 
-plpgsql_check doesn't support upgrade (of plpgsql_check). Before upgrade you should to
+plpgsql_check doesn't support update (of plpgsql_check). Before upgrade you should to
 drop this extension.
 
 # Compilation
