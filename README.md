@@ -851,8 +851,8 @@ Pragmas `enable:tracer` and `disable:tracer`are active for Postgres 12 and highe
 
 # Update
 
-plpgsql_check doesn't support update (of plpgsql_check). Before upgrade you should to
-drop this extension.
+plpgsql_check doesn't support update (of plpgsql_check). You should to drop this
+before install new version of this extension.
 
 # Compilation
 
