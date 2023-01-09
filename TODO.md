@@ -1,1 +1,0 @@
-- possible warning of unusual usage of cursor variable (assigning, reading value)
