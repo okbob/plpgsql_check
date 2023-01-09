@@ -8322,3 +8322,67 @@ select * from plpgsql_check_function('public.test_function()');
 drop function test_function();
 drop table t1;
 drop type c1;
+-- compatibility warnings
+create or replace function foo01()
+returns refcursor as $$
+declare
+  c cursor for select 1;
+  r refcursor;
+begin
+  open c;
+  r := c;
+  return r;
+end;
+$$ language plpgsql;
+-- no warnings
+select * from plpgsql_check_function('foo01', compatibility_warnings => true);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function foo01()
+returns refcursor as $$
+declare
+  c cursor for select 1;
+  r refcursor;
+begin
+  open c;
+  r := 'c';
+  return r;
+end;
+$$ language plpgsql;
+-- warning
+select * from plpgsql_check_function('foo01', extra_warnings => false, compatibility_warnings => true);
+                                plpgsql_check_function                                
+--------------------------------------------------------------------------------------
+ compatibility:00000:7:assignment:obsolete setting of refcursor or cursor variable
+ Detail: Internal name of cursor should not be specified by users.
+ Context: at assignment to variable "r" declared on line 4
+ warning:42804:7:assignment:target type is different type than source type
+ Detail: cast "text" value to "refcursor" type
+ Hint: The input expression type does not have an assignment cast to the target type.
+ Context: at assignment to variable "r" declared on line 4
+(7 rows)
+
+create or replace function foo01()
+returns refcursor as $$
+declare
+  c cursor for select 1;
+  r refcursor;
+begin
+  open c;
+  r := c;
+  return 'c';
+end;
+$$ language plpgsql;
+-- warning
+select * from plpgsql_check_function('foo01', extra_warnings => false, compatibility_warnings => true);
+                                plpgsql_check_function                                
+--------------------------------------------------------------------------------------
+ compatibility:00000:8:RETURN:obsolete setting of refcursor or cursor variable
+ Detail: Internal name of cursor should not be specified by users.
+ warning:42804:8:RETURN:target type is different type than source type
+ Detail: cast "text" value to "refcursor" type
+ Hint: The input expression type does not have an assignment cast to the target type.
+(5 rows)
+
