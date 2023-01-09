@@ -895,6 +895,22 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 							default:
 								;		/* nope */
 						}
+
+						if (cstate->estate->func->fn_rettype == REFCURSOROID &&
+							cstate->cinfo->compatibility_warnings)
+						{
+							if (!(retvar->dtype == PLPGSQL_DTYPE_VAR &&
+								((PLpgSQL_var *) retvar)->datatype->typoid == REFCURSOROID))
+							{
+								plpgsql_check_put_error(cstate,
+														0, 0,
+														"obsolete setting of refcursor or cursor variable",
+														"Internal name of cursor should not be specified by users.",
+														NULL,
+														PLPGSQL_CHECK_WARNING_COMPATIBILITY,
+														0, NULL, NULL);
+							}
+						}
 					}
 
 					if (stmt_rt->expr)

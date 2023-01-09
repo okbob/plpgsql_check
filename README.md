@@ -163,7 +163,7 @@ You can set level of warnings via function's parameters:
   vulnerability detection
 
 * `compatibility_warnings boolean DEFAULT false` - compatibility related checks like obsolete explicit
-  setting internal cursor names in refcursor's or cursor's variables
+  setting internal cursor names in refcursor's or cursor's variables.
 
 * `anyelementtype regtype DEFAULT 'int'` - an actual type to be used when testing the anyelement type
 
