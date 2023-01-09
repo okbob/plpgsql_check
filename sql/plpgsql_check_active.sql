@@ -4858,3 +4858,50 @@ drop function test_function();
 
 drop table t1;
 drop type c1;
+
+-- compatibility warnings
+create or replace function foo01()
+returns refcursor as $$
+declare
+  c cursor for select 1;
+  r refcursor;
+begin
+  open c;
+  r := c;
+  return r;
+end;
+$$ language plpgsql;
+
+-- no warnings
+select * from plpgsql_check_function('foo01', extra_warnings => false, compatibility_warnings => true);
+
+create or replace function foo01()
+returns refcursor as $$
+declare
+  c cursor for select 1;
+  r refcursor;
+begin
+  open c;
+  r := 'c';
+  return r;
+end;
+$$ language plpgsql;
+
+-- warning
+select * from plpgsql_check_function('foo01', extra_warnings => false, compatibility_warnings => true);
+
+create or replace function foo01()
+returns refcursor as $$
+declare
+  c cursor for select 1;
+  r refcursor;
+begin
+  open c;
+  r := c;
+  return 'c';
+end;
+$$ language plpgsql;
+
+-- warning
+select * from plpgsql_check_function('foo01', extra_warnings => false, compatibility_warnings => true);
+
