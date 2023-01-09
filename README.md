@@ -333,6 +333,64 @@ You can enable passive mode by
 
     SELECT fx(10); -- run functions - function is checked before runtime starts it
 
+# Compatibility warnings
+
+## Assigning string to refcursor variable
+
+PostgreSQL cursor's and refcursor's variables are enhaced string variables that holds
+unique name of related portal (internal structure of Postgres that is used for cursor's
+implementation). Until PostgreSQL 16, the the portal had same name like name of cursor
+variable. PostgreSQL 16 and higher change this mechanism and by default related portal
+will be named by some unique name. It solves some issues with cursors in nested blocks
+or when cursor is used in recursive called function.
+
+With mentioned change, the refcursor's variable should to take value from another
+refcursor variable or from some cursor varible (when cursor is opened).
+
+    -- obsolete pattern
+    DECLARE
+      cur CURSOR FOR SELECT 1;
+      rcur refcursor;
+    BEGIN
+      rcur := 'cur';
+      OPEN cur;
+      ...
+
+    -- new pattern
+    DECLARE
+      cur CURSOR FOR SELECT 1;
+      rcur refcursor;
+    BEGIN
+      OPEN cur;
+      rcur := cur;
+      ...
+
+When `compatibility_warnings` flag is active, then `plpgsql_check` try to identify
+some fishy assigning to refcursor's variable or returning of refcursor's values:
+
+    CREATE OR REPLACE FUNCTION public.foo()
+     RETURNS refcursor
+    AS $$
+    declare
+       c cursor for select 1;
+       r refcursor;
+    begin
+      open c;
+      r := 'c';
+      return r;
+    end;
+    $$ LANGUAGE plpgsql;
+
+    select * from plpgsql_check_function('foo', extra_warnings =>false, compatibility_warnings => true);
+    ┌───────────────────────────────────────────────────────────────────────────────────┐
+    │                              plpgsql_check_function                               │
+    ╞═══════════════════════════════════════════════════════════════════════════════════╡
+    │ compatibility:00000:6:assignment:obsolete setting of refcursor or cursor variable │
+    │ Detail: Internal name of cursor should not be specified by users.                 │
+    │ Context: at assignment to variable "r" declared on line 3                         │
+    └───────────────────────────────────────────────────────────────────────────────────┘
+    (3 rows)
+
 # Limits
 
 <i>plpgsql_check</i> should find almost all errors on really static code. When developers use
