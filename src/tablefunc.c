@@ -69,6 +69,7 @@ plpgsql_check_set_all_warnings(plpgsql_check_info *cinfo)
 	cinfo->performance_warnings = true;
 	cinfo->extra_warnings = true;
 	cinfo->security_warnings = true;
+	cinfo->compatibility_warnings = true;
 }
 
 void
@@ -78,6 +79,7 @@ plpgsql_check_set_without_warnings(plpgsql_check_info *cinfo)
 	cinfo->performance_warnings = false;
 	cinfo->extra_warnings = false;
 	cinfo->security_warnings = false;
+	cinfo->compatibility_warnings = false;
 }
 
 /*
@@ -95,7 +97,7 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	ErrorContextCallback *prev_errorcontext;
 	int	format;
 
-	if (PG_NARGS() != 19)
+	if (PG_NARGS() != 20)
 		elog(ERROR, "unexpected number of parameters, you should to update extension");
 
 	/* check to see if caller supports us returning a tuplestore */
@@ -116,23 +118,25 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 		ERR_NULL_OPTION("extra_warnings");
 	if (PG_ARGISNULL(7))
 		ERR_NULL_OPTION("security_warnings");
-	if (PG_ARGISNULL(10))
-		ERR_NULL_OPTION("anyelementtype");
+	if (PG_ARGISNULL(8))
+		ERR_NULL_OPTION("compatibility_warnings");
 	if (PG_ARGISNULL(11))
-		ERR_NULL_OPTION("anyenumtype");
+		ERR_NULL_OPTION("anyelementtype");
 	if (PG_ARGISNULL(12))
-		ERR_NULL_OPTION("anyrangetype");
+		ERR_NULL_OPTION("anyenumtype");
 	if (PG_ARGISNULL(13))
-		ERR_NULL_OPTION("anycompatibletype");
+		ERR_NULL_OPTION("anyrangetype");
 	if (PG_ARGISNULL(14))
-		ERR_NULL_OPTION("anycompatiblerangetype");
+		ERR_NULL_OPTION("anycompatibletype");
 	if (PG_ARGISNULL(15))
-		ERR_NULL_OPTION("without_warnings");
+		ERR_NULL_OPTION("anycompatiblerangetype");
 	if (PG_ARGISNULL(16))
-		ERR_NULL_OPTION("all_warnings");
+		ERR_NULL_OPTION("without_warnings");
 	if (PG_ARGISNULL(17))
-		ERR_NULL_OPTION("use_incomment_options");
+		ERR_NULL_OPTION("all_warnings");
 	if (PG_ARGISNULL(18))
+		ERR_NULL_OPTION("use_incomment_options");
+	if (PG_ARGISNULL(19))
 		ERR_NULL_OPTION("incomment_options_usage_warning");
 
 	format = plpgsql_check_format_num(text_to_cstring(PG_GETARG_TEXT_PP(2)));
@@ -145,13 +149,14 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	cinfo.performance_warnings = PG_GETARG_BOOL(5);
 	cinfo.extra_warnings = PG_GETARG_BOOL(6);
 	cinfo.security_warnings = PG_GETARG_BOOL(7);
+	cinfo.compatibility_warnings = PG_GETARG_BOOL(8);
 
-	cinfo.incomment_options_usage_warning = PG_GETARG_BOOL(18);
+	cinfo.incomment_options_usage_warning = PG_GETARG_BOOL(19);
 
 	/* without_warnings */
-	if (PG_GETARG_BOOL(15))
+	if (PG_GETARG_BOOL(16))
 	{
-		if (PG_GETARG_BOOL(16))
+		if (PG_GETARG_BOOL(17))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("without_warnings and all_warnings cannot be true same time")));
@@ -159,9 +164,9 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 		plpgsql_check_set_without_warnings(&cinfo);
 	}
 	/* all warnings */
-	else if (PG_GETARG_BOOL(16))
+	else if (PG_GETARG_BOOL(17))
 	{
-		if (PG_GETARG_BOOL(15))
+		if (PG_GETARG_BOOL(16))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("without_warnings and all_warnings cannot be true same time")));
@@ -169,15 +174,15 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 		plpgsql_check_set_all_warnings(&cinfo);
 	}
 
-	if (PG_ARGISNULL(8))
+	if (PG_ARGISNULL(9))
 		cinfo.oldtable = NULL;
 	else
-		cinfo.oldtable = NameStr(*(PG_GETARG_NAME(8)));
+		cinfo.oldtable = NameStr(*(PG_GETARG_NAME(9)));
 
-	if (PG_ARGISNULL(9))
+	if (PG_ARGISNULL(10))
 		cinfo.newtable = NULL;
 	else
-		cinfo.newtable = NameStr(*(PG_GETARG_NAME(9)));
+		cinfo.newtable = NameStr(*(PG_GETARG_NAME(10)));
 
 	if ((cinfo.oldtable || cinfo.newtable) && !OidIsValid(cinfo.relid))
 		ereport(ERROR,
@@ -185,11 +190,11 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 				 errmsg("missing description of oldtable or newtable"),
 				 errhint("Parameter relid is a empty.")));
 
-	cinfo.anyelementoid = PG_GETARG_OID(10);
-	cinfo.anyenumoid = PG_GETARG_OID(11);
-	cinfo.anyrangeoid = PG_GETARG_OID(12);
-	cinfo.anycompatibleoid = PG_GETARG_OID(13);
-	cinfo.anycompatiblerangeoid = PG_GETARG_OID(14);
+	cinfo.anyelementoid = PG_GETARG_OID(11);
+	cinfo.anyenumoid = PG_GETARG_OID(12);
+	cinfo.anyrangeoid = PG_GETARG_OID(13);
+	cinfo.anycompatibleoid = PG_GETARG_OID(14);
+	cinfo.anycompatiblerangeoid = PG_GETARG_OID(15);
 
 	cinfo.proctuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(cinfo.fn_oid));
 	if (!HeapTupleIsValid(cinfo.proctuple))
@@ -198,7 +203,7 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	plpgsql_check_get_function_info(&cinfo);
 	plpgsql_check_precheck_conditions(&cinfo);
 
-	if (PG_GETARG_BOOL(17))
+	if (PG_GETARG_BOOL(18))
 		plpgsql_check_search_comment_options(&cinfo);
 
 	/* Envelope outer plpgsql function is not interesting */
@@ -232,7 +237,7 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	ReturnSetInfo *rsinfo;
 	ErrorContextCallback *prev_errorcontext;
 
-	if (PG_NARGS() != 18)
+	if (PG_NARGS() != 19)
 		elog(ERROR, "unexpected number of parameters, you should to update extension");
 
 	/* check to see if caller supports us returning a tuplestore */
@@ -251,23 +256,26 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 		ERR_NULL_OPTION("extra_warnings");
 	if (PG_ARGISNULL(6))
 		ERR_NULL_OPTION("security_warnings");
-	if (PG_ARGISNULL(9))
-		ERR_NULL_OPTION("anyelementtype");
+	if (PG_ARGISNULL(7))
+		ERR_NULL_OPTION("compatibility_warnings");
+
 	if (PG_ARGISNULL(10))
-		ERR_NULL_OPTION("anyenumtype");
+		ERR_NULL_OPTION("anyelementtype");
 	if (PG_ARGISNULL(11))
-		ERR_NULL_OPTION("anyrangetype");
+		ERR_NULL_OPTION("anyenumtype");
 	if (PG_ARGISNULL(12))
-		ERR_NULL_OPTION("anycompatibletype");
+		ERR_NULL_OPTION("anyrangetype");
 	if (PG_ARGISNULL(13))
-		ERR_NULL_OPTION("anycompatiblerangetype");
+		ERR_NULL_OPTION("anycompatibletype");
 	if (PG_ARGISNULL(14))
-		ERR_NULL_OPTION("without_warnings");
+		ERR_NULL_OPTION("anycompatiblerangetype");
 	if (PG_ARGISNULL(15))
-		ERR_NULL_OPTION("all_warnings");
+		ERR_NULL_OPTION("without_warnings");
 	if (PG_ARGISNULL(16))
-		ERR_NULL_OPTION("use_incomment_options");
+		ERR_NULL_OPTION("all_warnings");
 	if (PG_ARGISNULL(17))
+		ERR_NULL_OPTION("use_incomment_options");
+	if (PG_ARGISNULL(18))
 		ERR_NULL_OPTION("incomment_options_usage_warning");
 
 
@@ -279,13 +287,14 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	cinfo.performance_warnings = PG_GETARG_BOOL(4);
 	cinfo.extra_warnings = PG_GETARG_BOOL(5);
 	cinfo.security_warnings = PG_GETARG_BOOL(6);
+	cinfo.compatibility_warnings = PG_GETARG_BOOL(7);
 
-	cinfo.incomment_options_usage_warning = PG_GETARG_BOOL(17);
+	cinfo.incomment_options_usage_warning = PG_GETARG_BOOL(18);
 
 	/* without_warnings */
-	if (PG_GETARG_BOOL(14))
+	if (PG_GETARG_BOOL(15))
 	{
-		if (PG_GETARG_BOOL(15))
+		if (PG_GETARG_BOOL(16))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("without_warnings and all_warnings cannot be true same time")));
@@ -293,9 +302,9 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 		plpgsql_check_set_without_warnings(&cinfo);
 	}
 	/* all warnings */
-	else if (PG_GETARG_BOOL(15))
+	else if (PG_GETARG_BOOL(16))
 	{
-		if (PG_GETARG_BOOL(14))
+		if (PG_GETARG_BOOL(15))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("without_warnings and all_warnings cannot be true same time")));
@@ -303,21 +312,21 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 		plpgsql_check_set_all_warnings(&cinfo);
 	}
 
-	cinfo.anyelementoid = PG_GETARG_OID(9);
-	cinfo.anyenumoid = PG_GETARG_OID(10);
-	cinfo.anyrangeoid = PG_GETARG_OID(11);
-	cinfo.anycompatibleoid = PG_GETARG_OID(12);
-	cinfo.anycompatiblerangeoid = PG_GETARG_OID(13);
-
-	if (PG_ARGISNULL(7))
-		cinfo.oldtable = NULL;
-	else
-		cinfo.oldtable = NameStr(*(PG_GETARG_NAME(7)));
+	cinfo.anyelementoid = PG_GETARG_OID(10);
+	cinfo.anyenumoid = PG_GETARG_OID(11);
+	cinfo.anyrangeoid = PG_GETARG_OID(12);
+	cinfo.anycompatibleoid = PG_GETARG_OID(13);
+	cinfo.anycompatiblerangeoid = PG_GETARG_OID(14);
 
 	if (PG_ARGISNULL(8))
+		cinfo.oldtable = NULL;
+	else
+		cinfo.oldtable = NameStr(*(PG_GETARG_NAME(8)));
+
+	if (PG_ARGISNULL(9))
 		cinfo.newtable = NULL;
 	else
-		cinfo.newtable = NameStr(*(PG_GETARG_NAME(8)));
+		cinfo.newtable = NameStr(*(PG_GETARG_NAME(9)));
 
 	if ((cinfo.oldtable || cinfo.newtable) && !OidIsValid(cinfo.relid))
 		ereport(ERROR,
@@ -332,7 +341,7 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	plpgsql_check_get_function_info(&cinfo);
 	plpgsql_check_precheck_conditions(&cinfo);
 
-	if (PG_GETARG_BOOL(16))
+	if (PG_GETARG_BOOL(17))
 		plpgsql_check_search_comment_options(&cinfo);
 
 	/* Envelope outer plpgsql function is not interesting */
@@ -379,6 +388,7 @@ show_dependency_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	cinfo.other_warnings = false;
 	cinfo.performance_warnings = false;
 	cinfo.extra_warnings = false;
+	cinfo.compatibility_warnings = false;
 
 	cinfo.proctuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(cinfo.fn_oid));
 	if (!HeapTupleIsValid(cinfo.proctuple))

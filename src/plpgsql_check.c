@@ -212,6 +212,14 @@ _PG_init(void)
 					    PGC_USERSET, 0,
 					    NULL, NULL, NULL);
 
+	DefineCustomBoolVariable("plpgsql_check.compatibility_warnings",
+					    "when is true, then compatibility warnings are showed",
+					    NULL,
+					    &plpgsql_check_compatibility_warnings,
+					    false,
+					    PGC_USERSET, 0,
+					    NULL, NULL, NULL);
+
 	DefineCustomBoolVariable("plpgsql_check.fatal_errors",
 					    "when is true, then plpgsql check stops execution on detected error",
 					    NULL,

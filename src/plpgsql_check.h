@@ -25,7 +25,8 @@ enum
 	PLPGSQL_CHECK_WARNING_OTHERS,
 	PLPGSQL_CHECK_WARNING_EXTRA,					/* check shadowed variables */
 	PLPGSQL_CHECK_WARNING_PERFORMANCE,				/* invisible cast check */
-	PLPGSQL_CHECK_WARNING_SECURITY					/* sql injection check */
+	PLPGSQL_CHECK_WARNING_SECURITY,					/* sql injection check */
+	PLPGSQL_CHECK_WARNING_COMPATIBILITY				/* obsolete setting of cursor's or refcursor's variable */
 };
 
 enum
@@ -104,6 +105,7 @@ typedef struct plpgsql_check_info
 	bool		performance_warnings;
 	bool		extra_warnings;
 	bool		security_warnings;
+	bool		compatibility_warnings;
 	bool		show_profile;
 
 	bool		all_warnings;
@@ -123,6 +125,7 @@ typedef struct
 	unsigned int disable_performance_warnings : 1;
 	unsigned int disable_extra_warnings : 1;
 	unsigned int disable_security_warnings : 1;
+	unsigned int disable_compatibility_warnings : 1;
 } plpgsql_check_pragma_vector;
 
 typedef struct PLpgSQL_checkstate
@@ -238,6 +241,7 @@ extern void plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo, FmgrInfo *flin
 extern bool plpgsql_check_other_warnings;
 extern bool plpgsql_check_extra_warnings;
 extern bool plpgsql_check_performance_warnings;
+extern bool plpgsql_check_compatibility_warnings;
 extern bool plpgsql_check_fatal_errors;
 extern int plpgsql_check_mode;
 

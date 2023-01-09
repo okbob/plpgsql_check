@@ -131,7 +131,10 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 					pv->disable_extra_warnings ? "disabled" : "enabled");
 		else if (strcasecmp(pragma_str, "SECURITY_WARNINGS") == 0)
 			elog(NOTICE, "security_warnings is %s",
-					pv->disable_other_warnings ? "disabled" : "enabled");
+					pv->disable_security_warnings ? "disabled" : "enabled");
+		else if (strcasecmp(pragma_str, "COMPATIBILITY_WARNINGS") == 0)
+			elog(NOTICE, "compatibility_warnings is %s",
+					pv->disable_compatibility_warnings ? "disabled" : "enabled");
 		else
 		{
 			elog(WARNING, "unsuported pragma: %s", pragma_str);
@@ -166,6 +169,8 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 			pv->disable_extra_warnings = false;
 		else if (strcasecmp(pragma_str, "SECURITY_WARNINGS") == 0)
 			pv->disable_security_warnings = false;
+		else if (strcasecmp(pragma_str, "COMPATIBILITY_WARNINGS") == 0)
+			pv->disable_compatibility_warnings = false;
 		else
 		{
 			elog(WARNING, "unsuported pragma: %s", pragma_str);
@@ -199,6 +204,8 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 			pv->disable_extra_warnings = true;
 		else if (strcasecmp(pragma_str, "SECURITY_WARNINGS") == 0)
 			pv->disable_security_warnings = true;
+		else if (strcasecmp(pragma_str, "COMPATIBILITY_WARNINGS") == 0)
+			pv->disable_compatibility_warnings = true;
 		else
 			elog(WARNING, "unsuported pragma: %s", pragma_str);
 	}

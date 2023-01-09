@@ -33,6 +33,7 @@ static HTAB *plpgsql_check_HashTable = NULL;
 bool plpgsql_check_other_warnings = false;
 bool plpgsql_check_extra_warnings = false;
 bool plpgsql_check_performance_warnings = false;
+bool plpgsql_check_compatibility_warnings = false;
 bool plpgsql_check_fatal_errors = true;
 int plpgsql_check_mode = PLPGSQL_CHECK_MODE_BY_FUNCTION;
 
@@ -361,6 +362,7 @@ plpgsql_check_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 		cinfo.other_warnings = plpgsql_check_other_warnings,
 		cinfo.performance_warnings = plpgsql_check_performance_warnings,
 		cinfo.extra_warnings = plpgsql_check_extra_warnings,
+		cinfo.compatibility_warnings = plpgsql_check_compatibility_warnings;
 
 		ri.format = PLPGSQL_CHECK_FORMAT_ELOG;
 
@@ -1284,6 +1286,7 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->pragma_vector.disable_performance_warnings = false;
 	cstate->pragma_vector.disable_extra_warnings = false;
 	cstate->pragma_vector.disable_security_warnings = false;
+	cstate->pragma_vector.disable_compatibility_warnings = false;
 
 	/* try to find oid of plpgsql_check pragma function */
 	cstate->pragma_foid = plpgsql_check_pragma_func_oid();

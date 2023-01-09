@@ -1367,6 +1367,10 @@ comment_options_parser(char *str, plpgsql_check_info *cinfo)
 		{
 			cinfo->security_warnings = get_boolean_comment_option(&tstate, "security_warnings", cinfo);
 		}
+		else if (token_is_keyword(_token, "compatibility_warnings"))
+		{
+			cinfo->compatibility_warnings = get_boolean_comment_option(&tstate, "compatibility_warnings", cinfo);
+		}
 		else if (token_is_keyword(_token, "anyelementtype"))
 		{
 			cinfo->anyelementoid = get_type_comment_option(&tstate, "anyelementtype",cinfo);

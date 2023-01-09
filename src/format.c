@@ -295,13 +295,15 @@ plpgsql_check_put_error_internal(PLpgSQL_checkstate *cstate,
 	if ((level == PLPGSQL_CHECK_WARNING_PERFORMANCE && !cstate->cinfo->performance_warnings) ||
 				(level == PLPGSQL_CHECK_WARNING_OTHERS && !cstate->cinfo->other_warnings) ||
 				(level == PLPGSQL_CHECK_WARNING_EXTRA && !cstate->cinfo->extra_warnings) ||
-				(level == PLPGSQL_CHECK_WARNING_SECURITY && !cstate->cinfo->security_warnings))
+				(level == PLPGSQL_CHECK_WARNING_SECURITY && !cstate->cinfo->security_warnings) ||
+				(level == PLPGSQL_CHECK_WARNING_COMPATIBILITY && !cstate->cinfo->compatibility_warnings))
 		return;
 
 	if ((level == PLPGSQL_CHECK_WARNING_PERFORMANCE && cstate->pragma_vector.disable_performance_warnings) ||
 			(level == PLPGSQL_CHECK_WARNING_OTHERS && cstate->pragma_vector.disable_other_warnings) ||
 			(level == PLPGSQL_CHECK_WARNING_EXTRA && cstate->pragma_vector.disable_extra_warnings) ||
-			(level == PLPGSQL_CHECK_WARNING_SECURITY && cstate->pragma_vector.disable_security_warnings))
+			(level == PLPGSQL_CHECK_WARNING_SECURITY && cstate->pragma_vector.disable_security_warnings) ||
+			(level == PLPGSQL_CHECK_WARNING_COMPATIBILITY && cstate->pragma_vector.disable_compatibility_warnings))
 		return;
 
 	if (cstate->pragma_vector.disable_check)
@@ -458,6 +460,8 @@ error_level_str(int level)
 			return "performance";
 		case PLPGSQL_CHECK_WARNING_SECURITY:
 			return "security";
+		case PLPGSQL_CHECK_WARNING_COMPATIBILITY:
+			return "compatibility";
 		default:
 			return "???";
 	}
