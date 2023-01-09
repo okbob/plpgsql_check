@@ -1147,6 +1147,11 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 			if (var->dtype == PLPGSQL_DTYPE_VAR && var->datatype->typoid == REFCURSOROID)
 			{
 				Node *node = plpgsql_check_expr_get_node(cstate, expr, false);
+				bool		is_declare_cursor;
+
+				is_declare_cursor = cstate->estate->err_stmt &&
+									cstate->estate->err_stmt->cmd_type == PLPGSQL_STMT_BLOCK &&
+									var->cursor_explicit_expr;
 
 				if (IsA((Node *) node, Const))
 				{
@@ -1172,7 +1177,8 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 						is_ok = false;
 				}
 
-				if (!is_ok)
+				/* Don't raise warnings for old DECLARE CURSOR AS stmts */
+				if (!is_ok && !is_declare_cursor)
 					plpgsql_check_put_error(cstate,
 											0, 0,
 											"obsolete setting of refcursor or cursor variable",
