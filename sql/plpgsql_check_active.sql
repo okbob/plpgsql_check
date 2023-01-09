@@ -4873,7 +4873,7 @@ end;
 $$ language plpgsql;
 
 -- no warnings
-select * from plpgsql_check_function('foo01', extra_warnings => false, compatibility_warnings => true);
+select * from plpgsql_check_function('foo01', compatibility_warnings => true);
 
 create or replace function foo01()
 returns refcursor as $$

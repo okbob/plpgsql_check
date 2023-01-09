@@ -8336,7 +8336,7 @@ begin
 end;
 $$ language plpgsql;
 -- no warnings
-select * from plpgsql_check_function('foo01', extra_warnings => false, compatibility_warnings => true);
+select * from plpgsql_check_function('foo01', compatibility_warnings => true);
  plpgsql_check_function 
 ------------------------
 (0 rows)
