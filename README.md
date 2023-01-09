@@ -162,6 +162,9 @@ You can set level of warnings via function's parameters:
 * `security_warnings boolean DEFAULT false` - security related checks like SQL injection
   vulnerability detection
 
+* `compatibility_warnings boolean DEFAULT false` - compatibility related checks like obsolete explicit
+  setting internal cursor names in refcursor's or cursor's variables
+
 * `anyelementtype regtype DEFAULT 'int'` - an actual type to be used when testing the anyelement type
 
 * `anyenumtype regtype DEFAULT '-'` - an actual type to be used when testing the anyenum type
