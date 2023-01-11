@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	2.2.6
+Version:	2.3.0
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -49,6 +49,9 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/*.control
 
 %changelog
+* Wed Jan 11 2023 - Pavel Stehule <pavel.stehule@gmail.com> 2.3.0
+- possibility to detect compatibility issues (obsolete setting of refcursor)
+
 * Tue Sep 20 2022 - Pavel Stehule <pavel.stehule@gmail.com> 2.2.0
 - possibility to use in comment options
 
