@@ -659,3 +659,21 @@ drop function test_function();
 drop procedure px1_dep();
 ERROR:  procedure px1_dep() does not exist
 drop function fx1_dep(int);
+-- pragma sequence test
+create or replace function test_function()
+returns void as $$
+begin
+  perform plpgsql_check_pragma('sequence: xx');
+  perform nextval('pg_temp.xy');
+  perform nextval('pg_temp.xx');
+end
+$$ language plpgsql;
+select * from plpgsql_check_function('test_function');
+                   plpgsql_check_function                   
+------------------------------------------------------------
+ error:42P01:4:PERFORM:relation "pg_temp.xy" does not exist
+ Query: SELECT nextval('pg_temp.xy')
+ --                    ^
+(3 rows)
+
+drop function test_function();

@@ -849,6 +849,8 @@ Shorter syntax for pragma is supported too:
 
 * `table: name (column_name type, ...)` or `table: name (like tablename)` - create ephemeral temporary table (if you want to specify schema, then only `pg_temp` schema is allowed.
 
+* `sequence: name` - create ephemeral temporary sequence
+
 Pragmas `enable:tracer` and `disable:tracer`are active for Postgres 12 and higher
 
 # Update

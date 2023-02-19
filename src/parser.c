@@ -1091,6 +1091,103 @@ plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int line
 	return result;
 }
 
+/*
+ * An sequence can be temporary too, so there should be related PRAGMA
+ */
+bool
+plpgsql_check_pragma_sequence(PLpgSQL_checkstate *cstate, const char *str, int lineno)
+{
+	MemoryContext oldCxt;
+	ResourceOwner oldowner;
+	volatile bool result = true;
+
+	if (!cstate)
+		return true;
+
+	oldCxt = CurrentMemoryContext;
+
+	oldowner = CurrentResourceOwner;
+	BeginInternalSubTransaction(NULL);
+	MemoryContextSwitchTo(cstate->check_cxt);
+
+	PG_TRY();
+	{
+		TokenizerState tstate;
+		PragmaTokenType token, *_token;
+		PragmaTokenType token2, *_token2;
+		StringInfoData query;
+
+		initialize_tokenizer(&tstate, str);
+
+		_token = get_token(&tstate, &token);
+		if (!_token || (_token->value != PRAGMA_TOKEN_IDENTIF
+				&& _token->value != PRAGMA_TOKEN_QIDENTIF))
+			elog(ERROR, "Syntax error (expected identifier)");
+
+		_token2 = get_token(&tstate, &token2);
+
+		if (_token2 && _token2->value == '.')
+		{
+			char *nsname = make_ident(_token);
+
+			if (strcmp(nsname, "pg_temp") != 0)
+				elog(ERROR, "schema \"%s\" cannot be used in pragma \"sequence\" (only \"pg_temp\" schema is allowed)", nsname);
+
+			_token = get_token(&tstate, &token);
+			if (!_token || (_token->value != PRAGMA_TOKEN_IDENTIF
+					&& _token->value != PRAGMA_TOKEN_QIDENTIF))
+				elog(ERROR, "Syntax error (expected identifier)");
+
+			_token2 = get_token(&tstate, &token2);
+		}
+
+		if (!tokenizer_eol(&tstate))
+			elog(ERROR, "Syntax error (unexpected chars after sequence name)");
+
+		/* In this case we use parser just for syntax check and security check */
+		initStringInfo(&query);
+		appendStringInfoString(&query, "CREATE TEMP SEQUENCE ");
+		appendStringInfoString(&query, str);
+
+		if (SPI_execute(query.data, false, 0) != SPI_OK_UTILITY)
+			elog(NOTICE, "Cannot to create temporary sequence");
+
+		ReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldCxt);
+		CurrentResourceOwner = oldowner;
+
+		SPI_restore_connection();
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		MemoryContextSwitchTo(cstate->check_cxt);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		MemoryContextSwitchTo(oldCxt);
+		FlushErrorState();
+
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldCxt);
+		CurrentResourceOwner = oldowner;
+
+		/* reconnect spi */
+		SPI_restore_connection();
+
+		/* raise warning (errors in pragma can be ignored instead */
+		ereport(WARNING,
+				(errmsg("Pragma \"sequence\" on line %d is not processed.", lineno),
+				 errdetail("%s", edata->message)));
+
+		result = false;
+	}
+	PG_END_TRY();
+
+	return result;
+}
+
 static bool
 get_boolean_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_info *cinfo)
 {
