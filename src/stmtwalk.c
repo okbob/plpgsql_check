@@ -844,10 +844,16 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 							case PLPGSQL_DTYPE_VAR:
 								{
 									PLpgSQL_var *var = (PLpgSQL_var *) retvar;
+									Oid			rettype = cstate->estate->func->fn_rettype;
+
+									if (cstate->estate->retistuple)
+										ereport(ERROR,
+												(errcode(ERRCODE_DATATYPE_MISMATCH),
+												 errmsg("cannot return non-composite value from function returning composite type")));
 
 									plpgsql_check_assign_to_target_type(cstate,
-										 cstate->estate->func->fn_rettype, -1,
-										 var->datatype->typoid, false);
+																		rettype, -1,
+																		var->datatype->typoid, false);
 								}
 								break;
 

@@ -425,18 +425,3 @@ select type, schema, name, params from plpgsql_show_dependency_tb('test_function
 drop function test_function();
 drop procedure px1_dep();
 drop function fx1_dep(int);
-
--- pragma sequence test
-create or replace function test_function()
-returns void as $$
-begin
-  perform plpgsql_check_pragma('sequence: xx');
-  perform nextval('pg_temp.xy');
-  perform nextval('pg_temp.xx');
-end
-$$ language plpgsql;
-
-select * from plpgsql_check_function('test_function');
-
-drop function test_function();
-

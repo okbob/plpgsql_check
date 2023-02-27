@@ -4905,3 +4905,37 @@ $$ language plpgsql;
 -- warning
 select * from plpgsql_check_function('foo01', extra_warnings => false, compatibility_warnings => true);
 
+-- pragma sequence test
+create or replace function test_function()
+returns void as $$
+begin
+  perform plpgsql_check_pragma('sequence: xx');
+  perform nextval('pg_temp.xy');
+  perform nextval('pg_temp.xx');
+end
+$$ language plpgsql;
+
+select * from plpgsql_check_function('test_function');
+
+drop function test_function();
+
+create table t1(x int);
+
+create or replace function f1_trg()
+returns trigger as $$
+declare x int;
+begin
+  return x;
+end;
+$$ language plpgsql;
+
+create trigger t1_f1 before insert on t1
+  for each row
+  execute procedure f1_trg();
+
+-- raise error
+select * from plpgsql_check_function('f1_trg', 't1');
+
+drop trigger t1_f1 on t1;
+drop table t1;
+drop function f1_trg;
