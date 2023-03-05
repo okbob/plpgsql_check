@@ -10,12 +10,11 @@ the "CREATE PROCEDURE/FUNCTION" command.  You can control the levels of many war
 Finally, you can add PRAGAMA type markers to turn off/on many aspects allowing you to hide
 messages you already know about, or to remind you to come back for deeper cleaning later.
 
-I founded this project, because I wanted to publish the code I wrote for the last two years,
+I founded this project, because I wanted to publish the code I wrote for the  two years,
 when I tried to write enhanced checking for PostgreSQL upstream. It was not fully
-successful - integration into upstream requires some larger plpgsql refactoring - probably
-it will not be done for many years (now is Dec 2013). But the code is fully functional
-and can be used in production (and it is used in production). So, I created this extension to
-be available for all plpgsql developers.
+successful - integration into upstream requires some larger plpgsql refactoring.
+But the code is fully functional and can be used in production (and it is used in production).
+So, I created this extension to be available for all plpgsql developers.
 
 If if you want to join our group to help the further development of this extension, register
 yourself at that [postgresql extension hacking](https://groups.google.com/forum/#!forum/postgresql-extensions-hacking)
@@ -34,10 +33,7 @@ google group.
 
 I invite any ideas, patches, bugreports.
 
-plpgsql_check is next generation of plpgsql_lint. It allows to check source code by explicit call
-<i>plpgsql_check_function</i>.
-
-PostgreSQL PostgreSQL 10 - 15 are supported.
+PostgreSQL PostgreSQL 10 - 16 are supported.
 
 The SQL statements inside PL/pgSQL functions are checked by the validator for semantic errors. These errors
 can be found by calling the plpgsql_check_function:
