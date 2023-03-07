@@ -11,12 +11,17 @@
 
 #include "plpgsql_check.h"
 
+#if PG_VERSION_NUM <= 150000
+
 #include "access/genam.h"
+
 #include "access/htup_details.h"
 
 #if PG_VERSION_NUM >= 120000
 
 #include "access/table.h"
+
+#endif
 
 #endif
 
@@ -196,6 +201,8 @@ plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo)
 	pfree(funcname);
 }
 
+#if PG_VERSION_NUM <= 150000
+
 /*
  * plpgsql_check_get_extension_schema - given an extension OID, fetch its extnamespace
  *
@@ -255,6 +262,8 @@ get_extension_schema(Oid ext_oid)
 
 	return result;
 }
+
+#endif
 
 /*
  * Returns oid of pragma function. It is used for elimination
