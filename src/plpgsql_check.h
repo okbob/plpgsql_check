@@ -219,6 +219,8 @@ extern char *plpgsql_check_get_src(HeapTuple procTuple);
 extern Oid plpgsql_check_pragma_func_oid(void);
 extern bool plpgsql_check_is_plpgsql_function(Oid foid);
 extern Oid plpgsql_check_get_op_namespace(Oid opno);
+extern char *get_extension_version(Oid ext_oid);
+
 
 /*
  * functions from tablefunc.c
@@ -411,6 +413,8 @@ extern shmem_startup_hook_type prev_shmem_startup_hook;
 
 extern PLpgSQL_plugin **plpgsql_check_plugin_var_ptr;
 extern PLpgSQL_plugin *prev_plpgsql_plugin;
+
+extern void plpgsql_check_check_ext_version(Oid fn_oid);
 
 #if PG_VERSION_NUM > 110005
 

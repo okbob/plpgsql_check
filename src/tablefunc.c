@@ -97,8 +97,9 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	ErrorContextCallback *prev_errorcontext;
 	int	format;
 
-	if (PG_NARGS() != 20)
-		elog(ERROR, "unexpected number of parameters, you should to update extension");
+	plpgsql_check_check_ext_version(fcinfo->flinfo->fn_oid);
+
+	Assert(PG_NARGS() == 20);
 
 	/* check to see if caller supports us returning a tuplestore */
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
@@ -237,8 +238,9 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	ReturnSetInfo *rsinfo;
 	ErrorContextCallback *prev_errorcontext;
 
-	if (PG_NARGS() != 19)
-		elog(ERROR, "unexpected number of parameters, you should to update extension");
+	plpgsql_check_check_ext_version(fcinfo->flinfo->fn_oid);
+
+	Assert(PG_NARGS() == 19);
 
 	/* check to see if caller supports us returning a tuplestore */
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
@@ -374,8 +376,9 @@ show_dependency_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	plpgsql_check_result_info ri;
 	ReturnSetInfo *rsinfo;
 
-	if (PG_NARGS() != 2)
-		elog(ERROR, "unexpected number of parameters, you should to update extension");
+	plpgsql_check_check_ext_version(fcinfo->flinfo->fn_oid);
+
+	Assert(PG_NARGS() == 2);
 
 	/* check to see if caller supports us returning a tuplestore */
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
@@ -419,8 +422,9 @@ profiler_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	plpgsql_check_result_info ri;
 	ReturnSetInfo *rsinfo;
 
-	if (PG_NARGS() != 1)
-		elog(ERROR, "unexpected number of parameters, you should to update extension");
+	plpgsql_check_check_ext_version(fcinfo->flinfo->fn_oid);
+
+	Assert(PG_NARGS() == 1);
 
 	/* check to see if caller supports us returning a tuplestore */
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
@@ -461,8 +465,9 @@ profiler_function_statements_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	plpgsql_check_result_info ri;
 	ReturnSetInfo *rsinfo;
 
-	if (PG_NARGS() != 1)
-		elog(ERROR, "unexpected number of parameters, you should to update extension");
+	plpgsql_check_check_ext_version(fcinfo->flinfo->fn_oid);
+
+	Assert(PG_NARGS() == 1);
 
 	/* check to see if caller supports us returning a tuplestore */
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;

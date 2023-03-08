@@ -26,6 +26,10 @@
 #include "plpgsql_check.h"
 #include "plpgsql_check_builtins.h"
 
+#include "catalog/dependency.h"
+#include "catalog/pg_proc.h"
+#include "commands/extension.h"
+
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
 #include "utils/guc.h"
@@ -114,12 +118,44 @@ plpgsql_check__exec_get_datum_type_t plpgsql_check__exec_get_datum_type_p;
 plpgsql_check__recognize_err_condition_t plpgsql_check__recognize_err_condition_p;
 plpgsql_check__ns_lookup_t plpgsql_check__ns_lookup_p;
 
+static bool is_expected_extversion = false;
+
 
 /*
  * load_external_function retursn PGFunctions - we need generic function, so
  * it is not 100% correct, but in used context it is not a problem.
  */
 #define LOAD_EXTERNAL_FUNCTION(file, funcname)	((void *) (load_external_function(file, funcname, true, NULL)))
+
+#define EXPECTED_EXTVERSION		"2.3"
+
+void
+plpgsql_check_check_ext_version(Oid fn_oid)
+{
+	if (!is_expected_extversion)
+	{
+		Oid			extoid;
+		char	   *extver;
+
+		extoid = getExtensionOfObject(ProcedureRelationId, fn_oid);
+		extver = get_extension_version(extoid);
+
+		if (strcmp(EXPECTED_EXTVERSION, extver) != 0)
+		{
+			char	   *extname = get_extension_name(extoid);
+
+			ereport(ERROR,
+					(errmsg("extension \"%s\" is not updated in system catalog", extname),
+					 errdetail("version \"%s\" is required, version \"%s\" is installed", EXPECTED_EXTVERSION, extver),
+					 errhint("execute \"ALTER EXTENSION %s UPDATE TO '%s'\"", extname, EXPECTED_EXTVERSION)));
+		}
+		else
+		{
+			pfree(extver);
+			is_expected_extversion = true;
+		}
+	}
+}
 
 /*
  * Module initialization
