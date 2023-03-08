@@ -36,6 +36,8 @@
 #include "utils/syscache.h"
 #include "utils/regproc.h"
 
+#include "utils/rel.h"
+
 #if PG_VERSION_NUM >= 110000
 
 #include "catalog/pg_proc.h"
@@ -197,7 +199,7 @@ plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo)
 	pfree(funcname);
 }
 
-#if PG_VERSION_NUM <= 150000
+#if PG_VERSION_NUM < 160000
 
 /*
  * plpgsql_check_get_extension_schema - given an extension OID, fetch its extnamespace
@@ -275,12 +277,25 @@ get_extension_version(Oid ext_oid)
 	HeapTuple	tuple;
 	ScanKeyData entry[1];
 
+#if PG_VERSION_NUM >= 120000
+
 	rel = table_open(ExtensionRelationId, AccessShareLock);
 
 	ScanKeyInit(&entry[0],
 				Anum_pg_extension_oid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(ext_oid));
+
+#else
+
+	rel = heap_open(ExtensionRelationId, AccessShareLock);
+
+	ScanKeyInit(&entry[0],
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(ext_oid));
+
+#endif
 
 	scandesc = systable_beginscan(rel, ExtensionOidIndexId, true,
 								  NULL, 1, entry);
@@ -304,7 +319,15 @@ get_extension_version(Oid ext_oid)
 
 	systable_endscan(scandesc);
 
+#if PG_VERSION_NUM >= 120000
+
 	table_close(rel, AccessShareLock);
+
+#else
+
+	heap_close(rel, AccessShareLock);
+
+#endif
 
 	return result;
 }
