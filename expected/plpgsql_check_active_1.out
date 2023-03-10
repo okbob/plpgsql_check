@@ -8445,3 +8445,26 @@ select * from plpgsql_check_function('f1_trg', 't1');
 drop trigger t1_f1 on t1;
 drop table t1;
 drop function f1_trg;
+create function test_function()
+returns void as $$
+declare
+  a int; b int;
+  c int; d char;
+begin
+  c := a + d;
+end;
+$$ language plpgsql;
+-- only b should be marked as unused variable
+select * from plpgsql_check_function('test_function', fatal_errors := false);
+                                          plpgsql_check_function                                           
+-----------------------------------------------------------------------------------------------------------
+ error:42883:6:assignment:operator does not exist: integer + character
+ Query: SELECT a + d
+ --              ^
+ Hint: No operator matches the given name and argument type(s). You might need to add explicit type casts.
+ Context: at assignment to variable "c" declared on line 4
+ warning:00000:3:DECLARE:unused variable "b"
+ warning extra:00000:4:DECLARE:never read variable "c"
+(7 rows)
+
+drop function test_function();

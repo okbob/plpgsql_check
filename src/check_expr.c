@@ -19,11 +19,16 @@
 #include "executor/spi_priv.h"
 #include "optimizer/clauses.h"
 
+#include "nodes/print.h"
+
+
 #if PG_VERSION_NUM >= 120000
 
 #include "optimizer/optimizer.h"
 
 #endif
+
+#include "parser/parse_node.h"
 
 #if PG_VERSION_NUM >= 140000
 
@@ -52,6 +57,113 @@ static void force_plan_checks(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 static int RowGetValidFields(PLpgSQL_row *row);
 static int TupleDescNVatts(TupleDesc tupdesc);
 
+static PreParseColumnRefHook p_pre_columnref_hook = NULL;
+static PostParseColumnRefHook p_post_columnref_hook = NULL;
+static ParseParamRefHook p_paramref_hook = NULL;
+
+/*
+ * Following routines wraps plpgsql sql parser's hooks. These wrappers
+ * are used for identification of not used variables. Identification based
+ * on plan postprocessing can raise false alarms when plan is not created
+ * due some errors.
+ */
+static void
+parserhook_wrapper_update_used_variables(ParseState *pstate, Node *node)
+{
+	if (node && IsA(node, Param))
+	{
+		Param	   *p = (Param *) node;
+
+		if (p->paramkind == PARAM_EXTERN)
+		{
+			PLpgSQL_checkstate *cstate;
+			PLpgSQL_expr *expr;
+			int			dno = p->paramid - 1;
+
+			expr = (PLpgSQL_expr *) pstate->p_ref_hook_state;
+			cstate = expr->func->cur_estate->plugin_info;
+
+			if (expr && bms_is_member(dno, expr->paramnos))
+			{
+
+#if PG_VERSION_NUM >= 140000
+
+				/*
+				 * PostgreSQL 14 and higher uses SQL parser for parsing
+				 * left side of assign statement too. We should to eliminate
+				 * it from used_variables (read) if we want to get warning
+				 * NEVER READ.
+				 */
+				if (dno != expr->target_param)
+
+#endif
+
+				{
+					MemoryContext	oldcxt = MemoryContextSwitchTo(cstate->check_cxt);
+
+					cstate->used_variables = bms_add_member(cstate->used_variables, dno);
+					MemoryContextSwitchTo(oldcxt);
+				}
+			}
+		}
+	}
+}
+
+static Node *
+pre_column_ref(ParseState *pstate, ColumnRef *cref)
+{
+	Node	   *result;
+
+	result = p_pre_columnref_hook(pstate, cref);
+	parserhook_wrapper_update_used_variables(pstate, result);
+
+	return result;
+}
+
+static Node *
+post_column_ref(ParseState *pstate, ColumnRef *cref, Node *var)
+{
+	Node	   *result;
+
+	result = p_post_columnref_hook(pstate, cref, var);
+	parserhook_wrapper_update_used_variables(pstate, result);
+
+	return result;
+}
+
+static Node *
+param_ref(ParseState *pstate, ParamRef *pref)
+{
+	Node	   *result;
+
+	result = p_paramref_hook(pstate, pref);
+	parserhook_wrapper_update_used_variables(pstate, result);
+
+	return result;
+}
+
+static void
+plpgsql_parser_setup_wrapper(struct ParseState *pstate, PLpgSQL_expr *expr)
+{
+	plpgsql_check__parser_setup_p(pstate, expr);
+
+	/*
+	 * save previous hooks.
+	 *
+	 * The prepare_plan routine can be called recursively in passive mode.
+	 * the planner can try to execute any immutable functions with constant
+	 * parameters. Then saving old hooks to global variables is not 100%
+	 * correct, but the addresses should be same always.
+	 */
+	p_pre_columnref_hook = pstate->p_pre_columnref_hook;
+	p_post_columnref_hook = pstate->p_post_columnref_hook;
+	p_paramref_hook = pstate->p_paramref_hook;
+
+	/* set new hooks */
+	pstate->p_pre_columnref_hook = pre_column_ref;
+	pstate->p_post_columnref_hook = post_column_ref;
+	pstate->p_paramref_hook = param_ref;
+}
 
 /*
  * Generate a prepared plan - this is simplified copy from pl_exec.c Is not
@@ -71,6 +183,7 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 	if (expr->plan == NULL)
 	{
 		MemoryContext old_cxt;
+		void	   *old_plugin_info;
 
 #if PG_VERSION_NUM >= 140000
 
@@ -78,7 +191,7 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 
 		memset(&options, 0, sizeof(options));
 		options.parserSetup = parser_setup ?
-			parser_setup : (ParserSetupHook) plpgsql_check__parser_setup_p;
+			parser_setup : (ParserSetupHook) plpgsql_parser_setup_wrapper;
 		options.parserSetupArg = arg ? arg : (void *) expr;
 		options.parseMode = expr->parseMode;
 		options.cursorOptions = cursorOptions;
@@ -90,25 +203,38 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 		 * tree, so make sure it's set before parser hooks need it.
 		 */
 		expr->func = cstate->estate->func;
+		old_plugin_info = expr->func->cur_estate->plugin_info;
+		expr->func->cur_estate->plugin_info = cstate;
+
+		PG_TRY();
+		{
 
 #if PG_VERSION_NUM >= 140000
 
-		/*
-		 * Generate and save the plan
-		 */
-		plan = SPI_prepare_extended(expr->query, &options);
+			/*
+			 * Generate and save the plan
+			 */
+			plan = SPI_prepare_extended(expr->query, &options);
 
 #else
 
-		/*
-		 * Generate and save the plan
-		 */
-		plan = SPI_prepare_params(expr->query,
-								  parser_setup ? parser_setup : (ParserSetupHook) plpgsql_check__parser_setup_p,
-								  arg ? arg : (void *) expr,
-								  cursorOptions);
+			/*
+			 * Generate and save the plan
+			 */
+			plan = SPI_prepare_params(expr->query,
+									  parser_setup ? parser_setup : (ParserSetupHook) plpgsql_parser_setup_wrapper,
+									  arg ? arg : (void *) expr,
+									  cursorOptions);
 
 #endif
+
+		}
+		PG_CATCH();
+		{
+			expr->func->cur_estate->plugin_info = old_plugin_info;
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
 
 		if (plan == NULL)
 		{

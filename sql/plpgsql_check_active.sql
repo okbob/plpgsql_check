@@ -4939,3 +4939,19 @@ select * from plpgsql_check_function('f1_trg', 't1');
 drop trigger t1_f1 on t1;
 drop table t1;
 drop function f1_trg;
+
+create function test_function()
+returns void as $$
+declare
+  a int; b int;
+  c int; d char;
+begin
+  c := a + d;
+end;
+$$ language plpgsql;
+
+-- only b should be marked as unused variable
+select * from plpgsql_check_function('test_function', fatal_errors := false);
+
+drop function test_function();
+
