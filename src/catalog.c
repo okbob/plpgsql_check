@@ -264,7 +264,7 @@ get_extension_schema(Oid ext_oid)
 #endif
 
 /*
- * get_extension_version - given an extension OID, look up the name
+ * get_extension_version - given an extension OID, look up the version
  *
  * Returns a palloc'd string, or NULL if no such extension.
  */
@@ -316,6 +316,8 @@ get_extension_version(Oid ext_oid)
 
 		result = text_to_cstring(DatumGetTextPP(datum));
 	}
+	else
+		result = NULL;
 
 	systable_endscan(scandesc);
 
