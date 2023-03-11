@@ -4,7 +4,7 @@
  *
  *			  profiler accessories code
  *
- * by Pavel Stehule 2013-2022
+ * by Pavel Stehule 2013-2023
  *
  *-------------------------------------------------------------------------
  */

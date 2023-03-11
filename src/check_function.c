@@ -5,7 +5,7 @@
  *			  workhorse functionality of this extension - expression
  *			  and query validator
  *
- * by Pavel Stehule 2013-2022
+ * by Pavel Stehule 2013-2023
  *
  *-------------------------------------------------------------------------
  */
