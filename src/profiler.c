@@ -921,7 +921,12 @@ profiler_stmt_walker(profiler_info *pinfo,
 					profiler_stmt_walker_options *opts)
 {
 	profiler_stmt *pstmt = NULL;
+
+#ifdef USE_ASSERT_CHECKING
+
 	profiler_profile *profile = pinfo->profile;
+
+#endif
 
 	bool	prepare_profile_mode  = mode == PLPGSQL_CHECK_STMT_WALKER_PREPARE_PROFILE;
 	bool	count_exec_time_mode  = mode == PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME;

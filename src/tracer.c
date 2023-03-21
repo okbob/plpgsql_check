@@ -544,8 +544,6 @@ print_func_args(PLpgSQL_execstate *estate, PLpgSQL_function *func, int frame_num
 
 	if (func->fn_is_trigger == PLPGSQL_DML_TRIGGER)
 	{
-		Assert(estate->trigdata);
-
 		TriggerData *td = estate->trigdata;
 		const char *trgtyp;
 		const char *trgtime;
@@ -553,6 +551,8 @@ print_func_args(PLpgSQL_execstate *estate, PLpgSQL_function *func, int frame_num
 		int		rec_new_varno = func->new_varno;
 		int		rec_old_varno = func->old_varno;
 		char buffer[20];
+
+		Assert(estate->trigdata);
 
 		trgtyp = TRIGGER_FIRED_FOR_ROW(td->tg_event) ? "row" : "statement";
 		trgtime = TRIGGER_FIRED_BEFORE(td->tg_event) ? "before" : "after";
