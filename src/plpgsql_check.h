@@ -461,14 +461,7 @@ extern plpgsql_check__ns_lookup_t plpgsql_check__ns_lookup_p;
 #define OUT_COMPOSITE_IS_NOT_SINGLE_TEXT	"composite OUT variable \"%s\" is not single argument"
 #define UNUSED_VARIABLE_TEXT			"unused variable \"%s\""
 #define UNUSED_VARIABLE_TEXT_CHECK_LENGTH	15
-#define NEVER_READ_VARIABLE_TEXT		"never read variable \"%s\""
-#define NEVER_READ_VARIABLE_TEXT_CHECK_LENGTH		19
-#define UNUSED_PARAMETER_TEXT			"unused parameter \"%s\""
-#define NEVER_READ_PARAMETER_TEXT		"parameter \"%s\" is never read"
-#define UNMODIFIED_VARIABLE_TEXT		"unmodified OUT variable \"%s\""
 #define MAYBE_UNMODIFIED_VARIABLE_TEXT	"OUT variable \"%s\" is maybe unmodified"
-#define OUT_COMPOSITE_IS_NOT_SINGLE_TEXT	"composite OUT variable \"%s\" is not single argument"
-#define UNSAFE_EXECUTE					"the expression used by EXECUTE command is possibly sql injection vulnerable"
 
 /*
  * Expecting persistent oid of nextval, currval and setval functions.
