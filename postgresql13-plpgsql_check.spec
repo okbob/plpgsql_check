@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	2.3.3
+Version:	2.3.4
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
