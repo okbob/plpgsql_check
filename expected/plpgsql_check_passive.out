@@ -344,3 +344,12 @@ $$ language plpgsql;
 insert into footab values(1,2,3);
 drop table footab;
 drop function footab_trig_func();
+set plpgsql_check.mode = 'every_start';
+create or replace procedure proc_test()
+as $$
+begin
+  commit;
+end;
+$$ language plpgsql;
+call proc_test();
+drop procedure proc_test();
