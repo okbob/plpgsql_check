@@ -7,13 +7,8 @@
 #include "access/tupdesc.h"
 #include "storage/ipc.h"
 
-#if PG_VERSION_NUM >= 110000
 typedef uint64 pc_queryid;
 #define NOQUERYID				(UINT64CONST(0))
-#else
-typedef uint32 pc_queryid;
-#define NOQUERYID	(0)
-#endif
 
 #if PG_VERSION_NUM < 150000
 #define parse_analyze_fixedparams	parse_analyze
@@ -283,12 +278,8 @@ extern Node *plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_exp
 extern char *plpgsql_check_const_to_string(Const *c);
 extern CachedPlanSource *plpgsql_check_get_plan_source(PLpgSQL_checkstate *cstate, SPIPlanPtr plan);
 
-#if PG_VERSION_NUM >= 110000
-
 extern void plpgsql_check_assignment_to_variable(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 	PLpgSQL_variable *targetvar, int targetdno);
-
-#endif
 
 /*
  * functions from report.c
@@ -309,14 +300,8 @@ extern void plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, i
  */
 extern TupleDesc plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query,
 	bool use_element_type, bool expand_record, bool is_expression, Oid *first_level_typoid);
-
 extern void plpgsql_check_recvar_info(PLpgSQL_rec *rec, Oid *typoid, int32 *typmod);
-
-#if PG_VERSION_NUM >= 110000
-
 extern PLpgSQL_row * plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr);
-
-#endif
 
 /*
  * functions from parser.c
@@ -363,12 +348,8 @@ extern bool plpgsql_check_get_trace_info(PLpgSQL_execstate *estate, PLpgSQL_stmt
 extern bool plpgsql_check_needs_fmgr_hook(Oid fn_oid);
 extern void plpgsql_check_fmgr_hook(FmgrHookEventType event, FmgrInfo *flinfo, Datum *private);
 
-#if PG_VERSION_NUM >= 120000
-
 extern void plpgsql_check_get_trace_stmt_info(PLpgSQL_execstate *estate, int stmt_id, instr_time **start_time);
 extern bool *plpgsql_check_get_disable_tracer_on_stack(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
-
-#endif
 
 /*
  * functions and variables from tracer.c
@@ -416,25 +397,10 @@ extern PLpgSQL_plugin *prev_plpgsql_plugin;
 
 extern void plpgsql_check_check_ext_version(Oid fn_oid);
 
-#if PG_VERSION_NUM > 110005
-
-#define PLPGSQL_BUILD_DATATYPE_4		1
-
-#endif
-
 /*
  * Links to function in plpgsql module
  */
-
-#ifdef PLPGSQL_BUILD_DATATYPE_4
-
 typedef PLpgSQL_type *(*plpgsql_check__build_datatype_t) (Oid typeOid, int32 typmod, Oid collation, TypeName *origtypname);
-
-#else
-
-typedef PLpgSQL_type *(*plpgsql_check__build_datatype_t) (Oid typeOid, int32 typmod, Oid collation);
-
-#endif
 
 extern plpgsql_check__build_datatype_t plpgsql_check__build_datatype_p;
 typedef PLpgSQL_function *(*plpgsql_check__compile_t) (FunctionCallInfo fcinfo, bool forValidator);
@@ -478,27 +444,8 @@ extern plpgsql_check__ns_lookup_t plpgsql_check__ns_lookup_p;
 #define TupleDescAttr(tupdesc, i) ((tupdesc)->attrs[(i)])
 #endif
 
-#if PG_VERSION_NUM >= 110000
-
 #define recvar_tuple(rec)		(rec->erh ? expanded_record_get_tuple(rec->erh) : NULL)
 #define recvar_tupdesc(rec)		(rec->erh ? expanded_record_fetch_tupdesc(rec->erh) : NULL)
-
-#else
-
-#define recvar_tuple(rec)		(rec->tup)
-#define recvar_tupdesc(rec)		(rec->tupdesc)
-
-#endif
-
-#if PG_VERSION_NUM >= 100000
-
-#define PLPGSQL_STMT_TYPES
-
-#else
-
-#define PLPGSQL_STMT_TYPES		(enum PLpgSQL_stmt_types)
-
-#endif
 
 #define FUNCS_PER_USER		128 /* initial table size */
 

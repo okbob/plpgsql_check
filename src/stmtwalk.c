@@ -32,24 +32,8 @@ static int possibly_closed(int c);
 static int merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int err_code);
 static bool exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond);
 static bool found_shadowed_variable(char *varname, PLpgSQL_stmt_stack_item *current, PLpgSQL_checkstate *cstate);
-
-#if PG_VERSION_NUM >= 110000
-
 static void check_dynamic_sql(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, PLpgSQL_expr *query, bool into, PLpgSQL_variable *target, List *params);
-
-#else
-
-static void check_dynamic_sql(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, PLpgSQL_expr *query, bool into, PLpgSQL_row *row, PLpgSQL_rec *rec, List *params);
-
-#endif
-
-#if PG_VERSION_NUM >= 110000
-
 static bool is_inside_protected_block(PLpgSQL_stmt_stack_item *current);
-
-#endif
-
-#if PG_VERSION_NUM >= 110000
 
 static void
 check_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var)
@@ -92,23 +76,10 @@ check_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var)
 	elog(ERROR, "unsupported dtype %d", var->dtype);
 }
 
-#endif
-
 bool
 plpgsql_check_is_reserved_keyword(char *name)
 {
 	int		i;
-
-#if PG_VERSION_NUM < 120000
-
-	for (i = 0; i < NumScanKeywords; i++)
-	{
-		if (ScanKeywords[i].category == RESERVED_KEYWORD &&
-				strcmp(name, ScanKeywords[i].name) == 0)
-			return true;
-	}
-
-#else
 
 	for (i = 0; i < ScanKeywords.num_keywords; i++)
 	{
@@ -121,8 +92,6 @@ plpgsql_check_is_reserved_keyword(char *name)
 				return true;
 		}
 	}
-
-#endif
 
 	return false;
 }
@@ -164,7 +133,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 	PG_TRY();
 	{
-		switch (PLPGSQL_STMT_TYPES stmt->cmd_type)
+		switch (stmt->cmd_type)
 		{
 			case PLPGSQL_STMT_BLOCK:
 				{
@@ -192,27 +161,12 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 							cstate->estate->err_text = str.data;
 
-#if PG_VERSION_NUM >= 110000
-
 							if (var->default_val)
 								plpgsql_check_assignment(cstate,
 														 var->default_val,
 														 NULL,
 														 NULL,
 														 var->dno);
-
-#else
-
-							if (d->dtype == PLPGSQL_DTYPE_VAR &&
-									((PLpgSQL_var *) var)->default_val)
-								plpgsql_check_assignment(cstate,
-														 ((PLpgSQL_var *) var)->default_val,
-														 NULL,
-														 NULL,
-														 var->dno);
-
-
-#endif
 
 							cstate->estate->err_text = NULL;
 							pfree(str.data);
@@ -554,20 +508,10 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						 */
 						if (t_var->datatype->typoid != result_oid)
 
-#ifdef PLPGSQL_BUILD_DATATYPE_4
-
 							t_var->datatype = plpgsql_check__build_datatype_p(result_oid,
 																	 -1,
 								   cstate->estate->func->fn_input_collation,
 								   t_var->datatype->origtypname);
-
-#else
-
-							t_var->datatype = plpgsql_check__build_datatype_p(result_oid,
-																	 -1,
-								   cstate->estate->func->fn_input_collation);
-
-#endif
 
 						ReleaseTupleDesc(tupdesc);
 					}
@@ -653,23 +597,11 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					int		closing_local;
 					List   *exceptions_local;
 
-#if PG_VERSION_NUM >= 110000
-
 					check_variable(cstate, stmt_fors->var);
 
 					/* we need to set hidden variable type */
 					plpgsql_check_assignment_to_variable(cstate, stmt_fors->query,
 									 stmt_fors->var, -1);
-
-#else
-
-					plpgsql_check_row_or_rec(cstate, stmt_fors->row, stmt_fors->rec);
-
-					/* we need to set hidden variable type */
-					plpgsql_check_assignment(cstate, stmt_fors->query,
-									 stmt_fors->rec, stmt_fors->row, -1);
-
-#endif
 
 					check_stmts(cstate, stmt_fors->body, &closing_local, &exceptions_local);
 					*closing = possibly_closed(closing_local);
@@ -683,31 +615,12 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					int		closing_local;
 					List   *exceptions_local;
 
-#if PG_VERSION_NUM >= 110000
-
 					check_variable(cstate, stmt_forc->var);
-
-#else
-
-					plpgsql_check_row_or_rec(cstate, stmt_forc->row, stmt_forc->rec);
-
-#endif
-
 					plpgsql_check_expr_as_sqlstmt_data(cstate, stmt_forc->argquery);
-
-#if PG_VERSION_NUM >= 110000
 
 					if (var->cursor_explicit_expr != NULL)
 						plpgsql_check_assignment_to_variable(cstate, var->cursor_explicit_expr,
 										 stmt_forc->var, -1);
-
-#else
-
-					if (var->cursor_explicit_expr != NULL)
-						plpgsql_check_assignment(cstate, var->cursor_explicit_expr,
-										 stmt_forc->rec, stmt_forc->row, -1);
-
-#endif
 
 					check_stmts(cstate, stmt_forc->body, &closing_local, &exceptions_local);
 					*closing = possibly_closed(closing_local);
@@ -727,18 +640,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 									  stmt,
 									  stmt_dynfors->query,
 									  true,
-
-#if PG_VERSION_NUM >= 110000
-
 									  stmt_dynfors->var,
-
-#else
-
-									  stmt_dynfors->row,
-									  stmt_dynfors->rec,
-
-#endif
-
 									  stmt_dynfors->params);
 
 					check_stmts(cstate, stmt_dynfors->body, &closing_local, &exceptions_local);
@@ -941,16 +843,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 									(errcode(ERRCODE_SYNTAX_ERROR),
 									 errmsg("cannot use RETURN NEXT in a non-SETOF function")));
 
-#if PG_VERSION_NUM >= 110000
-
 						tupdesc = estate->tuple_store_desc;
-
-#else
-
-						tupdesc = estate->rettupdesc;
-
-#endif
-
 						natts = tupdesc ? tupdesc->natts : 0;
 
 						switch (retvar->dtype)
@@ -1061,17 +954,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 										  stmt,
 										  stmt_rq->dynquery,
 										  false,
-
-#if PG_VERSION_NUM >= 110000
-
 										  NULL,
-
-#else
-
-										  NULL, NULL,
-
-#endif
-
 										  stmt_rq->params);
 					}
 				}
@@ -1176,21 +1059,9 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 					if (stmt_execsql->into)
 					{
-
-#if PG_VERSION_NUM >= 110000
-
 						check_variable(cstate, stmt_execsql->target);
 						plpgsql_check_assignment_to_variable(cstate, stmt_execsql->sqlstmt,
 													  stmt_execsql->target, -1);
-
-#else
-
-						plpgsql_check_row_or_rec(cstate, stmt_execsql->row, stmt_execsql->rec);
-						plpgsql_check_assignment(cstate, stmt_execsql->sqlstmt,
-								   stmt_execsql->rec, stmt_execsql->row, -1);
-
-#endif
-
 					}
 					else
 						/* only statement */
@@ -1206,18 +1077,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 									  stmt,
 									  stmt_dynexecute->query,
 									  stmt_dynexecute->into,
-
-#if PG_VERSION_NUM >= 110000
-
 									  stmt_dynexecute->target,
-
-#else
-
-									  stmt_dynexecute->row,
-									  stmt_dynexecute->rec,
-
-#endif
-
 									  stmt_dynexecute->params);
 				}
 				break;
@@ -1289,23 +1149,11 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					PLpgSQL_stmt_fetch *stmt_fetch = (PLpgSQL_stmt_fetch *) stmt;
 					PLpgSQL_var *var = (PLpgSQL_var *) (cstate->estate->datums[stmt_fetch->curvar]);
 
-#if PG_VERSION_NUM >= 110000
-
 					check_variable(cstate, stmt_fetch->target);
 
 					if (var != NULL && var->cursor_explicit_expr != NULL)
 						plpgsql_check_assignment_to_variable(cstate, var->cursor_explicit_expr,
 									   stmt_fetch->target, -1);
-
-#else
-
-					plpgsql_check_row_or_rec(cstate, stmt_fetch->row, stmt_fetch->rec);
-
-					if (var != NULL && var->cursor_explicit_expr != NULL)
-						plpgsql_check_assignment(cstate, var->cursor_explicit_expr,
-									   stmt_fetch->rec, stmt_fetch->row, -1);
-
-#endif
 
 					plpgsql_check_expr(cstate, stmt_fetch->expr);
 
@@ -1318,8 +1166,6 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 								 ((PLpgSQL_stmt_close *) stmt)->curvar);
 
 				break;
-
-#if PG_VERSION_NUM >= 110000
 
 #if PG_VERSION_NUM < 140000
 			case PLPGSQL_STMT_SET:
@@ -1377,8 +1223,6 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					}
 				}
 				break;
-
-#endif			/* PG_VERSION_NUM >= 110000 */
 
 			default:
 				elog(ERROR, "unrecognized cmd_type: %d", stmt->cmd_type);
@@ -1523,7 +1367,7 @@ push_stmt_to_stmt_stack(PLpgSQL_checkstate *cstate)
 	stmt_stack_item = (PLpgSQL_stmt_stack_item *) palloc0(sizeof(PLpgSQL_stmt_stack_item));
 	stmt_stack_item->stmt = stmt;
 
-	switch (PLPGSQL_STMT_TYPES stmt->cmd_type)
+	switch (stmt->cmd_type)
 	{
 		case PLPGSQL_STMT_BLOCK:
 			stmt_stack_item->label = ((PLpgSQL_stmt_block *) stmt)->label;
@@ -1588,7 +1432,7 @@ pop_stmt_from_stmt_stack(PLpgSQL_checkstate *cstate)
 static bool
 is_any_loop_stmt(PLpgSQL_stmt *stmt)
 {
-	switch (PLPGSQL_STMT_TYPES stmt->cmd_type)
+	switch (stmt->cmd_type)
 	{
 		case PLPGSQL_STMT_LOOP:
 		case PLPGSQL_STMT_WHILE:
@@ -1636,8 +1480,6 @@ find_nearest_loop(PLpgSQL_stmt_stack_item *current)
 	return NULL;
 }
 
-#if PG_VERSION_NUM >= 110000
-
 /*
  * Returns true, when some outer block handles exceptions.
  * It is used for check of correct usage of COMMIT or ROLLBACK.
@@ -1660,8 +1502,6 @@ is_inside_protected_block(PLpgSQL_stmt_stack_item *current)
 
 	return false;
 }
-
-#endif
 
 /*
  * This is used for check of correct usage GET STACKED DIAGNOSTICS
@@ -1922,18 +1762,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 				  PLpgSQL_stmt *stmt,
 				  PLpgSQL_expr *query,
 				  bool into,
-
-#if PG_VERSION_NUM >= 110000
-
 				  PLpgSQL_variable *target,
-
-#else
-
-				  PLpgSQL_row *row,
-				  PLpgSQL_rec *rec,
-
-#endif
-
 				  List *params)
 {
 	Node	   *expr_node;
@@ -2079,13 +1908,6 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 		dynexpr = palloc0(sizeof(PLpgSQL_expr));
 
-#if PG_VERSION_NUM < 110000
-
-		dynexpr->dtype = PLPGSQL_DTYPE_EXPR;
-		dynexpr->dno = -1;
-
-#endif
-
 #if PG_VERSION_NUM >= 140000
 
 		dynexpr->expr_rw_param = NULL;
@@ -2219,19 +2041,8 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 			}
 			else if (into)
 			{
-
-#if PG_VERSION_NUM >= 110000
-
 				check_variable(cstate, target);
 				plpgsql_check_assignment_to_variable(cstate, dynexpr, target, -1);
-
-#else
-
-				plpgsql_check_row_or_rec(cstate, row, rec);
-				plpgsql_check_assignment(cstate, dynexpr, rec, row, -1);
-
-#endif
-
 			}
 		}
 
@@ -2284,54 +2095,21 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		 */
 		if (into && !known_type_of_dynexpr)
 		{
-
-#if PG_VERSION_NUM >= 110000
-
 			if (target->dtype == PLPGSQL_DTYPE_REC)
 				raise_unknown_rec_warning = true;
-
-#else
-
-			if (rec)
-				raise_unknown_rec_warning = true;
-
-#endif
-
 		}
 	}
 
 	/* recheck if target rec var has assigned tupdesc */
 	if (into)
 	{
-
-#if PG_VERSION_NUM >= 110000
-
 		check_variable(cstate, target);
 
 		if (raise_unknown_rec_warning ||
 			(target->dtype == PLPGSQL_DTYPE_REC &&
 			 !has_assigned_tupdesc(cstate, (PLpgSQL_rec *) target)))
-
-#else
-
-		plpgsql_check_row_or_rec(cstate, row, rec);
-
-		if (raise_unknown_rec_warning || (rec != NULL && !has_assigned_tupdesc(cstate, rec)))
-
-#endif
-
 		{
-
-#if PG_VERSION_NUM >= 110000
-
 			if (!bms_is_member(target->dno, cstate->typed_variables))
-
-#else
-
-			if (!bms_is_member(rec->dno, cstate->typed_variables))
-
-#endif
-
 				plpgsql_check_put_error(cstate,
 										0, 0,
 										"cannot determinate a result of dynamic SQL",

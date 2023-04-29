@@ -14,12 +14,7 @@
 #include "access/genam.h"
 
 #include "access/htup_details.h"
-
-#if PG_VERSION_NUM >= 120000
-
 #include "access/table.h"
-
-#endif
 
 #include "catalog/pg_extension.h"
 #include "catalog/indexing.h"
@@ -37,19 +32,7 @@
 #include "utils/regproc.h"
 
 #include "utils/rel.h"
-
-#if PG_VERSION_NUM >= 110000
-
 #include "catalog/pg_proc.h"
-
-#endif
-
-#if PG_VERSION_NUM < 120000
-
-#include "access/sysattr.h"
-
-#endif
-
 #include "utils/syscache.h"
 
 static Oid plpgsql_check_PLpgSQLlanguageId = InvalidOid;
@@ -88,16 +71,7 @@ plpgsql_check_get_function_info(plpgsql_check_info *cinfo)
 	functyptype = get_typtype(proc->prorettype);
 
 	cinfo->trigtype = PLPGSQL_NOT_TRIGGER;
-
-#if PG_VERSION_NUM >= 110000
-
 	cinfo->is_procedure = proc->prokind == PROKIND_PROCEDURE;
-
-#else
-
-	cinfo->is_procedure = false;
-
-#endif
 
 	/*
 	 * Disallow pseudotype result  except for TRIGGER, RECORD, VOID, or
@@ -215,25 +189,12 @@ get_extension_schema(Oid ext_oid)
 	HeapTuple	tuple;
 	ScanKeyData entry[1];
 
-#if PG_VERSION_NUM >= 120000
-
 	rel = table_open(ExtensionRelationId, AccessShareLock);
 
 	ScanKeyInit(&entry[0],
 				Anum_pg_extension_oid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(ext_oid));
-
-#else
-
-	rel = heap_open(ExtensionRelationId, AccessShareLock);
-
-	ScanKeyInit(&entry[0],
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(ext_oid));
-
-#endif
 
 	scandesc = systable_beginscan(rel, ExtensionOidIndexId, true,
 								  NULL, 1, entry);
@@ -248,15 +209,7 @@ get_extension_schema(Oid ext_oid)
 
 	systable_endscan(scandesc);
 
-#if PG_VERSION_NUM >= 120000
-
 	table_close(rel, AccessShareLock);
-
-#else
-
-	heap_close(rel, AccessShareLock);
-
-#endif
 
 	return result;
 }
@@ -277,25 +230,12 @@ get_extension_version(Oid ext_oid)
 	HeapTuple	tuple;
 	ScanKeyData entry[1];
 
-#if PG_VERSION_NUM >= 120000
-
 	rel = table_open(ExtensionRelationId, AccessShareLock);
 
 	ScanKeyInit(&entry[0],
 				Anum_pg_extension_oid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(ext_oid));
-
-#else
-
-	rel = heap_open(ExtensionRelationId, AccessShareLock);
-
-	ScanKeyInit(&entry[0],
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(ext_oid));
-
-#endif
 
 	scandesc = systable_beginscan(rel, ExtensionOidIndexId, true,
 								  NULL, 1, entry);
@@ -321,15 +261,7 @@ get_extension_version(Oid ext_oid)
 
 	systable_endscan(scandesc);
 
-#if PG_VERSION_NUM >= 120000
-
 	table_close(rel, AccessShareLock);
-
-#else
-
-	heap_close(rel, AccessShareLock);
-
-#endif
 
 	return result;
 }
@@ -366,16 +298,7 @@ plpgsql_check_pragma_func_oid(void)
 			if (procform->pronamespace != schemaoid)
 				continue;
 
-#if PG_VERSION_NUM >= 120000
-
 			result = procform->oid;
-
-#else
-
-			result = HeapTupleGetOid(proctup);
-
-#endif
-
 			break;
 		}
 

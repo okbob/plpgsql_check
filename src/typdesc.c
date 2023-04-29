@@ -17,19 +17,11 @@
 #include "executor/spi_priv.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
-
-#if PG_VERSION_NUM >= 120000
-
 #include "optimizer/optimizer.h"
-
-#endif
-
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
-
-#if PG_VERSION_NUM >= 110000
 
 /*
  * Try to calculate procedure row target from used INOUT variables
@@ -218,8 +210,6 @@ plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *Cal
 	return result;
 }
 
-#endif
-
 /*
  * Returns typoid, typmod associated with record variable
  */
@@ -229,8 +219,6 @@ plpgsql_check_recvar_info(PLpgSQL_rec *rec, Oid *typoid, int32 *typmod)
 	if (rec->dtype != PLPGSQL_DTYPE_REC)
 		elog(ERROR, "variable is not record type");
 
-#if PG_VERSION_NUM >= 110000
-
 	if (rec->rectypeid != RECORDOID)
 	{
 		if (typoid != NULL)
@@ -239,8 +227,6 @@ plpgsql_check_recvar_info(PLpgSQL_rec *rec, Oid *typoid, int32 *typmod)
 			*typmod = -1;
 	}
 	else
-
-#endif
 
 	if (recvar_tupdesc(rec) != NULL)
 	{
@@ -502,15 +488,7 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 		{
 			TupleDesc rettupdesc;
 
-#if PG_VERSION_NUM >= 120000
-
 			rettupdesc = CreateTemplateTupleDesc(1);
-
-#else
-
-			rettupdesc = CreateTemplateTupleDesc(1, false);
-
-#endif
 
 			TupleDescInitEntry(rettupdesc, 1, "__array_element__", elemtype, -1, 0);
 
@@ -609,18 +587,7 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 						{
 							FuncExpr   *fn = (FuncExpr *) tle->expr;
 							FmgrInfo	flinfo;
-
-#if PG_VERSION_NUM >= 120000
-
 							LOCAL_FCINFO(fcinfo, 0);
-
-#else
-
-							FunctionCallInfoData fcinfo_data;
-							FunctionCallInfo fcinfo = &fcinfo_data;
-
-#endif
-
 							TupleDesc	rd;
 							Oid			rt;
 							TypeFuncClass	tfc;
@@ -663,15 +630,7 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 							TupleDesc rettupdesc;
 							int			i = 1;
 
-#if PG_VERSION_NUM >= 120000
-
 							rettupdesc = CreateTemplateTupleDesc(list_length(row->args));
-
-#else
-
-							rettupdesc = CreateTemplateTupleDesc(list_length(row->args), false);
-
-#endif
 
 							forboth (lc_colname, row->colnames, lc_arg, row->args)
 							{

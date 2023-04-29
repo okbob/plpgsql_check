@@ -58,16 +58,7 @@ runtime_pragma_apply(plpgsql_check_pragma_vector *pv,
 			pragma_str++;
 
 		if (strcasecmp(pragma_str, "TRACER") == 0)
-		{
 			pv->disable_tracer = false;
-
-#if PG_VERSION_NUM < 120000
-
-			elog(WARNING, "pragma ENABLE:TRACER is ignored on PostgreSQL 11 and older");
-
-#endif
-
-		}
 	}
 	else if (strncasecmp(pragma_str, "DISABLE:", 8) == 0)
 	{
@@ -77,15 +68,7 @@ runtime_pragma_apply(plpgsql_check_pragma_vector *pv,
 			pragma_str++;
 
 		if (strcasecmp(pragma_str, "TRACER") == 0)
-		{
 			pv->disable_tracer = true;
-
-#if PG_VERSION_NUM < 120000
-
-			elog(WARNING, "pragma DISABLE:TRACER is ignored on PostgreSQL 11 and older");
-
-#endif
-		}
 	}
 }
 
@@ -151,16 +134,7 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 		if (strcasecmp(pragma_str, "CHECK") == 0)
 			pv->disable_check = false;
 		else if (strcasecmp(pragma_str, "TRACER") == 0)
-		{
 			pv->disable_tracer = false;
-
-#if PG_VERSION_NUM < 120000
-
-			elog(WARNING, "pragma ENABLE:TRACER is ignored on PostgreSQL 11 and older");
-
-#endif
-
-		}
 		else if (strcasecmp(pragma_str, "OTHER_WARNINGS") == 0)
 			pv->disable_other_warnings = false;
 		else if (strcasecmp(pragma_str, "PERFORMANCE_WARNINGS") == 0)
@@ -187,15 +161,7 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 		if (strcasecmp(pragma_str, "CHECK") == 0)
 			pv->disable_check = true;
 		else if (strcasecmp(pragma_str, "TRACER") == 0)
-		{
 			pv->disable_tracer = true;
-
-#if PG_VERSION_NUM < 120000
-
-			elog(WARNING, "pragma DISABLE:TRACER is ignored on PostgreSQL 11 and older");
-
-#endif
-		}
 		else if (strcasecmp(pragma_str, "OTHER_WARNINGS") == 0)
 			pv->disable_other_warnings = true;
 		else if (strcasecmp(pragma_str, "PERFORMANCE_WARNINGS") == 0)

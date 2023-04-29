@@ -20,14 +20,7 @@
 #include "optimizer/clauses.h"
 
 #include "nodes/print.h"
-
-
-#if PG_VERSION_NUM >= 120000
-
 #include "optimizer/optimizer.h"
-
-#endif
-
 #include "parser/parse_node.h"
 
 #if PG_VERSION_NUM >= 140000
@@ -1590,8 +1583,6 @@ plpgsql_check_assignment(PLpgSQL_checkstate *cstate,
 								 is_expression);
 }
 
-#if PG_VERSION_NUM >= 110000
-
 void
 plpgsql_check_assignment_to_variable(PLpgSQL_checkstate *cstate,
 							 PLpgSQL_expr *expr,
@@ -1630,9 +1621,6 @@ plpgsql_check_assignment_to_variable(PLpgSQL_checkstate *cstate,
 									 false,
 									 true);
 }
-
-#endif
-
 
 /*
  * row->nfields can cound dropped columns. When this behave can raise

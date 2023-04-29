@@ -21,12 +21,6 @@
 #include "utils/lsyscache.h"
 #include "utils/regproc.h"
 
-#if PG_VERSION_NUM < 110000
-
-#include "utils/typcache.h"
-
-#endif
-
 /*
  * Originaly this structure was named TokenType, but this is in collision
  * with name from NT SDK. So it is renamed to PragmaTokenType.

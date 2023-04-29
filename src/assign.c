@@ -18,8 +18,6 @@
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
 
-#if PG_VERSION_NUM >= 110000
-
 #define get_eval_mcontext(estate) \
 	((estate)->eval_econtext->ecxt_per_tuple_memory)
 #define eval_mcontext_alloc(estate, sz) \
@@ -28,8 +26,6 @@
 	MemoryContextAllocZero(get_eval_mcontext(estate), sz)
 
 static bool compatible_tupdescs(TupleDesc src_tupdesc, TupleDesc dst_tupdesc);
-
-#endif
 
 /*
  * Mark variable as used
@@ -103,8 +99,6 @@ plpgsql_check_is_assignable(PLpgSQL_execstate *estate, int dno)
 	Assert(dno >= 0 && dno < estate->ndatums);
 	datum = estate->datums[dno];
 
-#if PG_VERSION_NUM >= 110000
-
 	switch (datum->dtype)
 	{
 		case PLPGSQL_DTYPE_VAR:
@@ -139,18 +133,6 @@ plpgsql_check_is_assignable(PLpgSQL_execstate *estate, int dno)
 			elog(ERROR, "unrecognized dtype: %d", datum->dtype);
 			break;
 	}
-
-#else
-
-	if (datum->dtype == PLPGSQL_DTYPE_VAR)
-		if (((PLpgSQL_var *) datum)->isconst)
-			ereport(ERROR,
-					(errcode(ERRCODE_ERROR_IN_ASSIGNMENT),
-					 errmsg("variable \"%s\" is declared CONSTANT",
-							((PLpgSQL_var *) datum)->refname)));
-
-#endif
-
 }
 
 /*
@@ -597,44 +579,17 @@ plpgsql_check_recval_init(PLpgSQL_rec *rec)
 {
 	Assert(rec->dtype == PLPGSQL_DTYPE_REC);
 
-#if PG_VERSION_NUM >= 110000
-
 	rec->erh = NULL;
-
-#else
-
-	rec->tup = NULL;
-	rec->freetup = false;
-	rec->freetupdesc = false;
-
-#endif
 }
 
 void
 plpgsql_check_recval_release(PLpgSQL_rec *rec)
 {
-
-#if PG_VERSION_NUM >= 110000
-
 	Assert(rec->dtype == PLPGSQL_DTYPE_REC);
 
 	if (rec->erh)
 		DeleteExpandedObject(ExpandedRecordGetDatum(rec->erh));
 	rec->erh = NULL;
-
-#else
-
-	if (rec->freetup)
-		heap_freetuple(rec->tup);
-
-	if (rec->freetupdesc)
-		FreeTupleDesc(rec->tupdesc);
-
-	rec->freetup = false;
-	rec->freetupdesc = false;
-
-#endif
-
 }
 
 /*
@@ -643,9 +598,6 @@ plpgsql_check_recval_release(PLpgSQL_rec *rec)
 void
 plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec, TupleDesc tupdesc, bool is_null)
 {
-
-#if PG_VERSION_NUM >= 110000
-
 	PLpgSQL_execstate	   *estate = cstate->estate;
 	ExpandedRecordHeader   *newerh;
 	MemoryContext			mcontext;
@@ -769,41 +721,7 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 
 	TransferExpandedRecord(newerh, estate->datum_context);
 	rec->erh = newerh;
-
-#else
-
-	bool	   *nulls;
-	HeapTuple	tup;
-
-	(void) cstate;
-	(void) is_null;
-
-	plpgsql_check_recval_release(rec);
-
-	if (!tupdesc)
-		return;
-
-	/* initialize rec by NULLs */
-	nulls = (bool *) palloc(tupdesc->natts * sizeof(bool));
-	memset(nulls, true, tupdesc->natts * sizeof(bool));
-
-	rec->tupdesc = CreateTupleDescCopy(tupdesc);
-	rec->freetupdesc = true;
-
-	tup = heap_form_tuple(tupdesc, NULL, nulls);
-	if (HeapTupleIsValid(tup))
-	{
-		rec->tup = tup;
-		rec->freetup = true;
-	}
-	else
-		elog(ERROR, "cannot to build valid composite value");
-
-#endif
-
 }
-
-#if PG_VERSION_NUM >= 110000
 
 /*
  * compatible_tupdescs: detect whether two tupdescs are physically compatible
@@ -846,5 +764,3 @@ compatible_tupdescs(TupleDesc src_tupdesc, TupleDesc dst_tupdesc)
 
 	return true;
 }
-
-#endif

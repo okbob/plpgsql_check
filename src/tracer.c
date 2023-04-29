@@ -19,12 +19,6 @@
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 
-#if PG_VERSION_NUM < 110000
-
-#include "access/htup_details.h"
-
-#endif
-
 bool plpgsql_check_enable_tracer = false;
 bool plpgsql_check_tracer = false;
 bool plpgsql_check_trace_assert = false;
@@ -51,8 +45,6 @@ static char *convert_plpgsql_datum_to_string(PLpgSQL_execstate *estate, PLpgSQL_
 
 #endif
 
-#if PG_VERSION_NUM >= 120000
-
 static void set_stmts_group_number(List *stmts, int *group_numbers, int *parent_group_numbers, int sgn, int *cgn, int spgn);
 
 /*
@@ -74,7 +66,7 @@ plpgsql_check_set_stmt_group_number(PLpgSQL_stmt *stmt,
 	group_numbers[stmtid] = sgn;
 	parent_group_numbers[stmtid] = psgn;
 
-	switch (PLPGSQL_STMT_TYPES stmt->cmd_type)
+	switch (stmt->cmd_type)
 	{
 		case PLPGSQL_STMT_BLOCK:
 			{
@@ -261,8 +253,6 @@ set_stmts_group_number(List *stmts,
 	}
 }
 
-#endif
-
 /*
  * Convert binary value to text
  */
@@ -356,34 +346,6 @@ convert_plpgsql_datum_to_string(PLpgSQL_execstate *estate,
 
 				*refname = rec->refname;
 
-#if PG_VERSION_NUM < 110000
-
-				if (rec->tup && HeapTupleIsValid(rec->tup))
-				{
-					Datum		value;
-					Oid			typid;
-					MemoryContext oldcontext;
-
-					Assert(rec->tupdesc);
-
-					BlessTupleDesc(rec->tupdesc);
-
-					*isnull = false;
-
-					oldcontext = MemoryContextSwitchTo(estate->eval_econtext->ecxt_per_tuple_memory);
-					typid = rec->tupdesc->tdtypeid;
-					value = heap_copy_tuple_as_datum(rec->tup, rec->tupdesc);
-					MemoryContextSwitchTo(oldcontext);
-
-					return convert_value_to_string(estate,
-												   value,
-												   typid);
-				}
-				else
-					return NULL;
-
-#else
-
 				if (rec->erh && !ExpandedRecordIsEmpty(rec->erh))
 				{
 					*isnull = false;
@@ -394,9 +356,6 @@ convert_plpgsql_datum_to_string(PLpgSQL_execstate *estate,
 				}
 				else
 					return NULL;
-
-#endif
-
 			}
 			break;
 
@@ -467,81 +426,6 @@ print_func_args(PLpgSQL_execstate *estate, PLpgSQL_function *func, int frame_num
 
 	initStringInfo(&ds);
 
-#if PG_VERSION_NUM < 110000
-
-	if (func->fn_is_trigger == PLPGSQL_DML_TRIGGER)
-	{
-		const char *trgtyp;
-		const char *trgtime;
-		const char *trgcmd;
-		int		rec_new_varno = func->new_varno;
-		int		rec_old_varno = func->old_varno;
-		char buffer[20];
-		PLpgSQL_var *var;
-		char *str;
-
-		var = (PLpgSQL_var *) estate->datums[func->tg_when_varno];
-		Assert(!var->isnull);
-		str = TextDatumGetCString(var->value);
-		trgtime = strcmp(str, "BEFORE") == 0 ? "before" : "after";
-		pfree(str);
-
-		var = (PLpgSQL_var *) estate->datums[func->tg_level_varno];
-		Assert(!var->isnull);
-		str = TextDatumGetCString(var->value);
-		trgtyp = strcmp(str, "ROW") == 0 ? "row" : "statement";
-		pfree(str);
-
-		var = (PLpgSQL_var *) estate->datums[func->tg_op_varno];
-		Assert(!var->isnull);
-		str = TextDatumGetCString(var->value);
-
-		if (strcmp(str, "INSERT") == 0)
-		{
-			trgcmd = " insert";
-			rec_old_varno = -1;
-		}
-		else if (strcmp(str, "UPDATE") == 0)
-		{
-			trgcmd = " update";
-		}
-		else if (strcmp(str, "DELETE") == 0)
-		{
-			trgcmd = " delete";
-			rec_new_varno = -1;
-		}
-		else
-			trgcmd = "";
-
-		pfree(str);
-
-		elog(plpgsql_check_tracer_errlevel,
-							 "#%-*d%*s triggered by %s %s%s trigger",
-											frame_width,
-											frame_num,
-											indent + 4, "",
-											trgtime,
-											trgtyp,
-											trgcmd);
-
-		sprintf(buffer, "%d", frame_num);
-
-		if (rec_new_varno != -1)
-			print_datum(estate, estate->datums[rec_new_varno], buffer, level);
-		if (rec_old_varno != -1)
-			print_datum(estate, estate->datums[rec_new_varno], buffer, level);
-	}
-	else if (func->fn_is_trigger == PLPGSQL_EVENT_TRIGGER)
-	{
-		elog(plpgsql_check_tracer_errlevel,
-							 "#%-*d%*s triggered by event trigger",
-											frame_width,
-											frame_num,
-											indent + 4, "");
-	}
-
-#else
-
 	if (func->fn_is_trigger == PLPGSQL_DML_TRIGGER)
 	{
 		TriggerData *td = estate->trigdata;
@@ -603,8 +487,6 @@ print_func_args(PLpgSQL_execstate *estate, PLpgSQL_function *func, int frame_num
 											frame_num,
 											indent + 4, "");
 	}
-
-#endif
 
 	/* print value of arguments */
 	for (i = 0; i < func->fn_nargs; i++)
@@ -1357,14 +1239,10 @@ plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 					exprname = "expr";
 					break;
 
-#if PG_VERSION_NUM >= 110000
-
 				case PLPGSQL_STMT_CALL:
 					expr = ((PLpgSQL_stmt_call *) stmt)->expr;
 					exprname = "expr";
 					break;
-
-#endif
 
 				case PLPGSQL_STMT_EXECSQL:
 					expr = ((PLpgSQL_stmt_execsql *) stmt)->sqlstmt;
@@ -1379,8 +1257,6 @@ plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 					;
 			}
 
-#if PG_VERSION_NUM >= 120000
-
 			instr_time *stmt_start_time;
 
 			plpgsql_check_get_trace_stmt_info(estate, stmt->stmtid - 1, &stmt_start_time);
@@ -1389,12 +1265,6 @@ plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 				INSTR_TIME_SET_CURRENT(*stmt_start_time);
 
 			snprintf(printbuf, 20, "%d.%d", frame_num, stmt->stmtid);
-
-#else
-
-			snprintf(printbuf, 20, "%d", frame_num);
-
-#endif
 
 			if (expr)
 			{
@@ -1526,8 +1396,6 @@ plpgsql_check_tracer_on_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 			char	printbuf[20];
 			uint64			elapsed = 0;
 
-#if PG_VERSION_NUM >= 120000
-
 			instr_time *stmt_start_time;
 
 			plpgsql_check_get_trace_stmt_info(estate, stmt->stmtid - 1, &stmt_start_time);
@@ -1545,12 +1413,6 @@ plpgsql_check_tracer_on_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 			}
 
 			snprintf(printbuf, 20, "%d.%d", frame_num, stmt->stmtid);
-
-#else
-
-			snprintf(printbuf, 20, "%d", frame_num);
-
-#endif
 
 			elog(plpgsql_check_tracer_errlevel,
 				 "#%-*s      %*s <-- end of %s (elapsed time=%.3f ms)",

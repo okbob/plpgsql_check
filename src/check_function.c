@@ -21,12 +21,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
-
-#if PG_VERSION_NUM >= 120000
-
 #include "access/heapam.h"
-
-#endif
 
 static HTAB *plpgsql_check_HashTable = NULL;
 
@@ -116,17 +111,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 	PLpgSQL_function *volatile function = NULL;
 	int			save_nestlevel = 0;
 	bool		reload_config;
-
-#if PG_VERSION_NUM >= 120000
-
 	LOCAL_FCINFO(fake_fcinfo, 0);
-
-#else
-
-	FunctionCallInfoData fake_fcinfo_data;
-	FunctionCallInfo fake_fcinfo = &fake_fcinfo_data;
-
-#endif
 
 	FmgrInfo	flinfo;
 	TriggerData trigdata;
@@ -388,8 +373,6 @@ plpgsql_check_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 			{
 				PLpgSQL_rec *rec = (PLpgSQL_rec *) estate->datums[i];
 
-#if PG_VERSION_NUM >= 110000
-
 				memcpy(&saved_records[i], rec, sizeof(PLpgSQL_rec));
 
 				if (rec->erh)
@@ -397,19 +380,6 @@ plpgsql_check_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 					/* work with dummy copy */
 					rec->erh = make_expanded_record_from_exprecord(rec->erh, cstate.check_cxt);
 				}
-
-#else
-
-				saved_records[i].tup = rec->tup;
-				saved_records[i].tupdesc = rec->tupdesc;
-				saved_records[i].freetup = rec->freetup;
-				saved_records[i].freetupdesc = rec->freetupdesc;
-
-				/* don't release a original tupdesc and original tup */
-				rec->freetup = false;
-				rec->freetupdesc = false;
-
-#endif
 
 			}
 			else if (estate->datums[i]->dtype == PLPGSQL_DTYPE_VAR)
@@ -486,22 +456,7 @@ plpgsql_check_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 			{
 				PLpgSQL_rec *rec = (PLpgSQL_rec *) estate->datums[i];
 
-#if PG_VERSION_NUM >= 110000
-
 				memcpy(rec, &saved_records[i], sizeof(PLpgSQL_rec));
-
-#else
-
-				if (rec->freetupdesc)
-					FreeTupleDesc(rec->tupdesc);
-
-				rec->tup = saved_records[i].tup;
-				rec->tupdesc = saved_records[i].tupdesc;
-				rec->freetup = saved_records[i].freetup;
-				rec->freetupdesc = saved_records[i].freetupdesc;
-
-#endif
-
 			}
 			else if (estate->datums[i]->dtype == PLPGSQL_DTYPE_VAR)
 			{
@@ -634,7 +589,6 @@ trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate)
 		 * NEW.foo = 'xyz')", which should parse regardless of the current
 		 * trigger type.
 		 */
-#if PG_VERSION_NUM >= 110000
 
 		/*
 		 * find all PROMISE VARIABLES and initit their
@@ -651,46 +605,11 @@ trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate)
 		plpgsql_check_recval_assign_tupdesc(cstate, rec_new, trigdata->tg_relation->rd_att, false);
 		rec_old = (PLpgSQL_rec *) (cstate->estate->datums[func->old_varno]);
 		plpgsql_check_recval_assign_tupdesc(cstate, rec_old, trigdata->tg_relation->rd_att, false);
-
-#else
-
-		rec_new = (PLpgSQL_rec *) (cstate->estate->datums[func->new_varno]);
-		rec_new->freetup = false;
-		rec_new->freetupdesc = false;
-		plpgsql_check_assign_tupdesc_row_or_rec(cstate, NULL, rec_new, trigdata->tg_relation->rd_att, false);
-
-		rec_old = (PLpgSQL_rec *) (cstate->estate->datums[func->old_varno]);
-		rec_old->freetup = false;
-		rec_old->freetupdesc = false;
-		plpgsql_check_assign_tupdesc_row_or_rec(cstate, NULL, rec_old, trigdata->tg_relation->rd_att, false);
-
-		/*
-		 * Assign the special tg_ variables
-		 */
-		init_datum_dno(cstate, func->tg_op_varno, true, true);
-		init_datum_dno(cstate, func->tg_name_varno, true, true);
-		init_datum_dno(cstate, func->tg_when_varno, true, true);
-		init_datum_dno(cstate, func->tg_level_varno, true, true);
-		init_datum_dno(cstate, func->tg_relid_varno, true, true);
-		init_datum_dno(cstate, func->tg_relname_varno, true, true);
-		init_datum_dno(cstate, func->tg_table_name_varno, true, true);
-		init_datum_dno(cstate, func->tg_table_schema_varno, true, true);
-		init_datum_dno(cstate, func->tg_nargs_varno, true, true);
-		init_datum_dno(cstate, func->tg_argv_varno, true, true);
-
-#endif
-
 	}
 	else if (IsA(tdata, EventTriggerData))
 	{
 
-#if PG_VERSION_NUM < 110000
-
-		init_datum_dno(cstate, func->tg_event_varno, true, true);
-		init_datum_dno(cstate, func->tg_tag_varno, true, true);
-
-#endif
-
+		/* do nothing */
 	}
 	else
 		elog(ERROR, "unexpected environment");
@@ -841,15 +760,7 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 	*fake_rtd = false;
 
 	/* clean structures */
-#if PG_VERSION_NUM >= 120000
-
 	MemSet(fcinfo, 0, SizeForFunctionCallInfo(0));
-
-#else
-
-	MemSet(fcinfo, 0, sizeof(FunctionCallInfoData));
-
-#endif
 
 	MemSet(flinfo, 0, sizeof(FmgrInfo));
 	MemSet(rsinfo, 0, sizeof(ReturnSetInfo));
@@ -1043,15 +954,7 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 		{
 			*fake_rtd = cinfo->rettype == RECORDOID;
 
-#if PG_VERSION_NUM >= 120000
-
 			resultTupleDesc = CreateTemplateTupleDesc(1);
-
-#else
-
-			resultTupleDesc = CreateTemplateTupleDesc(1, false);
-
-#endif
 
 			TupleDescInitEntry(resultTupleDesc,
 							    (AttrNumber) 1, "__result__",
@@ -1117,20 +1020,11 @@ setup_estate(PLpgSQL_execstate *estate,
 
 	estate->readonly_func = func->fn_readonly;
 
-#if PG_VERSION_NUM < 110000
-
-	estate->rettupdesc = NULL;
-	estate->eval_econtext = NULL;
-
-#else
-
 	estate->eval_econtext = makeNode(ExprContext);
 	estate->eval_econtext->ecxt_per_tuple_memory = AllocSetContextCreate(CurrentMemoryContext,
 													"ExprContext",
 													ALLOCSET_DEFAULT_SIZES);
 	estate->datum_context = CurrentMemoryContext;
-
-#endif
 
 	estate->exitlabel = NULL;
 	estate->cur_error = NULL;
@@ -1141,17 +1035,7 @@ setup_estate(PLpgSQL_execstate *estate,
 		estate->tuple_store_cxt = rsi->econtext->ecxt_per_query_memory;
 		estate->tuple_store_owner = CurrentResourceOwner;
 
-#if PG_VERSION_NUM >= 110000
-
 		estate->tuple_store_desc = rsi->expectedDesc;
-
-#else
-
-		if (estate->retisset)
-			estate->rettupdesc = rsi->expectedDesc;
-
-#endif
-
 	}
 	else
 	{
@@ -1167,12 +1051,6 @@ setup_estate(PLpgSQL_execstate *estate,
 
 	estate->eval_tuptable = NULL;
 	estate->eval_processed = 0;
-
-#if PG_VERSION_NUM < 120000
-
-	estate->eval_lastoid = InvalidOid;
-
-#endif
 
 	if (cinfo->oldtable)
 	{
@@ -1251,21 +1129,9 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->func_oids = NULL;
 	cstate->rel_oids = NULL;
 
-#if PG_VERSION_NUM >= 110000
-
 	cstate->check_cxt = AllocSetContextCreate(CurrentMemoryContext,
 										 "plpgsql_check temporary cxt",
 										   ALLOCSET_DEFAULT_SIZES);
-
-#else
-
-	cstate->check_cxt = AllocSetContextCreate(CurrentMemoryContext,
-										 "plpgsql_check temporary cxt",
-										   ALLOCSET_DEFAULT_MINSIZE,
-										   ALLOCSET_DEFAULT_INITSIZE,
-										   ALLOCSET_DEFAULT_MAXSIZE);
-
-#endif
 
 	cstate->found_return_query = false;
 	cstate->found_return_dyn_query = false;
@@ -1365,13 +1231,7 @@ init_datum_dno(PLpgSQL_checkstate *cstate, int dno, bool is_auto, bool is_protec
 {
 	switch (cstate->estate->datums[dno]->dtype)
 	{
-
-#if PG_VERSION_NUM >= 110000
-
 		case PLPGSQL_DTYPE_PROMISE:
-
-#endif
-
 		case PLPGSQL_DTYPE_VAR:
 			{
 				PLpgSQL_var *var = (PLpgSQL_var *) cstate->estate->datums[dno];
@@ -1382,8 +1242,6 @@ init_datum_dno(PLpgSQL_checkstate *cstate, int dno, bool is_auto, bool is_protec
 			}
 			break;
 
-#if PG_VERSION_NUM >= 110000
-
 		case PLPGSQL_DTYPE_REC:
 			{
 				PLpgSQL_rec *rec = (PLpgSQL_rec *) cstate->estate->datums[dno];
@@ -1392,8 +1250,6 @@ init_datum_dno(PLpgSQL_checkstate *cstate, int dno, bool is_auto, bool is_protec
 				plpgsql_check_recval_assign_tupdesc(cstate, rec, NULL, false);
 			}
 			break;
-
-#endif
 
 		case PLPGSQL_DTYPE_ROW:
 			{
@@ -1432,13 +1288,7 @@ copy_plpgsql_datum(PLpgSQL_checkstate *cstate, PLpgSQL_datum *datum)
 	switch (datum->dtype)
 	{
 		case PLPGSQL_DTYPE_VAR:
-
-#if PG_VERSION_NUM >= 110000
-
 		case PLPGSQL_DTYPE_PROMISE:
-
-#endif
-
 			{
 				PLpgSQL_var *new = palloc(sizeof(PLpgSQL_var));
 
