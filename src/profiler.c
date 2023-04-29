@@ -2491,6 +2491,7 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 		int		group_number_counter = 0;
 
 		pinfo = init_profiler_info(pinfo, func);
+
 		pinfo->trace_info_is_initialized = true;
 
 		pinfo->stmt_start_times = palloc0(sizeof(instr_time) * func->nstatements);
@@ -2556,7 +2557,6 @@ plpgsql_check_profiler_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *fun
 
 		PG_TRY();
 		{
-
 			Assert(pinfo);
 
 			estate->plugin_info = pinfo->prev_plugin_info;
@@ -2749,12 +2749,13 @@ plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		top_pinfo->err_stmt = stmt;
 	}
 
-
 	if (plpgsql_check_tracer && pinfo)
 	{
 		int		stmtid = stmt->stmtid - 1;
 		int		sgn = pinfo->stmt_group_numbers[stmtid];
 		int		pgn = pinfo->stmt_parent_group_numbers[stmtid];
+
+		Assert(pinfo->pi_magic == PI_MAGIC);
 
 		plpgsql_check_runtime_pragma_vector_changed = false;
 

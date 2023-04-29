@@ -123,8 +123,12 @@ typedef struct
 	unsigned int disable_compatibility_warnings : 1;
 } plpgsql_check_pragma_vector;
 
+#define CI_MAGIC		2023042922
+
 typedef struct PLpgSQL_checkstate
 {
+	int			ci_magic;
+
 	List	    *argnames;					/* function arg names */
 	char		decl_volatility;			/* declared function volatility */
 	char		volatility;					/* detected function volatility */
