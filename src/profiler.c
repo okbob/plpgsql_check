@@ -2853,6 +2853,7 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 #endif
 
 		pinfo = init_profiler_info(pinfo, func);
+
 		pinfo->trace_info_is_initialized = true;
 
 #if PG_VERSION_NUM >= 120000
@@ -2923,7 +2924,6 @@ plpgsql_check_profiler_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *fun
 
 		PG_TRY();
 		{
-
 			Assert(pinfo);
 
 			estate->plugin_info = pinfo->prev_plugin_info;
@@ -3124,6 +3124,8 @@ plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 	if (plpgsql_check_tracer && pinfo)
 	{
+
+		Assert(pinfo->pi_magic == PI_MAGIC);
 
 #if PG_VERSION_NUM >= 120000
 

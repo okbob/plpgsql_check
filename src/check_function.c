@@ -1223,6 +1223,8 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 			 bool is_active_mode,
 			 bool fake_rtd)
 {
+	cstate->ci_magic = CI_MAGIC;
+
 	cstate->decl_volatility = cinfo->volatility;
 	cstate->has_execute_stmt = false;
 	cstate->volatility = PROVOLATILE_IMMUTABLE;

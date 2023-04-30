@@ -83,6 +83,9 @@ parserhook_wrapper_update_used_variables(ParseState *pstate, Node *node)
 			expr = (PLpgSQL_expr *) pstate->p_ref_hook_state;
 			cstate = expr->func->cur_estate->plugin_info;
 
+			if (!cstate || cstate->ci_magic != CI_MAGIC)
+				return;
+
 			if (expr && bms_is_member(dno, expr->paramnos))
 			{
 
@@ -228,6 +231,7 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 
 #endif
 
+			expr->func->cur_estate->plugin_info = old_plugin_info;
 		}
 		PG_CATCH();
 		{
