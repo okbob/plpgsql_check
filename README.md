@@ -25,11 +25,11 @@ google group.
 * checks fields of referenced database objects and types inside embedded SQL
 * validates you are using the correct types for function parameters
 * identifies unused variables and function arguments, unmodified OUT arguments
-* partial detection of dead code (code after an unqualified RETURN command)
+* partial detection of dead code (code after an RETURN command)
 * detection of missing RETURN command in function (common after exception handlers, complex logic)
 * tries to identify unwanted hidden casts, which can be a performance issue like unused indexes
 * ability to collect relations and functions used by function
-* ability to check EXECUTE stmt agaist SQL injection vulnerability
+* ability to check EXECUTE statements agaist SQL injection vulnerability
 
 I invite any ideas, patches, bugreports.
 
