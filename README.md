@@ -253,7 +253,7 @@ Example:
     returns text as $$
     begin
       /*
-       * rewrite default polymorphic type to text */
+       * rewrite default polymorphic type to text
        * @plpgsql_check_options: anyelementtype = text
        */
       return $1;
