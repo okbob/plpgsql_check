@@ -378,11 +378,25 @@ show_dependency_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 
 	plpgsql_check_check_ext_version(fcinfo->flinfo->fn_oid);
 
-	Assert(PG_NARGS() == 2);
+	Assert(PG_NARGS() == 7);
 
 	/* check to see if caller supports us returning a tuplestore */
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	SetReturningFunctionCheck(rsinfo);
+
+	if (PG_ARGISNULL(1))
+		ERR_NULL_OPTION("relid");
+
+	if (PG_ARGISNULL(2))
+		ERR_NULL_OPTION("anyelementtype");
+	if (PG_ARGISNULL(3))
+		ERR_NULL_OPTION("anyenumtype");
+	if (PG_ARGISNULL(4))
+		ERR_NULL_OPTION("anyrangetype");
+	if (PG_ARGISNULL(5))
+		ERR_NULL_OPTION("anycompatibletype");
+	if (PG_ARGISNULL(6))
+		ERR_NULL_OPTION("anycompatiblerangetype");
 
 	plpgsql_check_info_init(&cinfo, fnoid);
 
@@ -392,6 +406,12 @@ show_dependency_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	cinfo.performance_warnings = false;
 	cinfo.extra_warnings = false;
 	cinfo.compatibility_warnings = false;
+
+	cinfo.anyelementoid = PG_GETARG_OID(2);
+	cinfo.anyenumoid = PG_GETARG_OID(3);
+	cinfo.anyrangeoid = PG_GETARG_OID(4);
+	cinfo.anycompatibleoid = PG_GETARG_OID(5);
+	cinfo.anycompatiblerangeoid = PG_GETARG_OID(6);
 
 	cinfo.proctuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(cinfo.fn_oid));
 	if (!HeapTupleIsValid(cinfo.proctuple))

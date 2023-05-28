@@ -524,6 +524,9 @@ inside processed function:
     └──────────┴───────┴────────┴─────────┴────────────────────────────┘
     (4 rows)
 
+Optional arguments of <i>plpgsql_show_dependency_tb</i> are `relid`, `anyelementtype`, `enumtype`,
+`anyrangetype`, `anycompatibletype` and `anycompatiblerangetype`.
+
 # Profiler
 
 The plpgsql_check contains simple profiler of plpgsql functions and procedures. It can work with/without

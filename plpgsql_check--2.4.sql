@@ -115,7 +115,13 @@ RETURNS SETOF text
 AS 'MODULE_PATHNAME','plpgsql_check_function_name'
 LANGUAGE C;
 
-CREATE FUNCTION __plpgsql_show_dependency_tb(funcoid regprocedure, relid regclass DEFAULT 0)
+CREATE FUNCTION __plpgsql_show_dependency_tb(funcoid regprocedure,
+                                             relid regclass DEFAULT 0,
+                                             anyelememttype regtype DEFAULT 'int',
+                                             anyenumtype regtype DEFAULT '-',
+                                             anyrangetype regtype DEFAULT 'int4range',
+                                             anycompatibletype regtype DEFAULT 'int',
+                                             anycompatiblerangetype regtype DEFAULT 'int4range')
 RETURNS TABLE(type text,
               oid oid,
               schema text,
@@ -124,7 +130,13 @@ RETURNS TABLE(type text,
 AS 'MODULE_PATHNAME','plpgsql_show_dependency_tb'
 LANGUAGE C STRICT;
 
-CREATE FUNCTION __plpgsql_show_dependency_tb(name text, relid regclass DEFAULT 0)
+CREATE FUNCTION __plpgsql_show_dependency_tb(name text,
+                                             relid regclass DEFAULT 0,
+                                             anyelememttype regtype DEFAULT 'int',
+                                             anyenumtype regtype DEFAULT '-',
+                                             anyrangetype regtype DEFAULT 'int4range',
+                                             anycompatibletype regtype DEFAULT 'int',
+                                             anycompatiblerangetype regtype DEFAULT 'int4range')
 RETURNS TABLE(type text,
               oid oid,
               schema text,
@@ -133,7 +145,13 @@ RETURNS TABLE(type text,
 AS 'MODULE_PATHNAME','plpgsql_show_dependency_tb_name'
 LANGUAGE C STRICT;
 
-CREATE FUNCTION plpgsql_show_dependency_tb(funcoid regprocedure, relid regclass DEFAULT 0)
+CREATE FUNCTION plpgsql_show_dependency_tb(funcoid regprocedure,
+                                           relid regclass DEFAULT 0,
+                                           anyelememttype regtype DEFAULT 'int',
+                                           anyenumtype regtype DEFAULT '-',
+                                           anyrangetype regtype DEFAULT 'int4range',
+                                           anycompatibletype regtype DEFAULT 'int',
+                                           anycompatiblerangetype regtype DEFAULT 'int4range')
 RETURNS TABLE(type text,
               oid oid,
               schema text,
@@ -141,11 +159,17 @@ RETURNS TABLE(type text,
               params text)
 AS $$
   SELECT *
-    FROM @extschema@.__plpgsql_show_dependency_tb($1, $2)
+    FROM @extschema@.__plpgsql_show_dependency_tb($1, $2, $3, $4, $5, $6, $7)
    ORDER BY 1, 3, 4;
 $$ LANGUAGE sql;
 
-CREATE FUNCTION plpgsql_show_dependency_tb(fnname text, relid regclass DEFAULT 0)
+CREATE FUNCTION plpgsql_show_dependency_tb(fnname text,
+                                           relid regclass DEFAULT 0,
+                                           anyelememttype regtype DEFAULT 'int',
+                                           anyenumtype regtype DEFAULT '-',
+                                           anyrangetype regtype DEFAULT 'int4range',
+                                           anycompatibletype regtype DEFAULT 'int',
+                                           anycompatiblerangetype regtype DEFAULT 'int4range')
 RETURNS TABLE(type text,
               oid oid,
               schema text,
@@ -153,7 +177,7 @@ RETURNS TABLE(type text,
               params text)
 AS $$
   SELECT *
-    FROM @extschema@.__plpgsql_show_dependency_tb($1, $2)
+    FROM @extschema@.__plpgsql_show_dependency_tb($1, $2, $3, $4, $5, $6, $7)
    ORDER BY 1, 3, 4;
 $$ LANGUAGE sql;
 
