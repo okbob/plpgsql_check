@@ -996,6 +996,7 @@ contain_volatile_functions_walker(Node *node, void *context)
 {
 	if (node == NULL)
 		return false;
+
 	/* Check for volatile functions in node itself */
 	if (check_functions_in_node(node, contain_volatile_functions_checker,
 								context))
@@ -1036,15 +1037,11 @@ contain_mutable_functions_walker(Node *node, void *context)
 								context))
 		return true;
 
-#if PG_VERSION_NUM < 160000
-
 	if (IsA(node, SQLValueFunction))
 	{
 		/* all variants of SQLValueFunction are stable */
 		return true;
 	}
-
-#endif
 
 	if (IsA(node, NextValueExpr))
 	{
