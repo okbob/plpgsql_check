@@ -386,7 +386,6 @@ show_dependency_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 
 	if (PG_ARGISNULL(1))
 		ERR_NULL_OPTION("relid");
-
 	if (PG_ARGISNULL(2))
 		ERR_NULL_OPTION("anyelementtype");
 	if (PG_ARGISNULL(3))

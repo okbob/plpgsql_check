@@ -128,7 +128,7 @@ RETURNS TABLE(type text,
               name text,
               params text)
 AS 'MODULE_PATHNAME','plpgsql_show_dependency_tb'
-LANGUAGE C STRICT;
+LANGUAGE C;
 
 CREATE FUNCTION __plpgsql_show_dependency_tb(name text,
                                              relid regclass DEFAULT 0,
@@ -143,7 +143,7 @@ RETURNS TABLE(type text,
               name text,
               params text)
 AS 'MODULE_PATHNAME','plpgsql_show_dependency_tb_name'
-LANGUAGE C STRICT;
+LANGUAGE C;
 
 CREATE FUNCTION plpgsql_show_dependency_tb(funcoid regprocedure,
                                            relid regclass DEFAULT 0,
