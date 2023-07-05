@@ -532,7 +532,7 @@ Optional arguments of <i>plpgsql_show_dependency_tb</i> are `relid`, `anyelement
 The plpgsql_check contains simple profiler of plpgsql functions and procedures. It can work with/without
 access to shared memory. It depends on `shared_preload_libraries` config. When plpgsql_check is initialized
 by `shared_preload_libraries`, then it can allocate shared memory, and function's profiles are stored there.
-When plpgsql_check cannot to allocate shared momory, the profile is stored in session memory.
+When plpgsql_check cannot to allocate shared memory, the profile is stored in session memory.
 
 Due to dependencies, `shared_preload_libraries` should to contain `plpgsql` first
 
