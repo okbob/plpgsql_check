@@ -15,6 +15,7 @@
 #include "catalog/pg_type.h"
 #include "mb/pg_wchar.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
@@ -34,6 +35,8 @@ int plpgsql_check_tracer_variable_max_length = 1024;
 
 static void print_datum(PLpgSQL_execstate *estate, PLpgSQL_datum *dtm, char *frame, int level);
 static char *convert_plpgsql_datum_to_string(PLpgSQL_execstate *estate, PLpgSQL_datum *dtm, bool *isnull, char **refname);
+
+PG_FUNCTION_INFO_V1(plpgsql_check_tracer_ctrl);
 
 #if PG_VERSION_NUM >= 140000
 
@@ -1525,4 +1528,34 @@ plpgsql_check_trace_assert_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *
 			}
 		}
 	}
+}
+
+/*
+ * Enable, disable, show state tracer
+ */
+Datum
+plpgsql_check_tracer_ctrl(PG_FUNCTION_ARGS)
+{
+	char	   *optstr;
+
+#define OPTNAME		"plpgsql_check.tracer"
+
+	if (!PG_ARGISNULL(0))
+	{
+		bool		optval = PG_GETARG_BOOL(0);
+
+		(void) set_config_option(OPTNAME, optval ? "on" : "off",
+								 (superuser() ? PGC_SUSET : PGC_USERSET),
+								 PGC_S_SESSION, GUC_ACTION_SET,
+								 true, 0, false);
+	}
+
+	optstr = GetConfigOptionByName(OPTNAME, NULL, false);
+
+	if (strcmp(optstr, "on") == 0)
+		elog(NOTICE, "tracer is active");
+	else
+		elog(NOTICE, "tracer is not active");
+
+	PG_RETURN_VOID();
 }

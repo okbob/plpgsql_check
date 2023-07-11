@@ -76,5 +76,7 @@ extern PGDLLEXPORT Datum plpgsql_coverage_branches_name(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plpgsql_check_pragma(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plpgsql_profiler_install_fake_queryid_hook(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plpgsql_profiler_remove_fake_queryid_hook(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum plpgsql_check_profiler_ctrl(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum plpgsql_check_tracer_ctrl(PG_FUNCTION_ARGS);
 
 #endif

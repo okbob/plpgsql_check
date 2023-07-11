@@ -292,3 +292,11 @@ RETURNS TABLE(funcoid regprocedure,
               max_time double precision)
 AS 'MODULE_PATHNAME','plpgsql_profiler_functions_all_tb'
 LANGUAGE C STRICT;
+
+CREATE OR REPLACE FUNCTION plpgsql_check_profiler(enable boolean DEFAULT NULL)
+RETURNS void AS 'MODULE_PATHNAME', 'plpgsql_check_profiler_ctrl'
+LANGUAGE C VOLATILE;
+
+CREATE OR REPLACE FUNCTION plpgsql_check_tracer(enable boolean DEFAULT NULL)
+RETURNS void AS 'MODULE_PATHNAME', 'plpgsql_check_tracer_ctrl'
+LANGUAGE C VOLATILE;

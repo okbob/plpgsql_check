@@ -546,6 +546,8 @@ Due to dependencies, `shared_preload_libraries` should to contain `plpgsql` firs
 
 The profiler is active when GUC `plpgsql_check.profiler` is on. The profiler doesn't require shared memory,
 but if there is not enough shared memory, then the profiler is limited just to active session.
+The profiler can be activated by calling function `plpgsql_check_profiler(true)` and disabled
+by calling same function with `false` argument (or with literals `on`, `off`).
 
 When plpgsql_check is initialized by `shared_preload_libraries`, another GUC is
 available to configure the amount of shared memory used by the profiler:
@@ -690,7 +692,9 @@ It allows to pair start and end of function.
 Tracing is enabled by setting `plpgsql_check.tracer` to `on`. Attention - enabling this behaviour
 has significant negative impact on performance (unlike the profiler). You can set a level for output used by
 tracer `plpgsql_check.tracer_errlevel` (default is `notice`). The output content is limited by length
-specified by `plpgsql_check.tracer_variable_max_length` configuration variable.
+specified by `plpgsql_check.tracer_variable_max_length` configuration variable. The tracer can be activated
+by calling function `plpgsql_check_tracer(true)` and disabled by calling same function with `false` argument
+(or with literals `on`, `off`).
 
 First, the usage of tracer should be explicitly enabled by superuser by setting `set plpgsql_check.enable_tracer to on;`
 or `plpgsql_check.enable_tracer to on` in `postgresql.conf`. This is a security safeguard. The tracer shows content of

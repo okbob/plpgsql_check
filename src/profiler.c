@@ -264,6 +264,7 @@ fmgr_hook_type			plpgsql_check_next_fmgr_hook = NULL;
  */
 int plpgsql_check_profiler_max_shared_chunks = 15000;
 
+PG_FUNCTION_INFO_V1(plpgsql_check_profiler_ctrl);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_reset_all);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_reset);
 PG_FUNCTION_INFO_V1(plpgsql_coverage_statements);
@@ -1100,6 +1101,36 @@ profiler_stmt_walker(profiler_info *pinfo,
 	{
 		opts->nested_exec_count = exec_count;
 	}
+}
+
+/*
+ * Enable, disable, show state profiler
+ */
+Datum
+plpgsql_check_profiler_ctrl(PG_FUNCTION_ARGS)
+{
+	char	   *optstr;
+
+#define OPTNAME		"plpgsql_check.profiler"
+
+	if (!PG_ARGISNULL(0))
+	{
+		bool		optval = PG_GETARG_BOOL(0);
+
+		(void) set_config_option(OPTNAME, optval ? "on" : "off",
+								 (superuser() ? PGC_SUSET : PGC_USERSET),
+								 PGC_S_SESSION, GUC_ACTION_SET,
+								 true, 0, false);
+	}
+
+	optstr = GetConfigOptionByName(OPTNAME, NULL, false);
+
+	if (strcmp(optstr, "on") == 0)
+		elog(NOTICE, "profiler is active");
+	else
+		elog(NOTICE, "profiler is not active");
+
+	PG_RETURN_VOID();
 }
 
 /*
