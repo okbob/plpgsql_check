@@ -42,25 +42,6 @@ PG_MODULE_MAGIC;
 PLpgSQL_plugin **plpgsql_check_plugin_var_ptr;
 PLpgSQL_plugin *prev_plpgsql_plugin;
 
-static PLpgSQL_plugin plugin_funcs = { plpgsql_check_profiler_func_init,
-									   plpgsql_check_on_func_beg,
-									   plpgsql_check_profiler_func_end,
-									   plpgsql_check_profiler_stmt_beg,
-									   plpgsql_check_profiler_stmt_end,
-									   NULL,
-									   NULL
-
-#if PG_VERSION_NUM >= 150000
-
-									  , NULL,
-									  NULL,
-									  NULL
-
-#endif
-
-									  };
-
-
 static const struct config_enum_entry plpgsql_check_mode_options[] = {
 	{"disabled", PLPGSQL_CHECK_MODE_DISABLED, false},
 	{"by_function", PLPGSQL_CHECK_MODE_BY_FUNCTION, false},
@@ -205,10 +186,6 @@ _PG_init(void)
 	AssertVariableIsOfType(&plpgsql_ns_lookup, plpgsql_check__ns_lookup_t);
 	plpgsql_check__ns_lookup_p = (plpgsql_check__ns_lookup_t)
 		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_ns_lookup");
-
-	plpgsql_check_plugin_var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable( "PLpgSQL_plugin");
-	prev_plpgsql_plugin = *plpgsql_check_plugin_var_ptr;
-	*plpgsql_check_plugin_var_ptr = &plugin_funcs;
 
 	DefineCustomBoolVariable("plpgsql_check.regress_test_mode",
 					    "reduces volatile output",
@@ -388,12 +365,9 @@ _PG_init(void)
 		shmem_startup_hook = plpgsql_check_profiler_shmem_startup;
 	}
 
-	plpgsql_check_next_needs_fmgr_hook = needs_fmgr_hook;
-	plpgsql_check_next_fmgr_hook = fmgr_hook;
-
-	needs_fmgr_hook = plpgsql_check_needs_fmgr_hook;
-	fmgr_hook = plpgsql_check_fmgr_hook;
-
+	plpgsql_check_init_pldbgapi2();
+	plpgsql_check_passive_check_init();
+	plpgsql_check_profiler_init();
 	inited = true;
 }
 
@@ -412,11 +386,7 @@ _PG_fini(void)
 #endif
 	shmem_startup_hook = prev_shmem_startup_hook;
 
-	/* Be more correct, and clean rendezvous variable */
-	*plpgsql_check_plugin_var_ptr = NULL;
-
-	needs_fmgr_hook = plpgsql_check_next_needs_fmgr_hook;
-	fmgr_hook = plpgsql_check_next_fmgr_hook;
+	plpgsql_check_finish_pldbgapi2();
 }
 
 #endif

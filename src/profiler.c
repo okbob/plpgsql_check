@@ -238,26 +238,6 @@ typedef struct profiler_stack
 	int			nested_stmts_count;
 } profiler_stack;
 
-static HTAB *profiler_HashTable = NULL;
-static HTAB *shared_profiler_chunks_HashTable = NULL;
-static HTAB *profiler_chunks_HashTable = NULL;
-static HTAB *fstats_HashTable = NULL;
-static HTAB *shared_fstats_HashTable = NULL;
-
-static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
-
-static profiler_shared_state *profiler_ss = NULL;
-static MemoryContext profiler_mcxt = NULL;
-static MemoryContext profiler_queryid_mcxt = NULL;
-
-static profiler_stack *top_pinfo = NULL;
-static ExprContext *curr_eval_econtext = NULL;
-
-bool plpgsql_check_profiler = false;
-
-needs_fmgr_hook_type	plpgsql_check_next_needs_fmgr_hook = NULL;
-fmgr_hook_type			plpgsql_check_next_fmgr_hook = NULL;
-
 /*
  * should be enough for project of 300K PLpgSQL rows.
  * It should to take about 24.4MB of shared memory.
@@ -293,6 +273,33 @@ static void stmts_walker(profiler_info *pinfo, profiler_stmt_walker_mode, List *
 	 const char *description, profiler_stmt_walker_options *opts);
 static void profiler_stmt_walker(profiler_info *pinfo, profiler_stmt_walker_mode mode, PLpgSQL_stmt *stmt,
 	 PLpgSQL_stmt *parent_stmt, const char *description, int stmt_block_num, profiler_stmt_walker_options *opts);
+
+static void profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
+static void profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info, bool is_aborted);
+static void profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, PLpgSQL_stmt *stmt, void **plugin2_info);
+static void profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_function *func, PLpgSQL_stmt *stmt, void **plugin2_info, bool is_aborted);
+
+static plpgsql_check_plugin2 profiler_plugin2 = { profiler_func_setup,
+												  NULL, profiler_func_end,
+												  profiler_stmt_beg, profiler_stmt_end,
+												  NULL, NULL, NULL, NULL, NULL };
+
+static HTAB *profiler_HashTable = NULL;
+static HTAB *shared_profiler_chunks_HashTable = NULL;
+static HTAB *profiler_chunks_HashTable = NULL;
+static HTAB *fstats_HashTable = NULL;
+static HTAB *shared_fstats_HashTable = NULL;
+
+static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
+
+static profiler_shared_state *profiler_ss = NULL;
+static MemoryContext profiler_mcxt = NULL;
+static MemoryContext profiler_queryid_mcxt = NULL;
+
+static profiler_stack *top_pinfo = NULL;
+static ExprContext *curr_eval_econtext = NULL;
+
+bool plpgsql_check_profiler = false;
 
 /*
  * Use the Youngs-Cramer algorithm to incorporate the new value into the
@@ -2482,43 +2489,10 @@ init_profiler_info(profiler_info *pinfo, PLpgSQL_function *func)
  * Try to search profile pattern for function. Creates profile pattern when
  * it doesn't exists.
  */
-void
-plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *func)
+static void
+profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info)
 {
 	profiler_info *pinfo = NULL;
-
-	if (prev_plpgsql_plugin)
-	{
-		prev_plpgsql_plugin->error_callback = (*plpgsql_check_plugin_var_ptr)->error_callback;
-		prev_plpgsql_plugin->assign_expr = (*plpgsql_check_plugin_var_ptr)->assign_expr;
-
-#if PG_VERSION_NUM >= 150000
-
-		prev_plpgsql_plugin->assign_value = (*plpgsql_check_plugin_var_ptr)->assign_value;
-		prev_plpgsql_plugin->eval_datum = (*plpgsql_check_plugin_var_ptr)->eval_datum;
-		prev_plpgsql_plugin->cast_value = (*plpgsql_check_plugin_var_ptr)->cast_value;
-
-#endif
-
-		pinfo = init_profiler_info(pinfo, func);
-
-		PG_TRY();
-		{
-			if ((prev_plpgsql_plugin)->func_setup)
-				(prev_plpgsql_plugin->func_setup) (estate, func);
-
-			pinfo->prev_plugin_info = estate->plugin_info;
-			estate->plugin_info = pinfo;
-		}
-		PG_CATCH();
-		{
-			pinfo->prev_plugin_info = estate->plugin_info;
-			estate->plugin_info = pinfo;
-
-			PG_RE_THROW();
-		}
-		PG_END_TRY();
-	}
 
 	if (plpgsql_check_tracer)
 	{
@@ -2582,67 +2556,18 @@ plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *fu
 	}
 }
 
-void
-plpgsql_check_profiler_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
-{
-	if (prev_plpgsql_plugin && prev_plpgsql_plugin->func_beg)
-	{
-		profiler_info *pinfo = estate->plugin_info;
-
-		PG_TRY();
-		{
-			Assert(pinfo);
-
-			estate->plugin_info = pinfo->prev_plugin_info;
-			(prev_plpgsql_plugin->func_beg) (estate, func);
-
-			pinfo->prev_plugin_info = estate->plugin_info;
-			estate->plugin_info = pinfo;
-		}
-		PG_CATCH();
-		{
-			pinfo->prev_plugin_info = estate->plugin_info;
-			estate->plugin_info = pinfo;
-
-			PG_RE_THROW();
-		}
-		PG_END_TRY();
-	}
-}
-
-void
-plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
+static void
+profiler_func_end(PLpgSQL_execstate *estate,
+				  PLpgSQL_function *func,
+				  void **plugin2_info,
+				  bool is_aborted)
 {
 	profiler_info *pinfo = NULL;
 
 	if (estate)
 	{
 		pinfo = (profiler_info *) estate->plugin_info;
-
-		if (prev_plpgsql_plugin && prev_plpgsql_plugin->func_end)
-		{
-			PG_TRY();
-			{
-				Assert(pinfo);
-
-				estate->plugin_info = pinfo->prev_plugin_info;
-				(prev_plpgsql_plugin->func_end) (estate, func);
-
-				pinfo->prev_plugin_info = estate->plugin_info;
-				estate->plugin_info = pinfo;
-			}
-			PG_CATCH();
-			{
-				pinfo->prev_plugin_info = estate->plugin_info;
-				estate->plugin_info = pinfo;
-
-				PG_RE_THROW();
-			}
-			PG_END_TRY();
-		}
 	}
-	else if (top_pinfo)
-		pinfo = top_pinfo->pinfo;
 
 	if (plpgsql_check_tracer && pinfo )
 	{
@@ -2697,32 +2622,13 @@ plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *fun
 		pfree(pinfo);
 }
 
-void
-plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
+static void
+profiler_stmt_beg(PLpgSQL_execstate *estate,
+				  PLpgSQL_function *func,
+				  PLpgSQL_stmt *stmt,
+				  void **plugin2_info)
 {
 	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
-
-	if (prev_plpgsql_plugin && prev_plpgsql_plugin->stmt_beg)
-	{
-		PG_TRY();
-		{
-			Assert(pinfo);
-
-			estate->plugin_info = pinfo->prev_plugin_info;
-			(prev_plpgsql_plugin->stmt_beg) (estate, stmt);
-
-			pinfo->prev_plugin_info = estate->plugin_info;
-			estate->plugin_info = pinfo;
-		}
-		PG_CATCH();
-		{
-			pinfo->prev_plugin_info = estate->plugin_info;
-			estate->plugin_info = pinfo;
-
-			PG_RE_THROW();
-		}
-		PG_END_TRY();
-	}
 
 	if (top_pinfo && top_pinfo->pinfo)
 	{
@@ -2763,8 +2669,8 @@ plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 								top_pinfo->nested_stmts_count = i + 1;
 								break;
 							}
-							else
-								plpgsql_check_profiler_stmt_end(NULL, top_pinfo->nested_stmts[i]);
+							//else
+							//	plpgsql_check_profiler_stmt_end(NULL, top_pinfo->nested_stmts[i]);
 						}
 					}
 				}
@@ -2831,8 +2737,12 @@ plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 /*
  * Cleaning mode is used for closing unfinished statements after an exception.
  */
-void
-plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
+static void
+profiler_stmt_end(PLpgSQL_execstate *estate,
+				  PLpgSQL_function *func,
+				  PLpgSQL_stmt *stmt,
+				  void **plugin2_info,
+				  bool is_aborted)
 {
 	profiler_info *pinfo;
 	bool	cleaning_mode = false;
@@ -2852,27 +2762,6 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	{
 		pinfo = (profiler_info *) estate->plugin_info;
 
-		if (prev_plpgsql_plugin && prev_plpgsql_plugin->stmt_end)
-		{
-			PG_TRY();
-			{
-				Assert(pinfo);
-
-				estate->plugin_info = pinfo->prev_plugin_info;
-				(prev_plpgsql_plugin->stmt_end) (estate, stmt);
-
-				pinfo->prev_plugin_info = estate->plugin_info;
-				estate->plugin_info = pinfo;
-			}
-			PG_CATCH();
-			{
-				pinfo->prev_plugin_info = estate->plugin_info;
-				estate->plugin_info = pinfo;
-
-				PG_RE_THROW();
-			}
-			PG_END_TRY();
-		}
 	}
 
 	if (top_pinfo && top_pinfo->pinfo && !cleaning_mode)
@@ -2910,8 +2799,8 @@ plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 						top_pinfo->nested_stmts_count = i;
 						break;
 					}
-					else
-						plpgsql_check_profiler_stmt_end(NULL, top_pinfo->nested_stmts[i]);
+					//else
+					//	plpgsql_check_profiler_stmt_end(NULL, top_pinfo->nested_stmts[i]);
 				}
 			}
 		}
@@ -3064,98 +2953,10 @@ plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 }
 
 /*
- * Used as needs_fmgr_hook. All plpgsql functions
- * needs this hook when profiler is active.
+ * Register plpgsql plugin2 for profiler
  */
-bool
-plpgsql_check_needs_fmgr_hook(Oid fn_oid)
-{
-	if (plpgsql_check_next_needs_fmgr_hook &&
-		(*plpgsql_check_next_needs_fmgr_hook)(fn_oid))
-		return true;
-
-	if (!plpgsql_check_profiler &&
-		!plpgsql_check_tracer)
-		return false;
-
-	return plpgsql_check_is_plpgsql_function(fn_oid);
-}
-
-
 void
-plpgsql_check_fmgr_hook(FmgrHookEventType event,
-						FmgrInfo *flinfo, Datum *private)
+plpgsql_check_profiler_init(void)
 {
-	fmgr_hook_private *stack;
-
-	switch (event)
-	{
-		case FHET_START:
-			stack = (fmgr_hook_private *) DatumGetPointer(*private);
-			if (!stack)
-			{
-				MemoryContext oldcxt;
-
-				oldcxt = MemoryContextSwitchTo(flinfo->fn_mcxt);
-				stack = palloc(sizeof(fmgr_hook_private));
-				stack->use_plpgsql = plpgsql_check_is_plpgsql_function(flinfo->fn_oid);
-				stack->next_private = 0;
-
-				MemoryContextSwitchTo(oldcxt);
-
-				*private = PointerGetDatum(stack);
-			}
-
-			if (stack->use_plpgsql)
-			{
-				profiler_stack *pstack = palloc0(sizeof(profiler_stack));
-
-				pstack->prev_pinfo = top_pinfo;
-				top_pinfo = pstack;
-			}
-
-			if (plpgsql_check_next_fmgr_hook)
-				(*plpgsql_check_next_fmgr_hook) (event, flinfo, &stack->next_private);
-
-			break;
-
-		case FHET_END:
-		case FHET_ABORT:
-			stack = (fmgr_hook_private *) DatumGetPointer(*private);
-
-			/*
-			 * When plpgsql_check is loaded due dependency on some executed function,
-			 * then FHET_START and FHET_END (or FHET_ABORT) can be assymetric. So
-			 * stack can be NULL. See issue #101
-			 */
-			if (stack && stack->use_plpgsql)
-			{
-				profiler_stack *pstack = top_pinfo->prev_pinfo;
-
-				if (event == FHET_ABORT)
-				{
-					profiler_info *pinfo = top_pinfo->pinfo;
-					int		i;
-
-					if (pinfo)
-					{
-						for (i = top_pinfo->nested_stmts_count - 1; i >= 0; i--)
-						{
-							if (i < NESTED_STMTS_STACK_SIZE)
-								plpgsql_check_profiler_stmt_end(NULL, top_pinfo->nested_stmts[i]);
-						}
-
-						plpgsql_check_profiler_func_end(NULL, pinfo->func);
-					}
-				}
-
-				pfree(top_pinfo);
-				top_pinfo = pstack;
-			}
-
-			if (plpgsql_check_next_fmgr_hook)
-				(*plpgsql_check_next_fmgr_hook) (event, flinfo, &stack->next_private);
-
-			break;
-	}
+	plpgsql_check_register_pldbgapi2_plugin(&profiler_plugin2);
 }

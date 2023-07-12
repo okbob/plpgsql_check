@@ -334,12 +334,6 @@ extern void plpgsql_check_profiler_shmem_startup(void);
 extern Size plpgsql_check_shmem_size(void);
 extern void plpgsql_check_profiler_init_hash_tables(void);
 
-extern void plpgsql_check_profiler_func_init(PLpgSQL_execstate *estate, PLpgSQL_function *func);
-extern void plpgsql_check_profiler_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func);
-extern void plpgsql_check_profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func);
-extern void plpgsql_check_profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
-extern void plpgsql_check_profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
-
 extern void plpgsql_check_iterate_over_profile(plpgsql_check_info *cinfo, profiler_stmt_walker_mode mode,
    plpgsql_check_result_info *ri, coverage_state *cs);
 
@@ -349,11 +343,10 @@ extern void plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_resul
 extern void plpgsql_check_init_trace_info(PLpgSQL_execstate *estate);
 extern bool plpgsql_check_get_trace_info(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, PLpgSQL_execstate **outer_estate, int *frame_num, int *level, instr_time *start_time);
 
-extern bool plpgsql_check_needs_fmgr_hook(Oid fn_oid);
-extern void plpgsql_check_fmgr_hook(FmgrHookEventType event, FmgrInfo *flinfo, Datum *private);
-
 extern void plpgsql_check_get_trace_stmt_info(PLpgSQL_execstate *estate, int stmt_id, instr_time **start_time);
 extern bool *plpgsql_check_get_disable_tracer_on_stack(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
+
+extern void plpgsql_check_profiler_init(void);
 
 /*
  * functions and variables from tracer.c
@@ -388,6 +381,46 @@ extern plpgsql_check_pragma_vector plpgsql_check_runtime_pragma_vector;
 extern bool plpgsql_check_runtime_pragma_vector_changed;
 
 /*
+ * functions from pldbgapi2
+ */
+typedef struct plpgsql_check_plugin2
+{
+	/* Function pointers set up by the plugin */
+	void		(*func_setup2) (PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
+	void		(*func_beg2) (PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
+	void		(*func_end2) (PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info, bool is_aborted);
+	void		(*stmt_beg2) (PLpgSQL_execstate *estate, PLpgSQL_function *func, PLpgSQL_stmt *stmt, void **plugin2_info);
+	void		(*stmt_end2) (PLpgSQL_execstate *estate, PLpgSQL_function *func, PLpgSQL_stmt *stmt, void **plugin2_info, bool is_aborted);
+
+	/* Function pointers set by PL/pgSQL itself */
+	void		(*error_callback) (void *arg);
+	void		(*assign_expr) (PLpgSQL_execstate *estate,
+								PLpgSQL_datum *target,
+								PLpgSQL_expr *expr);
+
+	void		(*assign_value) (PLpgSQL_execstate *estate,
+								 PLpgSQL_datum *target,
+								 Datum value, bool isNull,
+								 Oid valtype, int32 valtypmod);
+	void		(*eval_datum) (PLpgSQL_execstate *estate, PLpgSQL_datum *datum,
+							   Oid *typeId, int32 *typetypmod,
+							   Datum *value, bool *isnull);
+	Datum		(*cast_value) (PLpgSQL_execstate *estate,
+							   Datum value, bool *isnull,
+							   Oid valtype, int32 valtypmod,
+							   Oid reqtype, int32 reqtypmod);
+} plpgsql_check_plugin2;
+
+extern void plpgsql_check_register_pldbgapi2_plugin(plpgsql_check_plugin2 *plugin2);
+extern void plpgsql_check_init_pldbgapi2(void);
+
+#if PG_VERSION_NUM < 150000
+
+extern void plpgsql_check_finish_pldbgapi2(void);
+
+#endif
+
+/*
  * functions from plpgsql_check.c
  */
 
@@ -397,9 +430,9 @@ extern shmem_request_hook_type prev_shmem_request_hook;
 extern shmem_startup_hook_type prev_shmem_startup_hook;
 
 extern PLpgSQL_plugin **plpgsql_check_plugin_var_ptr;
-extern PLpgSQL_plugin *prev_plpgsql_plugin;
 
 extern void plpgsql_check_check_ext_version(Oid fn_oid);
+extern void plpgsql_check_passive_check_init(void);
 
 /*
  * Links to function in plpgsql module
