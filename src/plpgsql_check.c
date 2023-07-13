@@ -368,6 +368,7 @@ _PG_init(void)
 	plpgsql_check_init_pldbgapi2();
 	plpgsql_check_passive_check_init();
 	plpgsql_check_profiler_init();
+	plpgsql_check_tracer_init();
 	inited = true;
 }
 

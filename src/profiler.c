@@ -142,41 +142,19 @@ typedef struct profiler_shared_state
 typedef struct profiler_profile
 {
 	profiler_hashkey key;
-	int	   *stmtid_reorder_map;
+	int		   *stmtid_reorder_map;
+	int		   *natural_stmtid;
 } profiler_profile;
-
-
-#define PI_MAGIC 2020080110
 
 /*
  * This structure is used as plpgsql extension parameter
  */
 typedef struct profiler_info
 {
-	int			pi_magic;
-
 	profiler_profile *profile;
 	profiler_stmt *stmts;
-	PLpgSQL_function *func;
+	int			nstatements;
 	instr_time	start_time;
-
-	/* tracer part */
-	bool		trace_info_is_initialized;
-	int			frame_num;
-	int			level;
-	PLpgSQL_execstate *near_outer_estate;
-	PLpgSQL_execstate *estate;
-
-	bool		disable_tracer;
-
-	instr_time *stmt_start_times;
-	int		   *stmt_group_numbers;
-	int		   *stmt_parent_group_numbers;
-	bool	   *stmt_disabled_tracers;
-	bool	   *pragma_disable_tracer_stack;
-
-	void	   *prev_plugin_info;
-
 } profiler_info;
 
 typedef struct profiler_iterator
@@ -202,41 +180,6 @@ enum
 	COVERAGE_STATEMENTS,
 	COVERAGE_BRANCHES
 };
-
-typedef struct fmgr_hook_private
-{
-	bool		use_plpgsql;
-	Datum		next_private;
-} fmgr_hook_private;
-
-#define		NESTED_STMTS_STACK_SIZE		64
-
-typedef struct profiler_stack
-{
-	profiler_info *pinfo;
-	struct profiler_stack *prev_pinfo;
-
-	/*
-	 * The behaviour of estate->err_stmt is different across
-	 * pg releases, so the most easy way is hold own err_stmt
-	 * initilized in stmt_beg.
-	 */
-	PLpgSQL_stmt *err_stmt;
-
-	PLpgSQL_stmt *nested_stmts[NESTED_STMTS_STACK_SIZE];
-
-	/*
-	 * The commands executed under same protected block shares
-	 * eval_context. The eval_context is created for every
-	 * protected block, but exception handler uses parent
-	 * eval_context. The change of eval_context can signalize
-	 * an entry/leave to protected section. The nonempty
-	 * current error can signalize so we are inside an exception
-	 * handler.
-	 */
-	ExprContext *eval_econtext[NESTED_STMTS_STACK_SIZE];
-	int			nested_stmts_count;
-} profiler_stack;
 
 /*
  * should be enough for project of 300K PLpgSQL rows.
@@ -296,9 +239,6 @@ static profiler_shared_state *profiler_ss = NULL;
 static MemoryContext profiler_mcxt = NULL;
 static MemoryContext profiler_queryid_mcxt = NULL;
 
-static profiler_stack *top_pinfo = NULL;
-static ExprContext *curr_eval_econtext = NULL;
-
 bool plpgsql_check_profiler = false;
 
 /*
@@ -335,155 +275,6 @@ eval_stddev_accum(uint64 *_N, uint64 *_Sx, float8 *_Sxx, uint64 newval)
 	*_N = N;
 	*_Sx = Sx;
 	*_Sxx = Sxx;
-}
-
-/*
- * Itereate over Error Context Stack and calculate deep of stack (used like frame number)
- * and most near outer PLpgSQL estate (detect call statement). This function should be
- * called from func_beg, where error_context_stack is correctly initialized.
- */
-void
-plpgsql_check_init_trace_info(PLpgSQL_execstate *estate)
-{
-	ErrorContextCallback *econtext;
-	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
-	PLpgSQL_stmt_block *stmt_block = estate->func->action;
-	int		tgn;
-
-	Assert(pinfo && pinfo->pi_magic == PI_MAGIC);
-
-	for (econtext = error_context_stack->previous;
-		 econtext != NULL;
-		 econtext = econtext->previous)
-	{
-		pinfo->frame_num += 1;
-
-		/*
-		 * We detect PLpgSQL related estate by known error callback function.
-		 * This is inspirated by PLDebugger.
-		 */
-		if (econtext->callback == (*plpgsql_check_plugin_var_ptr)->error_callback)
-		{
-			PLpgSQL_execstate *outer_estate = (PLpgSQL_execstate *) econtext->arg;
-
-			if (!pinfo->near_outer_estate)
-				pinfo->near_outer_estate = outer_estate;
-
-			if (pinfo->level == 0 && outer_estate->plugin_info)
-			{
-				profiler_info *outer_pinfo = (profiler_info *) outer_estate->plugin_info;
-
-				if (outer_pinfo->pi_magic == PI_MAGIC &&
-					outer_pinfo->trace_info_is_initialized)
-				{
-					PLpgSQL_stmt *outer_stmt = outer_estate->err_stmt;
-
-					if (outer_stmt)
-					{
-						int		ogn;
-
-						ogn = outer_pinfo->stmt_group_numbers[outer_stmt->stmtid - 1];
-						pinfo->disable_tracer = outer_pinfo->pragma_disable_tracer_stack[ogn];
-					}
-
-					pinfo->level = outer_pinfo->level + 1;
-					pinfo->frame_num += outer_pinfo->frame_num;
-
-					break;
-				}
-			}
-		}
-	}
-
-	if (plpgsql_check_runtime_pragma_vector_changed)
-		pinfo->disable_tracer = plpgsql_check_runtime_pragma_vector.disable_tracer;
-
-	/* set top current group number */
-	tgn = pinfo->stmt_group_numbers[stmt_block->stmtid - 1];
-	pinfo->pragma_disable_tracer_stack[tgn] = pinfo->disable_tracer;
-}
-
-bool *
-plpgsql_check_get_disable_tracer_on_stack(PLpgSQL_execstate *estate,
-										  PLpgSQL_stmt *stmt)
-{
-	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
-
-	Assert(pinfo && pinfo->pi_magic == PI_MAGIC);
-
-	/* Allow tracing only when it is explicitly allowed */
-	if (!plpgsql_check_enable_tracer)
-		return false;
-
-	if (pinfo->trace_info_is_initialized)
-		return &pinfo->pragma_disable_tracer_stack[stmt->stmtid - 1];
-
-	return NULL;
-}
-
-/*
- * Outer profiler's code fields of profiler info are not available.
- * This routine reads tracer fields from profiler info.
- */
-bool
-plpgsql_check_get_trace_info(PLpgSQL_execstate *estate,
-							 PLpgSQL_stmt *stmt,
-							 PLpgSQL_execstate **outer_estate,
-							 int *frame_num,
-							 int *level,
-							 instr_time *start_time)
-{
-	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
-
-	Assert(pinfo && pinfo->pi_magic == PI_MAGIC);
-
-	(void) stmt;
-
-	/* Allow tracing only when it is explicitly allowed */
-	if (!plpgsql_check_enable_tracer)
-		return false;
-
-	if (pinfo->trace_info_is_initialized)
-	{
-		if (stmt && pinfo->stmt_disabled_tracers[stmt->stmtid - 1])
-			return false;
-
-		if (!stmt && pinfo->disable_tracer)
-			return false;
-
-		*outer_estate = pinfo->near_outer_estate;
-		*frame_num = pinfo->frame_num;
-		*level = pinfo->level;
-		*start_time = pinfo->start_time;
-
-		return true;
-	}
-	else
-		return false;
-}
-
-/*
- * Outer profiler's code fields of profiler info are not available.
- * This routine reads tracer statement fields from profiler info.
- */
-void
-plpgsql_check_get_trace_stmt_info(PLpgSQL_execstate *estate,
-								  int stmt_id,
-								  instr_time **start_time)
-{
-	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
-
-	Assert(pinfo && pinfo->pi_magic == PI_MAGIC);
-
-	/* Allow tracing only when it is explicitly allowed */
-	if (!plpgsql_check_enable_tracer)
-		return;
-
-	if (pinfo->trace_info_is_initialized)
-		*start_time = &pinfo->stmt_start_times[stmt_id];
-	else
-		*start_time = NULL;
-
 }
 
 static profiler_stmt_reduced *
@@ -732,21 +523,16 @@ increment_branch_counter(coverage_state *cs, int64 executed)
 }
 
 #define STMTID(stmt)		(((PLpgSQL_stmt *) stmt)->stmtid - 1)
-#define FUNC_NSTATEMENTS(pinfo) ((int) pinfo->func->nstatements)
 
 static int
 get_natural_stmtid(profiler_info *pinfo, int id)
 {
-	int		i;
+	Assert(pinfo);
+	Assert(pinfo->profile);
+	Assert(pinfo->profile->natural_stmtid);
 
-	for (i = 0; i < FUNC_NSTATEMENTS(pinfo); i++)
-		if (pinfo->profile->stmtid_reorder_map[i] == id)
-			return i;
-
-	return -1;
+	return pinfo->profile->natural_stmtid[id];
 }
-
-#define NATURAL_STMTID(pinfo, id)		get_natural_stmtid(pinfo, id)
 
 #define IS_PLPGSQL_STMT(stmt, typ)		(stmt->cmd_type == typ)
 
@@ -905,8 +691,8 @@ profiler_stmt_walker(profiler_info *pinfo,
 				{
 					plpgsql_check_put_profile_statement(opts->pi->ri,
 														ppstmt ? ppstmt->queryid : NOQUERYID,
-														NATURAL_STMTID(pinfo, stmtid),
-														NATURAL_STMTID(pinfo, parent_stmtid),
+														get_natural_stmtid(pinfo, stmtid),
+														get_natural_stmtid(pinfo, parent_stmtid),
 														description,
 														stmt_block_num,
 														stmt->lineno,
@@ -1531,7 +1317,7 @@ update_persistent_profile(profiler_info *pinfo,
 
 		/* we should to enter empty chunks first */
 
-		for (i = 0; i < FUNC_NSTATEMENTS(pinfo); i++)
+		for (i = 0; i < func->nstatements; i++)
 		{
 			volatile profiler_stmt_reduced *prstmt;
 			profiler_stmt *pstmt;
@@ -1625,7 +1411,7 @@ update_persistent_profile(profiler_info *pinfo,
 		stmt_counter = 0;
 
 		/* there is a profiler chunk already */
-		for (i = 0; i < FUNC_NSTATEMENTS(pinfo); i++)
+		for (i = 0; i < func->nstatements; i++)
 		{
 			volatile profiler_stmt_reduced *prstmt;
 			profiler_stmt *pstmt;
@@ -1693,7 +1479,10 @@ profile_register_stmt(profiler_info *pinfo,
 					  profiler_stmt_walker_options *opts,
 					  PLpgSQL_stmt *stmt)
 {
-		pinfo->profile->stmtid_reorder_map[opts->stmtid++] = stmt->stmtid - 1;
+		int		natural_stmtid = opts->stmtid++;
+
+		pinfo->profile->stmtid_reorder_map[natural_stmtid] = stmt->stmtid - 1;
+		pinfo->profile->natural_stmtid[stmt->stmtid - 1] = natural_stmtid;
 }
 
 /*
@@ -2101,13 +1890,7 @@ profiler_fake_queryid_hook(ParseState *pstate, Query *query)
 
 /*
  * This routine does an update or creating new profile. Function's profile
- * holds statements metadata (statement map).  The statement map is necessary
- * for pre pg 12 releases, where we have not statement id. Instead we have
- * a structure, that allows mapping statement's pointer to assigned id.
- * The work is complicated by fact so we can have more different (independent)
- * tries of statements for one real function. Then we need two fields
- * (function_ptr, stmt_ptr) for workable searching statement id for all
- * compiled variant of one function (identified by oid).
+ * holds statements metadata.
  *
  * PostgreSQL 12 has assigned statement id, so there is not necessity to
  * prepare and maintain statement map. On second hand these releases needs
@@ -2116,17 +1899,16 @@ profiler_fake_queryid_hook(ParseState *pstate, Query *query)
 static void
 prepare_profile(profiler_info *pinfo,
 				profiler_profile *profile,
+				PLpgSQL_function *func,
 				bool init)
 {
 	profiler_stmt_walker_options opts;
-	PLpgSQL_function *func;
 	int		i;
 
-	Assert(pinfo && pinfo->func);
+	Assert(pinfo);
 
 	memset(&opts, 0, sizeof(profiler_stmt_walker_options));
 
-	func = pinfo->func;
 	pinfo->profile = profile;
 
 	if (init)
@@ -2136,21 +1918,21 @@ prepare_profile(profiler_info *pinfo,
 		oldcxt = MemoryContextSwitchTo(profiler_mcxt);
 
 		profile->stmtid_reorder_map = palloc0(sizeof(int) * func->nstatements);
+		profile->natural_stmtid = palloc0(sizeof(int) * func->nstatements);
 
 		/*
 		 * I found my bug in PLpgSQL runtime - when function statement counter
 		 * is incremental 2x for every FOR cycle. Until fix this bug, some entries
 		 * of reorder map can be uniinitialized, and we have to detect these entries.
 		 */
-		for (i = 0; i < ((int) func->nstatements); i++)
+		for (i = 0; i < func->nstatements; i++)
 			profile->stmtid_reorder_map[i] = -1;
 
 		MemoryContextSwitchTo(oldcxt);
 
 		opts.stmtid = 0;
 		profiler_stmt_walker(pinfo, PLPGSQL_CHECK_STMT_WALKER_PREPARE_PROFILE,
-							 (PLpgSQL_stmt *) func->action, NULL, NULL, 1,
-							 &opts);
+							 (PLpgSQL_stmt *) func->action, NULL, NULL, 1, &opts);
 	}
 }
 
@@ -2165,6 +1947,7 @@ plpgsql_check_iterate_over_profile(plpgsql_check_info *cinfo,
 								   coverage_state *cs)
 {
 	LOCAL_FCINFO(fake_fcinfo, 0);
+	PLpgSQL_function *func;
 
 	profiler_profile *profile;
 	profiler_hashkey hk_function;
@@ -2213,8 +1996,6 @@ plpgsql_check_iterate_over_profile(plpgsql_check_info *cinfo,
 
 	PG_TRY();
 	{
-		PLpgSQL_stmt *stmt;
-
 		if (shared_chunks && first_chunk)
 		{
 			SpinLockAcquire(&first_chunk->mutex);
@@ -2230,22 +2011,24 @@ plpgsql_check_iterate_over_profile(plpgsql_check_info *cinfo,
 								   &tg_trigger,
 								   &fake_rtd);
 
-		pinfo.func = plpgsql_check__compile_p(fake_fcinfo, false);
+		func = plpgsql_check__compile_p(fake_fcinfo, false);
 
-		profiler_init_hashkey(&hk_function, pinfo.func);
+		/* in this fake pinfo we don't need to prepare stmts array */
+		pinfo.nstatements = 0;
+		pinfo.stmts = NULL;
+
+		profiler_init_hashkey(&hk_function, func);
 		profile = (profiler_profile *) hash_search(profiler_HashTable,
 												 (void *) &hk_function,
 												 HASH_ENTER,
 												 &found_profile);
 
-		prepare_profile(&pinfo, profile, !found_profile);
+		prepare_profile(&pinfo, profile, func, !found_profile);
 
 		opts.pi =  &pi;
 		opts.cs = cs;
 
-		stmt = (PLpgSQL_stmt *) pinfo.func->action;
-
-		profiler_stmt_walker(&pinfo, mode, stmt, NULL, NULL, 1, &opts);
+		profiler_stmt_walker(&pinfo, mode, (PLpgSQL_stmt *) func->action, NULL, NULL, 1, &opts);
 	}
 	PG_CATCH();
 	{
@@ -2470,60 +2253,15 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 }
 
 /*
- * plpgsql plugin related functions
- */
-static profiler_info *
-init_profiler_info(profiler_info *pinfo, PLpgSQL_function *func)
-{
-	if (!pinfo)
-	{
-		pinfo = palloc0(sizeof(profiler_info));
-		pinfo->pi_magic = PI_MAGIC;
-		pinfo->func = func;
-	}
-
-	return pinfo;
-}
-
-/*
  * Try to search profile pattern for function. Creates profile pattern when
  * it doesn't exists.
  */
 static void
 profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info)
 {
-	profiler_info *pinfo = NULL;
-
-	if (plpgsql_check_tracer)
+	if (plpgsql_check_profiler && OidIsValid(func->fn_oid))
 	{
-		int		group_number_counter = 0;
-
-		pinfo = init_profiler_info(pinfo, func);
-
-		pinfo->trace_info_is_initialized = true;
-
-		pinfo->stmt_start_times = palloc0(sizeof(instr_time) * func->nstatements);
-		pinfo->stmt_group_numbers = palloc(sizeof(int) * func->nstatements);
-		pinfo->stmt_parent_group_numbers = palloc(sizeof(int) * func->nstatements);
-		pinfo->stmt_disabled_tracers = palloc0(sizeof(int) * func->nstatements);
-
-		plpgsql_check_set_stmt_group_number((PLpgSQL_stmt *) func->action,
-											pinfo->stmt_group_numbers,
-											pinfo->stmt_parent_group_numbers,
-											0,
-											&group_number_counter,
-											-1);
-
-		pinfo->pragma_disable_tracer_stack = palloc(sizeof(bool) * (group_number_counter + 1));
-
-		/* now we have not access to outer estate */
-		pinfo->disable_tracer = false;
-
-		plpgsql_check_runtime_pragma_vector_changed = false;
-	}
-
-	if (plpgsql_check_profiler && func->fn_oid != InvalidOid)
-	{
+		profiler_info *pinfo;
 		profiler_profile *profile;
 		profiler_hashkey hk;
 		bool		found;
@@ -2534,25 +2272,15 @@ profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **pl
 												   HASH_ENTER,
 												   &found);
 
-		pinfo = init_profiler_info(pinfo, func);
-		prepare_profile(pinfo, profile, !found);
+		pinfo = palloc0(sizeof(profiler_info));
+		pinfo->nstatements = func->nstatements;
+		pinfo->stmts = palloc0(func->nstatements * sizeof(profiler_stmt));
 
-		pinfo->stmts = palloc0(FUNC_NSTATEMENTS(pinfo) * sizeof(profiler_stmt));
-	}
+		prepare_profile(pinfo, profile, func, !found);
 
-	if (pinfo)
-	{
 		INSTR_TIME_SET_CURRENT(pinfo->start_time);
 
-		pinfo->estate = estate;
-	}
-
-	estate->plugin_info = pinfo;
-
-	if (top_pinfo)
-	{
-		top_pinfo->pinfo = pinfo;
-		curr_eval_econtext = estate->eval_econtext;
+		*plugin2_info = pinfo;
 	}
 }
 
@@ -2562,30 +2290,11 @@ profiler_func_end(PLpgSQL_execstate *estate,
 				  void **plugin2_info,
 				  bool is_aborted)
 {
-	profiler_info *pinfo = NULL;
+	profiler_info *pinfo = *plugin2_info;
 
-	if (estate)
+	if (pinfo)
 	{
-		pinfo = (profiler_info *) estate->plugin_info;
-	}
-
-	if (plpgsql_check_tracer && pinfo )
-	{
-		if (estate)
-			plpgsql_check_tracer_on_func_end(estate, func);
-
-		pfree(pinfo->stmt_start_times);
-		pfree(pinfo->stmt_group_numbers);
-		pfree(pinfo->stmt_parent_group_numbers);
-		pfree(pinfo->stmt_disabled_tracers);
-		pfree(pinfo->pragma_disable_tracer_stack);
-	}
-
-	if (plpgsql_check_profiler &&
-		pinfo && pinfo->profile &&
-		func->fn_oid != InvalidOid)
-	{
-		int		entry_stmtid = STMTID(pinfo->func->action);
+		int		entry_stmtid = STMTID(func->action);
 
 		instr_time		end_time;
 		uint64			elapsed;
@@ -2601,7 +2310,7 @@ profiler_func_end(PLpgSQL_execstate *estate,
 		if (pinfo->stmts[entry_stmtid].exec_count == 0)
 		{
 			pinfo->stmts[entry_stmtid].exec_count = 1;
-			pinfo->stmts[entry_stmtid].exec_count_err = 0;
+			pinfo->stmts[entry_stmtid].exec_count_err = is_aborted ? 1 : 0;
 			pinfo->stmts[entry_stmtid].us_total = elapsed;
 			pinfo->stmts[entry_stmtid].us_max = elapsed;
 		}
@@ -2609,17 +2318,12 @@ profiler_func_end(PLpgSQL_execstate *estate,
 		/* finalize profile - get result profile */
 
 		profiler_stmt_walker(pinfo, PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME,
-							 (PLpgSQL_stmt *) pinfo->func->action, NULL, NULL, 1,
+							 (PLpgSQL_stmt *) func->action, NULL, NULL, 1,
 							 &opts);
 
 		update_persistent_profile(pinfo, func);
 		update_persistent_fstats(func, elapsed);
-
-		pfree(pinfo->stmts);
 	}
-
-	if ((plpgsql_check_tracer || plpgsql_check_profiler) && pinfo)
-		pfree(pinfo);
 }
 
 static void
@@ -2628,107 +2332,12 @@ profiler_stmt_beg(PLpgSQL_execstate *estate,
 				  PLpgSQL_stmt *stmt,
 				  void **plugin2_info)
 {
-	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
+	profiler_info *pinfo = (profiler_info *) *plugin2_info;
 
-	if (top_pinfo && top_pinfo->pinfo)
-	{
-		if (estate->eval_econtext != curr_eval_econtext)
-		{
-			if (estate->cur_error)
-			{
-				int		i;
-				bool	found = false;
-
-				/*
-				 * detected exception handler. We have to close
-				 * all statements from stack, until we find common
-				 * eval_context. The reduction is possible, only when
-				 * we found common eval_context. We can lost if if this
-				 * shared context is over then NESTED_STMTS_STACK_SIZE.
-				 */
-				for (i = top_pinfo->nested_stmts_count - 1; i >= 0; i--)
-				{
-					if (i < NESTED_STMTS_STACK_SIZE)
-					{
-						if (top_pinfo->eval_econtext[i] == estate->eval_econtext)
-						{
-							found = true;
-							break;
-						}
-					}
-				}
-
-				if (found)
-				{
-					for (i = top_pinfo->nested_stmts_count - 1; i >= 0; i--)
-					{
-						if (i < NESTED_STMTS_STACK_SIZE)
-						{
-							if (top_pinfo->eval_econtext[i] == estate->eval_econtext)
-							{
-								top_pinfo->nested_stmts_count = i + 1;
-								break;
-							}
-							//else
-							//	plpgsql_check_profiler_stmt_end(NULL, top_pinfo->nested_stmts[i]);
-						}
-					}
-				}
-			}
-
-			curr_eval_econtext = estate->eval_econtext;
-		}
-
-		if (top_pinfo->nested_stmts_count < NESTED_STMTS_STACK_SIZE)
-		{
-			top_pinfo->nested_stmts[top_pinfo->nested_stmts_count] = stmt;
-			top_pinfo->eval_econtext[top_pinfo->nested_stmts_count] = estate->eval_econtext;
-		}
-
-		top_pinfo->nested_stmts_count++;
-		top_pinfo->err_stmt = stmt;
-	}
-
-	if (plpgsql_check_tracer && pinfo)
-	{
-		int		stmtid = stmt->stmtid - 1;
-		int		sgn = pinfo->stmt_group_numbers[stmtid];
-		int		pgn = pinfo->stmt_parent_group_numbers[stmtid];
-
-		Assert(pinfo->pi_magic == PI_MAGIC);
-
-		plpgsql_check_runtime_pragma_vector_changed = false;
-
-		/*
-		 * First statement in group has valid parent group number.
-		 * We use this number for copy setting from outer group
-		 * to nested group.
-		 */
-		if (pgn != -1)
-		{
-			pinfo->pragma_disable_tracer_stack[sgn] =
-				pinfo->pragma_disable_tracer_stack[pgn];
-		}
-
-		pinfo->stmt_disabled_tracers[stmtid] =
-				pinfo->pragma_disable_tracer_stack[sgn];
-
-		plpgsql_check_tracer_on_stmt_beg(estate, stmt);
-	}
-
-	if (stmt->cmd_type == PLPGSQL_STMT_ASSERT &&
-			plpgsql_check_enable_tracer &&
-			plpgsql_check_trace_assert)
-		plpgsql_check_trace_assert_on_stmt_beg(estate, stmt);
-
-	if (plpgsql_check_profiler &&
-		pinfo && pinfo->profile &&
-		estate->func->fn_oid != InvalidOid)
+	if (pinfo)
 	{
 		int stmtid = STMTID(stmt);
 		profiler_stmt *pstmt = &pinfo->stmts[stmtid];
-
-		Assert(pinfo->pi_magic == PI_MAGIC);
 
 		INSTR_TIME_SET_CURRENT(pstmt->start_time);
 	}
@@ -2744,92 +2353,10 @@ profiler_stmt_end(PLpgSQL_execstate *estate,
 				  void **plugin2_info,
 				  bool is_aborted)
 {
-	profiler_info *pinfo;
-	bool	cleaning_mode = false;
-	bool	is_error_stmt = false;
+	profiler_info *pinfo = *plugin2_info;
 
-	if (!estate)
-	{
-		Assert(top_pinfo && top_pinfo->pinfo);
 
-		pinfo = top_pinfo->pinfo;
-		estate = pinfo->estate;
-
-		is_error_stmt = top_pinfo->err_stmt == stmt;
-		cleaning_mode = true;
-	}
-	else
-	{
-		pinfo = (profiler_info *) estate->plugin_info;
-
-	}
-
-	if (top_pinfo && top_pinfo->pinfo && !cleaning_mode)
-	{
-		int		i;
-		bool	found = false;
-
-		top_pinfo->nested_stmts_count--;
-
-		/*
-		 * try to synchronize counter, we can lost synchronization when
-		 * there was handled exception and deeper statement's stack than
-		 * NESTED_STMTS_STACK_SIZE.
-		 */
-		for (i = top_pinfo->nested_stmts_count; i >= 0; i--)
-		{
-			if (i < NESTED_STMTS_STACK_SIZE)
-			{
-				if (top_pinfo->nested_stmts[i] == stmt)
-				{
-					found = true;
-					break;
-				}
-			}
-		}
-
-		if (found)
-		{
-			for (i = top_pinfo->nested_stmts_count; i >= 0; i--)
-			{
-				if (i < NESTED_STMTS_STACK_SIZE)
-				{
-					if (top_pinfo->nested_stmts[i] == stmt)
-					{
-						top_pinfo->nested_stmts_count = i;
-						break;
-					}
-					//else
-					//	plpgsql_check_profiler_stmt_end(NULL, top_pinfo->nested_stmts[i]);
-				}
-			}
-		}
-
-		top_pinfo->err_stmt = NULL;
-	}
-
-	if (plpgsql_check_tracer && pinfo)
-	{
-		int		stmtid = stmt->stmtid - 1;
-
-		if (plpgsql_check_runtime_pragma_vector_changed)
-		{
-			int		sgn;
-
-			sgn = pinfo->stmt_group_numbers[stmtid];
-
-			pinfo->pragma_disable_tracer_stack[sgn] =
-				plpgsql_check_runtime_pragma_vector.disable_tracer;
-		}
-
-		/* These nodes was not executed */
-		if (!cleaning_mode)
-			plpgsql_check_tracer_on_stmt_end(estate, stmt);
-	}
-
-	if (plpgsql_check_profiler &&
-		pinfo && pinfo->profile &&
-		pinfo->func->fn_oid != InvalidOid)
+	if (pinfo)
 	{
 		int stmtid = STMTID(stmt);
 		profiler_stmt *pstmt = &pinfo->stmts[stmtid];
@@ -2837,13 +2364,11 @@ profiler_stmt_end(PLpgSQL_execstate *estate,
 		uint64			elapsed;
 		instr_time		end_time2;
 
-		Assert(pinfo->pi_magic == PI_MAGIC);
-
 		/*
 		 * We can get query id only if stmt_end is not executed
 		 * in cleaning mode, because we need to execute expression
 		 */
-		if (pstmt->queryid == NOQUERYID && !cleaning_mode)
+		if (pstmt->queryid == NOQUERYID && !is_aborted)
 			pstmt->queryid = profiler_get_queryid(estate, stmt,
 												  &pstmt->has_queryid,
 												  &pstmt->qparams);
@@ -2860,13 +2385,12 @@ profiler_stmt_end(PLpgSQL_execstate *estate,
 
 		pstmt->us_total = INSTR_TIME_GET_MICROSEC(pstmt->total);
 
-		if (!cleaning_mode)
+		if (!is_aborted)
 			pstmt->rows += estate->eval_processed;
+		else
+			pstmt->exec_count_err += 1;
 
 		pstmt->exec_count++;
-
-		if (is_error_stmt)
-			pstmt->exec_count_err++;
 	}
 }
 

@@ -364,13 +364,11 @@ extern PGErrorVerbosity plpgsql_check_trace_assert_verbosity;
 
 extern bool plpgsql_check_regress_test_mode;
 
-extern void plpgsql_check_tracer_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func);
-extern void plpgsql_check_tracer_on_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func);
-extern void plpgsql_check_tracer_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
-extern void plpgsql_check_tracer_on_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 extern void plpgsql_check_trace_assert_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 
 extern void plpgsql_check_set_stmt_group_number(PLpgSQL_stmt *stmt, int *group_numbers, int *parent_group_numbers, int sgn, int *cgn, int psgn);
+
+extern void plpgsql_check_tracer_init(void);
 
 /*
  * variables from pragma.c
