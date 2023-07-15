@@ -169,12 +169,6 @@ typedef struct
 	int		executed_branches;
 } coverage_state;
 
-typedef struct
-{
-	unsigned long int run_id;
-	int		level;
-} tracer_info;
-
 /*
  * function from assign.c
  */
