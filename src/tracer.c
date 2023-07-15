@@ -1573,24 +1573,40 @@ plpgsql_check_tracer_ctrl(PG_FUNCTION_ARGS)
 {
 	char	   *optstr;
 
-#define OPTNAME		"plpgsql_check.tracer"
+#define OPTNAME_1		"plpgsql_check.tracer"
+#define OPTNAME_2		"plpgsql_check.tracer_verbosity"
 
 	if (!PG_ARGISNULL(0))
 	{
 		bool		optval = PG_GETARG_BOOL(0);
 
-		(void) set_config_option(OPTNAME, optval ? "on" : "off",
+		(void) set_config_option(OPTNAME_1, optval ? "on" : "off",
 								 (superuser() ? PGC_SUSET : PGC_USERSET),
 								 PGC_S_SESSION, GUC_ACTION_SET,
 								 true, 0, false);
 	}
 
-	optstr = GetConfigOptionByName(OPTNAME, NULL, false);
+	if (!PG_ARGISNULL(1))
+	{
+		char	   *optval = TextDatumGetCString(PG_GETARG_DATUM(1));
+
+		(void) set_config_option(OPTNAME_2, optval,
+								 (superuser() ? PGC_SUSET : PGC_USERSET),
+								 PGC_S_SESSION, GUC_ACTION_SET,
+								 true, 0, false);
+	}
+
+
+	optstr = GetConfigOptionByName(OPTNAME_1, NULL, false);
 
 	if (strcmp(optstr, "on") == 0)
 		elog(NOTICE, "tracer is active");
 	else
 		elog(NOTICE, "tracer is not active");
+
+	optstr = GetConfigOptionByName(OPTNAME_2, NULL, false);
+
+	elog(NOTICE, "tracer verbosity is %s", optstr);
 
 	PG_RETURN_VOID();
 }
