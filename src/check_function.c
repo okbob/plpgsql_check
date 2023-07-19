@@ -59,8 +59,8 @@ static void setup_cstate(PLpgSQL_checkstate *cstate, plpgsql_check_result_info *
 static void passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
 
 static plpgsql_check_plugin2 check_plugin2 = { NULL,
-											   passive_check_func_beg, NULL,
-											   NULL, NULL,
+											   passive_check_func_beg, NULL, NULL,
+											   NULL, NULL, NULL,
 											   NULL, NULL, NULL, NULL, NULL };
 
 /*

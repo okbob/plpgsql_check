@@ -373,6 +373,19 @@ extern plpgsql_check_pragma_vector plpgsql_check_runtime_pragma_vector;
 extern bool plpgsql_check_runtime_pragma_vector_changed;
 
 /*
+ * pldbgapi2 statement plugin2 info. This info is created
+ * when function is first started and it is cached in session.
+ */
+typedef struct plpgsql_check_plugin2_stmt_info
+{
+	int			level;
+	int			natural_id;
+	int			parent_id;
+	const char *typname;
+	bool		is_invisible;
+} plpgsql_check_plugin2_stmt_info;
+
+/*
  * functions from pldbgapi2
  */
 typedef struct plpgsql_check_plugin2
@@ -380,9 +393,11 @@ typedef struct plpgsql_check_plugin2
 	/* Function pointers set up by the plugin */
 	void		(*func_setup2) (PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
 	void		(*func_beg2) (PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
-	void		(*func_end2) (PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info, bool is_aborted);
-	void		(*stmt_beg2) (PLpgSQL_execstate *estate, PLpgSQL_function *func, PLpgSQL_stmt *stmt, void **plugin2_info);
-	void		(*stmt_end2) (PLpgSQL_execstate *estate, PLpgSQL_function *func, PLpgSQL_stmt *stmt, void **plugin2_info, bool is_aborted);
+	void		(*func_end2) (PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
+	void		(*func_end2_aborted) (Oid fn_oid, void **plugin2_info);
+	void		(*stmt_beg2) (PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info);
+	void		(*stmt_end2) (PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info);
+	void		(*stmt_end2_aborted) (Oid fn_oid, int stmtid, void **plugin2_info);
 
 	/* Function pointers set by PL/pgSQL itself */
 	void		(*error_callback) (void *arg);
@@ -405,6 +420,10 @@ typedef struct plpgsql_check_plugin2
 
 extern void plpgsql_check_register_pldbgapi2_plugin(plpgsql_check_plugin2 *plugin2);
 extern void plpgsql_check_init_pldbgapi2(void);
+
+extern plpgsql_check_plugin2_stmt_info *plpgsql_check_get_current_stmt_info(int stmtid);
+extern char *plpgsql_check_get_current_func_info_name(void);
+extern char *plpgsql_check_get_current_func_info_signature(void);
 
 #if PG_VERSION_NUM < 150000
 

@@ -155,6 +155,7 @@ typedef struct profiler_info
 	profiler_stmt *stmts;
 	int			nstatements;
 	instr_time	start_time;
+	PLpgSQL_function *func;
 } profiler_info;
 
 typedef struct profiler_iterator
@@ -218,13 +219,16 @@ static void profiler_stmt_walker(profiler_info *pinfo, profiler_stmt_walker_mode
 	 PLpgSQL_stmt *parent_stmt, const char *description, int stmt_block_num, profiler_stmt_walker_options *opts);
 
 static void profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
-static void profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info, bool is_aborted);
-static void profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, PLpgSQL_stmt *stmt, void **plugin2_info);
-static void profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_function *func, PLpgSQL_stmt *stmt, void **plugin2_info, bool is_aborted);
+static void profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
+static void profiler_func_end_aborted(Oid fn_oid, void **plugin2_info);
+static void profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info);
+static void profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info);
+static void profiler_stmt_end_aborted(Oid fn_oid, int stmtid, void **plugin2_info);
+
 
 static plpgsql_check_plugin2 profiler_plugin2 = { profiler_func_setup,
-												  NULL, profiler_func_end,
-												  profiler_stmt_beg, profiler_stmt_end,
+												  NULL, profiler_func_end, profiler_func_end_aborted,
+												  profiler_stmt_beg, profiler_stmt_end, profiler_stmt_end_aborted,
 												  NULL, NULL, NULL, NULL, NULL };
 
 static HTAB *profiler_HashTable = NULL;
@@ -1711,8 +1715,7 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, query_pa
 	oldcxt = MemoryContextSwitchTo(profiler_queryid_mcxt);
 	MemoryContextSwitchTo(oldcxt);
 
-	(*plpgsql_check_plugin_var_ptr)->assign_expr(estate,
-			(PLpgSQL_datum *) &result, expr);
+	profiler_plugin2.assign_expr(estate, (PLpgSQL_datum *) &result, expr);
 
 	query_string = TextDatumGetCString(result.value);
 
@@ -1910,6 +1913,7 @@ prepare_profile(profiler_info *pinfo,
 	memset(&opts, 0, sizeof(profiler_stmt_walker_options));
 
 	pinfo->profile = profile;
+	pinfo->func = func;
 
 	if (init)
 	{
@@ -2287,8 +2291,7 @@ profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **pl
 static void
 profiler_func_end(PLpgSQL_execstate *estate,
 				  PLpgSQL_function *func,
-				  void **plugin2_info,
-				  bool is_aborted)
+				  void **plugin2_info)
 {
 	profiler_info *pinfo = *plugin2_info;
 
@@ -2310,7 +2313,7 @@ profiler_func_end(PLpgSQL_execstate *estate,
 		if (pinfo->stmts[entry_stmtid].exec_count == 0)
 		{
 			pinfo->stmts[entry_stmtid].exec_count = 1;
-			pinfo->stmts[entry_stmtid].exec_count_err = is_aborted ? 1 : 0;
+			pinfo->stmts[entry_stmtid].exec_count_err = 1;
 			pinfo->stmts[entry_stmtid].us_total = elapsed;
 			pinfo->stmts[entry_stmtid].us_max = elapsed;
 		}
@@ -2327,8 +2330,50 @@ profiler_func_end(PLpgSQL_execstate *estate,
 }
 
 static void
+profiler_func_end_aborted(Oid fn_oid, void **plugin2_info)
+{
+	profiler_info *pinfo = *plugin2_info;
+
+	if (pinfo)
+	{
+		int		entry_stmtid = STMTID(pinfo->func->action);
+
+		instr_time		end_time;
+		uint64			elapsed;
+		profiler_stmt_walker_options opts;
+
+		Assert(pinfo->func);
+		Assert(OidIsValid(fn_oid));
+		Assert(pinfo->func->fn_oid == fn_oid);
+
+		memset(&opts, 0, sizeof(profiler_stmt_walker_options));
+
+		INSTR_TIME_SET_CURRENT(end_time);
+		INSTR_TIME_SUBTRACT(end_time, pinfo->start_time);
+
+		elapsed = INSTR_TIME_GET_MICROSEC(end_time);
+
+		if (pinfo->stmts[entry_stmtid].exec_count == 0)
+		{
+			pinfo->stmts[entry_stmtid].exec_count = 1;
+			pinfo->stmts[entry_stmtid].exec_count_err = 1;
+			pinfo->stmts[entry_stmtid].us_total = elapsed;
+			pinfo->stmts[entry_stmtid].us_max = elapsed;
+		}
+
+		/* finalize profile - get result profile */
+		profiler_stmt_walker(pinfo, PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME,
+							 (PLpgSQL_stmt *) pinfo->func->action, NULL, NULL, 1,
+							 &opts);
+
+		update_persistent_profile(pinfo, pinfo->func);
+		update_persistent_fstats(pinfo->func, elapsed);
+	}
+
+}
+
+static void
 profiler_stmt_beg(PLpgSQL_execstate *estate,
-				  PLpgSQL_function *func,
 				  PLpgSQL_stmt *stmt,
 				  void **plugin2_info)
 {
@@ -2336,10 +2381,7 @@ profiler_stmt_beg(PLpgSQL_execstate *estate,
 
 	if (pinfo)
 	{
-		int stmtid = STMTID(stmt);
-		profiler_stmt *pstmt = &pinfo->stmts[stmtid];
-
-		INSTR_TIME_SET_CURRENT(pstmt->start_time);
+		INSTR_TIME_SET_CURRENT(pinfo->stmts[stmt->stmtid - 1].start_time);
 	}
 }
 
@@ -2348,18 +2390,14 @@ profiler_stmt_beg(PLpgSQL_execstate *estate,
  */
 static void
 profiler_stmt_end(PLpgSQL_execstate *estate,
-				  PLpgSQL_function *func,
 				  PLpgSQL_stmt *stmt,
-				  void **plugin2_info,
-				  bool is_aborted)
+				  void **plugin2_info)
 {
 	profiler_info *pinfo = *plugin2_info;
 
-
 	if (pinfo)
 	{
-		int stmtid = STMTID(stmt);
-		profiler_stmt *pstmt = &pinfo->stmts[stmtid];
+		profiler_stmt *pstmt = &pinfo->stmts[stmt->stmtid - 1];
 		instr_time		end_time;
 		uint64			elapsed;
 		instr_time		end_time2;
@@ -2368,7 +2406,7 @@ profiler_stmt_end(PLpgSQL_execstate *estate,
 		 * We can get query id only if stmt_end is not executed
 		 * in cleaning mode, because we need to execute expression
 		 */
-		if (pstmt->queryid == NOQUERYID && !is_aborted)
+		if (pstmt->queryid == NOQUERYID)
 			pstmt->queryid = profiler_get_queryid(estate, stmt,
 												  &pstmt->has_queryid,
 												  &pstmt->qparams);
@@ -2384,14 +2422,38 @@ profiler_stmt_end(PLpgSQL_execstate *estate,
 			pstmt->us_max = elapsed;
 
 		pstmt->us_total = INSTR_TIME_GET_MICROSEC(pstmt->total);
-
-		if (!is_aborted)
-			pstmt->rows += estate->eval_processed;
-		else
-			pstmt->exec_count_err += 1;
-
+		pstmt->rows += estate->eval_processed;
 		pstmt->exec_count++;
 	}
+}
+
+static void
+profiler_stmt_end_aborted(Oid fn_oid, int stmtid, void **plugin2_info)
+{
+	profiler_info *pinfo = *plugin2_info;
+
+	if (pinfo)
+	{
+		profiler_stmt *pstmt = &pinfo->stmts[stmtid];
+		instr_time		end_time;
+		uint64			elapsed;
+		instr_time		end_time2;
+
+		INSTR_TIME_SET_CURRENT(end_time);
+		end_time2 = end_time;
+		INSTR_TIME_ACCUM_DIFF(pstmt->total, end_time, pstmt->start_time);
+
+		INSTR_TIME_SUBTRACT(end_time2, pstmt->start_time);
+		elapsed = INSTR_TIME_GET_MICROSEC(end_time2);
+
+		if (elapsed > pstmt->us_max)
+			pstmt->us_max = elapsed;
+
+		pstmt->us_total = INSTR_TIME_GET_MICROSEC(pstmt->total);
+		pstmt->exec_count_err += 1;
+		pstmt->exec_count++;
+	}
+
 }
 
 void
