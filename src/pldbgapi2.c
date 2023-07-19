@@ -35,6 +35,7 @@ typedef struct func_info_entry
 	char	   *fn_name;
 	char	   *fn_signature;
 	plpgsql_check_plugin2_stmt_info *stmts_info;
+	int		   *stmtid_map;
 	int			nstatements;
 } func_info_entry;
 
@@ -67,6 +68,7 @@ typedef struct fmgr_plpgsql_cache
 	char	   *fn_name;
 	char	   *fn_signature;
 	plpgsql_check_plugin2_stmt_info *stmts_info;
+	int		   *stmtid_map;
 	int			nstatements;
 } fmgr_plpgsql_cache;
 
@@ -110,6 +112,8 @@ typedef struct pldbgapi2_plugin_info
 	void	   *prev_plugin_info;
 } pldbgapi2_plugin_info;
 
+static func_info_entry *get_func_info(PLpgSQL_function *func);
+
 static fmgr_plpgsql_cache *current_fmgr_plpgsql_cache;
 
 plpgsql_check_plugin2_stmt_info *
@@ -119,6 +123,52 @@ plpgsql_check_get_current_stmt_info(int stmtid)
 	Assert(stmtid <= current_fmgr_plpgsql_cache->nstatements);
 
 	return &(current_fmgr_plpgsql_cache->stmts_info[stmtid - 1]);
+}
+
+plpgsql_check_plugin2_stmt_info *
+plpgsql_check_get_current_stmts_info(void)
+{
+	Assert(current_fmgr_plpgsql_cache);
+
+	return current_fmgr_plpgsql_cache->stmts_info;
+}
+
+
+plpgsql_check_plugin2_stmt_info *
+plpgsql_check_get_stmts_info(PLpgSQL_function *func)
+{
+	func_info_entry *func_info;
+
+	func_info = get_func_info(func);
+
+	return func_info->stmts_info;
+}
+
+plpgsql_check_plugin2_stmt_info *
+plpgsql_check_get_stmt_info(PLpgSQL_function *func, int stmtid)
+{
+	func_info_entry *func_info;
+
+	func_info = get_func_info(func);
+
+	return &(func_info->stmts_info[stmtid - 1]);
+}
+
+int *
+plpgsql_check_get_current_stmtid_map(void)
+{
+	Assert(current_fmgr_plpgsql_cache);
+
+	return current_fmgr_plpgsql_cache->stmtid_map;
+}
+
+int *
+plpgsql_check_get_stmtid_map(PLpgSQL_function *func)
+{
+	func_info_entry *func_info;
+
+	func_info = get_func_info(func);
+	return func_info->stmtid_map;
 }
 
 char *
@@ -189,11 +239,12 @@ init_hash_tables(void)
 	func_info_HashTableInit();
 }
 
-static void set_stmt_info(PLpgSQL_stmt *stmt, plpgsql_check_plugin2_stmt_info *stmts_info, int level, int *natural_id, int parent_id);
+static void set_stmt_info(PLpgSQL_stmt *stmt, plpgsql_check_plugin2_stmt_info *stmts_info, int *stmtid_map, int level, int *natural_id, int parent_id);
 
 static void
 set_stmts_info(List *stmts,
 			   plpgsql_check_plugin2_stmt_info *stmts_info,
+			   int *stmtid_map,
 			   int level,
 			   int *natural_id,
 			   int parent_id)
@@ -202,13 +253,19 @@ set_stmts_info(List *stmts,
 
 	foreach(lc, stmts)
 	{
-		set_stmt_info((PLpgSQL_stmt *) lfirst(lc), stmts_info, level, natural_id, parent_id);
+		set_stmt_info((PLpgSQL_stmt *) lfirst(lc),
+					  stmts_info,
+					  stmtid_map,
+					  level,
+					  natural_id,
+					  parent_id);
 	}
 }
 
 static void
 set_stmt_info(PLpgSQL_stmt *stmt,
 			  plpgsql_check_plugin2_stmt_info *stmts_info,
+			  int *stmtid_map,
 			  int level,
 			  int *natural_id,
 			  int parent_id)
@@ -224,6 +281,13 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 
 	/* natural_id is displayed insted stmtid */
 	stmts_info[stmtid_idx].natural_id = ++(*natural_id);
+
+	/*
+	 * natural id to parser id map allows to use natural statement order
+	 * for saving metrics and their presentation without necessity to
+	 * iterate over statement tree
+	 */
+	stmtid_map[stmts_info[stmtid_idx].natural_id - 1] = stmt->stmtid;
 
 	/*
 	 * parent_id is used for synchronization stmts stack
@@ -248,14 +312,18 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 
 				set_stmts_info(stmt_block->body,
 							   stmts_info,
+							   stmtid_map,
 							   !is_invisible ? level + 1 : level,
-							   natural_id, stmt->stmtid);
+							   natural_id,
+							   stmt->stmtid);
 
 				if (stmt_block->exceptions)
 				{
 					foreach(lc, stmt_block->exceptions->exc_list)
 					{
-						set_stmts_info(((PLpgSQL_exception *) lfirst(lc))->action, stmts_info,
+						set_stmts_info(((PLpgSQL_exception *) lfirst(lc))->action,
+									   stmts_info,
+									   stmtid_map,
 									   !is_invisible ? level + 1 : level,
 									   natural_id,
 									   stmt->stmtid);
@@ -270,6 +338,7 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 
 				set_stmts_info(stmt_if->then_body,
 							   stmts_info,
+							   stmtid_map,
 							   level + 1,
 							   natural_id,
 							   stmt->stmtid);
@@ -278,6 +347,7 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 				{
 					set_stmts_info(((PLpgSQL_if_elsif *) lfirst(lc))->stmts,
 								   stmts_info,
+								   stmtid_map,
 								   level + 1,
 								   natural_id,
 								   stmt->stmtid);
@@ -285,6 +355,7 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 
 				set_stmts_info(stmt_if->else_body,
 							   stmts_info,
+							   stmtid_map,
 							   level + 1,
 							   natural_id,
 							   stmt->stmtid);
@@ -299,6 +370,7 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 				{
 					set_stmts_info(((PLpgSQL_case_when *) lfirst(lc))->stmts,
 								   stmts_info,
+								   stmtid_map,
 								   level + 1,
 								   natural_id,
 								   stmt->stmtid);
@@ -306,6 +378,7 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 
 				set_stmts_info(stmt_case->else_stmts,
 							   stmts_info,
+							   stmtid_map,
 							   level + 1,
 							   natural_id,
 							   stmt->stmtid);
@@ -315,6 +388,7 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 		case PLPGSQL_STMT_LOOP:
 			set_stmts_info(((PLpgSQL_stmt_loop *) stmt)->body,
 						   stmts_info,
+						   stmtid_map,
 						   level + 1,
 						   natural_id,
 						   stmt->stmtid);
@@ -323,6 +397,7 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 		case PLPGSQL_STMT_FORI:
 			set_stmts_info(((PLpgSQL_stmt_fori *) stmt)->body,
 						   stmts_info,
+						   stmtid_map,
 						   level + 1,
 						   natural_id,
 						   stmt->stmtid);
@@ -331,6 +406,7 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 		case PLPGSQL_STMT_FORS:
 			set_stmts_info(((PLpgSQL_stmt_fors *) stmt)->body,
 						   stmts_info,
+						   stmtid_map,
 						   level + 1,
 						   natural_id,
 						   stmt->stmtid);
@@ -339,6 +415,7 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 		case PLPGSQL_STMT_FORC:
 			set_stmts_info(((PLpgSQL_stmt_forc *) stmt)->body,
 						   stmts_info,
+						   stmtid_map,
 						   level + 1,
 						   natural_id,
 						   stmt->stmtid);
@@ -347,6 +424,7 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 		case PLPGSQL_STMT_DYNFORS:
 			set_stmts_info(((PLpgSQL_stmt_dynfors *) stmt)->body,
 						   stmts_info,
+						   stmtid_map,
 						   level + 1,
 						   natural_id,
 						   stmt->stmtid);
@@ -355,6 +433,7 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 		case PLPGSQL_STMT_FOREACH_A:
 			set_stmts_info(((PLpgSQL_stmt_foreach_a *) stmt)->body,
 						   stmts_info,
+						   stmtid_map,
 						   level + 1,
 						   natural_id,
 						   stmt->stmtid);
@@ -363,6 +442,7 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 		case PLPGSQL_STMT_WHILE:
 			set_stmts_info(((PLpgSQL_stmt_while *) stmt)->body,
 						   stmts_info,
+						   stmtid_map,
 						   level + 1,
 						   natural_id,
 						   stmt->stmtid);
@@ -372,7 +452,6 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 			;
 	}
 }
-
 
 /*
  * Returns oid of used language
@@ -560,16 +639,82 @@ pldbgapi2_fmgr_hook(FmgrHookEventType event,
 		(*prev_fmgr_hook) (event, flinfo, is_pldbgapi2_fcache ? &fcache->arg : private);
 }
 
+static func_info_entry *
+get_func_info(PLpgSQL_function *func)
+{
+	func_info_entry *func_info;
+	bool		persistent_func_info;
+	bool		found_func_info_entry;
+	func_info_hashkey hk;
+
+	if (OidIsValid(func->fn_oid))
+	{
+		func_info_init_hashkey(&hk, func);
+		func_info = (func_info_entry *) hash_search(func_info_HashTable,
+													(void *) &hk,
+													HASH_ENTER,
+													&found_func_info_entry);
+		persistent_func_info = true;
+	}
+	else
+	{
+		/* one shot sie for anonymous blocks */
+		func_info = palloc(sizeof(func_info_entry));
+		persistent_func_info = false;
+		found_func_info_entry = false;
+	}
+
+	if (!found_func_info_entry)
+	{
+		char	   *fn_name;
+		MemoryContext oldcxt;
+		int			natural_id = 0;
+
+		fn_name = get_func_name(func->fn_oid);
+
+		if (persistent_func_info)
+		{
+			oldcxt = MemoryContextSwitchTo(pldbgapi2_mcxt);
+
+			Assert(fn_name);
+
+			func_info->fn_name = pstrdup(fn_name);
+			func_info->fn_signature = pstrdup(func->fn_signature);
+			func_info->stmts_info = palloc(func->nstatements *
+										   sizeof(plpgsql_check_plugin2_stmt_info));
+			func_info->stmtid_map = palloc(func->nstatements * sizeof(int));
+
+			MemoryContextSwitchTo(oldcxt);
+		}
+		else
+		{
+			func_info->fn_name = fn_name;
+			func_info->fn_signature = pstrdup(func->fn_signature);
+			func_info->stmts_info = palloc(func->nstatements *
+										   sizeof(plpgsql_check_plugin2_stmt_info));
+			func_info->stmtid_map = palloc(func->nstatements * sizeof(int));
+		}
+
+		func_info->nstatements = func->nstatements;
+
+		set_stmt_info((PLpgSQL_stmt *) func->action,
+					  func_info->stmts_info,
+					  func_info->stmtid_map,
+					  1, &natural_id, 0);
+	}
+
+	func_info->nstatements = func->nstatements;
+
+	return func_info;
+}
+
 static void
 pldbgapi2_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 {
 	fmgr_plpgsql_cache *fcache_plpgsql = last_fmgr_plpgsql_cache;
 	pldbgapi2_plugin_info *plugin_info;
 	MemoryContext oldcxt;
-	func_info_hashkey hk;
 	func_info_entry *func_info;
-	bool		persistent_func_info;
-	bool		found_func_info_entry;
 	int			i;
 
 	Assert(fcache_plpgsql->magic == FMGR_CACHE_MAGIC);
@@ -598,63 +743,12 @@ pldbgapi2_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	plugin_info->fcache_plpgsql = fcache_plpgsql;
 	plugin_info->prev_plugin_info = NULL;
 
-	if (OidIsValid(func->fn_oid))
-	{
-		func_info_init_hashkey(&hk, func);
-		func_info = (func_info_entry *) hash_search(func_info_HashTable,
-													(void *) &hk,
-													HASH_ENTER,
-													&found_func_info_entry);
-
-		persistent_func_info = true;
-	}
-	else
-	{
-		/* one shot sie for anonymous blocks */
-		func_info = palloc(sizeof(func_info_entry));
-		persistent_func_info = false;
-		found_func_info_entry = false;
-	}
-
-	if (!found_func_info_entry)
-	{
-		char	   *fn_name;
-		MemoryContext oldcxt;
-		int			natural_id = 0;
-
-		fn_name = get_func_name(func->fn_oid);
-
-		if (persistent_func_info)
-		{
-			oldcxt = MemoryContextSwitchTo(pldbgapi2_mcxt);
-
-			func_info->fn_name = pstrdup(fn_name);
-			func_info->fn_signature = pstrdup(func->fn_signature);
-			func_info->stmts_info = palloc(func->nstatements *
-										   sizeof(plpgsql_check_plugin2_stmt_info));
-
-			MemoryContextSwitchTo(oldcxt);
-		}
-		else
-		{
-			func_info->fn_name = fn_name;
-			func_info->fn_signature = pstrdup(func->fn_signature);
-			func_info->stmts_info = palloc(func->nstatements *
-										   sizeof(plpgsql_check_plugin2_stmt_info));
-		}
-
-		func_info->nstatements = func->nstatements;
-
-		set_stmt_info((PLpgSQL_stmt *) func->action,
-					  func_info->stmts_info,
-					  1, &natural_id, 0);
-	}
-
-	func_info->nstatements = func->nstatements;
+	func_info = get_func_info(func);
 
 	fcache_plpgsql->fn_name = func_info->fn_name;
 	fcache_plpgsql->fn_signature = func_info->fn_signature;
 	fcache_plpgsql->stmts_info = func_info->stmts_info;
+	fcache_plpgsql->stmtid_map = func_info->stmtid_map;
 	fcache_plpgsql->nstatements = func_info->nstatements;
 
 	estate->plugin_info = plugin_info;

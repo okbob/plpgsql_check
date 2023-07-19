@@ -87,7 +87,7 @@ typedef struct
  */
 typedef struct profiler_stmt
 {
-	int		lineno;
+	int			lineno;
 	pc_queryid	queryid;
 	uint64		us_max;
 	uint64		us_total;
@@ -102,7 +102,7 @@ typedef struct profiler_stmt
 
 typedef struct profiler_stmt_reduced
 {
-	int		lineno;
+	int			lineno;
 	pc_queryid	queryid;
 	uint64		us_max;
 	uint64		us_total;
@@ -120,7 +120,7 @@ typedef struct profiler_stmt_reduced
 typedef struct profiler_stmt_chunk
 {
 	profiler_hashkey key;
-	slock_t	mutex;			/* only first chunk require mutex */
+	slock_t		mutex;			/* only first chunk require mutex */
 	profiler_stmt_reduced stmts[STATEMENTS_PER_CHUNK];
 } profiler_stmt_chunk;
 
@@ -131,27 +131,10 @@ typedef struct profiler_shared_state
 } profiler_shared_state;
 
 /*
- * In current releases we know unique statement id, and we don't
- * need statement map. Unfortunately this id (stmtid) is not in
- * order of statement execution. The order depends on order of
- * processing inside parser. So some deeper statememts has less
- * number than less deeper statements. When we generate result,
- * then we need to work with statements in natural order. This
- * mapping is provided by stmtid_reorder_map.
- */
-typedef struct profiler_profile
-{
-	profiler_hashkey key;
-	int		   *stmtid_reorder_map;
-	int		   *natural_stmtid;
-} profiler_profile;
-
-/*
  * This structure is used as plpgsql extension parameter
  */
 typedef struct profiler_info
 {
-	profiler_profile *profile;
 	profiler_stmt *stmts;
 	int			nstatements;
 	instr_time	start_time;
@@ -160,20 +143,22 @@ typedef struct profiler_info
 
 typedef struct profiler_iterator
 {
-	profiler_hashkey	key;
+	profiler_hashkey key;
 	plpgsql_check_result_info *ri;
 	HTAB	   *chunks;
 	profiler_stmt_chunk *current_chunk;
-	int					 current_statement;
+	int			current_statement;
 } profiler_iterator;
 
 typedef struct
 {
-	int		stmtid;
+	int			stmtid;
 	int64 nested_us_time;
 	int64 nested_exec_count;
 	profiler_iterator *pi;
 	coverage_state *cs;
+	int		   *stmtid_map;
+	plpgsql_check_plugin2_stmt_info *stmts_info;
 } profiler_stmt_walker_options;
 
 enum
@@ -198,7 +183,7 @@ PG_FUNCTION_INFO_V1(plpgsql_coverage_branches_name);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_install_fake_queryid_hook);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_remove_fake_queryid_hook);
 
-static void update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func);
+static void update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func, int *stmtid_map);
 static PLpgSQL_expr *profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic, List **params);
 static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, bool *has_queryid, query_params **qparams);
 
@@ -212,7 +197,6 @@ static void profiler_fake_queryid_hook(ParseState *pstate, Query *query);
 
 #endif
 
-static void profile_register_stmt(profiler_info *pinfo, profiler_stmt_walker_options *opts, PLpgSQL_stmt *stmt);
 static void stmts_walker(profiler_info *pinfo, profiler_stmt_walker_mode, List *stmts, PLpgSQL_stmt *parent_stmt,
 	 const char *description, profiler_stmt_walker_options *opts);
 static void profiler_stmt_walker(profiler_info *pinfo, profiler_stmt_walker_mode mode, PLpgSQL_stmt *stmt,
@@ -284,7 +268,6 @@ eval_stddev_accum(uint64 *_N, uint64 *_Sx, float8 *_Sxx, uint64 newval)
 static profiler_stmt_reduced *
 get_stmt_profile_next(profiler_iterator *pi)
 {
-
 	if (pi->current_chunk)
 	{
 		if (pi->current_statement >= STATEMENTS_PER_CHUNK)
@@ -421,27 +404,6 @@ profiler_init_hashkey(profiler_hashkey *hk, PLpgSQL_function *func)
 }
 
 /*
- * Hash table for function profiling metadata.
- */
-static void
-profiler_localHashTableInit(void)
-{
-	HASHCTL		ctl;
-
-	Assert(profiler_HashTable == NULL);
-
-	memset(&ctl, 0, sizeof(ctl));
-	ctl.keysize = sizeof(profiler_hashkey);
-	ctl.entrysize = sizeof(profiler_profile);
-	ctl.hcxt = profiler_mcxt;
-
-	profiler_HashTable = hash_create("plpgsql_check function profiler local cache",
-									FUNCS_PER_USER,
-									&ctl,
-									HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
-}
-
-/*
  * Hash table for local function profiles. When shared memory is not available
  * because plpgsql_check was not loaded by shared_proload_libraries, then function
  * profiles is stored in local profile chunks. A format is same for shared profiles.
@@ -509,7 +471,6 @@ plpgsql_check_profiler_init_hash_tables(void)
 												ALLOCSET_DEFAULT_MAXSIZE);
 	}
 
-	profiler_localHashTableInit();
 	profiler_chunks_HashTableInit();
 	fstats_HashTableInit();
 }
@@ -524,18 +485,6 @@ increment_branch_counter(coverage_state *cs, int64 executed)
 
 	cs->branches += 1;
 	cs->executed_branches += executed > 0 ? 1 : 0;
-}
-
-#define STMTID(stmt)		(((PLpgSQL_stmt *) stmt)->stmtid - 1)
-
-static int
-get_natural_stmtid(profiler_info *pinfo, int id)
-{
-	Assert(pinfo);
-	Assert(pinfo->profile);
-	Assert(pinfo->profile->natural_stmtid);
-
-	return pinfo->profile->natural_stmtid[id];
 }
 
 #define IS_PLPGSQL_STMT(stmt, typ)		(stmt->cmd_type == typ)
@@ -622,13 +571,6 @@ profiler_stmt_walker(profiler_info *pinfo,
 {
 	profiler_stmt *pstmt = NULL;
 
-#ifdef USE_ASSERT_CHECKING
-
-	profiler_profile *profile = pinfo->profile;
-
-#endif
-
-	bool	prepare_profile_mode  = mode == PLPGSQL_CHECK_STMT_WALKER_PREPARE_PROFILE;
 	bool	count_exec_time_mode  = mode == PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME;
 	bool	prepare_result_mode	  = mode == PLPGSQL_CHECK_STMT_WALKER_PREPARE_RESULT;
 	bool	collect_coverage_mode = mode == PLPGSQL_CHECK_STMT_WALKER_COLLECT_COVERAGE;
@@ -644,81 +586,73 @@ profiler_stmt_walker(profiler_info *pinfo,
 	List   *stmts;
 	ListCell   *lc;
 
-	Assert(profile);
+	stmtid = stmt->stmtid - 1;
 
-	if (prepare_profile_mode)
+	if (count_exec_time_mode)
 	{
-		profile_register_stmt(pinfo, opts, stmt);
+		/*
+		 * Get statement info from function execution context
+		 * by statement id.
+		 */
+		pstmt = &pinfo->stmts[stmtid];
+		pstmt->lineno = stmt->lineno;
+
+		total_us_time = pstmt->us_total;
+		opts->nested_us_time = 0;
 	}
 	else
 	{
-		stmtid = STMTID(stmt);
+		profiler_stmt_reduced *ppstmt = NULL;
 
-		if (count_exec_time_mode)
+		Assert(opts->pi);
+
+		/*
+		 * When iterator is used, then id of iterator's current statement
+		 * have to be same like stmtid of stmt. When function was not executed
+		 * in active profile mode, then we have not any stored chunk, and
+		 * iterator returns 0 stmtid.
+		 */
+		Assert(!opts->pi->current_chunk ||
+			   (opts->stmtid_map[opts->pi->current_statement] - 1) == stmtid);
+
+		/*
+		 * Get persistent statement info stored in shared memory
+		 * or in session memory by iterator.
+		 */
+		ppstmt = get_stmt_profile_next(opts->pi);
+
+		if (prepare_result_mode && opts->pi->ri)
 		{
-			/*
-			 * Get statement info from function execution context
-			 * by statement id.
-			 */
-			pstmt = &pinfo->stmts[stmtid];
-			pstmt->lineno = stmt->lineno;
+			plpgsql_check_plugin2_stmt_info *sinfo;
+			int			parent_natural_stmtid = -1;
 
-			total_us_time = pstmt->us_total;
-			opts->nested_us_time = 0;
+			parent_natural_stmtid = parent_stmt ? opts->stmts_info[parent_stmt->stmtid - 1].natural_id : -1;
+			sinfo = &opts->stmts_info[stmt->stmtid - 1];
+
+			plpgsql_check_put_profile_statement(opts->pi->ri,
+												ppstmt ? ppstmt->queryid : NOQUERYID,
+												sinfo->natural_id,
+												parent_natural_stmtid,
+												description,
+												stmt_block_num,
+												stmt->lineno,
+												ppstmt ? ppstmt->exec_count : 0,
+												ppstmt ? ppstmt->exec_count_err : 0,
+												ppstmt ? ppstmt->us_total : 0.0,
+												ppstmt ? ppstmt->us_max : 0.0,
+												ppstmt ? ppstmt->rows : 0,
+												(char *) sinfo->typname);
 		}
-		else
+		else if (collect_coverage_mode)
 		{
-			profiler_stmt_reduced *ppstmt = NULL;
+			/* save statement exec count */
+			exec_count = ppstmt ? ppstmt->exec_count : 0;
 
-			Assert(opts->pi);
-
-			/*
-			 * When iterator is used, then id of iterator's current statement
-			 * have to be same like stmtid of stmt. When function was not executed
-			 * in active profile mode, then we have not any stored chunk, and
-			 * iterator returns 0 stmtid.
-			 */
-			Assert(!opts->pi->current_chunk ||
-				   profile->stmtid_reorder_map[opts->pi->current_statement] == stmtid);
-
-			/*
-			 * Get persistent statement info stored in shared memory
-			 * or in session memory by iterator.
-			 */
-			ppstmt = get_stmt_profile_next(opts->pi);
-
-			if (prepare_result_mode)
+			/* ignore invisible BLOCK */
+			if (stmt->lineno != -1)
 			{
-				int parent_stmtid = parent_stmt ? ((int) STMTID(parent_stmt)) : -1;
-
-				if (opts->pi->ri)
-				{
-					plpgsql_check_put_profile_statement(opts->pi->ri,
-														ppstmt ? ppstmt->queryid : NOQUERYID,
-														get_natural_stmtid(pinfo, stmtid),
-														get_natural_stmtid(pinfo, parent_stmtid),
-														description,
-														stmt_block_num,
-														stmt->lineno,
-														ppstmt ? ppstmt->exec_count : 0,
-														ppstmt ? ppstmt->exec_count_err : 0,
-														ppstmt ? ppstmt->us_total : 0.0,
-														ppstmt ? ppstmt->us_max : 0.0,
-														ppstmt ? ppstmt->rows : 0,
-														(char *) plpgsql_check__stmt_typename_p(stmt));
-				}
-			}
-			else if (collect_coverage_mode)
-			{
-				/* save statement exec count */
-				exec_count = ppstmt ? ppstmt->exec_count : 0;
-
-				/* ignore invisible BLOCK */
-				if (stmt->lineno != -1)
-				{
-					opts->cs->statements += 1;
-					opts->cs->executed_statements += exec_count > 0 ? 1 : 0;
-				}
+				opts->cs->statements += 1;
+				opts->cs->executed_statements += exec_count > 0 ? 1 : 0;
 			}
 		}
 	}
@@ -1267,9 +1201,9 @@ update_persistent_fstats(PLpgSQL_function *func,
 
 static void
 update_persistent_profile(profiler_info *pinfo,
-						  PLpgSQL_function *func)
+						  PLpgSQL_function *func,
+						  int *stmtid_map)
 {
-	profiler_profile *profile = pinfo->profile;
 	profiler_hashkey hk;
 	profiler_stmt_chunk *chunk = NULL;
 	bool		found;
@@ -1334,7 +1268,7 @@ update_persistent_profile(profiler_info *pinfo,
 			 * statement should to be on same or higher line)
 			 *
 			 */
-			int		n = profile->stmtid_reorder_map[i];
+			int		n = stmtid_map[i] - 1;
 
 			/* Skip gaps in reorder map */
 			if (n == -1)
@@ -1426,7 +1360,7 @@ update_persistent_profile(profiler_info *pinfo,
 			 * line). Unfortunately buildin stmtid has inverse order based on
 			 * bison parser processing statement.
 			 */
-			int		n = profile->stmtid_reorder_map[i];
+			int		n = stmtid_map[i] - 1;
 
 			/* Skip gaps in reorder map */
 			if (n == -1)
@@ -1476,17 +1410,6 @@ update_persistent_profile(profiler_info *pinfo,
 
 	if (shared_chunks)
 		LWLockRelease(profiler_ss->lock);
-}
-
-static void
-profile_register_stmt(profiler_info *pinfo,
-					  profiler_stmt_walker_options *opts,
-					  PLpgSQL_stmt *stmt)
-{
-		int		natural_stmtid = opts->stmtid++;
-
-		pinfo->profile->stmtid_reorder_map[natural_stmtid] = stmt->stmtid - 1;
-		pinfo->profile->natural_stmtid[stmt->stmtid - 1] = natural_stmtid;
 }
 
 /*
@@ -1892,55 +1815,6 @@ profiler_fake_queryid_hook(ParseState *pstate, Query *query)
 }
 
 /*
- * This routine does an update or creating new profile. Function's profile
- * holds statements metadata.
- *
- * PostgreSQL 12 has assigned statement id, so there is not necessity to
- * prepare and maintain statement map. On second hand these releases needs
- * reorder map for reordering statement id to natural order of execution.
- */
-static void
-prepare_profile(profiler_info *pinfo,
-				profiler_profile *profile,
-				PLpgSQL_function *func,
-				bool init)
-{
-	profiler_stmt_walker_options opts;
-	int		i;
-
-	Assert(pinfo);
-
-	memset(&opts, 0, sizeof(profiler_stmt_walker_options));
-
-	pinfo->profile = profile;
-	pinfo->func = func;
-
-	if (init)
-	{
-		MemoryContext oldcxt;
-
-		oldcxt = MemoryContextSwitchTo(profiler_mcxt);
-
-		profile->stmtid_reorder_map = palloc0(sizeof(int) * func->nstatements);
-		profile->natural_stmtid = palloc0(sizeof(int) * func->nstatements);
-
-		/*
-		 * I found my bug in PLpgSQL runtime - when function statement counter
-		 * is incremental 2x for every FOR cycle. Until fix this bug, some entries
-		 * of reorder map can be uniinitialized, and we have to detect these entries.
-		 */
-		for (i = 0; i < func->nstatements; i++)
-			profile->stmtid_reorder_map[i] = -1;
-
-		MemoryContextSwitchTo(oldcxt);
-
-		opts.stmtid = 0;
-		profiler_stmt_walker(pinfo, PLPGSQL_CHECK_STMT_WALKER_PREPARE_PROFILE,
-							 (PLpgSQL_stmt *) func->action, NULL, NULL, 1, &opts);
-	}
-}
-
-/*
  * Prepare tuplestore with function profile
  *
  */
@@ -1952,11 +1826,6 @@ plpgsql_check_iterate_over_profile(plpgsql_check_info *cinfo,
 {
 	LOCAL_FCINFO(fake_fcinfo, 0);
 	PLpgSQL_function *func;
-
-	profiler_profile *profile;
-	profiler_hashkey hk_function;
-	bool		found_profile = false;
-
 	FmgrInfo	flinfo;
 	TriggerData trigdata;
 	EventTriggerData etrigdata;
@@ -2017,20 +1886,15 @@ plpgsql_check_iterate_over_profile(plpgsql_check_info *cinfo,
 
 		func = plpgsql_check__compile_p(fake_fcinfo, false);
 
-		/* in this fake pinfo we don't need to prepare stmts array */
-		pinfo.nstatements = 0;
-		pinfo.stmts = NULL;
-
-		profiler_init_hashkey(&hk_function, func);
-		profile = (profiler_profile *) hash_search(profiler_HashTable,
-												 (void *) &hk_function,
-												 HASH_ENTER,
-												 &found_profile);
-
-		prepare_profile(&pinfo, profile, func, !found_profile);
+		opts.stmtid_map = plpgsql_check_get_stmtid_map(func);
+		opts.stmts_info = plpgsql_check_get_stmts_info(func);
 
 		opts.pi =  &pi;
 		opts.cs = cs;
+
+		pinfo.func = func;
+		pinfo.nstatements = 0;
+		pinfo.stmts = NULL;
 
 		profiler_stmt_walker(&pinfo, mode, (PLpgSQL_stmt *) func->action, NULL, NULL, 1, &opts);
 	}
@@ -2266,23 +2130,14 @@ profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **pl
 	if (plpgsql_check_profiler && OidIsValid(func->fn_oid))
 	{
 		profiler_info *pinfo;
-		profiler_profile *profile;
-		profiler_hashkey hk;
-		bool		found;
-
-		profiler_init_hashkey(&hk, func);
-		profile = (profiler_profile *) hash_search(profiler_HashTable,
-												   (void *) &hk,
-												   HASH_ENTER,
-												   &found);
 
 		pinfo = palloc0(sizeof(profiler_info));
 		pinfo->nstatements = func->nstatements;
 		pinfo->stmts = palloc0(func->nstatements * sizeof(profiler_stmt));
 
-		prepare_profile(pinfo, profile, func, !found);
-
 		INSTR_TIME_SET_CURRENT(pinfo->start_time);
+
+		pinfo->func = func;
 
 		*plugin2_info = pinfo;
 	}
@@ -2294,10 +2149,11 @@ profiler_func_end(PLpgSQL_execstate *estate,
 				  void **plugin2_info)
 {
 	profiler_info *pinfo = *plugin2_info;
+	int		   *stmtid_map;
 
 	if (pinfo)
 	{
-		int		entry_stmtid = STMTID(func->action);
+		int		entry_stmtid = func->action->stmtid - 1;
 
 		instr_time		end_time;
 		uint64			elapsed;
@@ -2318,13 +2174,15 @@ profiler_func_end(PLpgSQL_execstate *estate,
 			pinfo->stmts[entry_stmtid].us_max = elapsed;
 		}
 
-		/* finalize profile - get result profile */
+		opts.stmts_info = plpgsql_check_get_current_stmts_info();
+		stmtid_map = plpgsql_check_get_current_stmtid_map();
+		opts.stmtid_map = stmtid_map;
 
 		profiler_stmt_walker(pinfo, PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME,
 							 (PLpgSQL_stmt *) func->action, NULL, NULL, 1,
 							 &opts);
 
-		update_persistent_profile(pinfo, func);
+		update_persistent_profile(pinfo, func, stmtid_map);
 		update_persistent_fstats(func, elapsed);
 	}
 }
@@ -2336,15 +2194,17 @@ profiler_func_end_aborted(Oid fn_oid, void **plugin2_info)
 
 	if (pinfo)
 	{
-		int		entry_stmtid = STMTID(pinfo->func->action);
-
-		instr_time		end_time;
-		uint64			elapsed;
+		int			entry_stmtid;
+		instr_time	end_time;
+		uint64		elapsed;
 		profiler_stmt_walker_options opts;
+		int		   *stmtid_map;
 
 		Assert(pinfo->func);
 		Assert(OidIsValid(fn_oid));
 		Assert(pinfo->func->fn_oid == fn_oid);
+
+		entry_stmtid = pinfo->func->action->stmtid - 1;
 
 		memset(&opts, 0, sizeof(profiler_stmt_walker_options));
 
@@ -2361,15 +2221,19 @@ profiler_func_end_aborted(Oid fn_oid, void **plugin2_info)
 			pinfo->stmts[entry_stmtid].us_max = elapsed;
 		}
 
+		opts.stmts_info = plpgsql_check_get_current_stmts_info();
+
+		stmtid_map = plpgsql_check_get_current_stmtid_map();
+		opts.stmtid_map = stmtid_map;
+
 		/* finalize profile - get result profile */
 		profiler_stmt_walker(pinfo, PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME,
 							 (PLpgSQL_stmt *) pinfo->func->action, NULL, NULL, 1,
 							 &opts);
 
-		update_persistent_profile(pinfo, pinfo->func);
+		update_persistent_profile(pinfo, pinfo->func, stmtid_map);
 		update_persistent_fstats(pinfo->func, elapsed);
 	}
-
 }
 
 static void
