@@ -302,9 +302,6 @@ passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, void *
 	int closing;
 	List		*exceptions;
 
-	//if (plpgsql_check_tracer)
-	//	plpgsql_check_tracer_on_func_beg(estate, func);
-
 	if (plpgsql_check_mode == PLPGSQL_CHECK_MODE_FRESH_START ||
 		   plpgsql_check_mode == PLPGSQL_CHECK_MODE_EVERY_START)
 	{
