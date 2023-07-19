@@ -2434,7 +2434,7 @@ profiler_stmt_end_aborted(Oid fn_oid, int stmtid, void **plugin2_info)
 
 	if (pinfo)
 	{
-		profiler_stmt *pstmt = &pinfo->stmts[stmtid];
+		profiler_stmt *pstmt = &pinfo->stmts[stmtid - 1];
 		instr_time		end_time;
 		uint64			elapsed;
 		instr_time		end_time2;

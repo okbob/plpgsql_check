@@ -116,7 +116,7 @@ plpgsql_check_plugin2_stmt_info *
 plpgsql_check_get_current_stmt_info(int stmtid)
 {
 	Assert(current_fmgr_plpgsql_cache);
-	Assert(stmtid < current_fmgr_plpgsql_cache->nstatements);
+	Assert(stmtid <= current_fmgr_plpgsql_cache->nstatements);
 
 	return &(current_fmgr_plpgsql_cache->stmts_info[stmtid - 1]);
 }
@@ -125,7 +125,6 @@ char *
 plpgsql_check_get_current_func_info_name(void)
 {
 	Assert(current_fmgr_plpgsql_cache);
-	Assert(current_fmgr_plpgsql_cache->fn_name);
 
 	return current_fmgr_plpgsql_cache->fn_name;
 }
@@ -216,7 +215,7 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 {
 	ListCell *lc;
 	int			stmtid_idx = stmt->stmtid - 1;
-	bool		is_invisible = stmt->cmd_type == PLPGSQL_STMT_BLOCK || stmt->lineno < 1;
+	bool		is_invisible =  stmt->lineno < 1;
 
 	Assert(stmts_info);
 
@@ -621,6 +620,7 @@ pldbgapi2_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	{
 		char	   *fn_name;
 		MemoryContext oldcxt;
+		int			natural_id = 0;
 
 		fn_name = get_func_name(func->fn_oid);
 
@@ -647,7 +647,7 @@ pldbgapi2_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 		set_stmt_info((PLpgSQL_stmt *) func->action,
 					  func_info->stmts_info,
-					  0, 0, 0);
+					  1, &natural_id, 0);
 	}
 
 	func_info->nstatements = func->nstatements;
@@ -863,6 +863,7 @@ pldbgapi2_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	pldbgapi2_plugin_info *plugin_info = estate->plugin_info;
 	fmgr_plpgsql_cache *fcache_plpgsql = plugin_info->fcache_plpgsql;
 	int			i;
+	int			parent_id = 0;
 
 	if (plugin_info && plugin_info->magic != PLUGIN_INFO_MAGIC)
 		ereport(ERROR,
@@ -882,6 +883,33 @@ pldbgapi2_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 #endif
 
+	current_fmgr_plpgsql_cache = fcache_plpgsql;
+
+	if (fcache_plpgsql->current_stmtid_stack_size > 0)
+	{
+		parent_id = fcache_plpgsql->stmts_info[stmt->stmtid - 1].parent_id;
+
+		/* solve handled exception */
+		while (fcache_plpgsql->current_stmtid_stack_size > 0 &&
+			   fcache_plpgsql->stmtid_stack[fcache_plpgsql->current_stmtid_stack_size - 1] != parent_id)
+		{
+			int			stmtid = fcache_plpgsql->stmtid_stack[fcache_plpgsql->current_stmtid_stack_size - 1];
+
+			for (i = 0; i < nplpgsql_plugins2; i++)
+			{
+				if (plpgsql_plugins2[i]->stmt_end2_aborted)
+					(plpgsql_plugins2[i]->stmt_end2_aborted)(estate->func->fn_oid, stmtid,
+															 &fcache_plpgsql->plugin2_info[i]);
+			}
+
+			fcache_plpgsql->current_stmtid_stack_size -= 1;
+		}
+	}
+
+	if (parent_id &&
+		  fcache_plpgsql->stmtid_stack[fcache_plpgsql->current_stmtid_stack_size - 1] != parent_id)
+		elog(ERROR, "cannot find parent statement on pldbgapi2 call stack");
+
 	/*
 	 * We want to close broken statements before we start execution of 
 	 * exception handler. This needs more work than closing broken statements
@@ -899,7 +927,6 @@ pldbgapi2_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 	fcache_plpgsql->stmtid_stack[fcache_plpgsql->current_stmtid_stack_size++] = stmt->stmtid;
 
-	current_fmgr_plpgsql_cache = fcache_plpgsql;
 
 	for (i = 0; i < nplpgsql_plugins2; i++)
 	{
@@ -963,19 +990,8 @@ pldbgapi2_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 	current_fmgr_plpgsql_cache = fcache_plpgsql;
 
-elog(NOTICE, "%d %d", fcache_plpgsql->stmtid_stack[fcache_plpgsql->current_stmtid_stack_size], stmt->stmtid);
-//	Assert(fcache_plpgsql->stmtid_stack[fcache_plpgsql->current_stmtid_stack_size] == stmt->stmtid);
-
-	/* solve handled exception */
-	while (fcache_plpgsql->stmtid_stack[fcache_plpgsql->current_stmtid_stack_size] != stmt->stmtid)
-	{
-		
-	}
-
-
-
 	if (fcache_plpgsql->stmtid_stack[fcache_plpgsql->current_stmtid_stack_size] != stmt->stmtid)
-		elog(ERROR, "some strange");
+		elog(ERROR, "pldbgapi2 statement call stack is broken");
 
 	for (i = 0; i < nplpgsql_plugins2; i++)
 	{
