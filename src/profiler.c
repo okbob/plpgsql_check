@@ -2144,47 +2144,62 @@ profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **pl
 }
 
 static void
+_profiler_func_end(profiler_info *pinfo, Oid fn_oid, bool is_aborted)
+{
+	int			entry_stmtid;
+	instr_time	end_time;
+	uint64		elapsed;
+	profiler_stmt_walker_options opts;
+	int		   *stmtid_map;
+
+	Assert(pinfo);
+	Assert(pinfo->func);
+	Assert(pinfo->func->fn_oid == fn_oid);
+
+	entry_stmtid = pinfo->func->action->stmtid - 1;
+
+	memset(&opts, 0, sizeof(profiler_stmt_walker_options));
+
+	INSTR_TIME_SET_CURRENT(end_time);
+	INSTR_TIME_SUBTRACT(end_time, pinfo->start_time);
+
+	elapsed = INSTR_TIME_GET_MICROSEC(end_time);
+
+	if (pinfo->stmts[entry_stmtid].exec_count == 0)
+	{
+		pinfo->stmts[entry_stmtid].exec_count = 1;
+		pinfo->stmts[entry_stmtid].exec_count_err = is_aborted ? 1 : 0;
+		pinfo->stmts[entry_stmtid].us_total = elapsed;
+		pinfo->stmts[entry_stmtid].us_max = elapsed;
+	}
+
+	stmtid_map = plpgsql_check_get_current_stmtid_map();
+
+	opts.stmts_info = plpgsql_check_get_current_stmts_info();
+	opts.stmtid_map = stmtid_map;
+
+	/* finalize profile - get result profile */
+	profiler_stmt_walker(pinfo, PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME,
+						 (PLpgSQL_stmt *) pinfo->func->action, NULL, NULL, 1,
+						 &opts);
+
+	update_persistent_profile(pinfo, pinfo->func, stmtid_map);
+	update_persistent_fstats(pinfo->func, elapsed);
+}
+
+static void
 profiler_func_end(PLpgSQL_execstate *estate,
 				  PLpgSQL_function *func,
 				  void **plugin2_info)
 {
 	profiler_info *pinfo = *plugin2_info;
-	int		   *stmtid_map;
 
-	if (pinfo)
-	{
-		int		entry_stmtid = func->action->stmtid - 1;
+	if (!pinfo)
+		return;
 
-		instr_time		end_time;
-		uint64			elapsed;
-		profiler_stmt_walker_options opts;
+	Assert(pinfo->func == func);
 
-		memset(&opts, 0, sizeof(profiler_stmt_walker_options));
-
-		INSTR_TIME_SET_CURRENT(end_time);
-		INSTR_TIME_SUBTRACT(end_time, pinfo->start_time);
-
-		elapsed = INSTR_TIME_GET_MICROSEC(end_time);
-
-		if (pinfo->stmts[entry_stmtid].exec_count == 0)
-		{
-			pinfo->stmts[entry_stmtid].exec_count = 1;
-			pinfo->stmts[entry_stmtid].exec_count_err = 1;
-			pinfo->stmts[entry_stmtid].us_total = elapsed;
-			pinfo->stmts[entry_stmtid].us_max = elapsed;
-		}
-
-		opts.stmts_info = plpgsql_check_get_current_stmts_info();
-		stmtid_map = plpgsql_check_get_current_stmtid_map();
-		opts.stmtid_map = stmtid_map;
-
-		profiler_stmt_walker(pinfo, PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME,
-							 (PLpgSQL_stmt *) func->action, NULL, NULL, 1,
-							 &opts);
-
-		update_persistent_profile(pinfo, func, stmtid_map);
-		update_persistent_fstats(func, elapsed);
-	}
+	_profiler_func_end(pinfo, func->fn_oid, false);
 }
 
 static void
@@ -2192,48 +2207,10 @@ profiler_func_end_aborted(Oid fn_oid, void **plugin2_info)
 {
 	profiler_info *pinfo = *plugin2_info;
 
-	if (pinfo)
-	{
-		int			entry_stmtid;
-		instr_time	end_time;
-		uint64		elapsed;
-		profiler_stmt_walker_options opts;
-		int		   *stmtid_map;
+	if (!pinfo)
+		return;
 
-		Assert(pinfo->func);
-		Assert(OidIsValid(fn_oid));
-		Assert(pinfo->func->fn_oid == fn_oid);
-
-		entry_stmtid = pinfo->func->action->stmtid - 1;
-
-		memset(&opts, 0, sizeof(profiler_stmt_walker_options));
-
-		INSTR_TIME_SET_CURRENT(end_time);
-		INSTR_TIME_SUBTRACT(end_time, pinfo->start_time);
-
-		elapsed = INSTR_TIME_GET_MICROSEC(end_time);
-
-		if (pinfo->stmts[entry_stmtid].exec_count == 0)
-		{
-			pinfo->stmts[entry_stmtid].exec_count = 1;
-			pinfo->stmts[entry_stmtid].exec_count_err = 1;
-			pinfo->stmts[entry_stmtid].us_total = elapsed;
-			pinfo->stmts[entry_stmtid].us_max = elapsed;
-		}
-
-		opts.stmts_info = plpgsql_check_get_current_stmts_info();
-
-		stmtid_map = plpgsql_check_get_current_stmtid_map();
-		opts.stmtid_map = stmtid_map;
-
-		/* finalize profile - get result profile */
-		profiler_stmt_walker(pinfo, PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME,
-							 (PLpgSQL_stmt *) pinfo->func->action, NULL, NULL, 1,
-							 &opts);
-
-		update_persistent_profile(pinfo, pinfo->func, stmtid_map);
-		update_persistent_fstats(pinfo->func, elapsed);
-	}
+	_profiler_func_end(pinfo, fn_oid, true);
 }
 
 static void
@@ -2249,6 +2226,29 @@ profiler_stmt_beg(PLpgSQL_execstate *estate,
 	}
 }
 
+static void
+_profiler_stmt_end(profiler_stmt *pstmt, bool is_aborted)
+{
+	instr_time		end_time;
+	uint64			elapsed;
+	instr_time		end_time2;
+
+	INSTR_TIME_SET_CURRENT(end_time);
+	end_time2 = end_time;
+	INSTR_TIME_ACCUM_DIFF(pstmt->total, end_time, pstmt->start_time);
+
+	INSTR_TIME_SUBTRACT(end_time2, pstmt->start_time);
+	elapsed = INSTR_TIME_GET_MICROSEC(end_time2);
+
+	if (elapsed > pstmt->us_max)
+		pstmt->us_max = elapsed;
+
+	pstmt->us_total = INSTR_TIME_GET_MICROSEC(pstmt->total);
+	pstmt->exec_count_err += is_aborted ? 1 : 0;
+	pstmt->exec_count++;
+}
+
+
 /*
  * Cleaning mode is used for closing unfinished statements after an exception.
  */
@@ -2262,9 +2262,6 @@ profiler_stmt_end(PLpgSQL_execstate *estate,
 	if (pinfo)
 	{
 		profiler_stmt *pstmt = &pinfo->stmts[stmt->stmtid - 1];
-		instr_time		end_time;
-		uint64			elapsed;
-		instr_time		end_time2;
 
 		/*
 		 * We can get query id only if stmt_end is not executed
@@ -2275,19 +2272,7 @@ profiler_stmt_end(PLpgSQL_execstate *estate,
 												  &pstmt->has_queryid,
 												  &pstmt->qparams);
 
-		INSTR_TIME_SET_CURRENT(end_time);
-		end_time2 = end_time;
-		INSTR_TIME_ACCUM_DIFF(pstmt->total, end_time, pstmt->start_time);
-
-		INSTR_TIME_SUBTRACT(end_time2, pstmt->start_time);
-		elapsed = INSTR_TIME_GET_MICROSEC(end_time2);
-
-		if (elapsed > pstmt->us_max)
-			pstmt->us_max = elapsed;
-
-		pstmt->us_total = INSTR_TIME_GET_MICROSEC(pstmt->total);
-		pstmt->rows += estate->eval_processed;
-		pstmt->exec_count++;
+		_profiler_stmt_end(pstmt, false);
 	}
 }
 
@@ -2299,25 +2284,9 @@ profiler_stmt_end_aborted(Oid fn_oid, int stmtid, void **plugin2_info)
 	if (pinfo)
 	{
 		profiler_stmt *pstmt = &pinfo->stmts[stmtid - 1];
-		instr_time		end_time;
-		uint64			elapsed;
-		instr_time		end_time2;
 
-		INSTR_TIME_SET_CURRENT(end_time);
-		end_time2 = end_time;
-		INSTR_TIME_ACCUM_DIFF(pstmt->total, end_time, pstmt->start_time);
-
-		INSTR_TIME_SUBTRACT(end_time2, pstmt->start_time);
-		elapsed = INSTR_TIME_GET_MICROSEC(end_time2);
-
-		if (elapsed > pstmt->us_max)
-			pstmt->us_max = elapsed;
-
-		pstmt->us_total = INSTR_TIME_GET_MICROSEC(pstmt->total);
-		pstmt->exec_count_err += 1;
-		pstmt->exec_count++;
+		_profiler_stmt_end(pstmt, true);
 	}
-
 }
 
 void
