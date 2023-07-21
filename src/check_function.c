@@ -56,6 +56,13 @@ static void setup_estate(PLpgSQL_execstate *estate, PLpgSQL_function *func, Retu
 static void setup_cstate(PLpgSQL_checkstate *cstate, plpgsql_check_result_info *result_info,
 	plpgsql_check_info *cinfo, bool is_active_mode, bool fake_rtd);
 
+static void passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
+
+static plpgsql_check_plugin2 check_plugin2 = { NULL,
+											   passive_check_func_beg, NULL, NULL,
+											   NULL, NULL, NULL,
+											   NULL, NULL, NULL, NULL, NULL };
+
 /*
  * Prepare list of OUT variables for later report
  */
@@ -288,17 +295,12 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
  *      and local variables are initialized.
  *
  */
-void
-plpgsql_check_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
+static void
+passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info)
 {
 	const char *err_text = estate->err_text;
 	int closing;
 	List		*exceptions;
-
-	plpgsql_check_profiler_func_beg(estate, func);
-
-	if (plpgsql_check_tracer)
-		plpgsql_check_tracer_on_func_beg(estate, func);
 
 	if (plpgsql_check_mode == PLPGSQL_CHECK_MODE_FRESH_START ||
 		   plpgsql_check_mode == PLPGSQL_CHECK_MODE_EVERY_START)
@@ -473,6 +475,11 @@ plpgsql_check_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	}
 }
 
+void
+plpgsql_check_passive_check_init(void)
+{
+	plpgsql_check_register_pldbgapi2_plugin(&check_plugin2);
+}
 
 /*
  * Check function - it prepare variables and starts a prepare plan walker
@@ -1149,7 +1156,6 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->allow_mp = false;
 
 	cstate->pragma_vector.disable_check = false;
-	cstate->pragma_vector.disable_tracer = false;
 	cstate->pragma_vector.disable_other_warnings = false;
 	cstate->pragma_vector.disable_performance_warnings = false;
 	cstate->pragma_vector.disable_extra_warnings = false;
