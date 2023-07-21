@@ -1,4 +1,4 @@
 plpgsql_check_passive.out			PostgreSQL 14, 15, 16
 plpgsql_check_passive_1.out			PostgreSQL 12, 13
 plpgsql_check_active_1.out			PostgreSQL 12, 13
-plpgsql_check_active.out			PostgreSQL 14, 15, 16, 17
+plpgsql_check_active.out			PostgreSQL 14, 15, 16

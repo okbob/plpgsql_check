@@ -28,8 +28,13 @@
 
 PG_FUNCTION_INFO_V1(plpgsql_check_pragma);
 
+plpgsql_check_pragma_vector plpgsql_check_runtime_pragma_vector;
+
+bool plpgsql_check_runtime_pragma_vector_changed = false;
+
 static void
-runtime_pragma_apply(char *pragma_str)
+runtime_pragma_apply(plpgsql_check_pragma_vector *pv,
+					 char *pragma_str)
 {
 	while (*pragma_str == ' ')
 		pragma_str++;
@@ -43,7 +48,7 @@ runtime_pragma_apply(char *pragma_str)
 
 		if (strcasecmp(pragma_str, "TRACER") == 0)
 			elog(NOTICE, "tracer is %s",
-					plpgsql_check_tracer ? "enabled" : "disabled");
+					pv->disable_tracer ? "disabled" : "enabled");
 	}
 	else if (strncasecmp(pragma_str, "ENABLE:", 7) == 0)
 	{
@@ -53,7 +58,7 @@ runtime_pragma_apply(char *pragma_str)
 			pragma_str++;
 
 		if (strcasecmp(pragma_str, "TRACER") == 0)
-			plpgsql_check_tracer = true;
+			pv->disable_tracer = false;
 	}
 	else if (strncasecmp(pragma_str, "DISABLE:", 8) == 0)
 	{
@@ -63,7 +68,7 @@ runtime_pragma_apply(char *pragma_str)
 			pragma_str++;
 
 		if (strcasecmp(pragma_str, "TRACER") == 0)
-			plpgsql_check_tracer = false;
+			pv->disable_tracer = true;
 	}
 }
 
@@ -223,7 +228,10 @@ plpgsql_check_pragma(PG_FUNCTION_ARGS)
 
 		pragma_str = TextDatumGetCString(value);
 
-		runtime_pragma_apply(pragma_str);
+		runtime_pragma_apply(&plpgsql_check_runtime_pragma_vector, pragma_str);
+
+		plpgsql_check_runtime_pragma_vector_changed = true;
+
 		pfree(pragma_str);
 	}
 
