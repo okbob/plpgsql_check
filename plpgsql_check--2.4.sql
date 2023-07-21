@@ -297,6 +297,6 @@ CREATE OR REPLACE FUNCTION plpgsql_check_profiler(enable boolean DEFAULT NULL)
 RETURNS void AS 'MODULE_PATHNAME', 'plpgsql_check_profiler_ctrl'
 LANGUAGE C VOLATILE;
 
-CREATE OR REPLACE FUNCTION plpgsql_check_tracer(enable boolean DEFAULT NULL, verbosity text DEFAULT NULL)
+CREATE OR REPLACE FUNCTION plpgsql_check_tracer(enable boolean DEFAULT NULL)
 RETURNS void AS 'MODULE_PATHNAME', 'plpgsql_check_tracer_ctrl'
 LANGUAGE C VOLATILE;
