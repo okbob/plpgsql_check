@@ -816,12 +816,6 @@ pldbgapi2_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 		prev_plpgsql_plugin->eval_datum = pldbgapi2_plugin.eval_datum;
 		prev_plpgsql_plugin->cast_value = pldbgapi2_plugin.cast_value;
 
-#else
-
-		prev_plpgsql_plugin->assign_value = NULL;
-		prev_plpgsql_plugin->eval_datum = NULL;
-		prev_plpgsql_plugin->cast_value = NULL;
-
 #endif
 
 		if (prev_plpgsql_plugin->func_setup)
@@ -1182,6 +1176,7 @@ plpgsql_check_finish_pldbgapi2(void)
 	needs_fmgr_hook = prev_needs_fmgr_hook;
 	fmgr_hook = prev_fmgr_hook;
 
+	plugin_ptr = (PLpgSQL_plugin **)find_rendezvous_variable("PLpgSQL_plugin");
 	*plugin_ptr = prev_plpgsql_plugin;
 }
 

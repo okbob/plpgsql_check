@@ -7268,12 +7268,12 @@ select covtest(10);
 select stmtid, exec_stmts, stmtname from plpgsql_profiler_function_statements_tb('covtest');
  stmtid | exec_stmts |    stmtname     
 --------+------------+-----------------
-      0 |          1 | statement block
-      1 |          1 | assignment
-      2 |          1 | IF
-      3 |          0 | assignment
-      4 |          1 | assignment
-      5 |          1 | RETURN
+      1 |          1 | statement block
+      2 |          1 | assignment
+      3 |          1 | IF
+      4 |          0 | assignment
+      5 |          1 | assignment
+      6 |          1 | RETURN
 (6 rows)
 
 select plpgsql_coverage_statements('covtest');
@@ -7297,12 +7297,12 @@ select covtest(1);
 select stmtid, exec_stmts, stmtname from plpgsql_profiler_function_statements_tb('covtest');
  stmtid | exec_stmts |    stmtname     
 --------+------------+-----------------
-      0 |          2 | statement block
-      1 |          2 | assignment
-      2 |          2 | IF
-      3 |          1 | assignment
-      4 |          2 | assignment
-      5 |          2 | RETURN
+      1 |          2 | statement block
+      2 |          2 | assignment
+      3 |          2 | IF
+      4 |          1 | assignment
+      5 |          2 | assignment
+      6 |          2 | RETURN
 (6 rows)
 
 select plpgsql_coverage_statements('covtest');
@@ -7367,11 +7367,11 @@ create trigger tracer_tab_trg before insert on tracer_tab for each row execute p
 select fxo(10,20,'20200815', 3.14);
 NOTICE:  #0   ->> start of function fxo(integer,integer,date,numeric) (oid=0)
 NOTICE:  #0       "a" => '10', "b" => '20', "c" => '08-15-2020', "d" => '3.14'
-NOTICE:  #2     ->> start of function tracer_tab_trg_fx() (oid=0)
-NOTICE:  #2          call by fxo(integer,integer,date,numeric) line 3 at SQL statement
-NOTICE:  #2         triggered by before row insert trigger
-NOTICE:  #2         "new" => '(10,20,08-15-2020,3.14)'
-NOTICE:  #2     <<- end of function tracer_tab_trg_fx (elapsed time=0.010 ms)
+NOTICE:  #2       ->> start of function tracer_tab_trg_fx() (oid=0)
+NOTICE:  #2           context: SQL statement "insert into tracer_tab values(a,b,c,d)"
+NOTICE:  #2           triggered by before row insert trigger
+NOTICE:  #2           "new" => '(10,20,08-15-2020,3.14)'
+NOTICE:  #2       <<- end of function tracer_tab_trg_fx (elapsed time=0.010 ms)
 NOTICE:  #0   <<- end of function fxo (elapsed time=0.010 ms)
  fxo 
 -----
@@ -7381,11 +7381,11 @@ NOTICE:  #0   <<- end of function fxo (elapsed time=0.010 ms)
 select fxo(11,21,'20200816', 6.28);
 NOTICE:  #0   ->> start of function fxo(integer,integer,date,numeric) (oid=0)
 NOTICE:  #0       "a" => '11', "b" => '21', "c" => '08-16-2020', "d" => '6.28'
-NOTICE:  #2     ->> start of function tracer_tab_trg_fx() (oid=0)
-NOTICE:  #2          call by fxo(integer,integer,date,numeric) line 3 at SQL statement
-NOTICE:  #2         triggered by before row insert trigger
-NOTICE:  #2         "new" => '(11,21,08-16-2020,6.28)'
-NOTICE:  #2     <<- end of function tracer_tab_trg_fx (elapsed time=0.010 ms)
+NOTICE:  #2       ->> start of function tracer_tab_trg_fx() (oid=0)
+NOTICE:  #2           context: SQL statement "insert into tracer_tab values(a,b,c,d)"
+NOTICE:  #2           triggered by before row insert trigger
+NOTICE:  #2           "new" => '(11,21,08-16-2020,6.28)'
+NOTICE:  #2       <<- end of function tracer_tab_trg_fx (elapsed time=0.010 ms)
 NOTICE:  #0   <<- end of function fxo (elapsed time=0.010 ms)
  fxo 
 -----
@@ -8154,8 +8154,8 @@ select lineno, exec_stmts, exec_stmts_err, source from plpgsql_profiler_function
  lineno | exec_stmts | exec_stmts_err |            source            
 --------+------------+----------------+------------------------------
       1 |            |                | 
-      2 |          2 |              0 | begin
-      3 |          2 |              0 |   if (a > 5) then
+      2 |          2 |              1 | begin
+      3 |          2 |              1 |   if (a > 5) then
       4 |          1 |              0 |     a := a + 10;
       5 |          1 |              0 |     return a;
       6 |            |                |   else
@@ -8190,8 +8190,8 @@ select lineno, exec_stmts, exec_stmts_err, source from plpgsql_profiler_function
  lineno | exec_stmts | exec_stmts_err |             source             
 --------+------------+----------------+--------------------------------
       1 |            |                | 
-      2 |          2 |              0 | begin
-      3 |          2 |              0 |   if (a > 5) then
+      2 |          2 |              1 | begin
+      3 |          2 |              1 |   if (a > 5) then
       4 |          1 |              0 |     a := a + 10;
       5 |          1 |              0 |     return a;
       6 |            |                |   else
@@ -8668,18 +8668,18 @@ set plpgsql_check.tracer_test_mode = true;
 select trace_test(3);
 NOTICE:  #0   ->> start of function trace_test(integer) (oid=0)
 NOTICE:  #0       "b" => '3'
-NOTICE:  #2     ->> start of function nested_trace_test(integer) (oid=0)
-NOTICE:  #2          call by trace_test(integer) line 6 at assignment
-NOTICE:  #2         "a" => '0'
-NOTICE:  #2     <<- end of function nested_trace_test (elapsed time=0.010 ms)
-NOTICE:  #2     ->> start of function nested_trace_test(integer) (oid=0)
-NOTICE:  #2          call by trace_test(integer) line 6 at assignment
-NOTICE:  #2         "a" => '1'
-NOTICE:  #2     <<- end of function nested_trace_test (elapsed time=0.010 ms)
-NOTICE:  #2     ->> start of function nested_trace_test(integer) (oid=0)
-NOTICE:  #2          call by trace_test(integer) line 6 at assignment
-NOTICE:  #2         "a" => '2'
-NOTICE:  #2     <<- end of function nested_trace_test (elapsed time=0.010 ms)
+NOTICE:  #2       ->> start of function nested_trace_test(integer) (oid=0)
+NOTICE:  #2           context: PL/pgSQL assignment "r := nested_trace_test(r)"
+NOTICE:  #2           "a" => '0'
+NOTICE:  #2       <<- end of function nested_trace_test (elapsed time=0.010 ms)
+NOTICE:  #2       ->> start of function nested_trace_test(integer) (oid=0)
+NOTICE:  #2           context: PL/pgSQL assignment "r := nested_trace_test(r)"
+NOTICE:  #2           "a" => '1'
+NOTICE:  #2       <<- end of function nested_trace_test (elapsed time=0.010 ms)
+NOTICE:  #2       ->> start of function nested_trace_test(integer) (oid=0)
+NOTICE:  #2           context: PL/pgSQL assignment "r := nested_trace_test(r)"
+NOTICE:  #2           "a" => '2'
+NOTICE:  #2       <<- end of function nested_trace_test (elapsed time=0.010 ms)
 NOTICE:  #0   <<- end of function trace_test (elapsed time=0.010 ms)
  trace_test 
 ------------
@@ -8690,44 +8690,52 @@ set plpgsql_check.tracer_verbosity TO verbose;
 select trace_test(3);
 NOTICE:  #0            ->> start of function trace_test(integer) (oid=0)
 NOTICE:  #0                "b" => '3'
-NOTICE:  #0.1       4  --> start of FOR with integer loop variable
-NOTICE:  #0.2       6  --> start of assignment r := nested_trace_test(r)
-NOTICE:  #0.2              "r" => '0'
-NOTICE:  #2              ->> start of function nested_trace_test(integer) (oid=0)
-NOTICE:  #2                   call by trace_test(integer) line 6 at assignment
-NOTICE:  #2                  "a" => '0'
-NOTICE:  #2.1       3    --> start of RETURN (expr='a + 1')
-NOTICE:  #2.1                "a" => '0'
-NOTICE:  #2.1            <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #2              <<- end of function nested_trace_test (elapsed time=0.010 ms)
-NOTICE:  #0.2          <-- end of assignment (elapsed time=0.010 ms)
-NOTICE:  #0.2              "r" => '1'
-NOTICE:  #0.2       6  --> start of assignment r := nested_trace_test(r)
-NOTICE:  #0.2              "r" => '1'
-NOTICE:  #2              ->> start of function nested_trace_test(integer) (oid=0)
-NOTICE:  #2                   call by trace_test(integer) line 6 at assignment
-NOTICE:  #2                  "a" => '1'
-NOTICE:  #2.1       3    --> start of RETURN (expr='a + 1')
-NOTICE:  #2.1                "a" => '1'
-NOTICE:  #2.1            <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #2              <<- end of function nested_trace_test (elapsed time=0.010 ms)
-NOTICE:  #0.2          <-- end of assignment (elapsed time=0.010 ms)
-NOTICE:  #0.2              "r" => '2'
-NOTICE:  #0.2       6  --> start of assignment r := nested_trace_test(r)
-NOTICE:  #0.2              "r" => '2'
-NOTICE:  #2              ->> start of function nested_trace_test(integer) (oid=0)
-NOTICE:  #2                   call by trace_test(integer) line 6 at assignment
-NOTICE:  #2                  "a" => '2'
-NOTICE:  #2.1       3    --> start of RETURN (expr='a + 1')
-NOTICE:  #2.1                "a" => '2'
-NOTICE:  #2.1            <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #2              <<- end of function nested_trace_test (elapsed time=0.010 ms)
-NOTICE:  #0.2          <-- end of assignment (elapsed time=0.010 ms)
-NOTICE:  #0.2              "r" => '3'
-NOTICE:  #0.1          <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
-NOTICE:  #0.3       8  --> start of RETURN
-NOTICE:  #0.3              "r" => '3'
-NOTICE:  #0.3          <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.1       3    --> start of statement block
+NOTICE:  #0.2       4      --> start of FOR with integer loop variable
+NOTICE:  #0.3       6        --> start of assignment r := nested_trace_test(r)
+NOTICE:  #0.3                    "r" => '0'
+NOTICE:  #2                ->> start of function nested_trace_test(integer) (oid=0)
+NOTICE:  #2                    context: PL/pgSQL assignment "r := nested_trace_test(r)"
+NOTICE:  #2                    "a" => '0'
+NOTICE:  #2.1       2        --> start of statement block
+NOTICE:  #2.2       3          --> start of RETURN (expr='a + 1')
+NOTICE:  #2.2                      "a" => '0'
+NOTICE:  #2.1                  <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #2.2                <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #2                <<- end of function nested_trace_test (elapsed time=0.010 ms)
+NOTICE:  #0.2                <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.3                    "r" => '1'
+NOTICE:  #0.3       6        --> start of assignment r := nested_trace_test(r)
+NOTICE:  #0.3                    "r" => '1'
+NOTICE:  #2                ->> start of function nested_trace_test(integer) (oid=0)
+NOTICE:  #2                    context: PL/pgSQL assignment "r := nested_trace_test(r)"
+NOTICE:  #2                    "a" => '1'
+NOTICE:  #2.1       2        --> start of statement block
+NOTICE:  #2.2       3          --> start of RETURN (expr='a + 1')
+NOTICE:  #2.2                      "a" => '1'
+NOTICE:  #2.1                  <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #2.2                <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #2                <<- end of function nested_trace_test (elapsed time=0.010 ms)
+NOTICE:  #0.2                <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.3                    "r" => '2'
+NOTICE:  #0.3       6        --> start of assignment r := nested_trace_test(r)
+NOTICE:  #0.3                    "r" => '2'
+NOTICE:  #2                ->> start of function nested_trace_test(integer) (oid=0)
+NOTICE:  #2                    context: PL/pgSQL assignment "r := nested_trace_test(r)"
+NOTICE:  #2                    "a" => '2'
+NOTICE:  #2.1       2        --> start of statement block
+NOTICE:  #2.2       3          --> start of RETURN (expr='a + 1')
+NOTICE:  #2.2                      "a" => '2'
+NOTICE:  #2.1                  <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #2.2                <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #2                <<- end of function nested_trace_test (elapsed time=0.010 ms)
+NOTICE:  #0.2                <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.3                    "r" => '3'
+NOTICE:  #0.1              <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
+NOTICE:  #0.4       8      --> start of RETURN
+NOTICE:  #0.4                  "r" => '3'
+NOTICE:  #0.3              <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.4            <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
  trace_test 
 ------------
@@ -8749,17 +8757,15 @@ $$ language plpgsql;
 select trace_test(3);
 NOTICE:  #0            ->> start of function trace_test(integer) (oid=0)
 NOTICE:  #0                "b" => '3'
-NOTICE:  #0.1       4  --> start of FOR with integer loop variable
-NOTICE:  #0.2       6  --> start of perform plpgsql_check_pragma('disable: ..
-NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
-NOTICE:  #0.2       6  --> start of perform plpgsql_check_pragma('disable: ..
-NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
-NOTICE:  #0.2       6  --> start of perform plpgsql_check_pragma('disable: ..
-NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
-NOTICE:  #0.1          <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
-NOTICE:  #0.4       9  --> start of RETURN
-NOTICE:  #0.4              "r" => '3'
-NOTICE:  #0.4          <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.1       3    --> start of statement block
+NOTICE:  #0.2       4      --> start of FOR with integer loop variable
+NOTICE:  #0.3       6        --> start of perform plpgsql_check_pragma('disable: ..
+NOTICE:  #0.2                <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #0.1              <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
+NOTICE:  #0.5       9      --> start of RETURN
+NOTICE:  #0.5                  "r" => '3'
+NOTICE:  #0.4              <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.5            <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
  trace_test 
 ------------
@@ -8776,26 +8782,24 @@ $$ language plpgsql;
 select trace_test(3);
 NOTICE:  #0            ->> start of function trace_test(integer) (oid=0)
 NOTICE:  #0                "b" => '3'
-NOTICE:  #0.1       4  --> start of FOR with integer loop variable
-NOTICE:  #0.2       6  --> start of perform plpgsql_check_pragma('disable: ..
-NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
-NOTICE:  #2.2       4    --> start of RETURN (expr='a + 1')
-NOTICE:  #2.2                "a" => '0'
-NOTICE:  #2.2            <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #0.2       6  --> start of perform plpgsql_check_pragma('disable: ..
-NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
-NOTICE:  #2.2       4    --> start of RETURN (expr='a + 1')
-NOTICE:  #2.2                "a" => '1'
-NOTICE:  #2.2            <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #0.2       6  --> start of perform plpgsql_check_pragma('disable: ..
-NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
-NOTICE:  #2.2       4    --> start of RETURN (expr='a + 1')
-NOTICE:  #2.2                "a" => '2'
-NOTICE:  #2.2            <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #0.1          <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
-NOTICE:  #0.4       9  --> start of RETURN
-NOTICE:  #0.4              "r" => '3'
-NOTICE:  #0.4          <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.1       3    --> start of statement block
+NOTICE:  #0.2       4      --> start of FOR with integer loop variable
+NOTICE:  #0.3       6        --> start of perform plpgsql_check_pragma('disable: ..
+NOTICE:  #0.2                <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #2.3       4          --> start of RETURN (expr='a + 1')
+NOTICE:  #2.3                      "a" => '0'
+NOTICE:  #2.2                  <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #2.3       4          --> start of RETURN (expr='a + 1')
+NOTICE:  #2.3                      "a" => '1'
+NOTICE:  #2.2                  <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #2.3       4          --> start of RETURN (expr='a + 1')
+NOTICE:  #2.3                      "a" => '2'
+NOTICE:  #2.2                  <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.1              <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
+NOTICE:  #0.5       9      --> start of RETURN
+NOTICE:  #0.5                  "r" => '3'
+NOTICE:  #0.4              <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.5            <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
  trace_test 
 ------------
@@ -8818,31 +8822,33 @@ $$ language plpgsql;
 select trace_test(4);
 NOTICE:  #0            ->> start of function trace_test(integer) (oid=0)
 NOTICE:  #0                "$1" => '4'
-NOTICE:  #0.1       4  --> start of FOR with integer loop variable
-NOTICE:  #0.2       5  --> start of assignment r := r + 1
-NOTICE:  #0.2              "r" => '0'
-NOTICE:  #0.2          <-- end of assignment (elapsed time=0.010 ms)
-NOTICE:  #0.2              "r" => '1'
-NOTICE:  #0.2       5  --> start of assignment r := r + 1
-NOTICE:  #0.2              "r" => '1'
-NOTICE:  #0.2          <-- end of assignment (elapsed time=0.010 ms)
-NOTICE:  #0.2              "r" => '2'
-NOTICE:  #0.2       5  --> start of assignment r := r + 1
-NOTICE:  #0.2              "r" => '2'
-NOTICE:  #0.2          <-- end of assignment (elapsed time=0.010 ms)
-NOTICE:  #0.2              "r" => '3'
-NOTICE:  #0.2       5  --> start of assignment r := r + 1
-NOTICE:  #0.2              "r" => '3'
-NOTICE:  #0.2          <-- end of assignment (elapsed time=0.010 ms)
-NOTICE:  #0.2              "r" => '4'
-NOTICE:  #0.1          <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
-NOTICE:  #0.3       7  --> start of assignment r := r + 10
-NOTICE:  #0.3              "r" => '4'
-NOTICE:  #0.3          <-- end of assignment (elapsed time=0.010 ms)
-NOTICE:  #0.3              "r" => '14'
-NOTICE:  #0.4       8  --> start of RETURN
-NOTICE:  #0.4              "r" => '14'
-NOTICE:  #0.4          <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.1       3    --> start of statement block
+NOTICE:  #0.2       4      --> start of FOR with integer loop variable
+NOTICE:  #0.3       5        --> start of assignment r := r + 1
+NOTICE:  #0.3                    "r" => '0'
+NOTICE:  #0.2                <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.3                    "r" => '1'
+NOTICE:  #0.3       5        --> start of assignment r := r + 1
+NOTICE:  #0.3                    "r" => '1'
+NOTICE:  #0.2                <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.3                    "r" => '2'
+NOTICE:  #0.3       5        --> start of assignment r := r + 1
+NOTICE:  #0.3                    "r" => '2'
+NOTICE:  #0.2                <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.3                    "r" => '3'
+NOTICE:  #0.3       5        --> start of assignment r := r + 1
+NOTICE:  #0.3                    "r" => '3'
+NOTICE:  #0.2                <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.3                    "r" => '4'
+NOTICE:  #0.1              <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
+NOTICE:  #0.4       7      --> start of assignment r := r + 10
+NOTICE:  #0.4                  "r" => '4'
+NOTICE:  #0.3              <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.4                  "r" => '14'
+NOTICE:  #0.5       8      --> start of RETURN
+NOTICE:  #0.5                  "r" => '14'
+NOTICE:  #0.4              <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.5            <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
  trace_test 
 ------------
@@ -8864,23 +8870,19 @@ $$ language plpgsql;
 select trace_test(4);
 NOTICE:  #0            ->> start of function trace_test(integer) (oid=0)
 NOTICE:  #0                "$1" => '4'
-NOTICE:  #0.1       4  --> start of FOR with integer loop variable
-NOTICE:  #0.2       5  --> start of perform plpgsql_check_pragma('disable: ..
-NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
-NOTICE:  #0.2       5  --> start of perform plpgsql_check_pragma('disable: ..
-NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
-NOTICE:  #0.2       5  --> start of perform plpgsql_check_pragma('disable: ..
-NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
-NOTICE:  #0.2       5  --> start of perform plpgsql_check_pragma('disable: ..
-NOTICE:  #0.2          <-- end of PERFORM (elapsed time=0.010 ms)
-NOTICE:  #0.1          <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
-NOTICE:  #0.4       8  --> start of assignment r := r + 10
-NOTICE:  #0.4              "r" => '4'
-NOTICE:  #0.4          <-- end of assignment (elapsed time=0.010 ms)
-NOTICE:  #0.4              "r" => '14'
-NOTICE:  #0.5       9  --> start of RETURN
-NOTICE:  #0.5              "r" => '14'
-NOTICE:  #0.5          <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.1       3    --> start of statement block
+NOTICE:  #0.2       4      --> start of FOR with integer loop variable
+NOTICE:  #0.3       5        --> start of perform plpgsql_check_pragma('disable: ..
+NOTICE:  #0.2                <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #0.1              <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
+NOTICE:  #0.5       8      --> start of assignment r := r + 10
+NOTICE:  #0.5                  "r" => '4'
+NOTICE:  #0.4              <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.5                  "r" => '14'
+NOTICE:  #0.6       9      --> start of RETURN
+NOTICE:  #0.6                  "r" => '14'
+NOTICE:  #0.5              <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.6            <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
  trace_test 
 ------------
@@ -8906,15 +8908,17 @@ $$ language plpgsql;
 select trace_test(4);
 NOTICE:  #0            ->> start of function trace_test(integer) (oid=0)
 NOTICE:  #0                "$1" => '4'
-NOTICE:  #0.1       4  --> start of perform plpgsql_check_pragma('disable: ..
-NOTICE:  #0.1          <-- end of PERFORM (elapsed time=0.010 ms)
-NOTICE:  #0.5      12  --> start of assignment r := r + 10
-NOTICE:  #0.5              "r" => '4'
-NOTICE:  #0.5          <-- end of assignment (elapsed time=0.010 ms)
-NOTICE:  #0.5              "r" => '14'
-NOTICE:  #0.6      13  --> start of RETURN
-NOTICE:  #0.6              "r" => '14'
-NOTICE:  #0.6          <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.1       3    --> start of statement block
+NOTICE:  #0.2       4      --> start of perform plpgsql_check_pragma('disable: ..
+NOTICE:  #0.1              <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #0.6      12      --> start of assignment r := r + 10
+NOTICE:  #0.6                  "r" => '4'
+NOTICE:  #0.5              <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.6                  "r" => '14'
+NOTICE:  #0.7      13      --> start of RETURN
+NOTICE:  #0.7                  "r" => '14'
+NOTICE:  #0.6              <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.7            <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
  trace_test 
 ------------

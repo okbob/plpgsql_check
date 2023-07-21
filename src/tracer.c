@@ -1080,11 +1080,8 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 
 	sinfo = plpgsql_check_get_current_stmt_info(stmt->stmtid);
 
-	if (sinfo->is_container)
-	{
-		/* save current tracer state (enabled | disabled) */
-		tinfo->stmts_tracer_state[stmt->stmtid - 1] = plpgsql_check_tracer;
-	}
+	/* save current tracer state (enabled | disabled) */
+	tinfo->stmts_tracer_state[stmt->stmtid - 1] = plpgsql_check_tracer;
 
 	/* don't trace invisible statements */
 	if (sinfo->is_invisible || !plpgsql_check_tracer)
@@ -1286,17 +1283,18 @@ _tracer_stmt_end(tracer_info *tinfo,
 	Assert(tinfo);
 	Assert(sinfo);
 
-	if (sinfo->is_container)
-	{
-		/* restore tracer state (enabled | disabled) */
-		plpgsql_check_tracer = tinfo->stmts_tracer_state[stmtid - 1];
-	}
-
 	/* don't trace invisible statements */
 	if (sinfo->is_invisible)
-		return;
+	{
+		if (sinfo->is_container)
+			/* restore tracer state (enabled | disabled) */
+			plpgsql_check_tracer = tinfo->stmts_tracer_state[stmtid - 1];
 
-	if (plpgsql_check_tracer_verbosity == PGERROR_VERBOSE)
+		return;
+	}
+
+	if (tinfo->stmts_tracer_state[stmtid - 1] && 
+		plpgsql_check_tracer_verbosity == PGERROR_VERBOSE)
 	{
 		int		indent = (tinfo->frame_num + sinfo->level) * 2;
 		int		frame_width = 6;
@@ -1325,6 +1323,13 @@ _tracer_stmt_end(tracer_info *tinfo,
 												elapsed/1000.0,
 												aborted);
 	}
+
+	if (sinfo->is_container)
+	{
+		/* restore tracer state (enabled | disabled) */
+		plpgsql_check_tracer = tinfo->stmts_tracer_state[stmtid - 1];
+	}
+
 }
 
 
