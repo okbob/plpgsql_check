@@ -304,6 +304,9 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 	/* used for skipping printing invisible block statement */
 	stmts_info[stmtid_idx].is_invisible = is_invisible;
 
+	/* by default any statements is not a container of other statements */
+	stmts_info[stmtid_idx].is_container = false;
+
 	switch (stmt->cmd_type)
 	{
 		case PLPGSQL_STMT_BLOCK:
@@ -329,6 +332,8 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 									   stmt->stmtid);
 					}
 				}
+
+				stmts_info[stmtid_idx].is_container = true;
 			}
 			break;
 
@@ -359,6 +364,8 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 							   level + 1,
 							   natural_id,
 							   stmt->stmtid);
+
+				stmts_info[stmtid_idx].is_container = true;
 			}
 			break;
 
@@ -382,6 +389,8 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 							   level + 1,
 							   natural_id,
 							   stmt->stmtid);
+
+				stmts_info[stmtid_idx].is_container = true;
 			}
 			break;
 
@@ -392,6 +401,8 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 						   level + 1,
 						   natural_id,
 						   stmt->stmtid);
+
+			stmts_info[stmtid_idx].is_container = true;
 			break;
 
 		case PLPGSQL_STMT_FORI:
@@ -401,6 +412,8 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 						   level + 1,
 						   natural_id,
 						   stmt->stmtid);
+
+			stmts_info[stmtid_idx].is_container = true;
 			break;
 
 		case PLPGSQL_STMT_FORS:
@@ -410,6 +423,8 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 						   level + 1,
 						   natural_id,
 						   stmt->stmtid);
+
+			stmts_info[stmtid_idx].is_container = true;
 			break;
 
 		case PLPGSQL_STMT_FORC:
@@ -419,6 +434,8 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 						   level + 1,
 						   natural_id,
 						   stmt->stmtid);
+
+			stmts_info[stmtid_idx].is_container = true;
 			break;
 
 		case PLPGSQL_STMT_DYNFORS:
@@ -428,6 +445,7 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 						   level + 1,
 						   natural_id,
 						   stmt->stmtid);
+			stmts_info[stmtid_idx].is_container = true;
 			break;
 
 		case PLPGSQL_STMT_FOREACH_A:
@@ -437,6 +455,7 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 						   level + 1,
 						   natural_id,
 						   stmt->stmtid);
+			stmts_info[stmtid_idx].is_container = true;
 			break;
 
 		case PLPGSQL_STMT_WHILE:
@@ -446,10 +465,12 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 						   level + 1,
 						   natural_id,
 						   stmt->stmtid);
+			stmts_info[stmtid_idx].is_container = true;
 			break;
 
 		default:
-			;
+			stmts_info[stmtid_idx].is_container = false;
+			break;
 	}
 }
 

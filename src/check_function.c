@@ -1156,7 +1156,6 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->allow_mp = false;
 
 	cstate->pragma_vector.disable_check = false;
-	cstate->pragma_vector.disable_tracer = false;
 	cstate->pragma_vector.disable_other_warnings = false;
 	cstate->pragma_vector.disable_performance_warnings = false;
 	cstate->pragma_vector.disable_extra_warnings = false;

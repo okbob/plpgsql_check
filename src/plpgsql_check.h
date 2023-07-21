@@ -368,9 +368,6 @@ extern void plpgsql_check_tracer_init(void);
  */
 extern void plpgsql_check_pragma_apply(PLpgSQL_checkstate *cstate, char *pragma_str, PLpgSQL_nsitem *ns, int lineno);
 
-extern plpgsql_check_pragma_vector plpgsql_check_runtime_pragma_vector;
-extern bool plpgsql_check_runtime_pragma_vector_changed;
-
 /*
  * pldbgapi2 statement plugin2 info. This info is created
  * when function is first started and it is cached in session.
@@ -382,6 +379,7 @@ typedef struct plpgsql_check_plugin2_stmt_info
 	int			parent_id;
 	const char *typname;
 	bool		is_invisible;
+	bool		is_container;
 } plpgsql_check_plugin2_stmt_info;
 
 /*
