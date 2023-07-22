@@ -1,6 +1,28 @@
-/*
- * contrib/pldbgapi2/pldbgapi2.c
+/*-------------------------------------------------------------------------
+ *
+ * pldbgapi2
+ *
+ *			  enhanced debug API for plpgsql
+ *
+ * by Pavel Stehule 2013-2023
+ *
+ *-------------------------------------------------------------------------
+ *
+ * Notes:
+ *    PL debug API has few issues related to plpgsql profiler and tracer:
+ *
+ *    1. Only one extension that use this API can be active
+ *
+ *    2. Doesn't catch an application's exceptions, and cannot to handle an
+ *       exceptions in applications.
+ *
+ * pldbgapi2 does new interfaces based on pl debug API and fmgr API, and try
+ * to solve these issues. It can be used by more at the same time plugins,
+ * and allows to set hooks on end of execution of statement or function at
+ * aborted state.
+ *
  */
+
 #include "postgres.h"
 #include "plpgsql.h"
 #include "fmgr.h"
