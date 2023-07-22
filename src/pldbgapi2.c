@@ -30,6 +30,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_language.h"
 #include "commands/proclang.h"
+#include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
@@ -54,11 +55,15 @@ typedef struct func_info_hashkey
 typedef struct func_info_entry
 {
 	func_info_hashkey	key;
+	uint32		hashValue;
 	char	   *fn_name;
 	char	   *fn_signature;
 	plpgsql_check_plugin2_stmt_info *stmts_info;
 	int		   *stmtid_map;
 	int			nstatements;
+
+	int			use_count;
+	bool		is_valid;
 } func_info_entry;
 
 static HTAB *func_info_HashTable = NULL;
@@ -87,11 +92,7 @@ typedef struct fmgr_plpgsql_cache
 	int			stmtid_stack_size;
 	int			current_stmtid_stack_size;
 
-	char	   *fn_name;
-	char	   *fn_signature;
-	plpgsql_check_plugin2_stmt_info *stmts_info;
-	int		   *stmtid_map;
-	int			nstatements;
+	func_info_entry *func_info;
 } fmgr_plpgsql_cache;
 
 static fmgr_plpgsql_cache *last_fmgr_plpgsql_cache = NULL;
@@ -142,72 +143,86 @@ plpgsql_check_plugin2_stmt_info *
 plpgsql_check_get_current_stmt_info(int stmtid)
 {
 	Assert(current_fmgr_plpgsql_cache);
-	Assert(stmtid <= current_fmgr_plpgsql_cache->nstatements);
+	Assert(current_fmgr_plpgsql_cache->func_info);
+	Assert(stmtid <= current_fmgr_plpgsql_cache->func_info->nstatements);
 
-	return &(current_fmgr_plpgsql_cache->stmts_info[stmtid - 1]);
+	return &(current_fmgr_plpgsql_cache->func_info->stmts_info[stmtid - 1]);
 }
 
 plpgsql_check_plugin2_stmt_info *
 plpgsql_check_get_current_stmts_info(void)
 {
 	Assert(current_fmgr_plpgsql_cache);
+	Assert(current_fmgr_plpgsql_cache->func_info);
+	Assert(current_fmgr_plpgsql_cache->func_info->use_count > 0);
 
-	return current_fmgr_plpgsql_cache->stmts_info;
+	return current_fmgr_plpgsql_cache->func_info->stmts_info;
 }
 
-
+/*
+ * It is used outside pldbapi2 plugins. This is used by output functions,
+ * so we don't need to solve effectivity too much. Instead handling use_count
+ * returns copy.
+ */
 plpgsql_check_plugin2_stmt_info *
 plpgsql_check_get_stmts_info(PLpgSQL_function *func)
 {
 	func_info_entry *func_info;
+	plpgsql_check_plugin2_stmt_info *stmts_info;
+	size_t			bytes;
 
 	func_info = get_func_info(func);
+	bytes = func->nstatements * sizeof(plpgsql_check_plugin2_stmt_info);
+	stmts_info = palloc(bytes);
+	memcpy(stmts_info, func_info->stmts_info, bytes);
 
-	return func_info->stmts_info;
-}
-
-plpgsql_check_plugin2_stmt_info *
-plpgsql_check_get_stmt_info(PLpgSQL_function *func, int stmtid)
-{
-	func_info_entry *func_info;
-
-	func_info = get_func_info(func);
-
-	return &(func_info->stmts_info[stmtid - 1]);
+	return stmts_info;
 }
 
 int *
 plpgsql_check_get_current_stmtid_map(void)
 {
 	Assert(current_fmgr_plpgsql_cache);
+	Assert(current_fmgr_plpgsql_cache->func_info);
+	Assert(current_fmgr_plpgsql_cache->func_info->use_count > 0);
 
-	return current_fmgr_plpgsql_cache->stmtid_map;
+	return current_fmgr_plpgsql_cache->func_info->stmtid_map;
 }
 
 int *
 plpgsql_check_get_stmtid_map(PLpgSQL_function *func)
 {
 	func_info_entry *func_info;
+	int		   *stmtid_map;
+	size_t		bytes;
 
 	func_info = get_func_info(func);
-	return func_info->stmtid_map;
+	bytes = func->nstatements * sizeof(int);
+	stmtid_map = palloc(bytes);
+	memcpy(stmtid_map, func_info->stmtid_map, bytes);
+
+	return stmtid_map;
 }
 
 char *
 plpgsql_check_get_current_func_info_name(void)
 {
 	Assert(current_fmgr_plpgsql_cache);
+	Assert(current_fmgr_plpgsql_cache->func_info);
+	Assert(current_fmgr_plpgsql_cache->func_info->use_count > 0);
 
-	return current_fmgr_plpgsql_cache->fn_name;
+	return current_fmgr_plpgsql_cache->func_info->fn_name;
 }
 
 char *
 plpgsql_check_get_current_func_info_signature(void)
 {
 	Assert(current_fmgr_plpgsql_cache);
-	Assert(current_fmgr_plpgsql_cache->fn_signature);
+	Assert(current_fmgr_plpgsql_cache->func_info);
+	Assert(current_fmgr_plpgsql_cache->func_info->use_count > 0);
+	Assert(current_fmgr_plpgsql_cache->func_info->fn_signature);
 
-	return current_fmgr_plpgsql_cache->fn_signature;
+	return current_fmgr_plpgsql_cache->func_info->fn_signature;
 }
 
 static void
@@ -674,6 +689,13 @@ pldbgapi2_fmgr_hook(FmgrHookEventType event,
 				}
 
 				current_fmgr_plpgsql_cache = NULL;
+
+				if (fcache_plpgsql->func_info)
+				{
+					Assert(fcache_plpgsql->func_info->use_count > 0);
+
+					fcache_plpgsql->func_info->use_count--;
+				}
 			}
 			break;
 	}
@@ -697,6 +719,22 @@ get_func_info(PLpgSQL_function *func)
 													(void *) &hk,
 													HASH_ENTER,
 													&found_func_info_entry);
+
+		if (found_func_info_entry && !func_info->is_valid)
+		{
+			pfree(func_info->fn_name);
+			pfree(func_info->fn_signature);
+			pfree(func_info->stmts_info);
+			pfree(func_info->stmtid_map);
+
+			if (hash_search(func_info_HashTable,
+							&func_info->key,
+							HASH_REMOVE, NULL) == NULL)
+				elog(ERROR, "hash table corrupted");
+
+			found_func_info_entry = false;
+		}
+
 		persistent_func_info = true;
 	}
 	else
@@ -721,11 +759,15 @@ get_func_info(PLpgSQL_function *func)
 
 			Assert(fn_name);
 
+			func_info->hashValue = GetSysCacheHashValue1(PROCOID,
+														 ObjectIdGetDatum(func->fn_oid));
+
 			func_info->fn_name = pstrdup(fn_name);
 			func_info->fn_signature = pstrdup(func->fn_signature);
 			func_info->stmts_info = palloc(func->nstatements *
 										   sizeof(plpgsql_check_plugin2_stmt_info));
 			func_info->stmtid_map = palloc(func->nstatements * sizeof(int));
+			func_info->use_count = 0;
 
 			MemoryContextSwitchTo(oldcxt);
 		}
@@ -739,6 +781,8 @@ get_func_info(PLpgSQL_function *func)
 		}
 
 		func_info->nstatements = func->nstatements;
+		func_info->use_count = 0;
+		func_info->is_valid = true;
 
 		set_stmt_info((PLpgSQL_stmt *) func->action,
 					  func_info->stmts_info,
@@ -787,12 +831,10 @@ pldbgapi2_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	plugin_info->prev_plugin_info = NULL;
 
 	func_info = get_func_info(func);
+	/* protect func_info against sinval */
+	func_info->use_count++;
 
-	fcache_plpgsql->fn_name = func_info->fn_name;
-	fcache_plpgsql->fn_signature = func_info->fn_signature;
-	fcache_plpgsql->stmts_info = func_info->stmts_info;
-	fcache_plpgsql->stmtid_map = func_info->stmtid_map;
-	fcache_plpgsql->nstatements = func_info->nstatements;
+	fcache_plpgsql->func_info = func_info;
 
 	estate->plugin_info = plugin_info;
 
@@ -966,6 +1008,10 @@ pldbgapi2_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 	current_fmgr_plpgsql_cache = NULL;
 
+	Assert(fcache_plpgsql->func_info);
+	Assert(fcache_plpgsql->func_info->use_count > 0);
+	fcache_plpgsql->func_info->use_count--;
+
 	if (prev_plpgsql_plugin && prev_plpgsql_plugin->func_end)
 	{
 		PG_TRY();
@@ -1018,7 +1064,7 @@ pldbgapi2_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 	if (fcache_plpgsql->current_stmtid_stack_size > 0)
 	{
-		parent_id = fcache_plpgsql->stmts_info[stmt->stmtid - 1].parent_id;
+		parent_id = fcache_plpgsql->func_info->stmts_info[stmt->stmtid - 1].parent_id;
 
 		/* solve handled exception */
 		while (fcache_plpgsql->current_stmtid_stack_size > 0 &&
@@ -1164,6 +1210,37 @@ plpgsql_check_register_pldbgapi2_plugin(plpgsql_check_plugin2 *plugin2)
 		elog(ERROR, "too much pldbgapi2 plugins");
 }
 
+static void
+func_info_CacheObjectCallback(Datum arg, int cacheid, uint32 hashValue)
+{
+	HASH_SEQ_STATUS status;
+	func_info_entry *func_info;
+
+	Assert(func_info_HashTable);
+
+	/* Currently we just flush all entries; hard to be smarter ... */
+	hash_seq_init(&status, func_info_HashTable);
+
+	while ((func_info = (func_info_entry *) hash_seq_search(&status)) != NULL)
+	{
+		if (hashValue == 0 || func_info->hashValue == hashValue)
+			func_info->is_valid = false;
+
+		if (!func_info->is_valid && func_info->use_count == 0)
+		{
+			pfree(func_info->fn_name);
+			pfree(func_info->fn_signature);
+			pfree(func_info->stmts_info);
+			pfree(func_info->stmtid_map);
+
+			if (hash_search(func_info_HashTable,
+							&func_info->key,
+							HASH_REMOVE, NULL) == NULL)
+				elog(ERROR, "hash table corrupted");
+		}
+	}
+}
+
 void
 plpgsql_check_init_pldbgapi2(void)
 {
@@ -1184,6 +1261,8 @@ plpgsql_check_init_pldbgapi2(void)
 	*plugin_ptr = &pldbgapi2_plugin;
 
 	init_hash_tables();
+
+	CacheRegisterSyscacheCallback(PROCOID, func_info_CacheObjectCallback, (Datum) 0);
 
 	inited = true;
 }

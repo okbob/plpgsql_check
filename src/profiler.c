@@ -1897,6 +1897,10 @@ plpgsql_check_iterate_over_profile(plpgsql_check_info *cinfo,
 		pinfo.stmts = NULL;
 
 		profiler_stmt_walker(&pinfo, mode, (PLpgSQL_stmt *) func->action, NULL, NULL, 1, &opts);
+
+		pfree(opts.stmtid_map);
+		pfree(opts.stmts_info);
+
 	}
 	PG_CATCH();
 	{

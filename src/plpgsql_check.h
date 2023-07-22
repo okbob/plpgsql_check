@@ -419,7 +419,6 @@ extern void plpgsql_check_register_pldbgapi2_plugin(plpgsql_check_plugin2 *plugi
 extern void plpgsql_check_init_pldbgapi2(void);
 
 extern plpgsql_check_plugin2_stmt_info *plpgsql_check_get_current_stmt_info(int stmtid);
-extern plpgsql_check_plugin2_stmt_info *plpgsql_check_get_stmt_info(PLpgSQL_function *func, int stmtid);
 
 extern plpgsql_check_plugin2_stmt_info *plpgsql_check_get_current_stmts_info(void);
 extern plpgsql_check_plugin2_stmt_info *plpgsql_check_get_stmts_info(PLpgSQL_function *func);
