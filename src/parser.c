@@ -582,7 +582,7 @@ parse_qualified_identifier(TokenizerState *state, const char **startptr, size_t 
 	PragmaTokenType	token, *_token;
 	bool		read_atleast_one = false;
 	const char	   *_startptr = *startptr;
-	size_t			_size = *size;
+	size_t			_size = 0;
 
 	while (1)
 	{
