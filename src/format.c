@@ -853,12 +853,12 @@ put_error_tabular(plpgsql_check_result_info *ri,
 	else if (strncmp(message, UNUSED_VARIABLE_TEXT, UNUSED_VARIABLE_TEXT_CHECK_LENGTH) == 0)
 	{
 		SET_RESULT_INT32(Anum_result_lineno, lineno);
-		SET_RESULT_TEXT(Anum_result_statement, "DECLARE");
+		SET_RESULT(Anum_result_statement, CStringGetTextDatum("DECLARE"));
 	}
 	else if (strncmp(message, NEVER_READ_VARIABLE_TEXT, NEVER_READ_VARIABLE_TEXT_CHECK_LENGTH) == 0)
 	{
 		SET_RESULT_INT32(Anum_result_lineno, lineno);
-		SET_RESULT_TEXT(Anum_result_statement, "DECLARE");
+		SET_RESULT(Anum_result_statement, CStringGetTextDatum("DECLARE"));
 	}
 
 	else

@@ -146,14 +146,16 @@ parse_name_or_signature(char *qualname, bool *is_signature)
 			for (;;)
 			{
 				endp = strchr(nextp + 1, '"');
-				if (endp == NULL)
+				if (!endp)
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 							 errmsg("string is not a valid identifier: \"%s\"",
 									qualname),
 							 errdetail("String has unclosed double quotes.")));
+
 				if (endp[1] != '"')
 					break;
+
 				memmove(endp, endp + 1, strlen(endp));
 				nextp = endp;
 			}
@@ -540,11 +542,12 @@ make_string(PragmaTokenType *token)
 static List *
 get_qualified_identifier(TokenizerState *state, List *result)
 {
-	PragmaTokenType	token, *_token;
 	bool	read_atleast_one = false;
 
 	while (1)
 	{
+		PragmaTokenType token, *_token;
+
 		_token = get_token(state, &token);
 		if (!_token)
 			break;
@@ -579,13 +582,14 @@ get_qualified_identifier(TokenizerState *state, List *result)
 static void
 parse_qualified_identifier(TokenizerState *state, const char **startptr, size_t *size)
 {
-	PragmaTokenType	token, *_token;
 	bool		read_atleast_one = false;
 	const char	   *_startptr = *startptr;
 	size_t			_size = 0;
 
 	while (1)
 	{
+		PragmaTokenType token, *_token;
+
 		_token = get_token(state, &token);
 		if (!_token)
 			break;
@@ -1132,7 +1136,7 @@ plpgsql_check_pragma_sequence(PLpgSQL_checkstate *cstate, const char *str, int l
 					&& _token->value != PRAGMA_TOKEN_QIDENTIF))
 				elog(ERROR, "Syntax error (expected identifier)");
 
-			_token2 = get_token(&tstate, &token2);
+			(void) get_token(&tstate, &token2);
 		}
 
 		if (!tokenizer_eol(&tstate))

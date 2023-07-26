@@ -93,9 +93,9 @@ detect_dependency_walker(Node *node, void *context)
 		{
 			if (!bms_is_member(fexpr->funcid, cstate->func_oids))
 			{
-				StringInfoData		str;
-				ListCell		   *lc;
-				int		i = 0;
+				StringInfoData	str;
+				ListCell   *lc;
+				bool		is_first = true;
 				char		prokind = get_func_prokind(fexpr->funcid);
 
 				initStringInfo(&str);
@@ -104,8 +104,10 @@ detect_dependency_walker(Node *node, void *context)
 				{
 					Node *expr = (Node *) lfirst(lc);
 
-					if (i++ > 0)
+					if (!is_first)
 						appendStringInfoChar(&str, ',');
+					else
+						is_first = false;
 
 					appendStringInfoString(&str, format_type_be(exprType(expr)));
 				}
@@ -192,7 +194,6 @@ check_funcexpr_walker(Node *node, void *context)
 	if (IsA(node, FuncExpr))
 	{
 		FuncExpr *fexpr = (FuncExpr *) node;
-		int		location = -1;
 
 		switch (fexpr->funcid)
 		{
@@ -202,8 +203,7 @@ check_funcexpr_walker(Node *node, void *context)
 			case SETVAL2_OID:
 				{
 					Node *first_arg = linitial(fexpr->args);
-
-					location = fexpr->location;
+					int			location = fexpr->location;
 
 					if (first_arg && IsA(first_arg, Const))
 					{

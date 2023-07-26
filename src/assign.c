@@ -66,10 +66,10 @@ plpgsql_check_record_variable_usage(PLpgSQL_checkstate *cstate, int dno, bool wr
 void
 plpgsql_check_row_or_rec(PLpgSQL_checkstate *cstate, PLpgSQL_row *row, PLpgSQL_rec *rec)
 {
-	int			fnum;
 
 	if (row != NULL)
 	{
+		int			fnum;
 
 		for (fnum = 0; fnum < row->nfields; fnum++)
 		{

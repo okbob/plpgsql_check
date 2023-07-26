@@ -116,7 +116,6 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 {
 	PLpgSQL_checkstate cstate;
 	PLpgSQL_function *volatile function = NULL;
-	int			save_nestlevel = 0;
 	bool		reload_config;
 	LOCAL_FCINFO(fake_fcinfo, 0);
 
@@ -161,13 +160,14 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 		Oid		   *argtypes;
 		char	  **argnames;
 		char	   *argmodes;
-		int			i;
 
 		numargs = get_func_arg_info(cinfo->proctuple,
 							&argtypes, &argnames, &argmodes);
 
 		if (argnames != NULL)
 		{
+			int			i;
+
 			for (i = 0; i < numargs; i++)
 			{
 				if (argnames[i][0] != '\0')
@@ -180,6 +180,8 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 
 	PG_TRY();
 	{
+		int			save_nestlevel = 0;
+
 		BeginInternalSubTransaction(NULL);
 		MemoryContextSwitchTo(cstate.check_cxt);
 
@@ -568,8 +570,6 @@ function_check(PLpgSQL_function *func, PLpgSQL_checkstate *cstate)
 static void
 trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate)
 {
-	PLpgSQL_rec *rec_new,
-			   *rec_old;
 	int			i;
 	int closing = PLPGSQL_CHECK_UNCLOSED;
 	List	   *exceptions;
@@ -584,6 +584,9 @@ trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate)
 
 	if (IsA(tdata, TriggerData))
 	{
+		PLpgSQL_rec *rec_new,
+				   *rec_old;
+
 		TriggerData *trigdata = (TriggerData *) tdata;
 
 		/*
@@ -1388,12 +1391,12 @@ plpgsql_check_is_checked(PLpgSQL_function *func)
 void
 plpgsql_check_mark_as_checked(PLpgSQL_function *func)
 {
-	plpgsql_check_HashEnt *hentry;
-	bool		found;
-
 	/* don't try to mark anonymous code blocks */
 	if (func->fn_oid != InvalidOid)
 	{
+		plpgsql_check_HashEnt *hentry;
+		bool		found;
+
 		hentry = (plpgsql_check_HashEnt *) hash_search(plpgsql_check_HashTable,
 												 (void *) func->fn_hashkey,
 												 HASH_ENTER,

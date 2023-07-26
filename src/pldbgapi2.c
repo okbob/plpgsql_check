@@ -911,13 +911,17 @@ static void
 pldbgapi2_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 {
 	pldbgapi2_plugin_info *plugin_info = estate->plugin_info;
-	fmgr_plpgsql_cache *fcache_plpgsql = plugin_info->fcache_plpgsql;
+	fmgr_plpgsql_cache *fcache_plpgsql;
 	int			i;
 
-	if (plugin_info && plugin_info->magic != PLUGIN_INFO_MAGIC)
+	Assert(plugin_info);
+
+	if (plugin_info->magic != PLUGIN_INFO_MAGIC)
 		ereport(ERROR,
 				(errmsg("bad magic number of pldbgapi2 plpgsql debug api hook"),
-				 errdetail("Some extension plpgsql debug api does not work correctly")));
+				 errdetail("Some extension using pl debug api does not work correctly.")));
+
+	fcache_plpgsql = plugin_info->fcache_plpgsql;
 
 	Assert(fcache_plpgsql->magic == FMGR_CACHE_MAGIC);
 	Assert(fcache_plpgsql);
@@ -974,13 +978,21 @@ static void
 pldbgapi2_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 {
 	pldbgapi2_plugin_info *plugin_info = estate->plugin_info;
-	fmgr_plpgsql_cache *fcache_plpgsql = plugin_info->fcache_plpgsql;
+	fmgr_plpgsql_cache *fcache_plpgsql;
 	int			i;
 
-	if (plugin_info && plugin_info->magic != PLUGIN_INFO_MAGIC)
-		ereport(ERROR,
+	if (!plugin_info)
+		return;
+
+	if (plugin_info->magic != PLUGIN_INFO_MAGIC)
+	{
+		ereport(WARNING,
 				(errmsg("bad magic number of pldbgapi2 plpgsql debug api hook"),
-				 errdetail("Some extension plpgsql debug api does not work correctly")));
+				 errdetail("Some extension using pl debug api does not work correctly.")));
+		return;
+	}
+
+	fcache_plpgsql = plugin_info->fcache_plpgsql;
 
 	Assert(fcache_plpgsql->magic == FMGR_CACHE_MAGIC);
 	Assert(fcache_plpgsql);
@@ -1038,14 +1050,18 @@ static void
 pldbgapi2_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
 	pldbgapi2_plugin_info *plugin_info = estate->plugin_info;
-	fmgr_plpgsql_cache *fcache_plpgsql = plugin_info->fcache_plpgsql;
+	fmgr_plpgsql_cache *fcache_plpgsql;
 	int			i;
 	int			parent_id = 0;
 
-	if (plugin_info && plugin_info->magic != PLUGIN_INFO_MAGIC)
+	Assert(plugin_info);
+
+	if (plugin_info->magic != PLUGIN_INFO_MAGIC)
 		ereport(ERROR,
 				(errmsg("bad magic number of pldbgapi2 plpgsql debug api hook"),
-				 errdetail("Some extension plpgsql debug api does not work correctly")));
+				 errdetail("Some extension using pl debug api does not work correctly.")));
+
+	fcache_plpgsql = plugin_info->fcache_plpgsql;
 
 	Assert(fcache_plpgsql->magic == FMGR_CACHE_MAGIC);
 	Assert(fcache_plpgsql);
@@ -1140,13 +1156,21 @@ static void
 pldbgapi2_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
 	pldbgapi2_plugin_info *plugin_info = estate->plugin_info;
-	fmgr_plpgsql_cache *fcache_plpgsql = plugin_info->fcache_plpgsql;
+	fmgr_plpgsql_cache *fcache_plpgsql;
 	int			i;
 
-	if (plugin_info && plugin_info->magic != PLUGIN_INFO_MAGIC)
-		ereport(ERROR,
+	if (!plugin_info)
+		return;
+
+	if (plugin_info->magic != PLUGIN_INFO_MAGIC)
+	{
+		ereport(WARNING,
 				(errmsg("bad magic number of pldbgapi2 plpgsql debug api hook"),
-				 errdetail("Some extension plpgsql debug api does not work correctly")));
+				 errdetail("Some extension using pl debug api does not work correctly.")));
+		return;
+	}
+
+	fcache_plpgsql = plugin_info->fcache_plpgsql;
 
 	Assert(fcache_plpgsql->magic == FMGR_CACHE_MAGIC);
 	Assert(fcache_plpgsql);

@@ -183,7 +183,7 @@ PG_FUNCTION_INFO_V1(plpgsql_coverage_branches_name);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_install_fake_queryid_hook);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_remove_fake_queryid_hook);
 
-static void update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func, int *stmtid_map);
+static void update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func, const int *stmtid_map);
 static PLpgSQL_expr *profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic, List **params);
 static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, bool *has_queryid, query_params **qparams);
 
@@ -1202,7 +1202,7 @@ update_persistent_fstats(PLpgSQL_function *func,
 static void
 update_persistent_profile(profiler_info *pinfo,
 						  PLpgSQL_function *func,
-						  int *stmtid_map)
+						  const int *stmtid_map)
 {
 	profiler_hashkey hk;
 	profiler_stmt_chunk *chunk = NULL;
@@ -1987,7 +1987,6 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 			Datum		max_time_array = (Datum) 0;
 			Datum		processed_rows_array = (Datum) 0;
 			int			cmds_on_row = 0;
-			int			queryids_on_row = 0;
 
 			lineend = prosrc;
 			linebeg = prosrc;
@@ -2009,6 +2008,7 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 				ArrayBuildState *queryids_abs = NULL;
 				ArrayBuildState *max_time_abs = NULL;
 				ArrayBuildState *processed_rows_abs = NULL;
+				int			queryids_on_row = 0;
 
 				queryids_abs = initArrayResult(INT8OID, CurrentMemoryContext, true);
 				max_time_abs = initArrayResult(FLOAT8OID, CurrentMemoryContext, true);

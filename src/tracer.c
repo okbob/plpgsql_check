@@ -109,13 +109,14 @@ StringInfoPrintRow(StringInfo ds, PLpgSQL_execstate *estate, PLpgSQL_row *row)
 	bool		isfirst = true;
 	int			i;
 	bool		isnull;
-	char	   *str;
 	char	   *refname;
 
 	appendStringInfoChar(ds, '(');
 
 	for (i = 0; i < row->nfields; i++)
 	{
+		char	   *str;
+
 		str = convert_plpgsql_datum_to_string(estate,
 											  estate->datums[row->varnos[i]],
 											  &isnull,
@@ -846,7 +847,7 @@ tracer_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plug
 static void
 get_outer_info(char **errcontextstr, int *frame_num)
 {
-	ErrorContextCallback *econtext = error_context_stack->previous;
+	ErrorContextCallback *econtext;
 	MemoryContext oldcxt = CurrentMemoryContext;
 
 	*errcontextstr = NULL;

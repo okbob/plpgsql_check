@@ -372,22 +372,3 @@ _PG_init(void)
 	inited = true;
 }
 
-#if PG_VERSION_NUM < 150000
-
-/*
- * Module unload callback
- */
-void
-_PG_fini(void)
-{
-#if PG_VERSION_NUM >= 150000
-
-	shmem_request_hook = prev_shmem_request_hook;
-
-#endif
-	shmem_startup_hook = prev_shmem_startup_hook;
-
-	plpgsql_check_finish_pldbgapi2();
-}
-
-#endif

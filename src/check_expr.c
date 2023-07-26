@@ -74,12 +74,15 @@ parserhook_wrapper_update_used_variables(ParseState *pstate, Node *node)
 			int			dno = p->paramid - 1;
 
 			expr = (PLpgSQL_expr *) pstate->p_ref_hook_state;
+
+			Assert(expr);
+
 			cstate = expr->func->cur_estate->plugin_info;
 
 			if (!cstate || cstate->ci_magic != CI_MAGIC)
 				return;
 
-			if (expr && bms_is_member(dno, expr->paramnos))
+			if (bms_is_member(dno, expr->paramnos))
 			{
 
 #if PG_VERSION_NUM >= 140000
@@ -696,11 +699,12 @@ plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 	if (has_result_desc && IsA(_stmt, PlannedStmt) &&_stmt->commandType == CMD_SELECT)
 	{
 		Plan	   *_plan;
-		TargetEntry *tle;
 
 		_plan = _stmt->planTree;
 		if (IsA(_plan, Result) &&list_length(_plan->targetlist) == 1)
 		{
+			TargetEntry *tle;
+
 			tle = (TargetEntry *) linitial(_plan->targetlist);
 			result = (Node *) tle->expr;
 		}
@@ -1265,12 +1269,12 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 		if (cstate->cinfo->compatibility_warnings && targetdno != -1)
 		{
 			PLpgSQL_var *var = (PLpgSQL_var *) cstate->estate->datums[targetdno];
-			bool		is_ok = true;
 
 			if (var->dtype == PLPGSQL_DTYPE_VAR && var->datatype->typoid == REFCURSOROID)
 			{
 				Node *node = plpgsql_check_expr_get_node(cstate, expr, false);
 				bool		is_declare_cursor;
+				bool		is_ok = true;
 
 				is_declare_cursor = cstate->estate->err_stmt &&
 									cstate->estate->err_stmt->cmd_type == PLPGSQL_STMT_BLOCK &&

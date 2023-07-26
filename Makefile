@@ -25,8 +25,4 @@ PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 endif
 
-ifeq ($(PORTNAME), darwin)
-override CFLAGS += -undefined dynamic_lookup
-endif
-
 override CFLAGS += -I$(top_builddir)/src/pl/plpgsql/src -Wall
