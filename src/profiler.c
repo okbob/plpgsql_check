@@ -549,15 +549,13 @@ get_cycle_body(PLpgSQL_stmt *stmt)
 /*
  * profiler_stmt_walker - iterator over plpgsql statements.
  *
- * This function is designed for two different purposes:
+ * This function is designed for three different purposes:
  *
- *   a) assign unique id to every plpgsql statement and
- *      create statement -> id mapping
- *   b) iterate over all commends and finalize total time
+ *   a) iterate over all commends and finalize total time
  *      as measured total time substract child total time.
- *   c) iterate over all commands and prepare result for
+ *   b) iterate over all commands and prepare result for
  *      plpgsql_profiler_function_statements_tb function.
- *   d) iterate over all commands to collect code coverage
+ *   c) iterate over all commands to collect code coverage
  *      metrics
  */
 static void
@@ -570,20 +568,18 @@ profiler_stmt_walker(profiler_info *pinfo,
 					profiler_stmt_walker_options *opts)
 {
 	profiler_stmt *pstmt = NULL;
+	bool		count_exec_time_mode  = mode == PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME;
+	bool		prepare_result_mode	  = mode == PLPGSQL_CHECK_STMT_WALKER_PREPARE_RESULT;
+	bool		collect_coverage_mode = mode == PLPGSQL_CHECK_STMT_WALKER_COLLECT_COVERAGE;
 
-	bool	count_exec_time_mode  = mode == PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME;
-	bool	prepare_result_mode	  = mode == PLPGSQL_CHECK_STMT_WALKER_PREPARE_RESULT;
-	bool	collect_coverage_mode = mode == PLPGSQL_CHECK_STMT_WALKER_COLLECT_COVERAGE;
+	int64		nested_us_time = 0;
+	int64		exec_count = 0;
 
-	int64	total_us_time = 0;
-	int64	nested_us_time = 0;
-	int64	exec_count = 0;
+	int			stmtid = -1;
 
-	int		stmtid = -1;
-
-	char	strbuf[100];
-	int		n = 0;
-	List   *stmts;
+	char		strbuf[100];
+	int			n = 0;
+	List	   *stmts;
 	ListCell   *lc;
 
 	stmtid = stmt->stmtid - 1;
@@ -596,9 +592,6 @@ profiler_stmt_walker(profiler_info *pinfo,
 		 */
 		pstmt = &pinfo->stmts[stmtid];
 		pstmt->lineno = stmt->lineno;
-
-		total_us_time = pstmt->us_total;
-		opts->nested_us_time = 0;
 	}
 	else
 	{
@@ -818,8 +811,8 @@ profiler_stmt_walker(profiler_info *pinfo,
 	{
 		Assert (pstmt);
 
-		pstmt->us_total -= opts->nested_us_time;
-		opts->nested_us_time = total_us_time;
+		opts->nested_us_time = pstmt->us_total;
+		pstmt->us_total -= nested_us_time;
 
 		/*
 		 * When max time is unknown, but statement was executed only
@@ -1436,12 +1429,6 @@ stmts_walker(profiler_info *pinfo,
 	foreach(lc, stmts)
 	{
 		PLpgSQL_stmt *stmt = (PLpgSQL_stmt *) lfirst(lc);
-
-		if (count_exec_time)
-			opts->nested_us_time = 0;
-
-		if (collect_coverage)
-			opts->nested_exec_count = 0;
 
 		profiler_stmt_walker(pinfo, mode,
 							 stmt, parent_stmt, description,

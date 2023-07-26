@@ -459,7 +459,6 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 	if (use_element_type)
 	{
 		Oid			elemtype;
-		TupleDesc	elemtupdesc;
 
 		/* result should be a array */
 		if (is_expression && tupdesc->natts != 1)
@@ -499,6 +498,8 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 		}
 		else
 		{
+			TupleDesc	elemtupdesc;
+
 			elemtupdesc = lookup_rowtype_tupdesc_noerror(elemtype, -1, true);
 			if (elemtupdesc != NULL)
 			{

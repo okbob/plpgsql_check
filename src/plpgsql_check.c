@@ -122,6 +122,7 @@ plpgsql_check_check_ext_version(Oid fn_oid)
 		Assert(OidIsValid(extoid));
 
 		extver = get_extension_version(extoid);
+
 		Assert(extver);
 
 		if (strcmp(EXPECTED_EXTVERSION, extver) != 0)

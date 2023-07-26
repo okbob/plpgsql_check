@@ -748,13 +748,14 @@ get_func_info(PLpgSQL_function *func)
 	if (!found_func_info_entry)
 	{
 		char	   *fn_name;
-		MemoryContext oldcxt;
 		int			natural_id = 0;
 
 		fn_name = get_func_name(func->fn_oid);
 
 		if (persistent_func_info)
 		{
+			MemoryContext oldcxt;
+
 			oldcxt = MemoryContextSwitchTo(pldbgapi2_mcxt);
 
 			Assert(fn_name);
@@ -994,8 +995,8 @@ pldbgapi2_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 	fcache_plpgsql = plugin_info->fcache_plpgsql;
 
-	Assert(fcache_plpgsql->magic == FMGR_CACHE_MAGIC);
 	Assert(fcache_plpgsql);
+	Assert(fcache_plpgsql->magic == FMGR_CACHE_MAGIC);
 	Assert(fcache_plpgsql->is_plpgsql);
 
 #ifdef USE_ASSERT_CHECKING
@@ -1063,8 +1064,8 @@ pldbgapi2_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 	fcache_plpgsql = plugin_info->fcache_plpgsql;
 
-	Assert(fcache_plpgsql->magic == FMGR_CACHE_MAGIC);
 	Assert(fcache_plpgsql);
+	Assert(fcache_plpgsql->magic == FMGR_CACHE_MAGIC);
 	Assert(fcache_plpgsql->is_plpgsql);
 
 #ifdef USE_ASSERT_CHECKING
@@ -1172,8 +1173,8 @@ pldbgapi2_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 	fcache_plpgsql = plugin_info->fcache_plpgsql;
 
-	Assert(fcache_plpgsql->magic == FMGR_CACHE_MAGIC);
 	Assert(fcache_plpgsql);
+	Assert(fcache_plpgsql->magic == FMGR_CACHE_MAGIC);
 	Assert(fcache_plpgsql->is_plpgsql);
 
 #ifdef USE_ASSERT_CHECKING

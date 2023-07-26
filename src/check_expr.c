@@ -890,9 +890,9 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
 								    expected_typoid, -1,
 								    TupleDescAttr(tupdesc, 0)->atttypid,
 								    is_immutable_null);
-		}
 
-		ReleaseTupleDesc(tupdesc);
+			ReleaseTupleDesc(tupdesc);
+		}
 
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
@@ -1465,7 +1465,6 @@ plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 {
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
-	TupleDesc	tupdesc;
 	volatile bool result = false;
 
 	if (!expr)
@@ -1477,6 +1476,8 @@ plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 
 	PG_TRY();
 	{
+		TupleDesc	tupdesc;
+
 		prepare_plan(cstate, expr, 0, NULL, NULL);
 		/* record all variables used by the query */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
