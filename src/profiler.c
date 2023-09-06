@@ -1563,6 +1563,7 @@ profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic, List **params)
 				else if (o->dynquery)
 				{
 					expr = o->dynquery;
+					*params = o->params;
 					*dynamic = true;
 				}
 				else

@@ -1083,7 +1083,6 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				{
 					PLpgSQL_stmt_open *stmt_open = (PLpgSQL_stmt_open *) stmt;
 					PLpgSQL_var *var = (PLpgSQL_var *) (cstate->estate->datums[stmt_open->curvar]);
-					ListCell	*l;
 
 					plpgsql_check_expr_as_sqlstmt_data(cstate, var->cursor_explicit_expr);
 					plpgsql_check_expr_as_sqlstmt_data(cstate, stmt_open->query);
@@ -1093,11 +1092,14 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 					plpgsql_check_expr_as_sqlstmt_data(cstate, stmt_open->argquery);
 
-					plpgsql_check_expr(cstate, stmt_open->dynquery);
-
-					foreach(l, stmt_open->params)
+					if (stmt_open->dynquery)
 					{
-						plpgsql_check_expr(cstate, (PLpgSQL_expr *) lfirst(l));
+						check_dynamic_sql(cstate,
+										  stmt,
+										  stmt_open->dynquery,
+										  false,
+										  NULL,
+										  stmt_open->params);
 					}
 
 					plpgsql_check_target(cstate, stmt_open->curvar, NULL, NULL);
