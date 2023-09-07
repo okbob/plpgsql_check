@@ -29,7 +29,7 @@ google group.
 * detection of missing RETURN command in function (common after exception handlers, complex logic)
 * tries to identify unwanted hidden casts, which can be a performance issue like unused indexes
 * ability to collect relations and functions used by function
-* ability to check EXECUTE statements agaist SQL injection vulnerability
+* ability to check EXECUTE statements against SQL injection vulnerability
 
 I invite any ideas, patches, bugreports.
 
@@ -335,7 +335,7 @@ You can enable passive mode by
 
 ## Assigning string to refcursor variable
 
-PostgreSQL cursor's and refcursor's variables are enhaced string variables that holds
+PostgreSQL cursor's and refcursor's variables are enhanced string variables that holds
 unique name of related portal (internal structure of Postgres that is used for cursor's
 implementation). Until PostgreSQL 16, the the portal had same name like name of cursor
 variable. PostgreSQL 16 and higher change this mechanism and by default related portal
@@ -343,7 +343,7 @@ will be named by some unique name. It solves some issues with cursors in nested 
 or when cursor is used in recursive called function.
 
 With mentioned change, the refcursor's variable should to take value from another
-refcursor variable or from some cursor varible (when cursor is opened).
+refcursor variable or from some cursor variable (when cursor is opened).
 
     -- obsolete pattern
     DECLARE
@@ -846,7 +846,7 @@ Shorter syntax for pragma is supported too:
 * `enable:check`,`enable:tracer`, `enable:other_warnings`, `enable:performance_warnings`, `enable:extra_warnings`,`enable:security_warnings`
 
 * `disable:check`,`disable:tracer`, `disable:other_warnings`, `disable:performance_warnings`, `disable:extra_warnings`,`disable:security_warnings`
-  This can be used to disable the Hint in returning from an anylement function.  Just put the pragma before the RETURN statement.
+  This can be used to disable the Hint in returning from an anyelement function.  Just put the pragma before the RETURN statement.
   
 * `type:varname typename` or `type:varname (fieldname type, ...)` - set type to variable of record type
 
