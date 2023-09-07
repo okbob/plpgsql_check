@@ -2034,7 +2034,7 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 					Assert(chunk != NULL);
 
 					/* skip invisible statements if any */
-					if (0 && chunk->stmts[current_statement].lineno < lineno)
+					if (chunk->stmts[current_statement].lineno < lineno)
 					{
 						current_statement += 1;
 						continue;

@@ -175,6 +175,33 @@ select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb
 (8 rows)
 
 drop function f1();
+create or replace function f1()
+returns void as $$
+begin
+  raise notice '1';
+exception when others then
+  raise notice '2';
+end;
+$$ language plpgsql;
+select f1();
+NOTICE:  1
+ f1 
+----
+ 
+(1 row)
+
+select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+ lineno | stmt_lineno | exec_stmts |           source           
+--------+-------------+------------+----------------------------
+      1 |             |            | 
+      2 |           2 |          1 | begin
+      3 |           3 |          1 |   raise notice '1';
+      4 |             |            | exception when others then
+      5 |           5 |          0 |   raise notice '2';
+      6 |             |            | end;
+(6 rows)
+
+drop function f1();
 -- test queryid retrieval
 create function f1()
 returns void as $$

@@ -86,6 +86,21 @@ select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb
 
 drop function f1();
 
+create or replace function f1()
+returns void as $$
+begin
+  raise notice '1';
+exception when others then
+  raise notice '2';
+end;
+$$ language plpgsql;
+
+select f1();
+
+select lineno, stmt_lineno, exec_stmts, source from plpgsql_profiler_function_tb('f1()');
+
+drop function f1();
+
 -- test queryid retrieval
 create function f1()
 returns void as $$
