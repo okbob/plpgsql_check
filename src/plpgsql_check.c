@@ -108,7 +108,7 @@ static bool is_expected_extversion = false;
  */
 #define LOAD_EXTERNAL_FUNCTION(file, funcname)	((void *) (load_external_function(file, funcname, true, NULL)))
 
-#define EXPECTED_EXTVERSION		"2.4"
+#define EXPECTED_EXTVERSION		"2.5"
 
 void
 plpgsql_check_check_ext_version(Oid fn_oid)
