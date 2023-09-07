@@ -1482,6 +1482,7 @@ Datum
 plpgsql_check_tracer_ctrl(PG_FUNCTION_ARGS)
 {
 	char	   *optstr;
+	bool		result;
 
 #define OPTNAME_1		"plpgsql_check.tracer"
 #define OPTNAME_2		"plpgsql_check.tracer_verbosity"
@@ -1510,13 +1511,19 @@ plpgsql_check_tracer_ctrl(PG_FUNCTION_ARGS)
 	optstr = GetConfigOptionByName(OPTNAME_1, NULL, false);
 
 	if (strcmp(optstr, "on") == 0)
+	{
 		elog(NOTICE, "tracer is active");
+		result = true;
+	}
 	else
+	{
 		elog(NOTICE, "tracer is not active");
+		result = false;
+	}
 
 	optstr = GetConfigOptionByName(OPTNAME_2, NULL, false);
 
 	elog(NOTICE, "tracer verbosity is %s", optstr);
 
-	PG_RETURN_VOID();
+	PG_RETURN_BOOL(result);
 }
