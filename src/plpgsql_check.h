@@ -440,9 +440,9 @@ extern void plpgsql_check_finish_pldbgapi2(void);
  */
 
 #if PG_VERSION_NUM >= 150000
-extern shmem_request_hook_type prev_shmem_request_hook;
+extern shmem_request_hook_type plpgsql_check_prev_shmem_request_hook;
 #endif
-extern shmem_startup_hook_type prev_shmem_startup_hook;
+extern shmem_startup_hook_type plpgsql_check_prev_shmem_startup_hook;
 
 extern PLpgSQL_plugin **plpgsql_check_plugin_var_ptr;
 

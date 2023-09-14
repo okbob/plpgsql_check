@@ -321,8 +321,8 @@ plpgsql_check_shmem_size(void)
 void
 plpgsql_check_profiler_shmem_request(void)
 {
-	if (prev_shmem_request_hook)
-		prev_shmem_request_hook();
+	if (plpgsql_check_prev_shmem_request_hook)
+		plpgsql_check_prev_shmem_request_hook();
 
 	RequestAddinShmemSpace(plpgsql_check_shmem_size());
 
@@ -346,8 +346,8 @@ plpgsql_check_profiler_shmem_startup(void)
 	shared_profiler_chunks_HashTable = NULL;
 	shared_fstats_HashTable = NULL;
 
-	if (prev_shmem_startup_hook)
-		prev_shmem_startup_hook();
+	if (plpgsql_check_prev_shmem_startup_hook)
+		plpgsql_check_prev_shmem_startup_hook();
 
 	/*
 	 * Create or attach to the shared memory state, including hash table

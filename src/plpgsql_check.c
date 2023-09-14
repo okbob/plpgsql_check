@@ -80,11 +80,11 @@ void			_PG_fini(void);
 
 #if PG_VERSION_NUM >= 150000
 
-shmem_request_hook_type prev_shmem_request_hook = NULL;
+shmem_request_hook_type plpgsql_check_prev_shmem_request_hook = NULL;
 
 #endif
 
-shmem_startup_hook_type prev_shmem_startup_hook = NULL;
+shmem_startup_hook_type plpgsql_check_prev_shmem_startup_hook = NULL;
 
 bool plpgsql_check_regress_test_mode;
 
@@ -357,12 +357,12 @@ _PG_init(void)
 		 */
 #if PG_VERSION_NUM >= 150000
 
-		prev_shmem_request_hook = shmem_request_hook;
+		plpgsql_check_prev_shmem_request_hook = shmem_request_hook;
 		shmem_request_hook = plpgsql_check_profiler_shmem_request;
 
 #endif
 
-		prev_shmem_startup_hook = shmem_startup_hook;
+		plpgsql_check_prev_shmem_startup_hook = shmem_startup_hook;
 		shmem_startup_hook = plpgsql_check_profiler_shmem_startup;
 	}
 
