@@ -97,6 +97,87 @@ plpgsql_check_is_reserved_keyword(char *name)
 }
 
 /*
+ * does warning checks - variable shadowing, function's argument shadowing and
+ * using keywords as variable's name
+ */
+static void
+check_variable_name(PLpgSQL_checkstate *cstate,
+					PLpgSQL_stmt_stack_item *outer_stmt_stack,
+					int dno)
+{
+	char	   *refname;
+	PLpgSQL_datum *d = cstate->estate->func->datums[dno];
+
+	refname = plpgsql_check_datum_get_refname(cstate, d);
+	if (refname != NULL)
+	{
+		ListCell   *l;
+		bool		is_auto = bms_is_member(d->dno, cstate->auto_variables);
+
+		if (plpgsql_check_is_reserved_keyword(refname))
+		{
+			StringInfoData str;
+
+			initStringInfo(&str);
+			appendStringInfo(&str, "name of variable \"%s\" is reserved keyword",
+							 refname);
+
+			plpgsql_check_put_error(cstate,
+						  0, 0,
+						  str.data,
+						  "The reserved keyword was used as variable name.",
+						  NULL,
+						  PLPGSQL_CHECK_WARNING_OTHERS,
+						  0, NULL, NULL);
+			pfree(str.data);
+		}
+
+		foreach(l, cstate->argnames)
+		{
+			char	   *argname = (char *) lfirst(l);
+
+			if (strcmp(argname, refname) == 0)
+			{
+				StringInfoData str;
+
+				initStringInfo(&str);
+				appendStringInfo(&str, "parameter \"%s\" is overlapped",
+								 refname);
+
+				plpgsql_check_put_error(cstate,
+							  0, 0,
+							  str.data,
+							  is_auto ?
+							  "Local auto variable overlap function parameter." :
+							  "Local variable overlap function parameter.",
+							  NULL,
+							  PLPGSQL_CHECK_WARNING_OTHERS,
+							  0, NULL, NULL);
+				pfree(str.data);
+			}
+		}
+
+		if (found_shadowed_variable(refname, outer_stmt_stack, cstate))
+		{
+			StringInfoData str;
+
+			initStringInfo(&str);
+			appendStringInfo(&str, "%svariable \"%s\" shadows a previously defined variable",
+								 is_auto ? "auto " : "", refname);
+
+			plpgsql_check_put_error(cstate,
+							  0, 0,
+							  str.data,
+							  NULL,
+							  "SET plpgsql.extra_warnings TO 'shadowed_variables'",
+							  PLPGSQL_CHECK_WARNING_EXTRA,
+							  0, NULL, NULL);
+			pfree(str.data);
+		}
+	}
+}
+
+/*
  * walk over all plpgsql statements - search and check expressions
  *
  */
@@ -107,7 +188,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 	PLpgSQL_function *func;
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
-	PLpgSQL_stmt_stack_item *outer_stmt;
+	PLpgSQL_stmt_stack_item *outer_stmt_stack;
 	plpgsql_check_pragma_vector pragma_vector;
 
 	if (stmt == NULL)
@@ -125,7 +206,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 	/*
 	 * Attention - returns NULL, when there are not any outer level
 	 */
-	outer_stmt = push_stmt_to_stmt_stack(cstate);
+	outer_stmt_stack = push_stmt_to_stmt_stack(cstate);
 
 	oldowner = CurrentResourceOwner;
 	BeginInternalSubTransaction(NULL);
@@ -142,7 +223,6 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 					for (i = 0; i < stmt_block->n_initvars; i++)
 					{
-						char	   *refname;
 						PLpgSQL_datum *d = func->datums[stmt_block->initvarnos[i]];
 
 						if (d->dtype == PLPGSQL_DTYPE_VAR ||
@@ -170,71 +250,10 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 							pfree(str.data);
 						}
 
-						refname = plpgsql_check_datum_get_refname(d);
-						if (refname != NULL)
-						{
-							ListCell   *l;
-
-							if (plpgsql_check_is_reserved_keyword(refname))
-							{
-								StringInfoData str;
-
-								initStringInfo(&str);
-								appendStringInfo(&str, "name of variable \"%s\" is reserved keyword",
-												 refname);
-
-								plpgsql_check_put_error(cstate,
-											  0, 0,
-											  str.data,
-											  "The reserved keyword was used as variable name.",
-											  NULL,
-											  PLPGSQL_CHECK_WARNING_OTHERS,
-											  0, NULL, NULL);
-								pfree(str.data);
-							}
-
-							foreach(l, cstate->argnames)
-							{
-								char	   *argname = (char *) lfirst(l);
-
-								if (strcmp(argname, refname) == 0)
-								{
-									StringInfoData str;
-
-									initStringInfo(&str);
-									appendStringInfo(&str, "parameter \"%s\" is overlapped",
-													 refname);
-
-									plpgsql_check_put_error(cstate,
-												  0, 0,
-												  str.data,
-												  "Local variable overlap function parameter.",
-												  NULL,
-												  PLPGSQL_CHECK_WARNING_OTHERS,
-												  0, NULL, NULL);
-									pfree(str.data);
-								}
-							}
-
-							if (found_shadowed_variable(refname, outer_stmt, cstate))
-							{
-								StringInfoData str;
-
-								initStringInfo(&str);
-								appendStringInfo(&str, "variable \"%s\" shadows a previously defined variable",
-													 refname);
-
-								plpgsql_check_put_error(cstate,
-												  0, 0,
-												  str.data,
-												  NULL,
-												  "SET plpgsql.extra_warnings TO 'shadowed_variables'",
-												  PLPGSQL_CHECK_WARNING_EXTRA,
-												  0, NULL, NULL);
-								pfree(str.data);
-							}
-						}
+						check_variable_name(cstate, outer_stmt_stack, d->dno);
 					}
+
+					check_variable_name(cstate, outer_stmt_stack, cstate->estate->found_varno);
 
 					check_stmts(cstate, stmt_block->body, closing, exceptions);
 
@@ -584,6 +603,8 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					cstate->protected_variables = bms_add_member(cstate->protected_variables, dno);
 					cstate->auto_variables = bms_add_member(cstate->auto_variables, dno);
 
+					check_variable_name(cstate, outer_stmt_stack, dno);
+
 					check_stmts(cstate, stmt_fori->body, &closing_local, &exceptions_local);
 					*closing = possibly_closed(closing_local);
 				}
@@ -684,7 +705,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					if (stmt_exit->label != NULL)
 					{
 						PLpgSQL_stmt *labeled_stmt = find_stmt_with_label(stmt_exit->label,
-												    outer_stmt);
+												    outer_stmt_stack);
 						if (labeled_stmt == NULL)
 							ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
@@ -699,7 +720,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					}
 					else
 					{
-						if (find_nearest_loop(outer_stmt) == NULL)
+						if (find_nearest_loop(outer_stmt_stack) == NULL)
 							ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("%s cannot be used outside a loop",
@@ -1134,7 +1155,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					}
 
 					if (stmt_getdiag->is_stacked &&
-						!is_inside_exception_handler(outer_stmt))
+						!is_inside_exception_handler(outer_stmt_stack))
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_STACKED_DIAGNOSTICS_ACCESSED_WITHOUT_ACTIVE_HANDLER),
@@ -1183,7 +1204,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 							(errcode(ERRCODE_INVALID_TRANSACTION_TERMINATION),
 							 errmsg("invalid transaction termination")));
 
-				if (is_inside_protected_block(outer_stmt))
+				if (is_inside_protected_block(outer_stmt_stack))
 				{
 					if (stmt->cmd_type == PLPGSQL_STMT_COMMIT)
 						ereport(ERROR,
@@ -1544,7 +1565,7 @@ found_shadowed_variable(char *varname, PLpgSQL_stmt_stack_item *current, PLpgSQL
 				PLpgSQL_datum *d;
 
 				d = cstate->estate->func->datums[stmt_block->initvarnos[i]];
-				refname = plpgsql_check_datum_get_refname(d);
+				refname = plpgsql_check_datum_get_refname(cstate, d);
 
 				if (refname != NULL && strcmp(refname, varname) == 0)
 					return true;

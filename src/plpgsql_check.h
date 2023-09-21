@@ -281,7 +281,7 @@ extern void plpgsql_check_assignment_to_variable(PLpgSQL_checkstate *cstate, PLp
 /*
  * functions from report.c
  */
-extern char * plpgsql_check_datum_get_refname(PLpgSQL_datum *d);
+extern char * plpgsql_check_datum_get_refname(PLpgSQL_checkstate *cstate, PLpgSQL_datum *d);
 extern void plpgsql_check_report_unused_variables(PLpgSQL_checkstate *cstate);
 extern void plpgsql_check_report_too_high_volatility(PLpgSQL_checkstate *cstate);
 extern bool is_internal_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var);

@@ -33,6 +33,7 @@
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "utils/palloc.h"
 
 #include "plpgsql_check.h"
 

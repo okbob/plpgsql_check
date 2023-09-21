@@ -49,7 +49,7 @@ is_internal_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var)
  * then return null too, although refname is not null.
  */
 char *
-plpgsql_check_datum_get_refname(PLpgSQL_datum *d)
+plpgsql_check_datum_get_refname(PLpgSQL_checkstate *cstate, PLpgSQL_datum *d)
 {
 	char	   *refname;
 	int			lineno;
@@ -75,6 +75,13 @@ plpgsql_check_datum_get_refname(PLpgSQL_datum *d)
 			refname = NULL;
 			lineno = -1;
 	}
+
+	/*
+	 * This routine is used for shadowing check.
+	 * We would to check auto variables too
+	 */
+	if (bms_is_member(d->dno, cstate->auto_variables))
+		return refname;
 
 	/*
 	 * PostgreSQL 12 started use "(unnamed row)" name for internal
