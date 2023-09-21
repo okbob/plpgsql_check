@@ -5237,4 +5237,20 @@ select trace_test(4);
 
 drop function trace_test(int);
 
--- end from plpgsql_check_active-12
+create or replace function public.fx1()
+returns table(i integer, j integer, found boolean)
+as $$
+begin
+  for i in 1..10
+  loop
+    for j in 1..10
+    loop
+      return next;
+    end loop;
+  end loop;
+end;
+$$ language plpgsql immutable;
+
+select * from plpgsql_check_function('fx1');
+
+drop function fx1;

@@ -8953,4 +8953,31 @@ NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
 (1 row)
 
 drop function trace_test(int);
--- end from plpgsql_check_active-12
+create or replace function public.fx1()
+returns table(i integer, j integer, found boolean)
+as $$
+begin
+  for i in 1..10
+  loop
+    for j in 1..10
+    loop
+      return next;
+    end loop;
+  end loop;
+end;
+$$ language plpgsql immutable;
+select * from plpgsql_check_function('fx1');
+                           plpgsql_check_function                           
+----------------------------------------------------------------------------
+ warning:00000:2:statement block:parameter "found" is overlapped
+ Detail: Local auto variable overlap function parameter.
+ warning:00000:3:FOR with integer loop variable:parameter "i" is overlapped
+ Detail: Local auto variable overlap function parameter.
+ warning:00000:5:FOR with integer loop variable:parameter "j" is overlapped
+ Detail: Local auto variable overlap function parameter.
+ warning extra:00000:unmodified OUT variable "i"
+ warning extra:00000:unmodified OUT variable "j"
+ warning extra:00000:unmodified OUT variable "found"
+(9 rows)
+
+drop function fx1;
