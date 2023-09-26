@@ -600,6 +600,8 @@ The profile can be displayed by function `plpgsql_profiler_function_tb`:
     └────────┴──────────┴───────────────────────────────────────────────────────────────────┘
     (9 rows)
 
+The times in the result are in miliseconds.
+
 The profile per statements (not per line) can be displayed by function plpgsql_profiler_function_statements_tb:
 
             CREATE OR REPLACE FUNCTION public.fx1(a integer)
