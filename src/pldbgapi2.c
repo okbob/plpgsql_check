@@ -983,16 +983,14 @@ pldbgapi2_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	fmgr_plpgsql_cache *fcache_plpgsql;
 	int			i;
 
-	if (!plugin_info)
+	/*
+	 * When extension is installed by EXECUTE 'CREATE EXTENSION plpgsql_check',
+	 * then plpgsql debug API is activated, but plugin info is NULL, or maybe
+	 * there can be plugin info for ather plugin, because plpgsql_check was not
+	 * correctly initialized.
+	 */
+	if (!plugin_info || plugin_info->magic != PLUGIN_INFO_MAGIC)
 		return;
-
-	if (plugin_info->magic != PLUGIN_INFO_MAGIC)
-	{
-		ereport(WARNING,
-				(errmsg("bad magic number of pldbgapi2 plpgsql debug api hook"),
-				 errdetail("Some extension using pl debug api does not work correctly.")));
-		return;
-	}
 
 	fcache_plpgsql = plugin_info->fcache_plpgsql;
 
@@ -1056,12 +1054,14 @@ pldbgapi2_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	int			i;
 	int			parent_id = 0;
 
-	Assert(plugin_info);
-
-	if (plugin_info->magic != PLUGIN_INFO_MAGIC)
-		ereport(ERROR,
-				(errmsg("bad magic number of pldbgapi2 plpgsql debug api hook"),
-				 errdetail("Some extension using pl debug api does not work correctly.")));
+	/*
+	 * When extension is installed by EXECUTE 'CREATE EXTENSION plpgsql_check',
+	 * then plpgsql debug API is activated, but plugin info is NULL, or maybe
+	 * there can be plugin info for ather plugin, because plpgsql_check was not
+	 * correctly initialized.
+	 */
+	if (!plugin_info || plugin_info->magic != PLUGIN_INFO_MAGIC)
+		return;
 
 	fcache_plpgsql = plugin_info->fcache_plpgsql;
 
@@ -1122,7 +1122,6 @@ pldbgapi2_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 	fcache_plpgsql->stmtid_stack[fcache_plpgsql->current_stmtid_stack_size++] = stmt->stmtid;
 
-
 	for (i = 0; i < nplpgsql_plugins2; i++)
 	{
 		if (plpgsql_plugins2[i]->stmt_beg2)
@@ -1161,16 +1160,14 @@ pldbgapi2_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	fmgr_plpgsql_cache *fcache_plpgsql;
 	int			i;
 
-	if (!plugin_info)
+	/*
+	 * When extension is installed by EXECUTE 'CREATE EXTENSION plpgsql_check',
+	 * then plpgsql debug API is activated, but plugin info is NULL, or maybe
+	 * there can be plugin info for ather plugin, because plpgsql_check was not
+	 * correctly initialized.
+	 */
+	if (!plugin_info || plugin_info->magic != PLUGIN_INFO_MAGIC)
 		return;
-
-	if (plugin_info->magic != PLUGIN_INFO_MAGIC)
-	{
-		ereport(WARNING,
-				(errmsg("bad magic number of pldbgapi2 plpgsql debug api hook"),
-				 errdetail("Some extension using pl debug api does not work correctly.")));
-		return;
-	}
 
 	fcache_plpgsql = plugin_info->fcache_plpgsql;
 
