@@ -5254,3 +5254,27 @@ $$ language plpgsql immutable;
 select * from plpgsql_check_function('fx1');
 
 drop function fx1;
+
+-- tracer test
+set plpgsql_check.enable_tracer to on;
+select plpgsql_check_tracer(true);
+
+create role plpgsql_check_test_role;
+
+DO $$
+begin
+  begin
+    -- should to fail
+    create role plpgsql_check_test_role;
+  exception
+    when duplicate_object then
+      -- Role already exists
+      -- the exception handler is empty (#156)
+  end;
+end;
+$$;
+
+drop role plpgsql_check_test_role;
+
+set plpgsql_check.enable_tracer to off;
+select plpgsql_check_tracer(false);

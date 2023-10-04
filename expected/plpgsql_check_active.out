@@ -8981,3 +8981,44 @@ select * from plpgsql_check_function('fx1');
 (9 rows)
 
 drop function fx1;
+-- tracer test
+set plpgsql_check.enable_tracer to on;
+select plpgsql_check_tracer(true);
+NOTICE:  tracer is active
+NOTICE:  tracer verbosity is verbose
+ plpgsql_check_tracer 
+----------------------
+ t
+(1 row)
+
+create role plpgsql_check_test_role;
+DO $$
+begin
+  begin
+    -- should to fail
+    create role plpgsql_check_test_role;
+  exception
+    when duplicate_object then
+      -- Role already exists
+      -- the exception handler is empty (#156)
+  end;
+end;
+$$;
+NOTICE:  #0            ->> start of block inline_code_block (oid=0)
+NOTICE:  #0.1       2    --> start of statement block
+NOTICE:  #0.2       3      --> start of statement block
+NOTICE:  #0.3       5        --> start of SQL statement (query='create role plpgsql_check_test ..')
+NOTICE:  #0.1                <-- end of SQL statement (elapsed time=0.010 ms) aborted
+NOTICE:  #0.2              <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #0.3            <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #0            <<- end of block (elapsed time=0.010 ms)
+drop role plpgsql_check_test_role;
+set plpgsql_check.enable_tracer to off;
+select plpgsql_check_tracer(false);
+NOTICE:  tracer is not active
+NOTICE:  tracer verbosity is verbose
+ plpgsql_check_tracer 
+----------------------
+ f
+(1 row)
+

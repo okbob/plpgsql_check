@@ -1190,6 +1190,29 @@ pldbgapi2_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 	current_fmgr_plpgsql_cache = fcache_plpgsql;
 
+	/*
+	 * The exception handler can be empty (see issue #156). In this case
+	 * the statement on stack can be different, then current statemnt, and
+	 * we should to fix stack.
+	 */
+	if (stmt->cmd_type == PLPGSQL_STMT_BLOCK)
+	{
+		while (fcache_plpgsql->current_stmtid_stack_size > 0 &&
+			   fcache_plpgsql->stmtid_stack[fcache_plpgsql->current_stmtid_stack_size] != stmt->stmtid)
+		{
+			int			stmtid = fcache_plpgsql->stmtid_stack[fcache_plpgsql->current_stmtid_stack_size];
+
+			for (i = 0; i < nplpgsql_plugins2; i++)
+			{
+				if (plpgsql_plugins2[i]->stmt_end2_aborted)
+					(plpgsql_plugins2[i]->stmt_end2_aborted)(estate->func->fn_oid, stmtid,
+															 &fcache_plpgsql->plugin2_info[i]);
+			}
+
+			fcache_plpgsql->current_stmtid_stack_size -= 1;
+		}
+	}
+
 	if (fcache_plpgsql->stmtid_stack[fcache_plpgsql->current_stmtid_stack_size] != stmt->stmtid)
 		elog(ERROR, "pldbgapi2 statement call stack is broken");
 
