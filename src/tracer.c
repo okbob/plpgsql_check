@@ -1525,5 +1525,11 @@ plpgsql_check_tracer_ctrl(PG_FUNCTION_ARGS)
 
 	elog(NOTICE, "tracer verbosity is %s", optstr);
 
+	if (result && !plpgsql_check_enable_tracer)
+		ereport(NOTICE,
+				(errmsg("tracer is still blocked"),
+				 errdetail("The tracer should be enabled by the superuser for security reasons."),
+				 errhint("Execute \"set plpgsql_check.enable_tracer to on\" (superuser only).")));
+
 	PG_RETURN_BOOL(result);
 }
