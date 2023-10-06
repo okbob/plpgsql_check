@@ -558,7 +558,8 @@ set_plpgsql_info(void)
 static bool
 pldbgapi2_needs_fmgr_hook(Oid fn_oid)
 {
-	if (prev_needs_fmgr_hook && prev_needs_fmgr_hook(fn_oid))
+	if (prev_needs_fmgr_hook &&
+		(*prev_needs_fmgr_hook) (fn_oid))
 		return true;
 
 	/*
