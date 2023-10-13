@@ -1,0 +1,4 @@
+- possibility to specify locality of storage for profiling (local, shared)
+- possibility to export profiles in format for pprof https://github.com/google/pprof
+- possibility to export call stack (short [parent, current], full [entry point, current])
+- possibility to show critical path (function or statement level)
