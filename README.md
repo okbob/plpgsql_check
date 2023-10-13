@@ -917,13 +917,14 @@ ICU support)
 
 ## Compilation plpgsql_check on Windows
 
-You can check precompiled dll libraries http://okbob.blogspot.cz/2015/02/plpgsqlcheck-is-available-for-microsoft.html
+You can check precompiled dll libraries http://okbob.blogspot.cz/2015/02/plpgsqlcheck-is-available-for-microsoft.html,
+http://okbob.blogspot.com/2023/10/compiled-dll-of-plpgsqlcheck-254-and.html
 
 or compile by self:
 
 1. Download and install PostgreSQL for Win32 from http://www.enterprisedb.com
 2. Download and install Microsoft Visual C++ Express
-3. Lern tutorial http://blog.2ndquadrant.com/compiling-postgresql-extensions-visual-studio-windows
+3. Read tutorial http://blog.2ndquadrant.com/compiling-postgresql-extensions-visual-studio-windows
 4. Build plpgsql_check.dll
 5. Install plugin
   1. copy `plpgsql_check.dll` to `PostgreSQL\14\lib`
