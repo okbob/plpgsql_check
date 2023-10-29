@@ -63,10 +63,10 @@ typedef enum
 
 typedef struct PLpgSQL_stmt_stack_item
 {
-	PLpgSQL_stmt	   *stmt;
-	char			   *label;
+	PLpgSQL_stmt *stmt;
+	char	   *label;
 	struct PLpgSQL_stmt_stack_item *outer;
-	bool				is_exception_handler;
+	bool		is_exception_handler;
 } PLpgSQL_stmt_stack_item;
 
 typedef struct plpgsql_check_result_info
@@ -74,7 +74,7 @@ typedef struct plpgsql_check_result_info
 	int			format;						/* produced / expected format */
 	Tuplestorestate	*tuple_store;			/* target tuple store */
 	TupleDesc	tupdesc;					/* target tuple store tuple descriptor */
-	MemoryContext			query_ctx;		/* memory context for string operations */
+	MemoryContext query_ctx;				/* memory context for string operations */
 	StringInfo	sinfo;						/* buffer for multi line one value output formats */
 	bool		init_tag;					/* true, when init tag should be created */
 } plpgsql_check_result_info;
@@ -133,8 +133,8 @@ typedef struct PLpgSQL_checkstate
 	char		volatility;					/* detected function volatility */
 	bool		has_execute_stmt;			/* detected dynamic SQL, disable volatility check */
 	bool		skip_volatility_check;		/* don't do this test for trigger */
-	PLpgSQL_execstate	   *estate;			/* check state is estate extension */
-	MemoryContext			check_cxt;
+	PLpgSQL_execstate *estate;				/* check state is estate extension */
+	MemoryContext check_cxt;
 	List	   *exprs;						/* list of all expression created by checker */
 	bool		is_active_mode;				/* true, when checking is started by plpgsql_check_function */
 	Bitmapset  *used_variables;				/* track which variables have been used; bit per varno */
@@ -142,30 +142,30 @@ typedef struct PLpgSQL_checkstate
 	PLpgSQL_stmt_stack_item *top_stmt_stack;	/* list of known labels + related command */
 	bool		found_return_query;			/* true, when code contains RETURN query */
 	bool		found_return_dyn_query;		/* true, when code contains RETURN QUERY EXECUTE */
-	Bitmapset	   *func_oids;				/* list of used (and displayed) functions */
-	Bitmapset	   *rel_oids;				/* list of used (and displayed) relations */
+	Bitmapset  *func_oids;					/* list of used (and displayed) functions */
+	Bitmapset  *rel_oids;					/* list of used (and displayed) relations */
 	bool		fake_rtd;					/* true when functions returns record */
 	plpgsql_check_result_info *result_info;
 	plpgsql_check_info *cinfo;
-	Bitmapset	   *safe_variables;			/* track which variables are safe against sql injection */
-	Bitmapset	   *out_variables;			/* what variables are used as OUT variables */
-	Bitmapset	   *protected_variables;	/* what variables should be assigned internal only */
-	Bitmapset	   *auto_variables;			/* variables initialized, used by runtime */
-	Bitmapset	   *typed_variables;		/* record variables with assigned type by pragma TYPE */
-	bool			stop_check;				/* true after error when fatal_errors option is active */
-	bool			allow_mp;				/* true, when multiple plans in plancache are allowed */
-	bool			has_mp;					/* true, when multiple plan was used */
-	bool			was_pragma;				/* true, when last expression was a plpgsql_check pragma */
+	Bitmapset  *safe_variables;				/* track which variables are safe against sql injection */
+	Bitmapset  *out_variables;				/* what variables are used as OUT variables */
+	Bitmapset  *protected_variables;		/* what variables should be assigned internal only */
+	Bitmapset  *auto_variables;				/* variables initialized, used by runtime */
+	Bitmapset  *typed_variables;			/* record variables with assigned type by pragma TYPE */
+	bool		stop_check;					/* true after error when fatal_errors option is active */
+	bool		allow_mp;					/* true, when multiple plans in plancache are allowed */
+	bool		has_mp;						/* true, when multiple plan was used */
+	bool		was_pragma;					/* true, when last expression was a plpgsql_check pragma */
 	plpgsql_check_pragma_vector pragma_vector;
 	Oid			pragma_foid;				/* oid of plpgsql_check pragma function */
 } PLpgSQL_checkstate;
 
 typedef struct
 {
-	int		statements;
-	int		branches;
-	int		executed_statements;
-	int		executed_branches;
+	int			statements;
+	int			branches;
+	int			executed_statements;
+	int			executed_branches;
 } coverage_state;
 
 /*
