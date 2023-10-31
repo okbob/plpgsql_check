@@ -113,6 +113,9 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 		else if (strcasecmp(pragma_str, "COMPATIBILITY_WARNINGS") == 0)
 			elog(NOTICE, "compatibility_warnings is %s",
 					pv->disable_compatibility_warnings ? "disabled" : "enabled");
+		else if (strcasecmp(pragma_str, "CONSTANTS_TRANCING") == 0)
+			elog(NOTICE, "constants_traising is %s",
+					pv->disable_constants_tracing ? "disabled" : "enabled");
 		else
 		{
 			elog(WARNING, "unsuported pragma: %s", pragma_str);
@@ -140,6 +143,8 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 			pv->disable_security_warnings = false;
 		else if (strcasecmp(pragma_str, "COMPATIBILITY_WARNINGS") == 0)
 			pv->disable_compatibility_warnings = false;
+		else if (strcasecmp(pragma_str, "CONSTANTS_TRACING") == 0)
+			pv->disable_constants_tracing = false;
 		else
 		{
 			elog(WARNING, "unsuported pragma: %s", pragma_str);
@@ -167,6 +172,8 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 			pv->disable_security_warnings = true;
 		else if (strcasecmp(pragma_str, "COMPATIBILITY_WARNINGS") == 0)
 			pv->disable_compatibility_warnings = true;
+		else if (strcasecmp(pragma_str, "CONSTANTS_TRACING") == 0)
+			pv->disable_constants_tracing = true;
 		else
 			elog(WARNING, "unsuported pragma: %s", pragma_str);
 	}

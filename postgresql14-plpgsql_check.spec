@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	2.5.4
+Version:	2.6.0
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -49,6 +49,9 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/*.control
 
 %changelog
+* Tue Oct 31 2023 - Pavel Stehule <pavel.stehule@gmail.com> 2.6.0
+- simple constant tracing support
+
 * Sat Apr 29 2023 - Pavel Stehule <pavel.stehule@gmail.com> 2.4.0
 - remove support for PostgreSQL 10 and 11
 

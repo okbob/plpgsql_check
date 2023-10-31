@@ -107,6 +107,7 @@ typedef struct plpgsql_check_info
 	bool		extra_warnings;
 	bool		security_warnings;
 	bool		compatibility_warnings;
+	bool		constants_tracing;
 	bool		show_profile;
 
 	bool		all_warnings;
@@ -127,6 +128,7 @@ typedef struct
 	unsigned int disable_extra_warnings : 1;
 	unsigned int disable_security_warnings : 1;
 	unsigned int disable_compatibility_warnings : 1;
+	unsigned int disable_constants_tracing : 1;
 } plpgsql_check_pragma_vector;
 
 #define CI_MAGIC		2023042922
@@ -246,6 +248,7 @@ extern bool plpgsql_check_extra_warnings;
 extern bool plpgsql_check_performance_warnings;
 extern bool plpgsql_check_compatibility_warnings;
 extern bool plpgsql_check_fatal_errors;
+extern bool plpgsql_check_constants_tracing;
 extern int plpgsql_check_mode;
 
 /*

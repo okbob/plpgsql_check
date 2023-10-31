@@ -185,6 +185,10 @@ You can set level of warnings via function's parameters:
 * `incomment_options_usage_warning DEFAULT false` - when it is true, then the warning is raised when
    in-comment option is used.
 
+* `constant_tracing boolean DEFAULT true` - when it is true, then the variable that holds
+   some constant content, can be used like constant (it is work only in some simple cases,
+   and the content of variable should not be ambigonuous).
+
 ## Triggers
 
 When you want to check any trigger, you have to enter a relation that will be

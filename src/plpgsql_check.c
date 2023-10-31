@@ -108,7 +108,7 @@ static bool is_expected_extversion = false;
  */
 #define LOAD_EXTERNAL_FUNCTION(file, funcname)	((void *) (load_external_function(file, funcname, true, NULL)))
 
-#define EXPECTED_EXTVERSION		"2.5"
+#define EXPECTED_EXTVERSION		"2.6"
 
 void
 plpgsql_check_check_ext_version(Oid fn_oid)
@@ -234,6 +234,14 @@ _PG_init(void)
 					    NULL,
 					    &plpgsql_check_compatibility_warnings,
 					    false,
+					    PGC_USERSET, 0,
+					    NULL, NULL, NULL);
+
+	DefineCustomBoolVariable("plpgsql_check.constants_tracing",
+					    "when is true, the variables with constant value can be used like constant",
+					    NULL,
+					    &plpgsql_check_constants_tracing,
+					    true,
 					    PGC_USERSET, 0,
 					    NULL, NULL, NULL);
 

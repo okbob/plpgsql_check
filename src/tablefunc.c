@@ -99,7 +99,7 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 
 	plpgsql_check_check_ext_version(fcinfo->flinfo->fn_oid);
 
-	Assert(PG_NARGS() == 20);
+	Assert(PG_NARGS() == 21);
 
 	/* check to see if caller supports us returning a tuplestore */
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
@@ -139,6 +139,8 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 		ERR_NULL_OPTION("use_incomment_options");
 	if (PG_ARGISNULL(19))
 		ERR_NULL_OPTION("incomment_options_usage_warning");
+	if (PG_ARGISNULL(20))
+		ERR_NULL_OPTION("constants_tracing");
 
 	format = plpgsql_check_format_num(text_to_cstring(PG_GETARG_TEXT_PP(2)));
 
@@ -153,6 +155,7 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	cinfo.compatibility_warnings = PG_GETARG_BOOL(8);
 
 	cinfo.incomment_options_usage_warning = PG_GETARG_BOOL(19);
+	cinfo.constants_tracing = PG_GETARG_BOOL(20);
 
 	/* without_warnings */
 	if (PG_GETARG_BOOL(16))
@@ -240,7 +243,7 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 
 	plpgsql_check_check_ext_version(fcinfo->flinfo->fn_oid);
 
-	Assert(PG_NARGS() == 19);
+	Assert(PG_NARGS() == 20);
 
 	/* check to see if caller supports us returning a tuplestore */
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
@@ -279,6 +282,8 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 		ERR_NULL_OPTION("use_incomment_options");
 	if (PG_ARGISNULL(18))
 		ERR_NULL_OPTION("incomment_options_usage_warning");
+	if (PG_ARGISNULL(19))
+		ERR_NULL_OPTION("constants_tracing");
 
 
 	plpgsql_check_info_init(&cinfo, fnoid);
@@ -292,6 +297,7 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	cinfo.compatibility_warnings = PG_GETARG_BOOL(7);
 
 	cinfo.incomment_options_usage_warning = PG_GETARG_BOOL(18);
+	cinfo.constants_tracing = PG_GETARG_BOOL(19);
 
 	/* without_warnings */
 	if (PG_GETARG_BOOL(15))

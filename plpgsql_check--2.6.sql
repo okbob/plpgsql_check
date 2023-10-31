@@ -19,7 +19,8 @@ CREATE FUNCTION plpgsql_check_function_tb(funcoid regprocedure,
                                        without_warnings boolean DEFAULT false,
                                        all_warnings boolean DEFAULT false,
                                        use_incomment_options boolean DEFAULT true,
-                                       incomment_options_usage_warning boolean DEFAULT false)
+                                       incomment_options_usage_warning boolean DEFAULT false,
+                                       constant_tracing boolean DEFAULT true)
 RETURNS TABLE(functionid regproc,
               lineno int,
               statement text,
@@ -53,7 +54,8 @@ CREATE FUNCTION plpgsql_check_function(funcoid regprocedure,
                                        without_warnings boolean DEFAULT false,
                                        all_warnings boolean DEFAULT false,
                                        use_incomment_options boolean DEFAULT true,
-                                       incomment_options_usage_warning boolean DEFAULT false)
+                                       incomment_options_usage_warning boolean DEFAULT false,
+                                       constant_tracing boolean DEFAULT true)
 RETURNS SETOF text
 AS 'MODULE_PATHNAME','plpgsql_check_function'
 LANGUAGE C;
@@ -76,7 +78,8 @@ CREATE FUNCTION plpgsql_check_function_tb(name text,
                                        without_warnings boolean DEFAULT false,
                                        all_warnings boolean DEFAULT false,
                                        use_incomment_options boolean DEFAULT true,
-                                       incomment_options_usage_warning boolean DEFAULT false)
+                                       incomment_options_usage_warning boolean DEFAULT false,
+                                       constant_tracing boolean DEFAULT true)
 RETURNS TABLE(functionid regproc,
               lineno int,
               statement text,
@@ -110,7 +113,8 @@ CREATE FUNCTION plpgsql_check_function(name text,
                                        without_warnings boolean DEFAULT false,
                                        all_warnings boolean DEFAULT false,
                                        use_incomment_options boolean DEFAULT true,
-                                       incomment_options_usage_warning boolean DEFAULT false)
+                                       incomment_options_usage_warning boolean DEFAULT false,
+                                       constant_tracing boolean DEFAULT true)
 RETURNS SETOF text
 AS 'MODULE_PATHNAME','plpgsql_check_function_name'
 LANGUAGE C;

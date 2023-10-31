@@ -784,6 +784,9 @@ plpgsql_check_get_tracked_const(PLpgSQL_checkstate *cstate, Node *node)
 	if (!cstate->strconstvars)
 		return NULL;
 
+	if (cstate->pragma_vector.disable_constants_tracing)
+		return NULL;
+
 	if (IsA(node, Param))
 	{
 		Param *p = (Param *) node;
@@ -1386,8 +1389,7 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 			}
 		}
 
-		/* constant tracing */
-		if (/* cstate->cinfo->constant_tracing && */  targetdno != -1)
+		if (cstate->cinfo->constants_tracing && targetdno != -1)
 		{
 			char	   *str;
 
