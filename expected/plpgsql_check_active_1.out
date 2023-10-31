@@ -3924,21 +3924,17 @@ declare
   r record;
   v text = 'select 10 a, 20 b't;
 begin
-  select 10 a, 20 b into r;
   for r in execute v
   loop
     raise notice '%', r.a;
   end loop;
 end
 $$ language plpgsql;
--- should be warning
+-- should be ok
 select * from plpgsql_check_function('dyn_sql_3');
-                                plpgsql_check_function                                 
----------------------------------------------------------------------------------------
- warning:00000:7:FOR over EXECUTE statement:cannot determinate a result of dynamic SQL
- Detail: There is a risk of related false alarms.
- Hint: Don't use dynamic SQL and record type together, when you would check function.
-(3 rows)
+ plpgsql_check_function 
+------------------------
+(0 rows)
 
 drop function dyn_sql_3();
 create or replace function dyn_sql_4()
@@ -8120,9 +8116,9 @@ end;
 $$ language plpgsql;
 -- should to detect bad expression
 select * from plpgsql_check_function('test_function');
-                plpgsql_check_function                
-------------------------------------------------------
- error:42601:3:EXECUTE:syntax error at or near ""%I""
+               plpgsql_check_function                
+-----------------------------------------------------
+ error:42601:3:EXECUTE:syntax error at or near "zzz"
 (1 row)
 
 -- should to correctly detect type
@@ -9025,3 +9021,71 @@ NOTICE:  tracer verbosity is verbose
  f
 (1 row)
 
+-- tracing constants
+-- issue #159
+create or replace function tabret_dynamic()
+returns table (id integer, val text)
+as $$
+begin
+  return query execute 'select id, val from (values (1, ''a''), (2, ''b'')) as v(id, val)';
+end;
+$$ language plpgsql immutable;
+-- should be ok
+select * from plpgsql_check_function('tabret_dynamic()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function tabret_dynamic()
+returns table (id integer, val text)
+as $$
+declare
+  z_query text;
+begin
+  z_query := 'select id, val from (values (1, ''a''), (2, ''b'')) as v(id, val)';
+  execute z_query into id, val;
+  return next;
+end;
+$$ language plpgsql immutable;
+-- should be ok
+select * from plpgsql_check_function('tabret_dynamic()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function tabret_dynamic()
+returns table (id integer, val text)
+as $$
+declare
+  z_query text;
+begin
+  z_query := 'select id, val from (values (1, ''a''), (2, ''b'')) as v(id, val)';
+  for id, val in execute z_query
+  loop
+    return next;
+  end loop;
+end;
+$$ language plpgsql immutable;
+-- should be ok
+select * from plpgsql_check_function('tabret_dynamic()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function tabret_dynamic()
+returns table (id integer, val text)
+as $$
+declare
+  z_query text;
+begin
+  z_query := 'select id, val from (values (1, ''a''), (2, ''b'')) as v(id, val)';
+  return query execute z_query;
+end;
+$$ language plpgsql immutable;
+-- should be ok
+select * from plpgsql_check_function('tabret_dynamic()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function tabret_dynamic;

@@ -1167,6 +1167,9 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 
 	/* try to find oid of plpgsql_check pragma function */
 	cstate->pragma_foid = plpgsql_check_pragma_func_oid();
+
+	/* for simple string constants tracing */
+	cstate->strconstvars = NULL;
 }
 
 /*

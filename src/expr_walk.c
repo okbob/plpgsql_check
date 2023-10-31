@@ -501,7 +501,7 @@ text_format_parse_format(const char *start_ptr,
 }
 
 #define TOO_FEW_ARGUMENTS_CHECK(arg, nargs) \
-	if (arg > nargs) \
+	if ((arg) > (nargs)) \
 	{ \
 		if (wp) \
 			plpgsql_check_put_error(wp->cstate, \
@@ -515,6 +515,160 @@ text_format_parse_format(const char *start_ptr,
 		*is_error = true; \
 		return -1; \
 	}
+
+/*
+ * Returns string based on expected result of "format" function.
+ * Try to use traced constant, when are available.
+ */
+char *
+plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
+								   const char *fmt,
+								   List *args,
+								   bool *found_ident_placeholder,
+								   bool *found_literal_placeholder,
+								   bool *expr_is_const)
+{
+	StringInfoData sinfo;
+	const char	   *cp;
+	const char	   *end_ptr = fmt + strlen(fmt);
+	int			nargs = list_length(args);
+	int			arg = 1;
+	int			_arg;
+	bool		is_error;
+
+	*found_ident_placeholder = false;
+	*found_literal_placeholder = false;
+	*expr_is_const = true;
+
+	initStringInfo(&sinfo);
+
+	/* Scan format string, looking for conversion specifiers. */
+	for (cp = fmt; cp < end_ptr; cp++)
+	{
+		int			argpos;
+		int			widthpos;
+
+		if (*cp != '%')
+		{
+			appendStringInfoChar(&sinfo, *cp);
+			continue;
+		}
+
+		if (++cp >= end_ptr)
+		{
+			pfree(sinfo.data);
+			return NULL;
+		}
+
+		if (*cp == '%')
+		{
+			appendStringInfoChar(&sinfo, '%');
+			continue;
+		}
+
+		/* Parse the optional portions of the format specifier */
+		cp = text_format_parse_format(cp, end_ptr,
+									  &argpos, &widthpos,
+									  -1, NULL, &is_error);
+
+		if (is_error || strchr("sIL", *cp) == NULL)
+		{
+			pfree(sinfo.data);
+			return NULL;
+		}
+
+		if (widthpos >= 0)
+		{
+			if (widthpos > 0)
+			{
+				if (widthpos > nargs)
+				{
+					pfree(sinfo.data);
+					return NULL;
+				}
+			}
+			else
+			{
+				if (++arg > nargs)
+				{
+					pfree(sinfo.data);
+					return NULL;
+				}
+			}
+		}
+
+		_arg = argpos >= 1 ? argpos : arg + 1;
+		if (_arg <= nargs)
+		{
+			char	   *str;
+
+			str = plpgsql_check_get_const_string(cstate, list_nth(args, _arg - 1), NULL);
+
+			if (*cp == 'I')
+			{
+				if (!str)
+				{
+					appendStringInfoString(&sinfo, "\"%I\"");
+					*found_ident_placeholder = true;
+					*expr_is_const = false;
+				}
+				else
+					appendStringInfoString(&sinfo, quote_identifier(str));
+			}
+			else if (*cp == 'L')
+			{
+				if (!str)
+				{
+					/*
+					 * Original idea was used external parameter,
+					 * but external parameters requires known type,
+					 * so most safe value is NULL instead.
+					 */
+					appendStringInfoString(&sinfo, " null ");
+					*found_literal_placeholder = true;
+					*expr_is_const = false;
+				}
+				else
+				{
+					char	   *qstr = quote_literal_cstr(str);
+
+					appendStringInfoString(&sinfo, qstr);
+					pfree(qstr);
+				}
+			}
+			else
+			{
+				if (!str)
+				{
+					pfree(sinfo.data);
+					*expr_is_const = false;
+					return NULL;
+				}
+				else
+					appendStringInfoString(&sinfo, str);
+			}
+		}
+
+		if (argpos >= 1)
+		{
+			if (argpos > nargs)
+			{
+				pfree(sinfo.data);
+				return NULL;
+			}
+		}
+		else
+		{
+			if (++arg > nargs)
+			{
+				pfree(sinfo.data);
+				return NULL;
+			}
+		}
+	}
+
+	return sinfo.data;
+}
 
 /*
  * Returns number of rquired arguments or -1 when we cannot detect this number.
@@ -827,29 +981,26 @@ plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
 					case FORMAT_NPARAM_OID:
 						{
 							/* We can do check only when first argument is constant */
-							Node *first_arg = linitial(fexpr->args);
+							char	   *fmt;
+							int			loc;
 
-							if (first_arg && IsA(first_arg, Const))
+							fmt = plpgsql_check_get_const_string(cstate, linitial(fexpr->args), &loc);
+
+							if (fmt)
 							{
-								Const *c = (Const *) first_arg;
+								check_funcexpr_walker_params wp;
+								bool	is_error;
 
-								if (c->consttype == TEXTOID && !c->constisnull)
-								{
-									char *fmt = TextDatumGetCString(c->constvalue);
-									check_funcexpr_walker_params wp;
-									bool	is_error;
+								wp.cstate = cstate;
+								wp.expr = expr;
+								wp.query_str = expr->query;
 
-									wp.cstate = cstate;
-									wp.expr = expr;
-									wp.query_str = expr->query;
+								*location = -1;
+								check_fmt_string(fmt, fexpr->args, loc, &wp, &is_error, location, true);
 
-									*location = -1;
-									check_fmt_string(fmt, fexpr->args, c->location, &wp, &is_error, location, true);
-
-									/* only in this case, "format" function obviously sanitize parameters */
-									if (!is_error)
-										return *location != -1;
-								}
+								/* only in this case, "format" function obviously sanitize parameters */
+								if (!is_error)
+									return *location != -1;
 							}
 						}
 						break;

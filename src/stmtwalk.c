@@ -1002,10 +1002,9 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 						if (opt->opt_type == PLPGSQL_RAISEOPTION_ERRCODE)
 						{
-							bool		isnull;
 							char	   *value;
 
-							value = plpgsql_check_expr_get_string(cstate, opt->expr, &isnull);
+							value = plpgsql_check_expr_get_string(cstate, opt->expr, NULL);
 
 							if (value != NULL)
 								err_code = plpgsql_check__recognize_err_condition_p(value, true);
@@ -1296,6 +1295,37 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 		cstate->was_pragma = false;
 }
 
+static void
+invalidate_strconstvars(PLpgSQL_checkstate *cstate)
+{
+	/*
+	 * We cannot to safely use string constant when we leave related
+	 * path (maybe we can, but it needs deeper analyze ensure so we
+	 * will provess all possible variants).
+	 */
+	if (cstate->top_stmts->invalidate_strconstvars)
+	{
+		int			dno = -1;
+
+		Assert(cstate->strconstvars);
+
+		while ((dno = bms_next_member(cstate->top_stmts->invalidate_strconstvars, dno)) >= 0)
+		{
+			/*
+			 * there is an possibility so string was invalided in some
+			 * nested node. If still it is valid, invalidate it.
+			 */
+			if (cstate->strconstvars[dno])
+			{
+				pfree(cstate->strconstvars[dno]);
+				cstate->strconstvars[dno] = NULL;
+			}
+		}
+
+		pfree(cstate->top_stmts->invalidate_strconstvars);
+	}
+}
+
 /*
  * Ensure check for all statements in list
  *
@@ -1306,9 +1336,14 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 	int			closing_local;
 	List	   *exceptions_local;
 	plpgsql_check_pragma_vector		prev_pragma_vector = cstate->pragma_vector;
+	PLpgSQL_statements current_stmts;
 
 	*closing = PLPGSQL_CHECK_UNCLOSED;
 	*exceptions = NIL;
+
+	current_stmts.outer = cstate->top_stmts;
+	current_stmts.invalidate_strconstvars = NULL;
+	cstate->top_stmts = &current_stmts;
 
 	PG_TRY();
 	{
@@ -1364,11 +1399,17 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 				}
 			}
 		}
+
+		invalidate_strconstvars(cstate);
+		cstate->top_stmts = current_stmts.outer;
 	}
 	PG_CATCH();
 	{
 		cstate->pragma_vector = prev_pragma_vector;
 		cstate->was_pragma = false;
+
+		invalidate_strconstvars(cstate);
+		cstate->top_stmts = current_stmts.outer;
 
 		PG_RE_THROW();
 	}
@@ -1442,6 +1483,7 @@ pop_stmt_from_stmt_stack(PLpgSQL_checkstate *cstate)
 	PLpgSQL_stmt_stack_item *current = cstate->top_stmt_stack;
 
 	Assert(cstate->top_stmt_stack != NULL);
+
 
 	cstate->top_stmt_stack = current->outer;
 	pfree(current);
@@ -1833,68 +1875,27 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		if (fexpr->funcid == FORMAT_0PARAM_OID ||
 			fexpr->funcid == FORMAT_NPARAM_OID)
 		{
-			if (fexpr->args && IsA(linitial(fexpr->args), Const))
+			char	   *fmt = NULL;
+			bool		found_ident_placeholder = false;
+			bool		found_literal_placeholder = false;
+			bool		_expr_is_const;
+
+			if (fexpr->args)
+				fmt = plpgsql_check_get_const_string(cstate, linitial(fexpr->args), NULL);
+
+			if (fmt)
 			{
-				StringInfoData	sinfo;
-				char		c, *fmt;
-				bool		subst_is_ok = true;
-				bool		found_ident_placeholder = false;
-				bool		found_literal_placeholder = false;
+				char	   *fstr;
 
-				expr_is_const = fexpr->funcid == FORMAT_0PARAM_OID;
-				fmt = plpgsql_check_const_to_string((Const *) linitial(fexpr->args));
+				fstr = plpgsql_check_get_formatted_string(cstate, fmt, fexpr->args,
+														  &found_ident_placeholder,
+														  &found_literal_placeholder,
+														  &_expr_is_const);
 
-				/*
-				 * The placeholders can be used only in FORMAT_NPARAM function,
-				 * but for simplicity and consistency we check FORMAT_0PARAM and
-				 * FORMAT_NPARAM together
-				 */
-				initStringInfo(&sinfo);
+				/* fix passing 'volatile bool *' to parameter of type 'bool *' discards qualifiers  */
+				expr_is_const = _expr_is_const;
 
-				while ((c = *fmt++))
-				{
-					if (c == '%')
-					{
-						c = *fmt++;
-
-						if (c == '%')
-						{
-							appendStringInfoChar(&sinfo, c);
-						}
-						else if (c == 'I')
-						{
-							appendStringInfoString(&sinfo, "\"%I\"");
-							expr_is_const = false;
-							found_ident_placeholder = true;
-						}
-						else if (c == 'L')
-						{
-							/*
-							 * Original idea was used external parameter,
-							 * but external parameters requires known type,
-							 * so most safe value is NULL instead.
-							 */
-							appendStringInfo(&sinfo, " null ");
-							found_literal_placeholder = true;
-							expr_is_const = false;
-						}
-						else
-						{
-							/*
-							 * Because %s is used, we know nothing about form
-							 * of output string, and has not any sense to continue
-							 * in check.
-							 */
-							subst_is_ok = false;
-							expr_is_const = false;
-							break;
-						}
-					}
-					else
-						appendStringInfoChar(&sinfo, c);
-				}
-
-				if (subst_is_ok)
+				if (fstr)
 				{
 					if (!found_literal_placeholder)
 					{
@@ -1902,26 +1903,26 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 #if PG_VERSION_NUM >= 140000
 
 						/* in this case we can do only basic parser check */
-						raw_parser(sinfo.data, RAW_PARSE_DEFAULT);
+						raw_parser(fstr, RAW_PARSE_DEFAULT);
 
 #else
 
-						raw_parser(sinfo.data);
+						raw_parser(fstr);
 
 #endif
 
 					}
 
 					if (!found_ident_placeholder)
-						dynquery = sinfo.data;
+						dynquery = fstr;
 				}
 			}
 		}
 	}
-	else if (IsA(expr_node, Const))
+	else
 	{
-		expr_is_const = true;
-		dynquery = plpgsql_check_const_to_string((Const *) expr_node);
+		dynquery = plpgsql_check_get_const_string(cstate, expr_node, NULL);
+		expr_is_const = (dynquery != NULL);
 	}
 
 	if (dynquery)

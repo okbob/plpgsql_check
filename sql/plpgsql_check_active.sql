@@ -2866,7 +2866,6 @@ declare
   r record;
   v text = 'select 10 a, 20 b't;
 begin
-  select 10 a, 20 b into r;
   for r in execute v
   loop
     raise notice '%', r.a;
@@ -2874,7 +2873,7 @@ begin
 end
 $$ language plpgsql;
 
--- should be warning
+-- should be ok
 select * from plpgsql_check_function('dyn_sql_3');
 
 drop function dyn_sql_3();
@@ -5278,3 +5277,64 @@ drop role plpgsql_check_test_role;
 
 set plpgsql_check.enable_tracer to off;
 select plpgsql_check_tracer(false);
+
+-- tracing constants
+-- issue #159
+create or replace function tabret_dynamic()
+returns table (id integer, val text)
+as $$
+begin
+  return query execute 'select id, val from (values (1, ''a''), (2, ''b'')) as v(id, val)';
+end;
+$$ language plpgsql immutable;
+
+-- should be ok
+select * from plpgsql_check_function('tabret_dynamic()');
+
+create or replace function tabret_dynamic()
+returns table (id integer, val text)
+as $$
+declare
+  z_query text;
+begin
+  z_query := 'select id, val from (values (1, ''a''), (2, ''b'')) as v(id, val)';
+  execute z_query into id, val;
+  return next;
+end;
+$$ language plpgsql immutable;
+
+-- should be ok
+select * from plpgsql_check_function('tabret_dynamic()');
+
+create or replace function tabret_dynamic()
+returns table (id integer, val text)
+as $$
+declare
+  z_query text;
+begin
+  z_query := 'select id, val from (values (1, ''a''), (2, ''b'')) as v(id, val)';
+  for id, val in execute z_query
+  loop
+    return next;
+  end loop;
+end;
+$$ language plpgsql immutable;
+
+-- should be ok
+select * from plpgsql_check_function('tabret_dynamic()');
+
+create or replace function tabret_dynamic()
+returns table (id integer, val text)
+as $$
+declare
+  z_query text;
+begin
+  z_query := 'select id, val from (values (1, ''a''), (2, ''b'')) as v(id, val)';
+  return query execute z_query;
+end;
+$$ language plpgsql immutable;
+
+-- should be ok
+select * from plpgsql_check_function('tabret_dynamic()');
+
+drop function tabret_dynamic;

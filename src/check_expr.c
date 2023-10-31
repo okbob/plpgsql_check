@@ -755,10 +755,15 @@ is_const_null_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 }
 
 char *
-plpgsql_check_const_to_string(Const *c)
+plpgsql_check_const_to_string(Node *node, int *location)
 {
-	if (IsA((Node *) c, Const))
+	if (IsA(node, Const))
 	{
+		Const *c = (Const *) node;
+
+		if (location)
+			*location = c->location;
+
 		if (!c->constisnull)
 		{
 			Oid		typoutput;
@@ -773,25 +778,66 @@ plpgsql_check_const_to_string(Const *c)
 	return NULL;
 }
 
+char *
+plpgsql_check_get_tracked_const(PLpgSQL_checkstate *cstate, Node *node)
+{
+	if (!cstate->strconstvars)
+		return NULL;
+
+	if (IsA(node, Param))
+	{
+		Param *p = (Param *) node;
+
+		if (p->paramkind == PARAM_EXTERN && p->paramid > 0 && p->location != -1)
+		{
+			int			dno = p->paramid - 1;
+
+			if (cstate->strconstvars[dno])
+				return cstate->strconstvars[dno];
+		}
+	}
+	else if (IsA(node, CoerceViaIO))
+	{
+		CoerceViaIO *coerce = (CoerceViaIO *) node;
+		bool	typispreferred;
+		char 	typcategory;
+
+		get_type_category_preferred(coerce->resulttype, &typcategory, &typispreferred);
+		if (typcategory == 'S')
+			return plpgsql_check_get_tracked_const(cstate, (Node *) coerce->arg);
+	}
+
+	return NULL;
+}
+
+char *
+plpgsql_check_get_const_string(PLpgSQL_checkstate *cstate, Node *node, int *location)
+{
+	char	   *str;
+
+	if (location)
+		*location = -1;
+
+	str = plpgsql_check_const_to_string(node, location);
+
+	if (!str)
+		str = plpgsql_check_get_tracked_const(cstate, node);
+
+	return str;
+}
+
 /*
  * Returns string for any not null constant. isnull is true,
  * when constant is null.
  *
  */
 char *
-plpgsql_check_expr_get_string(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *isnull)
+plpgsql_check_expr_get_string(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, int *location)
 {
-	Const	   *c;
 
-	c = expr_get_const(cstate, expr);
-	if (c)
-	{
-		*isnull = c->constisnull;
+	Node *node = plpgsql_check_expr_get_node(cstate, expr, true);
 
-		return plpgsql_check_const_to_string(c);
-	}
-
-	return NULL;
+	return plpgsql_check_get_const_string(cstate, node, location);
 }
 
 static void
@@ -1336,6 +1382,48 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 						cstate->safe_variables = bms_del_member(cstate->safe_variables, targetdno);
 					else
 						cstate->safe_variables = bms_add_member(cstate->safe_variables, targetdno);
+				}
+			}
+		}
+
+		/* constant tracing */
+		if (/* cstate->cinfo->constant_tracing && */  targetdno != -1)
+		{
+			char	   *str;
+
+			str = plpgsql_check_expr_get_string(cstate, expr, NULL);
+			if (str)
+			{
+				PLpgSQL_stmt_stack_item *current = cstate->top_stmt_stack;
+				MemoryContext oldcxt = MemoryContextSwitchTo(cstate->check_cxt);
+				char	   *prev_val;
+
+				Assert(cstate->top_stmt_stack);
+
+				if (!cstate->strconstvars)
+					cstate->strconstvars = palloc0(sizeof(char *) * cstate->estate->ndatums);
+
+				/*
+				 * We need to do copy string first. There is an possibility to self
+				 * reference, and then we need to first copy, and after that free.
+				 */
+				prev_val = cstate->strconstvars[targetdno];
+				cstate->strconstvars[targetdno] = pstrdup(str);
+
+				if (prev_val)
+					pfree(prev_val);
+
+				current->invalidate_strconstvars = bms_add_member(current->invalidate_strconstvars, targetdno);
+
+				MemoryContextSwitchTo(oldcxt);
+			}
+			else
+			{
+				/* the assigned value is not constant, reset current */
+				if (cstate->strconstvars && cstate->strconstvars[targetdno])
+				{
+					pfree(cstate->strconstvars[targetdno]);
+					cstate->strconstvars[targetdno] = NULL;
 				}
 			}
 		}
