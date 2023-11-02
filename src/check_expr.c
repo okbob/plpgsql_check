@@ -701,7 +701,8 @@ plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 		Plan	   *_plan;
 
 		_plan = _stmt->planTree;
-		if (IsA(_plan, Result) &&list_length(_plan->targetlist) == 1)
+
+		if ((IsA(_plan, Result) || IsA(_plan, ProjectSet)) && list_length(_plan->targetlist) == 1)
 		{
 			TargetEntry *tle;
 
@@ -839,6 +840,9 @@ plpgsql_check_expr_get_string(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, in
 {
 
 	Node *node = plpgsql_check_expr_get_node(cstate, expr, true);
+
+	if (!node)
+		return NULL;
 
 	return plpgsql_check_get_const_string(cstate, node, location);
 }
