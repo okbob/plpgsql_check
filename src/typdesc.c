@@ -432,6 +432,13 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 	{
 		plansource = plpgsql_check_get_plan_source(cstate, query->plan);
 
+		/*
+		 * The EXECUTE command can sucessfully execute empty string.
+		 * Then the plansource is empty - NULL.
+		 */
+		if (!plansource)
+			return NULL;
+
 		if (!plansource->resultDesc)
 		{
 			if (is_expression)

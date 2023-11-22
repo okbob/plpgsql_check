@@ -331,13 +331,15 @@ CachedPlanSource *
 plpgsql_check_get_plan_source(PLpgSQL_checkstate *cstate, SPIPlanPtr plan)
 {
 	CachedPlanSource *plansource = NULL;
+	int			nplans;
 
 	if (plan == NULL || plan->magic != _SPI_PLAN_MAGIC)
 		elog(ERROR, "cached plan is not valid plan");
 
 	cstate->has_mp = false;
 
-	if (list_length(plan->plancache_list) != 1)
+	nplans = list_length(plan->plancache_list);
+	if (nplans > 1)
 	{
 		/*
 		 * We can allow multiple plans for commands executed by
@@ -353,7 +355,7 @@ plpgsql_check_get_plan_source(PLpgSQL_checkstate *cstate, SPIPlanPtr plan)
 		else
 			elog(ERROR, "plan is not single execution plany");
 	}
-	else
+	else if (nplans == 1)
 		plansource = (CachedPlanSource *) linitial(plan->plancache_list);
 
 	return plansource;
@@ -370,6 +372,8 @@ ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 	Query *result = NULL;
 
 	plansource = plpgsql_check_get_plan_source(cstate, expr->plan);
+	if (!plansource)
+		return NULL;
 
 	/*
 	 * query_list has more fields, when rules are used. There
@@ -524,6 +528,11 @@ get_cached_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *has_result
 	CachedPlan	*cplan;
 
 	plansource = plpgsql_check_get_plan_source(cstate, expr->plan);
+	if (!plansource)
+	{
+		*has_result_desc = false;
+		return NULL;
+	}
 
 	*has_result_desc = plansource->resultDesc ? true : false;
 
@@ -854,6 +863,8 @@ force_plan_checks(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 	bool		has_result_desc;
 
 	cplan = get_cached_plan(cstate, expr, &has_result_desc);
+	if (!cplan)
+		return;
 
 	/* do all checks for this plan, reduce a access to plan cache */
 	plan_checks(cstate, cplan, expr->query);

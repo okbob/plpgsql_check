@@ -5338,3 +5338,27 @@ $$ language plpgsql immutable;
 select * from plpgsql_check_function('tabret_dynamic()');
 
 drop function tabret_dynamic;
+
+-- should not to crash on empty string, or comment
+create or replace function dynamic_emptystr()
+returns void as $$
+begin
+  execute '';
+end;
+$$ language plpgsql;
+
+-- should be ok
+select * from plpgsql_check_function('dynamic_emptystr()');
+
+create or replace function dynamic_emptystr()
+returns void as $$
+declare x int;
+begin
+  execute '--' into x;
+end;
+$$ language plpgsql;
+
+-- should not to crash, no result error
+select * from plpgsql_check_function('dynamic_emptystr()');
+
+drop function dynamic_emptystr();
