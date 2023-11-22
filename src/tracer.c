@@ -14,6 +14,7 @@
 
 #include "catalog/pg_type.h"
 #include "mb/pg_wchar.h"
+#include "storage/proc.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
@@ -26,6 +27,7 @@ bool plpgsql_check_trace_assert = false;
 
 /* the output is modified for regress tests */
 bool plpgsql_check_tracer_test_mode = false;
+bool plpgsql_check_tracer_show_nsubxids = false;
 
 PGErrorVerbosity plpgsql_check_tracer_verbosity = PGERROR_DEFAULT;
 PGErrorVerbosity plpgsql_check_trace_assert_verbosity = PGERROR_DEFAULT;
@@ -904,6 +906,7 @@ tracer_func_beg(PLpgSQL_execstate *estate,
 	Oid			fn_oid;
 	int			indent;
 	int			frame_width;
+	char		buffer[20];
 
 	if (!tinfo)
 		return;
@@ -917,23 +920,37 @@ tracer_func_beg(PLpgSQL_execstate *estate,
 	indent = tinfo->frame_num * 2 + (plpgsql_check_tracer_verbosity == PGERROR_VERBOSE ? 6 : 0);
 	frame_width = plpgsql_check_tracer_verbosity == PGERROR_VERBOSE ? 6 : 3;
 
+	if (plpgsql_check_tracer_show_nsubxids)
+	{
+		int			nxids = MyProc->subxidStatus.count;
+
+		if (MyProc->subxidStatus.overflowed)
+			snprintf(buffer, 20, ", nxids=OF");
+		else
+			snprintf(buffer, 20, ", nxids=%d", nxids);
+	}
+	else
+		buffer[0] = '\0';
+
 	if (plpgsql_check_tracer_verbosity >= PGERROR_DEFAULT)
 		elog(plpgsql_check_tracer_errlevel,
-			 "#%-*d%*s ->> start of %s%s (oid=%u)",
+			 "#%-*d%*s ->> start of %s%s (oid=%u%s)",
 												  frame_width,
 												  tinfo->frame_num,
 												  indent,
 												  "",
 												  func->fn_oid ? "function " : "block ",
 												  func->fn_signature,
-												  fn_oid);
+												  fn_oid,
+												  buffer);
 	else
 		elog(plpgsql_check_tracer_errlevel,
-			 "#%-*d start of %s (oid=%u)",
+			 "#%-*d start of %s (oid=%u%s)",
 												  frame_width,
 												  tinfo->frame_num,
 												  func->fn_oid ? get_func_name(func->fn_oid) : "inline code block",
-												  fn_oid);
+												  fn_oid,
+												  buffer);
 
 	if (plpgsql_check_tracer_verbosity >= PGERROR_DEFAULT)
 	{
@@ -1075,6 +1092,7 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 	tracer_info *tinfo = *plugin2_info;
 	plpgsql_check_plugin2_stmt_info *sinfo;
 	int			total_level;
+	char		buffer[20];
 
 	if (!tinfo)
 		return;
@@ -1092,6 +1110,19 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 		trace_assert(estate, stmt, tinfo);
 
 	total_level = tinfo->frame_num + sinfo->level;
+
+	if (plpgsql_check_tracer_show_nsubxids)
+	{
+		int			nxids = MyProc->subxidStatus.count;
+
+		if (MyProc->subxidStatus.overflowed)
+			snprintf(buffer, 20, " (nxids=OF)");
+		else
+			snprintf(buffer, 20, " (nxids=%d)", nxids);
+	}
+	else
+		buffer[0] = '\0';
+
 
 	if (plpgsql_check_tracer_verbosity == PGERROR_VERBOSE)
 	{
@@ -1203,40 +1234,44 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 			if (is_assignment)
 			{
 				elog(plpgsql_check_tracer_errlevel,
-					 "#%-*s %4d %*s --> start of assignment %s",
+					 "#%-*s %4d %*s --> start of assignment %s%s",
 												frame_width, printbuf,
 												stmt->lineno,
 												indent, "",
-												copy_string_part(exprbuf, expr->query + startpos, 30));
+												copy_string_part(exprbuf, expr->query + startpos, 30),
+												buffer);
 			}
 			else if (is_perform)
 			{
 				elog(plpgsql_check_tracer_errlevel,
-					 "#%-*s %4d %*s --> start of perform %s",
+					 "#%-*s %4d %*s --> start of perform %s%s",
 												frame_width, printbuf,
 												stmt->lineno,
 												indent, "",
-												copy_string_part(exprbuf, expr->query + startpos, 30));
+												copy_string_part(exprbuf, expr->query + startpos, 30),
+												buffer);
 			}
 			else
 			{
 				elog(plpgsql_check_tracer_errlevel,
-					 "#%-*s %4d %*s --> start of %s (%s='%s')",
+					 "#%-*s %4d %*s --> start of %s (%s='%s')%s",
 												frame_width, printbuf,
 												stmt->lineno,
 												indent, "",
 												plpgsql_check__stmt_typename_p(stmt),
 												exprname,
-												copy_string_part(exprbuf, expr->query + startpos, 30));
+												copy_string_part(exprbuf, expr->query + startpos, 30),
+												buffer);
 			}
 		}
 		else
 			elog(plpgsql_check_tracer_errlevel,
-				 "#%-*s %4d %*s --> start of %s",
+				 "#%-*s %4d %*s --> start of %s%s",
 											frame_width, printbuf,
 											stmt->lineno,
 											indent, "",
-											plpgsql_check__stmt_typename_p(stmt));
+											plpgsql_check__stmt_typename_p(stmt),
+											buffer);
 
 		if (expr)
 			print_expr_args(estate, expr, printbuf, total_level);

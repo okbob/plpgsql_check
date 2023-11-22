@@ -293,6 +293,14 @@ _PG_init(void)
 					    PGC_USERSET, 0,
 					    NULL, NULL, NULL);
 
+	DefineCustomBoolVariable("plpgsql_check.tracer_show_nsubxids",
+					    "when is true, then the tracer shows number of current subxids",
+					    NULL,
+					    &plpgsql_check_tracer_show_nsubxids,
+					    false,
+					    PGC_USERSET, 0,
+					    NULL, NULL, NULL);
+
 	DefineCustomEnumVariable("plpgsql_check.tracer_verbosity",
 					    "sets the verbosity of tracer",
 					    NULL,

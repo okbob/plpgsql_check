@@ -372,6 +372,7 @@ extern PGErrorVerbosity plpgsql_check_tracer_verbosity;
 extern PGErrorVerbosity plpgsql_check_trace_assert_verbosity;
 
 extern bool plpgsql_check_regress_test_mode;
+extern bool plpgsql_check_tracer_show_nsubxids;
 
 extern void plpgsql_check_trace_assert_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 
