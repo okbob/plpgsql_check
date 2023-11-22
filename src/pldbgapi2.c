@@ -754,6 +754,16 @@ get_func_info(PLpgSQL_function *func)
 
 		fn_name = get_func_name(func->fn_oid);
 
+		/*
+		 * Unfortunately, in this moment the called function can be dropped.
+		 * get_func_name forces sinval message processing, and all related
+		 * metadata will be lost. So get_func_name can return NULL. In this
+		 * case we can use signature from plpgsql's cache. That is protected
+		 * until function execution's end.
+		 */
+		if (!fn_name)
+			fn_name = func->fn_signature;
+
 		if (persistent_func_info)
 		{
 			MemoryContext oldcxt;
