@@ -919,12 +919,23 @@ tracer_func_beg(PLpgSQL_execstate *estate,
 
 	if (plpgsql_check_tracer_show_nsubxids)
 	{
-		int			nxids = MyProc->subxidStatus.count;
+
+#if PG_VERSION_NUM >= 140000
 
 		if (MyProc->subxidStatus.overflowed)
 			snprintf(buffer, 30, ", nxids=OF");
 		else
-			snprintf(buffer, 30, ", nxids=%d", nxids);
+			snprintf(buffer, 30, ", nxids=%d", MyProc->subxidStatus.count);
+
+#else
+
+		if (MyPgXact->overflowed)
+			snprintf(buffer, 30, ", nxids=OF");
+		else
+			snprintf(buffer, 30, ", nxids=%d", MyPgXact->nxids);
+
+#endif
+
 	}
 	else
 		buffer[0] = '\0';
@@ -1112,14 +1123,27 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 
 	if (plpgsql_check_tracer_show_nsubxids)
 	{
-		int			nxids = MyProc->subxidStatus.count;
+
+#if PG_VERSION_NUM >= 140000
 
 		if (MyProc->subxidStatus.overflowed)
 			snprintf(buffer, 20, " (tnl=%d, nxids=OF)",
 					 GetCurrentTransactionNestLevel());
 		else
 			snprintf(buffer, 20, " (tnl=%d, nxids=%d)",
-					 GetCurrentTransactionNestLevel(), nxids);
+					 GetCurrentTransactionNestLevel(), MyProc->subxidStatus.count);
+
+#else
+
+		if (MyPgXact->overflowed)
+			snprintf(buffer, 20, " (tnl=%d, nxids=OF)",
+					 GetCurrentTransactionNestLevel());
+		else
+			snprintf(buffer, 20, " (tnl=%d, nxids=%d)",
+					 GetCurrentTransactionNestLevel(), MyPgXact->nxids);
+
+#endif
+
 	}
 	else
 		snprintf(buffer, 20, " (tnl=%d)", GetCurrentTransactionNestLevel());
