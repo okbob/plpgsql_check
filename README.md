@@ -779,6 +779,10 @@ It can be used, although the assertions are disabled in plpgsql runtime.
     NOTICE:  #0 PL/pgSQL function inline_code_block line 1 at PERFORM
     DO
 
+Tracer can show usage of subtransaction buffer id (`nxids`). The displayed `tnl` number
+is transaction nesting level number (for plpgsql it depends on deep of blocks with
+exception's handlers).
+
 ## Using with plugin_debugger
 
 If you use `plugin_debugger` (plpgsql debugger) together with `plpgsql_check`, then
