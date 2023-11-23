@@ -35,7 +35,7 @@
 #include "utils/lsyscache.h"
 
 static void collect_volatility(PLpgSQL_checkstate *cstate, Query *query);
-static Query * ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
+static Query * ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, CachedPlanSource *plansource);
 
 static CachedPlan * get_cached_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *has_result_desc);
 static void plan_checks(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str);
@@ -164,20 +164,14 @@ plpgsql_parser_setup_wrapper(struct ParseState *pstate, PLpgSQL_expr *expr)
 	pstate->p_paramref_hook = param_ref;
 }
 
-/*
- * Generate a prepared plan - this is simplified copy from pl_exec.c Is not
- * necessary to check simple plan, returns true, when expression is
- * succesfully prepared.
- */
 static void
-prepare_plan(PLpgSQL_checkstate *cstate,
+_prepare_plan(PLpgSQL_checkstate *cstate,
 			 PLpgSQL_expr *expr,
 			 int cursorOptions,
 			 ParserSetupHook parser_setup,
 			 void *arg)
 {
 	SPIPlanPtr	plan;
-	Query	   *query;
 
 	if (expr->plan == NULL)
 	{
@@ -274,8 +268,37 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 
 		SPI_freeplan(plan);
 	}
+}
 
-	query = ExprGetQuery(cstate, expr);
+/*
+ * Generate a prepared plan - this is simplified copy from pl_exec.c Is not
+ * necessary to check simple plan. The planning is forced when plancache is
+ * not valid.
+ */
+static void
+prepare_plan(PLpgSQL_checkstate *cstate,
+			 PLpgSQL_expr *expr,
+			 int cursorOptions,
+			 ParserSetupHook parser_setup,
+			 void *arg)
+{
+	Query	   *query;
+	CachedPlanSource *plansource = NULL;
+
+	do
+	{
+		_prepare_plan(cstate, expr, cursorOptions, parser_setup, arg);
+		plansource = plpgsql_check_get_plan_source(cstate, expr->plan);
+		if (!plansource)
+			return;
+		if (!plansource->is_valid)
+			expr->plan = NULL;
+	}
+	while (!plansource->is_valid);
+
+	query = ExprGetQuery(cstate, expr, plansource);
+	if (!query)
+		return;
 
 	/* there checks are common on every expr/query */
 	plpgsql_check_funcexpr(cstate, query, expr->query);
@@ -366,14 +389,15 @@ plpgsql_check_get_plan_source(PLpgSQL_checkstate *cstate, SPIPlanPtr plan)
  *
  */
 static Query *
-ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, CachedPlanSource *plansource)
 {
-	CachedPlanSource *plansource;
 	Query *result = NULL;
 
-	plansource = plpgsql_check_get_plan_source(cstate, expr->plan);
-	if (!plansource)
-		return NULL;
+	Assert(plansource);
+	Assert(plansource->is_valid);
+
+	if (!plansource->query_list)
+		elog(ERROR, "missing plan in plancache source");
 
 	/*
 	 * query_list has more fields, when rules are used. There
