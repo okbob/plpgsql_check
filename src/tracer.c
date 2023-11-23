@@ -70,9 +70,6 @@ typedef struct tracer_info
 
 static void trace_assert(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, tracer_info *tinfo);
 
-
-//static void set_stmts_group_number(List *stmts, int *group_numbers, int *parent_group_numbers, int sgn, int *cgn, int spgn);
-
 static void tracer_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
 static void tracer_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
 static void tracer_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
@@ -906,7 +903,7 @@ tracer_func_beg(PLpgSQL_execstate *estate,
 	Oid			fn_oid;
 	int			indent;
 	int			frame_width;
-	char		buffer[20];
+	char		buffer[30];
 
 	if (!tinfo)
 		return;
@@ -925,16 +922,16 @@ tracer_func_beg(PLpgSQL_execstate *estate,
 		int			nxids = MyProc->subxidStatus.count;
 
 		if (MyProc->subxidStatus.overflowed)
-			snprintf(buffer, 20, ", nxids=OF");
+			snprintf(buffer, 30, ", nxids=OF");
 		else
-			snprintf(buffer, 20, ", nxids=%d", nxids);
+			snprintf(buffer, 30, ", nxids=%d", nxids);
 	}
 	else
 		buffer[0] = '\0';
 
 	if (plpgsql_check_tracer_verbosity >= PGERROR_DEFAULT)
 		elog(plpgsql_check_tracer_errlevel,
-			 "#%-*d%*s ->> start of %s%s (oid=%u%s)",
+			 "#%-*d%*s ->> start of %s%s (oid=%u, tnl=%d%s)",
 												  frame_width,
 												  tinfo->frame_num,
 												  indent,
@@ -942,14 +939,16 @@ tracer_func_beg(PLpgSQL_execstate *estate,
 												  func->fn_oid ? "function " : "block ",
 												  func->fn_signature,
 												  fn_oid,
+												  GetCurrentTransactionNestLevel(),
 												  buffer);
 	else
 		elog(plpgsql_check_tracer_errlevel,
-			 "#%-*d start of %s (oid=%u%s)",
+			 "#%-*d start of %s (oid=%u, tnl=%d%s)",
 												  frame_width,
 												  tinfo->frame_num,
 												  func->fn_oid ? get_func_name(func->fn_oid) : "inline code block",
 												  fn_oid,
+												  GetCurrentTransactionNestLevel(),
 												  buffer);
 
 	if (plpgsql_check_tracer_verbosity >= PGERROR_DEFAULT)
@@ -1116,12 +1115,14 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 		int			nxids = MyProc->subxidStatus.count;
 
 		if (MyProc->subxidStatus.overflowed)
-			snprintf(buffer, 20, " (nxids=OF)");
+			snprintf(buffer, 20, " (tnl=%d, nxids=OF)",
+					 GetCurrentTransactionNestLevel());
 		else
-			snprintf(buffer, 20, " (nxids=%d)", nxids);
+			snprintf(buffer, 20, " (tnl=%d, nxids=%d)",
+					 GetCurrentTransactionNestLevel(), nxids);
 	}
 	else
-		buffer[0] = '\0';
+		snprintf(buffer, 20, " (tnl=%d)", GetCurrentTransactionNestLevel());
 
 
 	if (plpgsql_check_tracer_verbosity == PGERROR_VERBOSE)
