@@ -949,8 +949,6 @@ plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate,
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
-
-		SPI_restore_connection();
 	}
 	PG_CATCH();
 	{
@@ -966,9 +964,6 @@ plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate,
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
-
-		/* reconnect spi */
-		SPI_restore_connection();
 
 		/* raise warning (errors in pragma can be ignored instead */
 		ereport(WARNING,
@@ -1056,8 +1051,6 @@ plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int line
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
-
-		SPI_restore_connection();
 	}
 	PG_CATCH();
 	{
@@ -1073,9 +1066,6 @@ plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int line
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
-
-		/* reconnect spi */
-		SPI_restore_connection();
 
 		/* raise warning (errors in pragma can be ignored instead */
 		ereport(WARNING,
@@ -1153,8 +1143,6 @@ plpgsql_check_pragma_sequence(PLpgSQL_checkstate *cstate, const char *str, int l
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
-
-		SPI_restore_connection();
 	}
 	PG_CATCH();
 	{
@@ -1170,9 +1158,6 @@ plpgsql_check_pragma_sequence(PLpgSQL_checkstate *cstate, const char *str, int l
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
-
-		/* reconnect spi */
-		SPI_restore_connection();
 
 		/* raise warning (errors in pragma can be ignored instead */
 		ereport(WARNING,

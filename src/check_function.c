@@ -249,8 +249,6 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 			relation_close(trigdata.tg_relation, AccessShareLock);
 
 		release_exprs(cstate.exprs);
-
-		SPI_restore_connection();
 	}
 	PG_CATCH();
 	{
@@ -275,9 +273,6 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 		}
 
 		plpgsql_check_put_error_edata(&cstate, edata);
-
-		/* reconnect spi */
-		SPI_restore_connection();
 	}
 	PG_END_TRY();
 

@@ -265,9 +265,6 @@ plpgsql_check_finalize_ri(plpgsql_check_result_info *ri)
 		pfree(ri->sinfo);
 		ri->sinfo = NULL;
 	}
-
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(ri->tupstore);
 }
 
 /*

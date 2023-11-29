@@ -985,8 +985,6 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
-
-		SPI_restore_connection();
 	}
 	PG_CATCH();
 	{
@@ -1010,9 +1008,6 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
 		else
 			plpgsql_check_put_error_edata(cstate, edata);
 		MemoryContextSwitchTo(oldCxt);
-
-		/* reconnect spi */
-		SPI_restore_connection();
 	}
 	PG_END_TRY();
 }
@@ -1133,8 +1128,6 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
-
-		SPI_restore_connection();
 	}
 	PG_CATCH();
 	{
@@ -1158,9 +1151,6 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 		else
 			plpgsql_check_put_error_edata(cstate, edata);
 		MemoryContextSwitchTo(oldCxt);
-
-		/* reconnect spi */
-		SPI_restore_connection();
 	}
 	PG_END_TRY();
 }
@@ -1527,8 +1517,6 @@ no_other_check:
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
-
-		SPI_restore_connection();
 	}
 	PG_CATCH();
 	{
@@ -1552,9 +1540,6 @@ no_other_check:
 		else
 			plpgsql_check_put_error_edata(cstate, edata);
 		MemoryContextSwitchTo(oldCxt);
-
-		/* reconnect spi */
-		SPI_restore_connection();
 	}
 	PG_END_TRY();
 }
@@ -1622,8 +1607,6 @@ plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
-
-		SPI_restore_connection();
 	}
 	PG_CATCH();
 	{
@@ -1647,9 +1630,6 @@ plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 		else
 			plpgsql_check_put_error_edata(cstate, edata);
 		MemoryContextSwitchTo(oldCxt);
-
-		/* reconnect spi */
-		SPI_restore_connection();
 	}
 	PG_END_TRY();
 

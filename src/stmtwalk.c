@@ -1252,8 +1252,6 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
-
-		SPI_restore_connection();
 	}
 	PG_CATCH();
 	{
@@ -1283,9 +1281,6 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 		}
 
 		MemoryContextSwitchTo(oldCxt);
-
-		/* reconnect spi */
-		SPI_restore_connection();
 	}
 	PG_END_TRY();
 
@@ -2012,8 +2007,6 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 				RollbackAndReleaseCurrentSubTransaction();
 				MemoryContextSwitchTo(oldCxt);
 				CurrentResourceOwner = oldowner;
-
-				SPI_restore_connection();
 			}
 			PG_CATCH();
 			{
