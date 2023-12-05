@@ -783,6 +783,23 @@ Tracer can show usage of subtransaction buffer id (`nxids`). The displayed `tnl`
 is transaction nesting level number (for plpgsql it depends on deep of blocks with
 exception's handlers).
 
+## Detection of unclosed cursors
+
+PLpgSQL's cursors are just names of SQL cursors. The life cycle of SQL cursors is not
+joined with scope of related plpgsql's cursor variable. SQL cursors are cloased by self
+at transaction end, but for long transaction and too much opened cursors it can be too late.
+It is better to close cursor explicitly when cursor is not necessary (by CLOSE statement).
+Without it the significant memory issues are possible.
+
+When OPEN statement try to use cursor that is not closed yet, the warning is raised.
+This feature can be disabled by setting `plpgsql_check.cursors_leaks to off`. This check
+is not active, when routine is called recusively 
+
+The unclosed cursors can be checked immediately when function is finished. This check is
+disabled by default, and should be enabled by `plpgsql_check.strict_cursors_leaks to on`.
+
+Any unclosed cursor is reported once.
+
 ## Using with plugin_debugger
 
 If you use `plugin_debugger` (plpgsql debugger) together with `plpgsql_check`, then

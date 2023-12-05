@@ -453,6 +453,15 @@ extern void plpgsql_check_finish_pldbgapi2(void);
 #endif
 
 /*
+ * functions from cursors_leaks.c
+ */
+extern bool plpgsql_check_cursors_leaks;
+extern bool plpgsql_check_cursors_leaks_strict;
+extern int plpgsql_check_cursors_leaks_level;
+
+extern void plpgsql_check_cursors_leaks_init(void);
+
+/*
  * functions from plpgsql_check.c
  */
 
