@@ -5362,3 +5362,52 @@ $$ language plpgsql;
 select * from plpgsql_check_function('dynamic_emptystr()');
 
 drop function dynamic_emptystr();
+
+-- unclosed cursor detection
+create or replace function fx()
+returns void as $$
+declare c refcursor;
+begin
+  open c for select * from pg_class;
+end;
+$$ language plpgsql;
+
+do $$
+begin
+  perform fx();
+  -- should to show warning
+  perform fx();
+end;
+$$;
+
+set plpgsql_check.strict_cursors_leaks to on;
+
+do $$
+begin
+  -- should to show warning
+  perform fx();
+  -- should to show warning
+  perform fx();
+end;
+$$;
+
+create or replace function fx()
+returns void as $$
+declare c refcursor;
+begin
+  open c for select * from pg_class;
+  close c;
+end;
+$$ language plpgsql;
+
+-- without warnings
+do $$
+begin
+  perform fx();
+  perform fx();
+end;
+$$;
+
+set plpgsql_check.strict_cursors_leaks to off;
+
+drop function fx();
