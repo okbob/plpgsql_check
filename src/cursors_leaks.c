@@ -155,7 +155,7 @@ func_end(PLpgSQL_execstate *estate,
 
 					ereport(plpgsql_check_cursors_leaks_level,
 							errcode(ERRCODE_INVALID_CURSOR_STATE),
-							errmsg("Cursor \"%s\" is not closed", ct->curname),
+							errmsg("cursor is not closed", ct->curname),
 							errdetail("%s", context));
 					pfree(context);
 
@@ -211,7 +211,7 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info)
 
 						ereport(plpgsql_check_cursors_leaks_level,
 								errcode(ERRCODE_INVALID_CURSOR_STATE),
-								errmsg("cursor \"%s\" is not closed", ct->curname),
+								errmsg("cursor is not closed", ct->curname),
 								errdetail("%s", context));
 
 						pfree(context);

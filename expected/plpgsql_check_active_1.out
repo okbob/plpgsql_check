@@ -9117,3 +9117,47 @@ select * from plpgsql_check_function('dynamic_emptystr()');
 (1 row)
 
 drop function dynamic_emptystr();
+-- unclosed cursor detection
+create or replace function fx()
+returns void as $$
+declare c refcursor;
+begin
+  open c for select * from pg_class;
+end;
+$$ language plpgsql;
+do $$
+begin
+  perform fx();
+  -- should to show warning
+  perform fx();
+end;
+$$;
+WARNING:  cursor is not closed
+set plpgsql_check.strict_cursors_leaks to on;
+do $$
+begin
+  -- should to show warning
+  perform fx();
+  -- should to show warning
+  perform fx();
+end;
+$$;
+WARNING:  cursor is not closed
+WARNING:  cursor is not closed
+create or replace function fx()
+returns void as $$
+declare c refcursor;
+begin
+  open c for select * from pg_class;
+  close c;
+end;
+$$ language plpgsql;
+-- without warnings
+do $$
+begin
+  perform fx();
+  perform fx();
+end;
+$$;
+set plpgsql_check.strict_cursors_leaks to off;
+drop function fx();
