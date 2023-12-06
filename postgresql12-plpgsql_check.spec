@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	2.6.2
+Version:	2.7.0
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -49,6 +49,9 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/*.control
 
 %changelog
+* Wed Dec 6 2023 - Pavel Stehule <pavel.stehule@gmail.com> 2.7.0
+- unclosed cursors detection
+
 * Tue Oct 31 2023 - Pavel Stehule <pavel.stehule@gmail.com> 2.6.0
 - simple constant tracing support
 
