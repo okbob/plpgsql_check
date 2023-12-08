@@ -61,6 +61,14 @@ typedef enum
 	PLPGSQL_CHECK_STMT_WALKER_COLLECT_COVERAGE
 } profiler_stmt_walker_mode;
 
+typedef enum
+{
+	PLPGSQL_CHECK_PRAGMA_ASSERT_SCHEMA,
+	PLPGSQL_CHECK_PRAGMA_ASSERT_TABLE,
+	PLPGSQL_CHECK_PRAGMA_ASSERT_COLUMN,
+} PragmaAssertType;
+
+
 typedef struct PLpgSQL_stmt_stack_item
 {
 	PLpgSQL_stmt *stmt;
@@ -323,6 +331,8 @@ extern Oid plpgsql_check_parse_name_or_signature(char *name_or_signature);
 extern bool plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate, const char *str, PLpgSQL_nsitem *ns, int lineno);
 extern bool plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int lineno);
 extern bool plpgsql_check_pragma_sequence(PLpgSQL_checkstate *cstate, const char *str, int lineno);
+extern bool plpgsql_check_pragma_assert(PLpgSQL_checkstate *cstate, PragmaAssertType pat, const char *str,
+										PLpgSQL_nsitem *ns, int lineno);
 extern void plpgsql_check_search_comment_options(plpgsql_check_info *cinfo);
 extern char *plpgsql_check_process_echo_string(char *str, plpgsql_check_info *cinfo);
 

@@ -893,6 +893,127 @@ get_name(List *names)
 	return sinfo.data;
 }
 
+static const char *
+pragma_assert_name(PragmaAssertType pat)
+{
+	switch (pat)
+	{
+		case PLPGSQL_CHECK_PRAGMA_ASSERT_SCHEMA:
+			return "assert-schema";
+		case PLPGSQL_CHECK_PRAGMA_ASSERT_TABLE:
+			return "assert-table";
+		case PLPGSQL_CHECK_PRAGMA_ASSERT_COLUMN:
+			return "assert-column";
+	}
+}
+
+bool
+plpgsql_check_pragma_assert(PLpgSQL_checkstate *cstate,
+							PragmaAssertType pat,
+							const char *str,
+							PLpgSQL_nsitem *ns,
+							int lineno)
+{
+	MemoryContext oldCxt;
+	ResourceOwner oldowner;
+	volatile bool result = true;
+
+	/*
+	 * namespace is available only in compile check mode, and only in this mode
+	 * this pragma can be used.
+	 */
+	if (!ns || !cstate)
+		return true;
+
+	oldCxt = CurrentMemoryContext;
+
+	oldowner = CurrentResourceOwner;
+	BeginInternalSubTransaction(NULL);
+	MemoryContextSwitchTo(cstate->check_cxt);
+
+	PG_TRY();
+	{
+		TokenizerState tstate;
+		int		dno[3];
+		int		nvars = 0;
+		int		i;
+		PLpgSQL_datum *target;
+		List	   *names;
+		Oid			typtype;
+		int32		typmod;
+		TupleDesc	typtupdesc;
+
+		initialize_tokenizer(&tstate, str);
+
+		for (i = 0; i < 3; i++)
+		{
+			if (i > 0)
+			{
+				PragmaTokenType	token, *_token;
+
+				_token = get_token(&tstate, &token);
+				if (_token->value != ',')
+					elog(ERROR, "Syntax error (expected \",\")");
+			}
+
+			names = get_qualified_identifier(&tstate, NULL);
+			if ((dno[i] = get_varno(ns, names)) == -1)
+				elog(ERROR, "Cannot to find variable %s used in \"%s\" pragma",
+					 get_name(names),
+					 pragma_assert_name(pat));
+
+			if (!cstate->strconstvars || !cstate->strconstvars[dno[i]])
+				elog(ERROR, "Variable %s has not assigned constant",
+					 get_name(names));
+
+			nvars += 1;
+
+			if (tokenizer_eol(&tstate))
+				break;
+		}
+
+		if (!tokenizer_eol(&tstate))
+			elog(ERROR, "Syntax error (unexpected chars after variable)");
+
+		if ((pat == PLPGSQL_CHECK_PRAGMA_ASSERT_SCHEMA && nvars > 1) ||
+			(pat == PLPGSQL_CHECK_PRAGMA_ASSERT_TABLE  && nvars > 2) ||
+			(pat == PLPGSQL_CHECK_PRAGMA_ASSERT_COLUMN && nvars > 3))
+			elog(ERROR, "too much variables for \"%s\" pragma",
+				 pragma_assert_name(pat));
+
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldCxt);
+		CurrentResourceOwner = oldowner;
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		MemoryContextSwitchTo(cstate->check_cxt);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		MemoryContextSwitchTo(oldCxt);
+		FlushErrorState();
+
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldCxt);
+		CurrentResourceOwner = oldowner;
+
+		/* raise warning (errors in pragma can be ignored instead */
+		ereport(WARNING,
+				(errmsg("\"%s\" on line %d is not processed.", pragma_assert_name(pat), lineno),
+				 errdetail("%s", edata->message)));
+
+		result = false;
+	}
+	PG_END_TRY();
+
+	elog(ERROR, "DETECTED");
+
+	return result;
+}
+
 bool
 plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate,
 							 const char *str,
@@ -930,7 +1051,7 @@ plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate,
 
 		names = get_qualified_identifier(&tstate, NULL);
 		if ((target_dno = get_varno(ns, names)) == -1)
-			elog(ERROR, "Cannot to find variable \"%s\" used in settype pragma", get_name(names));
+			elog(ERROR, "Cannot to find variable %s used in settype pragma", get_name(names));
 
 		target = cstate->estate->datums[target_dno];
 		if (target->dtype != PLPGSQL_DTYPE_REC)

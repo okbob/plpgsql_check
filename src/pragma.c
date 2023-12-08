@@ -189,6 +189,24 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 	{
 		is_valid = plpgsql_check_pragma_sequence(cstate, pragma_str + 9, lineno);
 	}
+	else if (strncasecmp(pragma_str, "ASSERT-SCHEMA:", 14) == 0)
+	{
+		is_valid = plpgsql_check_pragma_assert(cstate,
+											   PLPGSQL_CHECK_PRAGMA_ASSERT_SCHEMA,
+											   pragma_str + 14, ns, lineno);
+	}
+	else if (strncasecmp(pragma_str, "ASSERT-TABLE:", 13) == 0)
+	{
+		is_valid = plpgsql_check_pragma_assert(cstate,
+											   PLPGSQL_CHECK_PRAGMA_ASSERT_TABLE,
+											   pragma_str + 13, ns, lineno);
+	}
+	else if (strncasecmp(pragma_str, "ASSERT-COLUMN:", 14) == 0)
+	{
+		is_valid = plpgsql_check_pragma_assert(cstate,
+											   PLPGSQL_CHECK_PRAGMA_ASSERT_COLUMN,
+											   pragma_str + 14, ns, lineno);
+	}
 	else
 	{
 		elog(WARNING, "unsupported pragma: %s", pragma_str);
