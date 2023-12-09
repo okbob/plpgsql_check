@@ -881,6 +881,12 @@ Shorter syntax for pragma is supported too:
 
 * `sequence: name` - create ephemeral temporary sequence
 
+* `assert-schema: varname` - check-time assertation - ensure so schema specified by variable is valid
+
+* `assert-table: [ varname_schema, ] , varname` - ensure so table name specified by variables (by constant tracing) is valid
+
+* `assert-column: [varname_schema, ], varname_table , varname` - ensure so column spefified by variables is valid
+
 Pragmas `enable:tracer` and `disable:tracer`are active for Postgres 12 and higher
 
 # Update

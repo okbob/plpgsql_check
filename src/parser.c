@@ -893,6 +893,186 @@ get_name(List *names)
 	return sinfo.data;
 }
 
+static const char *
+pragma_assert_name(PragmaAssertType pat)
+{
+	switch (pat)
+	{
+		case PLPGSQL_CHECK_PRAGMA_ASSERT_SCHEMA:
+			return "assert-schema";
+		case PLPGSQL_CHECK_PRAGMA_ASSERT_TABLE:
+			return "assert-table";
+		case PLPGSQL_CHECK_PRAGMA_ASSERT_COLUMN:
+			return "assert-column";
+	}
+
+	return NULL;
+}
+
+static Oid
+check_var_schema(PLpgSQL_checkstate *cstate, int dno)
+{
+	return get_namespace_oid(cstate->strconstvars[dno], true);
+}
+
+static Oid
+check_var_table(PLpgSQL_checkstate *cstate, int dno1, int dno2)
+{
+	char	   *relname = cstate->strconstvars[dno2];
+	Oid			relid = InvalidOid;
+
+	if (dno1 != -1)
+		relid = get_relname_relid(relname, check_var_schema(cstate, dno1));
+	else
+		relid = RelnameGetRelid(relname);
+
+	if (!OidIsValid(relid))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_TABLE),
+				 errmsg("table \"%s\" does not exist", relname)));
+
+	return relid;
+}
+
+static AttrNumber
+check_var_column(PLpgSQL_checkstate *cstate, int dno1, int dno2, int dno3)
+{
+	char	   *attname = cstate->strconstvars[dno3];
+	Oid			relid = check_var_table(cstate, dno1, dno2);
+	AttrNumber  attnum;
+
+	attnum = get_attnum(relid, attname);
+	if (attnum == InvalidAttrNumber)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_COLUMN),
+				 errmsg("column \"%s\" of relation \"%s\".\"%s\" does not exist",
+						attname,
+						get_namespace_name(get_rel_namespace(relid)),
+						get_rel_name(relid))));
+
+	return attnum;
+}
+
+bool
+plpgsql_check_pragma_assert(PLpgSQL_checkstate *cstate,
+							PragmaAssertType pat,
+							const char *str,
+							PLpgSQL_nsitem *ns,
+							int lineno)
+{
+	MemoryContext oldCxt;
+	ResourceOwner oldowner;
+	volatile int  dno[3];
+	volatile int  nvars = 0;
+	volatile bool result = true;
+
+	/*
+	 * namespace is available only in compile check mode, and only in this mode
+	 * this pragma can be used.
+	 */
+	if (!ns || !cstate)
+		return true;
+
+	oldCxt = CurrentMemoryContext;
+
+	oldowner = CurrentResourceOwner;
+	BeginInternalSubTransaction(NULL);
+	MemoryContextSwitchTo(cstate->check_cxt);
+
+	PG_TRY();
+	{
+		TokenizerState tstate;
+		int		i;
+		List	   *names;
+
+		initialize_tokenizer(&tstate, str);
+
+		for (i = 0; i < 3; i++)
+		{
+			if (i > 0)
+			{
+				PragmaTokenType	token, *_token;
+
+				_token = get_token(&tstate, &token);
+				if (_token->value != ',')
+					elog(ERROR, "Syntax error (expected \",\")");
+			}
+
+			names = get_qualified_identifier(&tstate, NULL);
+			if ((dno[i] = get_varno(ns, names)) == -1)
+				elog(ERROR, "Cannot to find variable %s used in \"%s\" pragma",
+					 get_name(names),
+					 pragma_assert_name(pat));
+
+			if (!cstate->strconstvars || !cstate->strconstvars[dno[i]])
+				elog(ERROR, "Variable %s has not assigned constant",
+					 get_name(names));
+
+			nvars += 1;
+
+			if (tokenizer_eol(&tstate))
+				break;
+		}
+
+		if (!tokenizer_eol(&tstate))
+			elog(ERROR, "Syntax error (unexpected chars after variable)");
+
+		if ((pat == PLPGSQL_CHECK_PRAGMA_ASSERT_SCHEMA && nvars > 1) ||
+			(pat == PLPGSQL_CHECK_PRAGMA_ASSERT_TABLE  && nvars > 2) ||
+			(pat == PLPGSQL_CHECK_PRAGMA_ASSERT_COLUMN && nvars > 3))
+			elog(ERROR, "too much variables for \"%s\" pragma",
+				 pragma_assert_name(pat));
+
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldCxt);
+		CurrentResourceOwner = oldowner;
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		MemoryContextSwitchTo(cstate->check_cxt);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		MemoryContextSwitchTo(oldCxt);
+		FlushErrorState();
+
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldCxt);
+		CurrentResourceOwner = oldowner;
+
+		/* raise warning (errors in pragma can be ignored instead */
+		ereport(WARNING,
+				(errmsg("\"%s\" on line %d is not processed.", pragma_assert_name(pat), lineno),
+				 errdetail("%s", edata->message)));
+
+		result = false;
+	}
+	PG_END_TRY();
+
+	if (pat == PLPGSQL_CHECK_PRAGMA_ASSERT_SCHEMA)
+	{
+		(void) check_var_schema(cstate, dno[0]);
+	}
+	else if (pat == PLPGSQL_CHECK_PRAGMA_ASSERT_TABLE)
+	{
+		if (nvars == 1)
+			(void) check_var_table(cstate, -1, dno[0]);
+		else
+			(void) check_var_table(cstate, dno[0], dno[1]);
+	}
+	else if (pat == PLPGSQL_CHECK_PRAGMA_ASSERT_COLUMN)
+	{
+		if (nvars == 2)
+			(void) check_var_column(cstate, -1, dno[0], dno[1]);
+		else
+			(void) check_var_column(cstate, dno[0], dno[1], dno[2]);
+	}
+
+	return result;
+}
+
 bool
 plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate,
 							 const char *str,
@@ -930,7 +1110,7 @@ plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate,
 
 		names = get_qualified_identifier(&tstate, NULL);
 		if ((target_dno = get_varno(ns, names)) == -1)
-			elog(ERROR, "Cannot to find variable \"%s\" used in settype pragma", get_name(names));
+			elog(ERROR, "Cannot to find variable %s used in settype pragma", get_name(names));
 
 		target = cstate->estate->datums[target_dno];
 		if (target->dtype != PLPGSQL_DTYPE_REC)

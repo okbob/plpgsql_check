@@ -5411,3 +5411,43 @@ $$;
 set plpgsql_check.strict_cursors_leaks to off;
 
 drop function fx();
+
+create table public.testt(a int, b int);
+
+create or replace function fx()
+returns void as $$
+declare
+  v1 varchar default 'public';
+  v2 varchar default 'testt';
+  v3 varchar default 'a';
+begin
+  raise notice '%', format('%I.%I.%I', v1, v2, v3);
+  perform 'pragma:assert-schema: v1';
+  perform 'pragma:assert-table: v1, v2';
+  perform 'pragma:assert-column: v1, v2, v3';
+  perform 'pragma:assert-table: v2';
+  perform 'pragma:assert-column: v2, v3';
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx()');
+
+create table public.testt(a int, b int);
+
+create or replace function fx()
+returns void as $$
+declare
+  v1 varchar default 'public';
+  v2 varchar default 'testt';
+  v3 varchar default 'x';
+begin
+  raise notice '%', format('%I.%I.%I', v1, v2, v3);
+  perform 'pragma:assert-column: v1, v2, v3';
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('fx()');
+
+drop function fx();
+
+drop table public.testt;
