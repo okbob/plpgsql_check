@@ -905,6 +905,52 @@ pragma_assert_name(PragmaAssertType pat)
 		case PLPGSQL_CHECK_PRAGMA_ASSERT_COLUMN:
 			return "assert-column";
 	}
+
+	return NULL;
+}
+
+static Oid
+check_var_schema(PLpgSQL_checkstate *cstate, int dno)
+{
+	return get_namespace_oid(cstate->strconstvars[dno], true);
+}
+
+static Oid
+check_var_table(PLpgSQL_checkstate *cstate, int dno1, int dno2)
+{
+	char	   *relname = cstate->strconstvars[dno2];
+	Oid			relid = InvalidOid;
+
+	if (dno1 != -1)
+		relid = get_relname_relid(relname, check_var_schema(cstate, dno1));
+	else
+		relid = RelnameGetRelid(relname);
+
+	if (!OidIsValid(relid))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_TABLE),
+				 errmsg("table \"%s\" does not exist", relname)));
+
+	return relid;
+}
+
+static AttrNumber
+check_var_column(PLpgSQL_checkstate *cstate, int dno1, int dno2, int dno3)
+{
+	char	   *attname = cstate->strconstvars[dno3];
+	Oid			relid = check_var_table(cstate, dno1, dno2);
+	AttrNumber  attnum;
+
+	attnum = get_attnum(relid, attname);
+	if (attnum == InvalidAttrNumber)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_COLUMN),
+				 errmsg("column \"%s\" of relation \"%s\".\"%s\" does not exist",
+						attname,
+						get_namespace_name(get_rel_namespace(relid)),
+						get_rel_name(relid))));
+
+	return attnum;
 }
 
 bool
@@ -916,6 +962,8 @@ plpgsql_check_pragma_assert(PLpgSQL_checkstate *cstate,
 {
 	MemoryContext oldCxt;
 	ResourceOwner oldowner;
+	volatile int  dno[3];
+	volatile int  nvars = 0;
 	volatile bool result = true;
 
 	/*
@@ -934,14 +982,8 @@ plpgsql_check_pragma_assert(PLpgSQL_checkstate *cstate,
 	PG_TRY();
 	{
 		TokenizerState tstate;
-		int		dno[3];
-		int		nvars = 0;
 		int		i;
-		PLpgSQL_datum *target;
 		List	   *names;
-		Oid			typtype;
-		int32		typmod;
-		TupleDesc	typtupdesc;
 
 		initialize_tokenizer(&tstate, str);
 
@@ -1009,7 +1051,24 @@ plpgsql_check_pragma_assert(PLpgSQL_checkstate *cstate,
 	}
 	PG_END_TRY();
 
-	elog(ERROR, "DETECTED");
+	if (pat == PLPGSQL_CHECK_PRAGMA_ASSERT_SCHEMA)
+	{
+		(void) check_var_schema(cstate, dno[0]);
+	}
+	else if (pat == PLPGSQL_CHECK_PRAGMA_ASSERT_TABLE)
+	{
+		if (nvars == 1)
+			(void) check_var_table(cstate, -1, dno[0]);
+		else
+			(void) check_var_table(cstate, dno[0], dno[1]);
+	}
+	else if (pat == PLPGSQL_CHECK_PRAGMA_ASSERT_COLUMN)
+	{
+		if (nvars == 2)
+			(void) check_var_column(cstate, -1, dno[0], dno[1]);
+		else
+			(void) check_var_column(cstate, dno[0], dno[1], dno[2]);
+	}
 
 	return result;
 }
