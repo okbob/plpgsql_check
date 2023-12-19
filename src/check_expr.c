@@ -1156,6 +1156,38 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 }
 
 /*
+ * Release all string constants related to variables from row variable
+ */
+static void
+free_string_constant(PLpgSQL_checkstate *cstate, PLpgSQL_row *row)
+{
+	int			fnum;
+
+	for (fnum = 0; fnum < row->nfields; fnum++)
+	{
+		PLpgSQL_datum *field;
+		int				varno = row->varnos[fnum];
+
+		/* skip dropped fields */
+		if (varno < 0)
+			continue;
+
+		/* the assigned value is not constant, reset current */
+		if (cstate->strconstvars && cstate->strconstvars[varno])
+		{
+			pfree(cstate->strconstvars[varno]);
+			cstate->strconstvars[varno] = NULL;
+		}
+
+		field = cstate->estate->datums[fnum];
+
+		if (field->dtype == PLPGSQL_DTYPE_ROW)
+			free_string_constant(cstate, (PLpgSQL_row *) field);
+	}
+}
+
+
+/*
  * Check expression as rvalue - on right in assign statement. It is used for
  * only expression check too - when target is unknown.
  *
@@ -1418,7 +1450,16 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 			}
 		}
 
-		if (cstate->cinfo->constants_tracing && targetdno != -1)
+		if (cstate->cinfo->constants_tracing && targetrow)
+		{
+			/*
+			 * We cannot to cut constants with results now, but we have to
+			 * reset all possible string constants saved in variables from
+			 * row variable.
+			 */
+			free_string_constant(cstate, targetrow);
+		}
+		else if (cstate->cinfo->constants_tracing && targetdno != -1)
 		{
 			char	   *str;
 

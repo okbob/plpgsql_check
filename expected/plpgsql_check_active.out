@@ -9200,3 +9200,22 @@ select * from plpgsql_check_function('fx()');
 
 drop function fx();
 drop table public.testt;
+create or replace function fx()
+returns void as $$
+declare
+  v_sql varchar default '';
+  i int;
+begin
+  -- we don't support constant tracing from queries
+  select 'bla bla bla' into v_sql;
+  execute v_sql into i;
+  raise notice '%', i;
+end;
+$$ language plpgsql;
+-- should be ok
+select * from plpgsql_check_function('fx()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function fx();
