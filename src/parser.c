@@ -302,7 +302,7 @@ get_token(TokenizerState *state, PragmaTokenType *token)
 	}
 
 	/* skip inital spaces */
-	while (*state->str == ' ')
+	while (scanner_isspace(*state->str))
 		state->str++;
 
 	if (!*state->str)

@@ -31,14 +31,14 @@ PG_FUNCTION_INFO_V1(plpgsql_check_pragma);
 static void
 runtime_pragma_apply(char *pragma_str)
 {
-	while (*pragma_str == ' ')
+	while (scanner_isspace(*pragma_str))
 		pragma_str++;
 
 	if (strncasecmp(pragma_str, "STATUS:", 7) == 0)
 	{
 		pragma_str += 7;
 
-		while (*pragma_str == ' ')
+		while (scanner_isspace(*pragma_str))
 			pragma_str++;
 
 		if (strcasecmp(pragma_str, "TRACER") == 0)
@@ -49,7 +49,7 @@ runtime_pragma_apply(char *pragma_str)
 	{
 		pragma_str += 7;
 
-		while (*pragma_str == ' ')
+		while (scanner_isspace(*pragma_str))
 			pragma_str++;
 
 		if (strcasecmp(pragma_str, "TRACER") == 0)
@@ -59,7 +59,7 @@ runtime_pragma_apply(char *pragma_str)
 	{
 		pragma_str += 8;
 
-		while (*pragma_str == ' ')
+		while (scanner_isspace(*pragma_str))
 			pragma_str++;
 
 		if (strcasecmp(pragma_str, "TRACER") == 0)
@@ -78,7 +78,7 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 
 	Assert(cstate);
 
-	while (*pragma_str == ' ')
+	while (scanner_isspace(*pragma_str))
 		pragma_str++;
 
 	if (strncasecmp(pragma_str, "ECHO:", 5) == 0)
@@ -89,7 +89,7 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 	{
 		pragma_str += 7;
 
-		while (*pragma_str == ' ')
+		while (scanner_isspace(*pragma_str))
 			pragma_str++;
 
 		if (strcasecmp(pragma_str, "CHECK") == 0)
@@ -126,7 +126,7 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 	{
 		pragma_str += 7;
 
-		while (*pragma_str == ' ')
+		while (scanner_isspace(*pragma_str))
 			pragma_str++;
 
 		if (strcasecmp(pragma_str, "CHECK") == 0)
@@ -155,7 +155,7 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 	{
 		pragma_str += 8;
 
-		while (*pragma_str == ' ')
+		while (scanner_isspace(*pragma_str))
 			pragma_str++;
 
 		if (strcasecmp(pragma_str, "CHECK") == 0)
