@@ -9132,7 +9132,7 @@ begin
   perform fx();
 end;
 $$;
-WARNING:  cursor is not closed
+WARNING:  cursor "c" is not closed
 set plpgsql_check.strict_cursors_leaks to on;
 do $$
 begin

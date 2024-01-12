@@ -194,6 +194,12 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info)
 		int			cursors_for_current_stmt = 0;
 		int			free_slot = -1;
 		PLpgSQL_var *curvar;
+		char	   *curname;
+
+		curvar = (PLpgSQL_var *) (estate->datums[((PLpgSQL_stmt_open *) stmt)->curvar]);
+
+		Assert(!curvar->isnull);
+		curname = TextDatumGetCString(curvar->value);
 
 		for (i = 0; i < ftrace->ncursors; i++)
 		{
@@ -201,6 +207,18 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info)
 
 			if (ct->curname && ct->stmtid == stmt->stmtid)
 			{
+				/*
+				 * PLpgSQL open statements reuses portal name and does check
+				 * already used portal with already used portal name. So when
+				 * the traced name and name in cursor variable is same, we should
+				 * not to do this check. This eliminate false alarms.
+				 */
+				if (strcmp(curname, ct->curname) == 0)
+				{
+					pfree(curname);
+					return;
+				}
+
 				if (SPI_cursor_find(ct->curname))
 				{
 					if (estate->func->use_count == 1 && !plpgsql_check_cursors_leaks_strict)
@@ -211,7 +229,7 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info)
 
 						ereport(plpgsql_check_cursors_leaks_level,
 								errcode(ERRCODE_INVALID_CURSOR_STATE),
-								errmsg("cursor is not closed"),
+								errmsg("cursor \"%s\" is not closed", curvar->refname),
 								errdetail("%s", context));
 
 						pfree(context);
@@ -237,18 +255,12 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info)
 				free_slot = i;
 		}
 
-		curvar = (PLpgSQL_var *) (estate->datums[((PLpgSQL_stmt_open *) stmt)->curvar]);
-		Assert(!curvar->isnull);
-
 		if (cursors_for_current_stmt < MAX_NAMES_PER_STATEMENT)
 		{
 			MemoryContext oldcxt;
-			char	   *curname;
 			CursorTrace *ct = NULL;
 
 			oldcxt = MemoryContextSwitchTo(traces_mcxt);
-
-			curname = TextDatumGetCString(curvar->value);
 
 			if (free_slot != -1)
 				ct = &ftrace->cursors_traces[free_slot];
@@ -276,10 +288,12 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info)
 
 			ct->stmtid = stmt->stmtid;
 			ct->rec_level = estate->func->use_count;
-			ct->curname = curname;
+			ct->curname = pstrdup(curname);
 
 			MemoryContextSwitchTo(oldcxt);
 		}
+
+		pfree(curname);
 	}
 }
 
