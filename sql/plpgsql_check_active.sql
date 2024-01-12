@@ -5469,3 +5469,22 @@ $$ language plpgsql;
 select * from plpgsql_check_function('fx()');
 
 drop function fx();
+
+-- should not to raise warning
+do $$
+declare
+  c cursor for select * from generate_series(1,10);
+  t int;
+begin
+  for i in 1..2
+  loop
+    open c;
+    loop
+      fetch c into t;
+      exit when not found;
+      raise notice '%', t;
+    end loop;
+    close c;
+  end loop;
+end;
+$$;

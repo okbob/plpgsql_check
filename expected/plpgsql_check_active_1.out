@@ -9222,3 +9222,41 @@ select * from plpgsql_check_function('fx()');
 (0 rows)
 
 drop function fx();
+-- should not to raise warning
+do $$
+declare
+  c cursor for select * from generate_series(1,10);
+  t int;
+begin
+  for i in 1..2
+  loop
+    open c;
+    loop
+      fetch c into t;
+      exit when not found;
+      raise notice '%', t;
+    end loop;
+    close c;
+  end loop;
+end;
+$$;
+NOTICE:  1
+NOTICE:  2
+NOTICE:  3
+NOTICE:  4
+NOTICE:  5
+NOTICE:  6
+NOTICE:  7
+NOTICE:  8
+NOTICE:  9
+NOTICE:  10
+NOTICE:  1
+NOTICE:  2
+NOTICE:  3
+NOTICE:  4
+NOTICE:  5
+NOTICE:  6
+NOTICE:  7
+NOTICE:  8
+NOTICE:  9
+NOTICE:  10
