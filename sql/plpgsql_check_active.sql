@@ -5488,3 +5488,30 @@ begin
   end loop;
 end;
 $$;
+
+-- should not raise warning
+create or replace function fx(p text)
+returns void as $$
+begin
+  execute format($_$select '%1$I'$_$, p);
+end;
+$$ language plpgsql;
+
+-- should be ok
+select * from plpgsql_check_function('fx(text)');
+
+drop function fx(text);
+
+create or replace function fx()
+returns void as $$
+declare p varchar;
+begin
+  p := 'ahoj';
+  execute format($_$select '%1$I'$_$, p);
+end;
+$$ language plpgsql;
+
+-- should be ok
+select * from plpgsql_check_function('fx()');
+
+drop function fx();

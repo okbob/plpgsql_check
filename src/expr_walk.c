@@ -597,7 +597,7 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 			}
 		}
 
-		_arg = argpos >= 1 ? argpos : arg + 1;
+		_arg = argpos >= 1 ? argpos + 1: arg + 1;
 		if (_arg <= nargs)
 		{
 			char	   *str;
