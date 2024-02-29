@@ -3011,8 +3011,7 @@ end;
 $$ language plpgsql;
 -- should to fail
 select testseq();
-ERROR:  cannot open relation "test_table"
-DETAIL:  This operation is not supported for tables.
+ERROR:  "test_table" is not a sequence
 CONTEXT:  SQL statement "SELECT nextval('test_table')"
 PL/pgSQL function testseq() line 3 at PERFORM
 select * from plpgsql_check_function('testseq()', fatal_errors := false);
