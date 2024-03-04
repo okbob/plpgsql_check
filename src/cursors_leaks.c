@@ -48,7 +48,6 @@ typedef struct
 
 MemoryContextCallback contextCallback;
 
-
 static LocalTransactionId traces_lxid = InvalidLocalTransactionId;
 static HTAB *traces = NULL;
 static MemoryContext traces_mcxt = NULL;
@@ -60,6 +59,16 @@ static void stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugi
 static plpgsql_check_plugin2 cursors_leaks_plugin2 = { func_setup, NULL, func_end, NULL,
 													   NULL, stmt_end, NULL, NULL, NULL, NULL, NULL, NULL };
 
+#if PG_VERSION_NUM >= 170000
+
+#define CURRENT_LXID	(MyProc->vxid.lxid)
+
+#else
+
+#define CURRENT_LXID	(MyProc->lxid)
+
+#endif
+
 static FunctionTrace *
 get_function_trace(PLpgSQL_function *func)
 {
@@ -67,7 +76,7 @@ get_function_trace(PLpgSQL_function *func)
 	FunctionTrace *ftrace;
 	FunctionTraceKey key;
 
-	if (traces == NULL || traces_lxid != MyProc->lxid)
+	if (traces == NULL || traces_lxid != CURRENT_LXID)
 	{
 		HASHCTL		ctl;
 
@@ -85,7 +94,7 @@ get_function_trace(PLpgSQL_function *func)
 							 &ctl,
 							 HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 
-		traces_lxid = MyProc->lxid;
+		traces_lxid = CURRENT_LXID;
 	}
 
 	key.fn_oid = func->fn_oid;
@@ -132,7 +141,7 @@ func_end(PLpgSQL_execstate *estate,
 	FunctionTrace *ftrace = *plugin2_info;
 	int			i;
 
-	if (!ftrace || traces_lxid != MyProc->lxid)
+	if (!ftrace || traces_lxid != CURRENT_LXID)
 		return;
 
 	for (i = 0; i < ftrace->ncursors; i++)
@@ -182,7 +191,7 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info)
 	if (!ftrace)
 		return;
 
-	if (traces_lxid != MyProc->lxid)
+	if (traces_lxid != CURRENT_LXID)
 	{
 		ftrace = get_function_trace(estate->func);
 		*plugin2_info = ftrace;
