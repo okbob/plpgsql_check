@@ -1179,7 +1179,7 @@ free_string_constant(PLpgSQL_checkstate *cstate, PLpgSQL_row *row)
 			cstate->strconstvars[varno] = NULL;
 		}
 
-		field = cstate->estate->datums[fnum];
+		field = cstate->estate->datums[varno];
 
 		if (field->dtype == PLPGSQL_DTYPE_ROW)
 			free_string_constant(cstate, (PLpgSQL_row *) field);
