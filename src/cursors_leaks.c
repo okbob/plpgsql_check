@@ -211,8 +211,6 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info)
 	{
 		pinfo->ftrace = get_function_trace(estate->func);
 		pinfo->lxid = CURRENT_LXID;
-
-		*plugin2_info = pinfo;
 	}
 
 	ftrace = pinfo->ftrace;
