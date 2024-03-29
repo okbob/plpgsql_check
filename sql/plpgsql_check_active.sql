@@ -5515,3 +5515,19 @@ $$ language plpgsql;
 select * from plpgsql_check_function('fx()');
 
 drop function fx();
+
+-- should not crash
+create or replace procedure p1()
+as $$
+begin
+  commit;
+end;
+$$ language plpgsql;
+
+set plpgsql_check.cursors_leaks to on;
+
+do $$ declare c cursor for select 1; begin open c; call p1(); end $$;
+
+set plpgsql_check.cursors_leaks to default;
+
+drop procedure p1;
