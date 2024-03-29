@@ -46,6 +46,12 @@ typedef struct
 	CursorTrace *cursors_traces;
 } FunctionTrace;
 
+typedef struct
+{
+	FunctionTrace *ftrace;
+	LocalTransactionId lxid;
+} CursorLeaksPlugin2Info;
+
 MemoryContextCallback contextCallback;
 
 static LocalTransactionId traces_lxid = InvalidLocalTransactionId;
@@ -121,13 +127,18 @@ get_function_trace(PLpgSQL_function *func)
 static void
 func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info)
 {
-	FunctionTrace *ftrace;
-
 	if (plpgsql_check_cursors_leaks)
 	{
-		ftrace = get_function_trace(func);
+		CursorLeaksPlugin2Info *pinfo;
+		MemoryContext fn_mcxt;
 
-		*plugin2_info = ftrace;
+		fn_mcxt = plpgsql_check_get_current_fn_mcxt();
+		pinfo = MemoryContextAlloc(fn_mcxt, sizeof(CursorLeaksPlugin2Info));
+
+		pinfo->ftrace = get_function_trace(func);
+		pinfo->lxid = CURRENT_LXID;
+
+		*plugin2_info = pinfo;
 	}
 	else
 		*plugin2_info = NULL;
@@ -138,11 +149,14 @@ func_end(PLpgSQL_execstate *estate,
 				PLpgSQL_function *func,
 				void **plugin2_info)
 {
-	FunctionTrace *ftrace = *plugin2_info;
+	CursorLeaksPlugin2Info *pinfo = *plugin2_info;
+	FunctionTrace *ftrace;
 	int			i;
 
-	if (!ftrace || traces_lxid != CURRENT_LXID)
+	if (!pinfo || pinfo->lxid != CURRENT_LXID)
 		return;
+
+	ftrace = pinfo->ftrace;
 
 	for (i = 0; i < ftrace->ncursors; i++)
 	{
@@ -186,16 +200,22 @@ func_end(PLpgSQL_execstate *estate,
 static void
 stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info)
 {
-	FunctionTrace *ftrace = *plugin2_info;
+	CursorLeaksPlugin2Info *pinfo = *plugin2_info;
+	FunctionTrace *ftrace;
 
-	if (!ftrace)
+	if (!pinfo)
 		return;
 
-	if (traces_lxid != CURRENT_LXID)
+	if (traces_lxid != CURRENT_LXID ||
+		pinfo->lxid != CURRENT_LXID)
 	{
-		ftrace = get_function_trace(estate->func);
-		*plugin2_info = ftrace;
+		pinfo->ftrace = get_function_trace(estate->func);
+		pinfo->lxid = CURRENT_LXID;
+
+		*plugin2_info = pinfo;
 	}
+
+	ftrace = pinfo->ftrace;
 
 	if (stmt->cmd_type == PLPGSQL_STMT_OPEN)
 	{

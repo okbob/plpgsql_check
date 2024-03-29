@@ -160,6 +160,7 @@ plpgsql_check_get_current_stmts_info(void)
 	return current_fmgr_plpgsql_cache->func_info->stmts_info;
 }
 
+
 /*
  * It is used outside pldbapi2 plugins. This is used by output functions,
  * so we don't need to solve effectivity too much. Instead handling use_count
@@ -224,6 +225,16 @@ plpgsql_check_get_current_func_info_signature(void)
 	Assert(current_fmgr_plpgsql_cache->func_info->fn_signature);
 
 	return current_fmgr_plpgsql_cache->func_info->fn_signature;
+}
+
+MemoryContext
+plpgsql_check_get_current_fn_mcxt(void)
+{
+	Assert(current_fmgr_plpgsql_cache);
+	Assert(current_fmgr_plpgsql_cache->func_info);
+	Assert(current_fmgr_plpgsql_cache->func_info->use_count > 0);
+
+	return current_fmgr_plpgsql_cache->fn_mcxt;
 }
 
 static void

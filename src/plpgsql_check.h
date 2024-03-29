@@ -455,6 +455,7 @@ extern int *plpgsql_check_get_stmtid_map(PLpgSQL_function *func);
 
 extern char *plpgsql_check_get_current_func_info_name(void);
 extern char *plpgsql_check_get_current_func_info_signature(void);
+extern MemoryContext plpgsql_check_get_current_fn_mcxt(void);
 
 #if PG_VERSION_NUM < 150000
 
