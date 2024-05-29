@@ -1051,6 +1051,9 @@ plpgsql_check_pragma_assert(PLpgSQL_checkstate *cstate,
 	}
 	PG_END_TRY();
 
+	if (!result)
+		return false;
+
 	if (pat == PLPGSQL_CHECK_PRAGMA_ASSERT_SCHEMA)
 	{
 		(void) check_var_schema(cstate, dno[0]);
