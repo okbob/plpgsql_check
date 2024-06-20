@@ -429,6 +429,8 @@ passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, void *
 				plpgsql_check_report_unused_variables(&cstate);
 				plpgsql_check_report_too_high_volatility(&cstate);
 			}
+
+			release_exprs(cstate.exprs);
 		}
 		PG_CATCH();
 		{
