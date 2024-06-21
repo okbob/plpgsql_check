@@ -4842,6 +4842,7 @@ drop function test_function33();
 
 drop type testtype;
 
+set plpgsql_check.mode to default;
 
 -- should not to raise false alarm
 create type c1 as (
