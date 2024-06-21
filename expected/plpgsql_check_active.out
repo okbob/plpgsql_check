@@ -8315,6 +8315,7 @@ ERROR:  returned record type does not match expected record type
 drop function test_function();
 drop function test_function33();
 drop type testtype;
+set plpgsql_check.mode to default;
 -- should not to raise false alarm
 create type c1 as (
   a text
@@ -8692,18 +8693,18 @@ set plpgsql_check.tracer_test_mode = true;
 select trace_test(3);
 NOTICE:  #0   ->> start of function trace_test(integer) (oid=0, tnl=1)
 NOTICE:  #0       "b" => '3'
-NOTICE:  #2       ->> start of function nested_trace_test(integer) (oid=0, tnl=1)
-NOTICE:  #2           context: PL/pgSQL assignment "r := nested_trace_test(r)"
-NOTICE:  #2           "a" => '0'
-NOTICE:  #2       <<- end of function nested_trace_test (elapsed time=0.010 ms)
-NOTICE:  #2       ->> start of function nested_trace_test(integer) (oid=0, tnl=1)
-NOTICE:  #2           context: PL/pgSQL assignment "r := nested_trace_test(r)"
-NOTICE:  #2           "a" => '1'
-NOTICE:  #2       <<- end of function nested_trace_test (elapsed time=0.010 ms)
-NOTICE:  #2       ->> start of function nested_trace_test(integer) (oid=0, tnl=1)
-NOTICE:  #2           context: PL/pgSQL assignment "r := nested_trace_test(r)"
-NOTICE:  #2           "a" => '2'
-NOTICE:  #2       <<- end of function nested_trace_test (elapsed time=0.010 ms)
+NOTICE:  #1     ->> start of function nested_trace_test(integer) (oid=0, tnl=1)
+NOTICE:  #1         context: PL/pgSQL function trace_test(integer) line 6 at assignment
+NOTICE:  #1         "a" => '0'
+NOTICE:  #1     <<- end of function nested_trace_test (elapsed time=0.010 ms)
+NOTICE:  #1     ->> start of function nested_trace_test(integer) (oid=0, tnl=1)
+NOTICE:  #1         context: PL/pgSQL function trace_test(integer) line 6 at assignment
+NOTICE:  #1         "a" => '1'
+NOTICE:  #1     <<- end of function nested_trace_test (elapsed time=0.010 ms)
+NOTICE:  #1     ->> start of function nested_trace_test(integer) (oid=0, tnl=1)
+NOTICE:  #1         context: PL/pgSQL function trace_test(integer) line 6 at assignment
+NOTICE:  #1         "a" => '2'
+NOTICE:  #1     <<- end of function nested_trace_test (elapsed time=0.010 ms)
 NOTICE:  #0   <<- end of function trace_test (elapsed time=0.010 ms)
  trace_test 
 ------------
@@ -8718,41 +8719,41 @@ NOTICE:  #0.1       3    --> start of statement block (tnl=1)
 NOTICE:  #0.2       4      --> start of FOR with integer loop variable (tnl=1)
 NOTICE:  #0.3       6        --> start of assignment r := nested_trace_test(r) (tnl=1)
 NOTICE:  #0.3                    "r" => '0'
-NOTICE:  #2                ->> start of function nested_trace_test(integer) (oid=0, tnl=1)
-NOTICE:  #2                    context: PL/pgSQL assignment "r := nested_trace_test(r)"
-NOTICE:  #2                    "a" => '0'
-NOTICE:  #2.1       2        --> start of statement block (tnl=1)
-NOTICE:  #2.2       3          --> start of RETURN (expr='a + 1') (tnl=1)
-NOTICE:  #2.2                      "a" => '0'
-NOTICE:  #2.1                  <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #2.2                <-- end of statement block (elapsed time=0.010 ms)
-NOTICE:  #2                <<- end of function nested_trace_test (elapsed time=0.010 ms)
+NOTICE:  #1              ->> start of function nested_trace_test(integer) (oid=0, tnl=1)
+NOTICE:  #1                  context: PL/pgSQL function trace_test(integer) line 6 at assignment
+NOTICE:  #1                  "a" => '0'
+NOTICE:  #1.1       2      --> start of statement block (tnl=1)
+NOTICE:  #1.2       3        --> start of RETURN (expr='a + 1') (tnl=1)
+NOTICE:  #1.2                    "a" => '0'
+NOTICE:  #1.1                <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #1.2              <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #1              <<- end of function nested_trace_test (elapsed time=0.010 ms)
 NOTICE:  #0.2                <-- end of assignment (elapsed time=0.010 ms)
 NOTICE:  #0.3                    "r" => '1'
 NOTICE:  #0.3       6        --> start of assignment r := nested_trace_test(r) (tnl=1)
 NOTICE:  #0.3                    "r" => '1'
-NOTICE:  #2                ->> start of function nested_trace_test(integer) (oid=0, tnl=1)
-NOTICE:  #2                    context: PL/pgSQL assignment "r := nested_trace_test(r)"
-NOTICE:  #2                    "a" => '1'
-NOTICE:  #2.1       2        --> start of statement block (tnl=1)
-NOTICE:  #2.2       3          --> start of RETURN (expr='a + 1') (tnl=1)
-NOTICE:  #2.2                      "a" => '1'
-NOTICE:  #2.1                  <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #2.2                <-- end of statement block (elapsed time=0.010 ms)
-NOTICE:  #2                <<- end of function nested_trace_test (elapsed time=0.010 ms)
+NOTICE:  #1              ->> start of function nested_trace_test(integer) (oid=0, tnl=1)
+NOTICE:  #1                  context: PL/pgSQL function trace_test(integer) line 6 at assignment
+NOTICE:  #1                  "a" => '1'
+NOTICE:  #1.1       2      --> start of statement block (tnl=1)
+NOTICE:  #1.2       3        --> start of RETURN (expr='a + 1') (tnl=1)
+NOTICE:  #1.2                    "a" => '1'
+NOTICE:  #1.1                <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #1.2              <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #1              <<- end of function nested_trace_test (elapsed time=0.010 ms)
 NOTICE:  #0.2                <-- end of assignment (elapsed time=0.010 ms)
 NOTICE:  #0.3                    "r" => '2'
 NOTICE:  #0.3       6        --> start of assignment r := nested_trace_test(r) (tnl=1)
 NOTICE:  #0.3                    "r" => '2'
-NOTICE:  #2                ->> start of function nested_trace_test(integer) (oid=0, tnl=1)
-NOTICE:  #2                    context: PL/pgSQL assignment "r := nested_trace_test(r)"
-NOTICE:  #2                    "a" => '2'
-NOTICE:  #2.1       2        --> start of statement block (tnl=1)
-NOTICE:  #2.2       3          --> start of RETURN (expr='a + 1') (tnl=1)
-NOTICE:  #2.2                      "a" => '2'
-NOTICE:  #2.1                  <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #2.2                <-- end of statement block (elapsed time=0.010 ms)
-NOTICE:  #2                <<- end of function nested_trace_test (elapsed time=0.010 ms)
+NOTICE:  #1              ->> start of function nested_trace_test(integer) (oid=0, tnl=1)
+NOTICE:  #1                  context: PL/pgSQL function trace_test(integer) line 6 at assignment
+NOTICE:  #1                  "a" => '2'
+NOTICE:  #1.1       2      --> start of statement block (tnl=1)
+NOTICE:  #1.2       3        --> start of RETURN (expr='a + 1') (tnl=1)
+NOTICE:  #1.2                    "a" => '2'
+NOTICE:  #1.1                <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #1.2              <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #1              <<- end of function nested_trace_test (elapsed time=0.010 ms)
 NOTICE:  #0.2                <-- end of assignment (elapsed time=0.010 ms)
 NOTICE:  #0.3                    "r" => '3'
 NOTICE:  #0.1              <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
@@ -8810,15 +8811,15 @@ NOTICE:  #0.1       3    --> start of statement block (tnl=1)
 NOTICE:  #0.2       4      --> start of FOR with integer loop variable (tnl=1)
 NOTICE:  #0.3       6        --> start of perform plpgsql_check_pragma('disable: .. (tnl=1)
 NOTICE:  #0.2                <-- end of PERFORM (elapsed time=0.010 ms)
-NOTICE:  #2.3       4          --> start of RETURN (expr='a + 1') (tnl=1)
-NOTICE:  #2.3                      "a" => '0'
-NOTICE:  #2.2                  <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #2.3       4          --> start of RETURN (expr='a + 1') (tnl=1)
-NOTICE:  #2.3                      "a" => '1'
-NOTICE:  #2.2                  <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #2.3       4          --> start of RETURN (expr='a + 1') (tnl=1)
-NOTICE:  #2.3                      "a" => '2'
-NOTICE:  #2.2                  <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #1.3       4        --> start of RETURN (expr='a + 1') (tnl=1)
+NOTICE:  #1.3                    "a" => '0'
+NOTICE:  #1.2                <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #1.3       4        --> start of RETURN (expr='a + 1') (tnl=1)
+NOTICE:  #1.3                    "a" => '1'
+NOTICE:  #1.2                <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #1.3       4        --> start of RETURN (expr='a + 1') (tnl=1)
+NOTICE:  #1.3                    "a" => '2'
+NOTICE:  #1.2                <-- end of RETURN (elapsed time=0.010 ms)
 NOTICE:  #0.1              <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
 NOTICE:  #0.5       9      --> start of RETURN (tnl=1)
 NOTICE:  #0.5                  "r" => '3'
