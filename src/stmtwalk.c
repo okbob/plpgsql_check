@@ -141,15 +141,15 @@ check_variable_name(PLpgSQL_checkstate *cstate,
 				StringInfoData str;
 
 				initStringInfo(&str);
-				appendStringInfo(&str, "parameter \"%s\" is overlapped",
+				appendStringInfo(&str, "parameter \"%s\" is shadowed",
 								 refname);
 
 				plpgsql_check_put_error(cstate,
 							  0, 0,
 							  str.data,
 							  is_auto ?
-							  "Local auto variable overlap function parameter." :
-							  "Local variable overlap function parameter.",
+							  "Local auto variable shadows function parameter." :
+							  "Local variable shadows function parameter.",
 							  NULL,
 							  PLPGSQL_CHECK_WARNING_OTHERS,
 							  0, NULL, NULL);
