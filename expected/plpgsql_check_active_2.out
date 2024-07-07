@@ -2441,8 +2441,8 @@ $$ language plpgsql;
 select * from plpgsql_check_function('tx(int)');
                                   plpgsql_check_function                                   
 -------------------------------------------------------------------------------------------
- warning:00000:3:statement block:parameter "a" is overlapped
- Detail: Local variable overlap function parameter.
+ warning:00000:3:statement block:parameter "a" is shadowed
+ Detail: Local variable shadows function parameter.
  warning extra:00000:5:statement block:variable "ax" shadows a previously defined variable
  Hint: SET plpgsql.extra_warnings TO 'shadowed_variables'
  warning:00000:2:DECLARE:unused variable "ax"
@@ -8964,14 +8964,14 @@ begin
 end;
 $$ language plpgsql immutable;
 select * from plpgsql_check_function('fx1');
-                           plpgsql_check_function                           
-----------------------------------------------------------------------------
- warning:00000:2:statement block:parameter "found" is overlapped
- Detail: Local auto variable overlap function parameter.
- warning:00000:3:FOR with integer loop variable:parameter "i" is overlapped
- Detail: Local auto variable overlap function parameter.
- warning:00000:5:FOR with integer loop variable:parameter "j" is overlapped
- Detail: Local auto variable overlap function parameter.
+                          plpgsql_check_function                          
+--------------------------------------------------------------------------
+ warning:00000:2:statement block:parameter "found" is shadowed
+ Detail: Local auto variable shadows function parameter.
+ warning:00000:3:FOR with integer loop variable:parameter "i" is shadowed
+ Detail: Local auto variable shadows function parameter.
+ warning:00000:5:FOR with integer loop variable:parameter "j" is shadowed
+ Detail: Local auto variable shadows function parameter.
  warning extra:00000:unmodified OUT variable "i"
  warning extra:00000:unmodified OUT variable "j"
  warning extra:00000:unmodified OUT variable "found"
