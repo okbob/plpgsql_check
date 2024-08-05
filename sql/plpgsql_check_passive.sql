@@ -325,3 +325,10 @@ $$ language plpgsql;
 call proc_test();
 
 drop procedure proc_test();
+
+-- should not to crash
+set plpgsql_check.mode = 'fresh_start';
+do $$
+begin
+end;
+$$;

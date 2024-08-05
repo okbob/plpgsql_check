@@ -1375,6 +1375,9 @@ plpgsql_check_is_checked(PLpgSQL_function *func)
 {
 	plpgsql_check_HashEnt *hentry;
 
+	if (!func->fn_hashkey)
+		return false;
+
 	hentry = (plpgsql_check_HashEnt *) hash_search(plpgsql_check_HashTable,
 											 (void *) func->fn_hashkey,
 											 HASH_FIND,
