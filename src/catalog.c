@@ -11,13 +11,7 @@
 
 #include "plpgsql_check.h"
 
-#include "access/genam.h"
-
-#include "access/htup_details.h"
-#include "access/table.h"
-
 #include "catalog/pg_extension.h"
-#include "catalog/indexing.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
@@ -31,9 +25,23 @@
 #include "utils/syscache.h"
 #include "utils/regproc.h"
 
-#include "utils/rel.h"
 #include "catalog/pg_proc.h"
 #include "utils/syscache.h"
+
+/*
+ * Pre pg 18 doesn't support system cache for pg_extension,
+ * we need to manipulate with table on low level.
+ */
+#if PG_VERSION_NUM < 180000
+
+#include "access/genam.h"
+
+#include "access/htup_details.h"
+#include "access/table.h"
+#include "catalog/indexing.h"
+#include "utils/rel.h"
+
+#endif
 
 static Oid plpgsql_check_PLpgSQLlanguageId = InvalidOid;
 
@@ -216,6 +224,8 @@ get_extension_schema(Oid ext_oid)
 
 #endif
 
+#if PG_VERSION_NUM < 180000
+
 /*
  * get_extension_version - given an extension OID, look up the version
  *
@@ -265,6 +275,39 @@ get_extension_version(Oid ext_oid)
 
 	return result;
 }
+
+#else
+
+/*
+ * Returns a palloc'd string, or NULL if no such extension.
+ * Use extension syscache from PostgreSQL 18+
+ */
+char *
+get_extension_version2(Oid ext_oid)
+{
+	HeapTuple extTuple;
+	Datum	extversiondatum;
+	char	   *result;
+	bool		isnull;
+
+	extTuple = SearchSysCache1(EXTENSIONOID, ObjectIdGetDatum(ext_oid));
+	if (!HeapTupleIsValid(extTuple))
+		elog(ERROR, "cache lookup failed for extension %u", ext_oid);
+
+	extversiondatum = SysCacheGetAttr(EXTENSIONOID, extTuple,
+									  Anum_pg_extension_extversion, &isnull);
+
+	if (isnull)
+		elog(ERROR, "extversion is null");
+
+	result = TextDatumGetCString(extversiondatum);
+
+	ReleaseSysCache(extTuple);
+
+	return result;
+}
+
+#endif
 
 /*
  * Returns oid of pragma function. It is used for elimination

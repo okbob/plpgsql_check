@@ -35,6 +35,13 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 
+#if PG_VERSION_NUM >= 180000
+
+#include "utils/inval.h"
+#include "utils/syscache.h"
+
+#endif
+
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
 #endif
@@ -109,6 +116,15 @@ plpgsql_check__ns_lookup_t plpgsql_check__ns_lookup_p;
 
 static bool is_expected_extversion = false;
 
+#if PG_VERSION_NUM >= 180000
+
+static void
+pg_extension_cache_callback(Datum arg, int cacheid, uint32 hashvalue)
+{
+	is_expected_extversion = false;
+}
+
+#endif
 
 /*
  * load_external_function retursn PGFunctions - we need generic function, so
@@ -129,7 +145,15 @@ plpgsql_check_check_ext_version(Oid fn_oid)
 		extoid = getExtensionOfObject(ProcedureRelationId, fn_oid);
 		Assert(OidIsValid(extoid));
 
+#if PG_VERSION_NUM >= 180000
+
+		extver = get_extension_version2(extoid);
+
+#else
+
 		extver = get_extension_version(extoid);
+
+#endif
 
 		Assert(extver);
 
@@ -421,6 +445,14 @@ _PG_init(void)
 	plpgsql_check_tracer_init();
 	plpgsql_check_cursors_leaks_init();
 
+
+#if PG_VERSION_NUM >= 180000
+
+	CacheRegisterSyscacheCallback(EXTENSIONOID,
+								  pg_extension_cache_callback,
+								  (Datum) 0);
+
+#endif
 	inited = true;
 }
 
