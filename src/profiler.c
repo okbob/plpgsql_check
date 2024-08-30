@@ -1643,6 +1643,15 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, query_pa
 	 */
 	parsetree_list = pg_parse_query(query_string);
 
+
+	/* The query can be empty. Returns NOQUERYID is this case. */
+	if (!parsetree_list)
+	{
+		MemoryContextSwitchTo(oldcxt);
+		MemoryContextReset(profiler_queryid_mcxt);
+		return NOQUERYID;
+	}
+
 	/*
 	 * There should not be more than one query, silently ignore rather than
 	 * error out in that case.

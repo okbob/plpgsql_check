@@ -125,6 +125,18 @@ select plpgsql_profiler_remove_fake_queryid_hook();
 
 drop function f1();
 
+-- don't crash on empty dynamic query
+create or replace function f1()
+returns void as $$
+begin
+  execute '';
+end;
+$$ language plpgsql;
+
+select f1();
+
+drop function f1();
+
 set plpgsql_check.profiler to off;
 
 create function f1()
