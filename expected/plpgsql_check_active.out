@@ -265,6 +265,89 @@ select f1();
 (1 row)
 
 drop function f1();
+create or replace function covtest(int)
+returns int as $$
+declare a int = $1;
+begin
+  a := a + 1;
+  if a < 10 then
+    a := a + 1;
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function;
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function;
+drop function test_function();
+  end if;
+  a := a + 1;
+  return a;
+end;
+$$ language plpgsql;
+select covtest(10);
+ covtest 
+---------
+      12
+(1 row)
+
+-- should not crash
+select stmtid, exec_stmts, stmtname from plpgsql_profiler_function_statements_tb('covtest');
+ stmtid | exec_stmts |    stmtname     
+--------+------------+-----------------
+      1 |          1 | statement block
+      2 |          1 | assignment
+      3 |          1 | IF
+      4 |          0 | assignment
+      5 |          0 | SQL statement
+      6 |          0 | SQL statement
+      7 |          0 | SQL statement
+      8 |          0 | SQL statement
+      9 |          0 | SQL statement
+     10 |          0 | SQL statement
+     11 |          0 | SQL statement
+     12 |          0 | SQL statement
+     13 |          0 | SQL statement
+     14 |          0 | SQL statement
+     15 |          0 | SQL statement
+     16 |          0 | SQL statement
+     17 |          0 | SQL statement
+     18 |          0 | SQL statement
+     19 |          0 | SQL statement
+     20 |          0 | SQL statement
+     21 |          0 | SQL statement
+     22 |          0 | SQL statement
+     23 |          0 | SQL statement
+     24 |          0 | SQL statement
+     25 |          0 | SQL statement
+     26 |          0 | SQL statement
+     27 |          0 | SQL statement
+     28 |          0 | SQL statement
+     29 |          0 | SQL statement
+     30 |          0 | SQL statement
+     31 |          1 | assignment
+     32 |          1 | RETURN
+(32 rows)
+
+drop function covtest;
 set plpgsql_check.profiler to off;
 create function f1()
 returns void as $$

@@ -148,6 +148,13 @@ typedef struct profiler_iterator
 	HTAB	   *chunks;
 	profiler_stmt_chunk *current_chunk;
 	int			current_statement;
+
+#ifdef USE_ASSERT_CHECKING
+
+	int			current_statement_no;
+
+#endif
+
 } profiler_iterator;
 
 typedef struct
@@ -286,6 +293,12 @@ get_stmt_profile_next(profiler_iterator *pi)
 
 			pi->current_statement = 0;
 		}
+
+#ifdef USE_ASSERT_CHECKING
+
+		pi->current_statement_no += 1;
+
+#endif
 
 		return &pi->current_chunk->stmts[pi->current_statement++];
 	}
@@ -606,7 +619,7 @@ profiler_stmt_walker(profiler_info *pinfo,
 		 * iterator returns 0 stmtid.
 		 */
 		Assert(!opts->pi->current_chunk ||
-			   (opts->stmtid_map[opts->pi->current_statement] - 1) == stmtid);
+			   (opts->stmtid_map[opts->pi->current_statement_no] - 1) == stmtid);
 
 		/*
 		 * Get persistent statement info stored in shared memory

@@ -137,6 +137,52 @@ select f1();
 
 drop function f1();
 
+create or replace function covtest(int)
+returns int as $$
+declare a int = $1;
+begin
+  a := a + 1;
+  if a < 10 then
+    a := a + 1;
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function;
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function();
+drop function test_function;
+drop function test_function();
+  end if;
+  a := a + 1;
+  return a;
+end;
+$$ language plpgsql;
+
+select covtest(10);
+
+-- should not crash
+select stmtid, exec_stmts, stmtname from plpgsql_profiler_function_statements_tb('covtest');
+
+drop function covtest;
+
 set plpgsql_check.profiler to off;
 
 create function f1()
