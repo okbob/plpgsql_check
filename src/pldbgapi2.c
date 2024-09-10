@@ -84,6 +84,7 @@ typedef struct fmgr_plpgsql_cache
 
 	Oid			funcid;
 	bool		is_plpgsql;
+	bool		is_late;
 	Datum		arg;
 
 	void	   *plugin2_info[MAX_PLDBGAPI2_PLUGINS];
@@ -827,6 +828,41 @@ pldbgapi2_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	MemoryContext oldcxt;
 	func_info_entry *func_info;
 	int			i;
+
+	/*
+	 * Initialize fmgr_plpgsql_cache, when fmgr hook is not called
+	 * in expected order (usually when plpgsql_check is initialized
+	 * inside function.
+	 */
+	if (!fcache_plpgsql)
+	{
+		ereport(WARNING,
+				(errmsg("late initialization of fmgr_plpgsql_cache"),
+				 errhint("use \"load 'plpgsql_check'\" before you try to use pldbgapi2")));
+
+		/*
+		 * Unfortunately, we have not access to fmgr context, so we should
+		 * to use top memory context. This is permament leak, but only for
+		 * few calls until fmgr hook will be correctly used.
+		 */
+		oldcxt = MemoryContextSwitchTo(TopMemoryContext);
+
+		fcache_plpgsql = palloc0(sizeof(fmgr_plpgsql_cache));
+
+		fcache_plpgsql->magic = FMGR_CACHE_MAGIC;
+
+		fcache_plpgsql->funcid = func->fn_oid;
+
+		fcache_plpgsql->is_plpgsql = true;
+		fcache_plpgsql->fn_mcxt = CurrentMemoryContext;
+		fcache_plpgsql->stmtid_stack = palloc_array(int, INITIAL_PLDBGAPI2_STMT_STACK_SIZE);
+		fcache_plpgsql->stmtid_stack_size = INITIAL_PLDBGAPI2_STMT_STACK_SIZE;
+		fcache_plpgsql->current_stmtid_stack_size = 0;
+
+		last_fmgr_plpgsql_cache = fcache_plpgsql;
+
+		MemoryContextSwitchTo(oldcxt);
+	}
 
 	Assert(fcache_plpgsql->magic == FMGR_CACHE_MAGIC);
 	Assert(fcache_plpgsql);

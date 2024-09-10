@@ -9396,3 +9396,34 @@ set plpgsql_check.cursors_leaks to on;
 do $$ declare c cursor for select 1; begin open c; call p1(); end $$;
 set plpgsql_check.cursors_leaks to default;
 drop procedure p1;
+-- should not crash
+create or replace function nested_trace_test(a int)
+returns int as $$
+begin
+  perform plpgsql_check_pragma('enable:tracer');
+  return a + 1;
+end;
+$$ language plpgsql;
+create or replace function trace_test(b int)
+returns int as $$
+declare r int default 0;
+begin
+  for i in 1..b
+  loop
+    r := nested_trace_test(r);
+  end loop;
+  return r;
+end;
+$$ language plpgsql;
+-- when plpgsql_check is not loaded yet, then plpgsql_check is
+-- load by perform plpgsql_check_pragma and this is another
+-- case, when fmgr hook is not called in expected order.
+\c
+-- should not to crash
+select trace_test(3);
+WARNING:  late initialization of fmgr_plpgsql_cache
+ trace_test 
+------------
+          3
+(1 row)
+
