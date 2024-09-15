@@ -553,6 +553,10 @@ but if there is not enough shared memory, then the profiler is limited just to a
 The profiler can be activated by calling function `plpgsql_check_profiler(true)` and disabled
 by calling same function with `false` argument (or with literals `on`, `off`).
 
+The plpgsql_check should be initialized before any plpgsql function is executed. Only
+early initialization ensures correct work of profiler and tracer. When you doesn't use
+`shared_preloaded_libraries`, you can use command `load 'plpgsql_check'` instead.
+
 When plpgsql_check is initialized by `shared_preload_libraries`, another GUC is
 available to configure the amount of shared memory used by the profiler:
 `plpgsql_check.profiler_max_shared_chunks`.  This defines the maximum number of
