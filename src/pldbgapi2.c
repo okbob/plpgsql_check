@@ -834,39 +834,14 @@ pldbgapi2_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	 * in expected order (usually when plpgsql_check is initialized
 	 * inside function.
 	 */
-	if (!fcache_plpgsql)
+	if (!fcache_plpgsql ||
+		fcache_plpgsql->magic != FMGR_CACHE_MAGIC ||
+		!fcache_plpgsql->is_plpgsql)
 	{
-		ereport(WARNING,
-				(errmsg("late initialization of fmgr_plpgsql_cache"),
-				 errhint("use \"load 'plpgsql_check'\" before you try to use pldbgapi2")));
-
-		/*
-		 * Unfortunately, we have not access to fmgr context, so we should
-		 * to use top memory context. This is permament leak, but only for
-		 * few calls until fmgr hook will be correctly used.
-		 */
-		oldcxt = MemoryContextSwitchTo(TopMemoryContext);
-
-		fcache_plpgsql = palloc0(sizeof(fmgr_plpgsql_cache));
-
-		fcache_plpgsql->magic = FMGR_CACHE_MAGIC;
-
-		fcache_plpgsql->funcid = func->fn_oid;
-
-		fcache_plpgsql->is_plpgsql = true;
-		fcache_plpgsql->fn_mcxt = CurrentMemoryContext;
-		fcache_plpgsql->stmtid_stack = palloc_array(int, INITIAL_PLDBGAPI2_STMT_STACK_SIZE);
-		fcache_plpgsql->stmtid_stack_size = INITIAL_PLDBGAPI2_STMT_STACK_SIZE;
-		fcache_plpgsql->current_stmtid_stack_size = 0;
-
-		last_fmgr_plpgsql_cache = fcache_plpgsql;
-
-		MemoryContextSwitchTo(oldcxt);
+		ereport(ERROR,
+				(errmsg("too late initialization of fmgr_plpgsql_cache"),
+				 errhint("Use \"load 'plpgsql_check'\" before you use plpgsql_check functionality.")));
 	}
-
-	Assert(fcache_plpgsql->magic == FMGR_CACHE_MAGIC);
-	Assert(fcache_plpgsql);
-	Assert(fcache_plpgsql->is_plpgsql);
 
 #ifdef USE_ASSERT_CHECKING
 

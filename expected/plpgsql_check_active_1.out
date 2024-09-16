@@ -9423,9 +9423,4 @@ $$ language plpgsql;
 \c
 -- should not to crash
 select trace_test(3);
-WARNING:  late initialization of fmgr_plpgsql_cache
- trace_test 
-------------
-          3
-(1 row)
-
+ERROR:  too late initialization of fmgr_plpgsql_cache
