@@ -836,7 +836,8 @@ pldbgapi2_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	 */
 	if (!fcache_plpgsql ||
 		fcache_plpgsql->magic != FMGR_CACHE_MAGIC ||
-		!fcache_plpgsql->is_plpgsql)
+		!fcache_plpgsql->is_plpgsql ||
+		((fcache_plpgsql->funcid != PLpgSQLinlineFunc) && (fcache_plpgsql->funcid != func->fn_oid)))
 	{
 		ereport(ERROR,
 				(errmsg("too late initialization of fmgr_plpgsql_cache"),
