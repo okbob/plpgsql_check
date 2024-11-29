@@ -965,6 +965,13 @@ or compile by self:
   1. copy `plpgsql_check.dll` to `PostgreSQL\14\lib`
   2. copy `plpgsql_check.control` and `plpgsql_check--2.1.sql` to `PostgreSQL\14\share\extension`
 
+## Meson build
+
+1. `meson setup build`
+2. `cd build`
+3. `ninja`
+4. `sudo ninja install`
+
 ## Checked on
 
 * gcc on Linux (against all supported PostgreSQL)
