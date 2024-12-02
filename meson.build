@@ -1,14 +1,17 @@
-project('plpgsql_check', ['c'])
+project('plpgsql_check', ['c'], version: '2.7')
 
 pg_config = find_program('pg_config')
 
 bindir = run_command(pg_config, '--bindir', check: true).stdout().strip()
 includedir_server = run_command(pg_config, '--includedir-server', check: true).stdout().strip()
+includedir = run_command(pg_config, '--includedir', check: true).stdout().strip()
 pkglibdir = run_command(pg_config, '--pkglibdir', check: true).stdout().strip()
 sharedir = run_command(pg_config, '--sharedir', check: true).stdout().strip()
+libdir = run_command(pg_config, '--libdir', check: true).stdout().strip()
 
 versionstring = run_command(pg_config, '--version', check: true).stdout().strip()
 pg_version = versionstring.split(' ')[1]
+plpgsql_check_version = meson.project_version()
 
 if pg_version.endswith('devel')
   pg_version_arr = [pg_version.split('devel')[0], '0']
@@ -44,18 +47,37 @@ plpgsql_check_sources = files(
   'src/tracer.c',
 )
 
-shared_module(
+compilerName = meson.get_compiler('c').get_id()
+
+if meson.get_compiler('c').get_id() == 'msvc'
+  incdir = [includedir_server / 'port/win32_msvc',
+            includedir_server / 'port/win32',
+            includedir_server,
+            includedir]
+  postgres_lib = meson.get_compiler('c').find_library(
+                                           'postgres',
+                                            dirs: libdir,
+                                            static: true,
+                                            required: true
+                                         )
+else
+  incdir = [includedir_server]
+  postgres_lib = ''
+endif
+
+plpgsql_check_lib = shared_module(
   'plpgsql_check',
   plpgsql_check_sources,
-  include_directories: [includedir_server],
+  include_directories: incdir,
   install: true,
   install_dir: pkglibdir,
   name_prefix: '',
+  dependencies: postgres_lib,
 )
 
 install_data(
   'plpgsql_check.control',
-  'plpgsql_check--2.7.sql',
+  'plpgsql_check--' + plpgsql_check_version + '.sql',
   install_dir: sharedir / 'extension',
 )
 
