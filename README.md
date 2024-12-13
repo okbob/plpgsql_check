@@ -697,7 +697,8 @@ is displayed. The content of related variables are displayed when verbosity is v
     NOTICE:  #0 <<- end of block (elapsed time=0.754 ms)
 
 The number after `#` is a execution frame counter (this number is related to depth of error context stack).
-It allows to pair start and end of function.
+It allows to pair start and end of function. Attention - the initial depth of error context stack can be different
+in dependency on environment (and used protocol).
 
 Tracing is enabled by setting `plpgsql_check.tracer` to `on`. Attention - enabling this behaviour
 has significant negative impact on performance (unlike the profiler). You can set a level for output used by
