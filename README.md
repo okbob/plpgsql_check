@@ -7,7 +7,7 @@ This extension is a full linter for plpgsql for PostgreSQL.  It leverages only t
 PostgreSQL parser/evaluator so you see exactly the errors would occur at runtime.
 Furthermore, it parses the SQL inside your routines and finds errors not usually found during
 the "CREATE PROCEDURE/FUNCTION" command.  You can control the levels of many warnings and hints.
-Finally, you can add PRAGAMA type markers to turn off/on many aspects allowing you to hide
+Finally, you can add PRAGMA type markers to turn off/on many aspects allowing you to hide
 messages you already know about, or to remind you to come back for deeper cleaning later.
 
 I founded this project, because I wanted to publish the code I wrote for the  two years,
