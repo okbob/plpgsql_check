@@ -14,9 +14,10 @@
 #include "plpgsql_check.h"
 
 #include "access/htup_details.h"
+#include "catalog/pg_collation.h"
 #include "mb/pg_wchar.h"
-#include "tsearch/ts_locale.h"
 #include "utils/builtins.h"
+#include "utils/formatting.h"
 #include "utils/json.h"
 #include "utils/xml.h"
 
@@ -165,7 +166,7 @@ plpgsql_check_format_num(char *format_str)
 {
 	int		result;
 
-	char *format_lower_str = lowerstr(format_str);
+	char *format_lower_str = str_tolower(format_str, strlen(format_str), DEFAULT_COLLATION_OID);
 
 	if (strcmp(format_lower_str, "text") == 0)
 		result = PLPGSQL_CHECK_FORMAT_TEXT;

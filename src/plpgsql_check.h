@@ -537,8 +537,12 @@ extern plpgsql_check__ns_lookup_t plpgsql_check__ns_lookup_p;
 #define FORMAT_0PARAM_OID	3540
 #define FORMAT_NPARAM_OID	3539
 
+#if PG_VERSION_NUM < 180000
+
 #ifndef TupleDescAttr
 #define TupleDescAttr(tupdesc, i) ((tupdesc)->attrs[(i)])
+#endif
+
 #endif
 
 #define recvar_tuple(rec)		(rec->erh ? expanded_record_get_tuple(rec->erh) : NULL)
