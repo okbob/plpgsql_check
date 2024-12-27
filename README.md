@@ -971,7 +971,8 @@ or compile by self:
 1. `meson setup build`
 2. `cd build`
 3. `ninja`
-4. `sudo ninja install`
+4. `ninja install`
+5. optionaly `ninja bindist`
 
 ## Checked on
 
