@@ -4,7 +4,7 @@
  *
  *			  error/warning message formatting
  *
- * by Pavel Stehule 2013-2024
+ * by Pavel Stehule 2013-2025
  *
  *-------------------------------------------------------------------------
  */

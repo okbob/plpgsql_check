@@ -4,7 +4,7 @@
  *
  *			  routines for working with Postgres's catalog and caches
  *
- * by Pavel Stehule 2013-2024
+ * by Pavel Stehule 2013-2025
  *
  *-------------------------------------------------------------------------
  */
