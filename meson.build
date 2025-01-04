@@ -74,7 +74,7 @@ if meson.get_compiler('c').get_id() == 'msvc'
                                          )
 else
   incdir = [ includedir_server ]
-  postgres_lib = ''
+  postgres_lib = []
 endif
 
 module_lib = shared_module(
