@@ -307,23 +307,8 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 	collect_volatility(cstate, query);
 	plpgsql_check_detect_dependency(cstate, query);
 
-	if (!pure_expr_check)
-		return;
-
-#if PG_VERSION_NUM < 140000
-
+	if (pure_expr_check)
 		check_pure_expr(cstate, query, expr->query);
-
-#else
-
-	if (expr->parseMode == RAW_PARSE_PLPGSQL_EXPR ||
-		expr->parseMode == RAW_PARSE_PLPGSQL_ASSIGN1 ||
-		expr->parseMode == RAW_PARSE_PLPGSQL_ASSIGN2 ||
-		expr->parseMode == RAW_PARSE_PLPGSQL_ASSIGN3)
-		check_pure_expr(cstate, query, expr->query);
-
-#endif
-
 }
 
 /*
@@ -1001,7 +986,7 @@ plpgsql_check_expr_generic_with_parser_setup(PLpgSQL_checkstate *cstate,
 											 ParserSetupHook parser_setup,
 											 void *arg)
 {
-	prepare_plan(cstate, expr, 0, parser_setup, arg, true);
+	prepare_plan(cstate, expr, 0, parser_setup, arg, false);
 	force_plan_checks(cstate, expr);
 }
 
@@ -1115,7 +1100,7 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 		bool		is_immutable_null;
 		Oid			first_level_typ = InvalidOid;
 
-		prepare_plan(cstate, expr, 0, NULL, NULL, true);
+		prepare_plan(cstate, expr, 0, NULL, NULL, is_expression);
 
 		/* record all variables used by the query, should be after prepare_plan */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
@@ -1334,7 +1319,7 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 
 	PG_TRY();
 	{
-		prepare_plan(cstate, expr, 0, NULL, NULL, true);
+		prepare_plan(cstate, expr, 0, NULL, NULL, is_expression);
 		/* record all variables used by the query */
 
 #if PG_VERSION_NUM >= 140000
