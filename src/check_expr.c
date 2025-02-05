@@ -36,6 +36,7 @@
 
 static void collect_volatility(PLpgSQL_checkstate *cstate, Query *query);
 static Query * ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, CachedPlanSource *plansource);
+static void check_pure_expr(PLpgSQL_checkstate *cstate, Query *query, char *query_str);
 
 static CachedPlan * get_cached_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *has_result_desc);
 static void plan_checks(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str);
@@ -280,7 +281,8 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 			 PLpgSQL_expr *expr,
 			 int cursorOptions,
 			 ParserSetupHook parser_setup,
-			 void *arg)
+			 void *arg,
+			 bool pure_expr_check)
 {
 	Query	   *query;
 	CachedPlanSource *plansource = NULL;
@@ -304,6 +306,9 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 	plpgsql_check_funcexpr(cstate, query, expr->query);
 	collect_volatility(cstate, query);
 	plpgsql_check_detect_dependency(cstate, query);
+
+	if (pure_expr_check)
+		check_pure_expr(cstate, query, expr->query);
 }
 
 /*
@@ -382,6 +387,65 @@ plpgsql_check_get_plan_source(PLpgSQL_checkstate *cstate, SPIPlanPtr plan)
 		plansource = (CachedPlanSource *) linitial(plan->plancache_list);
 
 	return plansource;
+}
+
+/*
+ * Check if query holds just an expression
+ *
+ */
+static bool
+is_pure_expr(PLpgSQL_checkstate *cstate, Query *query)
+{
+	Node	   *n;
+
+	/* only restarget can be assigned in pure expression */
+	if (query->rtable)
+		return false;
+
+	if (query->distinctClause)
+		return false;
+
+	if (query->groupClause)
+		return false;
+
+	if (query->havingQual)
+		return false;
+
+	if (!query->targetList)
+		return false;
+
+	if (list_length(query->targetList) > 1)
+		return false;
+
+	n = (Node *) linitial(query->targetList);
+
+	if (!IsA(n, TargetEntry))
+		return false;
+
+	/*
+	 * unfortunately, the resname should not be checked,
+	 * postgres uses ?column?, varname, or type names, ...
+	 */
+
+	return true;
+}
+
+static void
+check_pure_expr(PLpgSQL_checkstate *cstate, Query *query, char *query_str)
+{
+	if (!cstate->cinfo->extra_warnings)
+		return;
+
+	if (!is_pure_expr(cstate, query))
+	{
+		plpgsql_check_put_error(cstate,
+								0, 0,
+								"expression is not pure expression",
+								"there is a possibility of unwanted behave",
+								NULL,
+								PLPGSQL_CHECK_WARNING_EXTRA,
+								0, query_str, NULL);
+	}
 }
 
 /*
@@ -912,7 +976,7 @@ force_plan_checks(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 void
 plpgsql_check_expr_generic(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 {
-	prepare_plan(cstate, expr, 0, NULL, NULL);
+	prepare_plan(cstate, expr, 0, NULL, NULL, true);
 	force_plan_checks(cstate, expr);
 }
 
@@ -922,7 +986,7 @@ plpgsql_check_expr_generic_with_parser_setup(PLpgSQL_checkstate *cstate,
 											 ParserSetupHook parser_setup,
 											 void *arg)
 {
-	prepare_plan(cstate, expr, 0, parser_setup, arg);
+	prepare_plan(cstate, expr, 0, parser_setup, arg, false);
 	force_plan_checks(cstate, expr);
 }
 
@@ -963,7 +1027,7 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
 		TupleDesc	tupdesc;
 		bool		is_immutable_null;
 
-		prepare_plan(cstate, expr, 0, NULL, NULL);
+		prepare_plan(cstate, expr, 0, NULL, NULL, true);
 		/* record all variables used by the query */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
@@ -1036,7 +1100,7 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 		bool		is_immutable_null;
 		Oid			first_level_typ = InvalidOid;
 
-		prepare_plan(cstate, expr, 0, NULL, NULL);
+		prepare_plan(cstate, expr, 0, NULL, NULL, is_expression);
 
 		/* record all variables used by the query, should be after prepare_plan */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
@@ -1255,7 +1319,7 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 
 	PG_TRY();
 	{
-		prepare_plan(cstate, expr, 0, NULL, NULL);
+		prepare_plan(cstate, expr, 0, NULL, NULL, is_expression);
 		/* record all variables used by the query */
 
 #if PG_VERSION_NUM >= 140000
@@ -1633,7 +1697,7 @@ plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 	{
 		TupleDesc	tupdesc;
 
-		prepare_plan(cstate, expr, 0, NULL, NULL);
+		prepare_plan(cstate, expr, 0, NULL, NULL, false);
 		/* record all variables used by the query */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 		force_plan_checks(cstate, expr);
