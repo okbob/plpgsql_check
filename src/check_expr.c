@@ -443,7 +443,7 @@ check_pure_expr(PLpgSQL_checkstate *cstate, Query *query, char *query_str)
 								"there is a possibility of unwanted behave",
 								"Maybe you forgot to use a semicolon.",
 								PLPGSQL_CHECK_WARNING_EXTRA,
-								exprLocation(query->targetList), query_str, NULL);
+								exprLocation((Node *) query->targetList), query_str, NULL);
 	}
 }
 
