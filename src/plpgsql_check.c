@@ -47,7 +47,6 @@ PG_MODULE_MAGIC;
 #endif
 
 PLpgSQL_plugin **plpgsql_check_plugin_var_ptr;
-PLpgSQL_plugin *prev_plpgsql_plugin;
 
 static const struct config_enum_entry plpgsql_check_mode_options[] = {
 	{"disabled", PLPGSQL_CHECK_MODE_DISABLED, false},

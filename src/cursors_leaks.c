@@ -52,8 +52,6 @@ typedef struct
 	LocalTransactionId lxid;
 } CursorLeaksPlugin2Info;
 
-MemoryContextCallback contextCallback;
-
 static LocalTransactionId traces_lxid = InvalidLocalTransactionId;
 static HTAB *traces = NULL;
 static MemoryContext traces_mcxt = NULL;

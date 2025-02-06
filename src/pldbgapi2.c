@@ -127,7 +127,7 @@ static PLpgSQL_plugin pldbgapi2_plugin = { pldbgapi2_func_setup,
 
 static PLpgSQL_plugin  *prev_plpgsql_plugin = NULL;
 
-MemoryContext		pldbgapi2_mcxt = NULL;
+static MemoryContext		pldbgapi2_mcxt = NULL;
 
 typedef struct pldbgapi2_plugin_info
 {

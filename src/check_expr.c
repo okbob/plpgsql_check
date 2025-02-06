@@ -18,8 +18,6 @@
 #include "catalog/pg_type.h"
 #include "executor/spi_priv.h"
 #include "optimizer/clauses.h"
-
-#include "nodes/print.h"
 #include "optimizer/optimizer.h"
 #include "parser/parse_node.h"
 
@@ -439,7 +437,7 @@ check_pure_expr(PLpgSQL_checkstate *cstate, Query *query, char *query_str)
 	if (!is_pure_expr(cstate, query))
 	{
 		plpgsql_check_put_error(cstate,
-								0, 0,
+								ERRCODE_SYNTAX_ERROR, 0,
 								"expression is not pure expression",
 								"there is a possibility of unwanted behave",
 								NULL,

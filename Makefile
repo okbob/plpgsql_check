@@ -12,8 +12,6 @@ endif
 REGRESS_OPTS = --dbname=$(PL_TESTDB)
 REGRESS = plpgsql_check_passive plpgsql_check_active plpgsql_check_active-$(MAJORVERSION) plpgsql_check_passive-$(MAJORVERSION)
 
-override CFLAGS +="-Wno-error=incompatible-pointer-types"
-
 ifdef NO_PGXS
 subdir = contrib/plpgsql_check
 top_builddir = ../..
@@ -25,4 +23,5 @@ PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 endif
 
-override CFLAGS +=  -Wno-error=incompatible-pointer-types -I$(top_builddir)/src/pl/plpgsql/src -Wall -g
+# temorary fix of compilation with gcc 15
+override CFLAGS += -Wno-error=incompatible-pointer-types -I$(top_builddir)/src/pl/plpgsql/src -Wall -g
