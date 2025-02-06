@@ -5619,3 +5619,21 @@ $$ language plpgsql;
 \c
 -- should not to crash
 select trace_test(3);
+
+create table testtable_pure_expr(a int);
+
+-- detection of not pure expressions
+create or replace function pure_expr()
+returns void as $$
+declare v int;
+begin
+  v := 1
+  delete from testtable_pure_expr where a = 10;
+  raise notice '%', v;
+end;
+$$ language plpgsql;
+
+-- raise warning
+select * from plpgsql_check_function('pure_expr()');
+
+drop table testtable_pure_expr;

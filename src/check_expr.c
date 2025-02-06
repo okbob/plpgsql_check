@@ -17,6 +17,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "executor/spi_priv.h"
+#include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/optimizer.h"
 #include "parser/parse_node.h"
@@ -440,9 +441,9 @@ check_pure_expr(PLpgSQL_checkstate *cstate, Query *query, char *query_str)
 								ERRCODE_SYNTAX_ERROR, 0,
 								"expression is not pure expression",
 								"there is a possibility of unwanted behave",
-								NULL,
+								"Maybe you forgot to use a semicolon.",
 								PLPGSQL_CHECK_WARNING_EXTRA,
-								0, query_str, NULL);
+								exprLocation(query->targetList), query_str, NULL);
 	}
 }
 
