@@ -11,9 +11,10 @@ Build on Microsoft Windows with Microsoft Visual Studio and meson
 
    set PATH=%PATH%;C:\Program Files\PostgreSQL\16\bin;C:\Program Files\Meson
 
-4. execute in orafce directory
+4. execute in orafce directory (buildtype should be release or plain,
+   attention - the release buildtype inject dependency on vc_redist.x64.exe)
 
-   meson setup --wipe --buildtype release build 
+   meson setup --wipe --buildtype release plain
    cd build
    ninja
    sudo ninja install (on linux)
