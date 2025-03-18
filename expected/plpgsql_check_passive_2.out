@@ -225,7 +225,7 @@ end;
 $$ language plpgsql;
 select * from f1();
 WARNING:  structure of query does not match function result type
-DETAIL:  Returned type numeric does not match expected type integer in column 2.
+DETAIL:  Returned type numeric does not match expected type integer in column "b" (position 2).
 CONTEXT:  PL/pgSQL function f1() line 4 at RETURN QUERY
 PL/pgSQL function f1() line 4 at RETURN QUERY
  a | b 

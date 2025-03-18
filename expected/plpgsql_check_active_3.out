@@ -1312,10 +1312,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
-                              plpgsql_check_function                               
------------------------------------------------------------------------------------
+                                     plpgsql_check_function                                      
+-------------------------------------------------------------------------------------------------
  error:42804:3:RETURN QUERY:structure of query does not match function result type
- Detail: Returned type integer does not match expected type numeric in column 1.
+ Detail: Returned type integer does not match expected type numeric in column "ax" (position 1).
 (2 rows)
 
 drop function f1();
@@ -1355,10 +1355,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings := true);
-                              plpgsql_check_function                               
------------------------------------------------------------------------------------
+                                     plpgsql_check_function                                     
+------------------------------------------------------------------------------------------------
  error:42804:3:RETURN QUERY:structure of query does not match function result type
- Detail: Returned type numeric does not match expected type integer in column 1.
+ Detail: Returned type numeric does not match expected type integer in column "a" (position 1).
 (2 rows)
 
 drop function f1();
@@ -1367,10 +1367,10 @@ returns setof numeric as $$
 begin return query select a;
 end $$ language plpgsql;
 select * from plpgsql_check_function('f1(int)', performance_warnings := true);
-                              plpgsql_check_function                               
------------------------------------------------------------------------------------
+                                         plpgsql_check_function                                          
+---------------------------------------------------------------------------------------------------------
  error:42804:2:RETURN QUERY:structure of query does not match function result type
- Detail: Returned type integer does not match expected type numeric in column 1.
+ Detail: Returned type integer does not match expected type numeric in column "__result__" (position 1).
 (2 rows)
 
 drop function f1(int);
@@ -1537,10 +1537,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx()', performance_warnings := true);
-                             plpgsql_check_function                              
----------------------------------------------------------------------------------
+                                     plpgsql_check_function                                     
+------------------------------------------------------------------------------------------------
  error:42804:4:RETURN:returned record type does not match expected record type
- Detail: Returned type integer does not match expected type numeric in column 2.
+ Detail: Returned type integer does not match expected type numeric in column "b" (position 2).
 (2 rows)
 
 create or replace function fx()
@@ -1567,10 +1567,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx()', performance_warnings := true);
-                             plpgsql_check_function                              
----------------------------------------------------------------------------------
+                                     plpgsql_check_function                                     
+------------------------------------------------------------------------------------------------
  error:42804:4:RETURN NEXT:wrong record type supplied in RETURN NEXT
- Detail: Returned type integer does not match expected type numeric in column 2.
+ Detail: Returned type integer does not match expected type numeric in column "b" (position 2).
 (2 rows)
 
 create or replace function fx()
@@ -7609,10 +7609,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings => true);
-                               plpgsql_check_function                               
-------------------------------------------------------------------------------------
+                                     plpgsql_check_function                                     
+------------------------------------------------------------------------------------------------
  error:42804:3:RETURN NEXT:returned record type does not match expected record type
- Detail: Returned type numeric does not match expected type integer in column 1.
+ Detail: Returned type numeric does not match expected type integer in column "a" (position 1).
 (2 rows)
 
 create or replace function f1()
@@ -7639,10 +7639,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('f1()', performance_warnings => true);
-                               plpgsql_check_function                               
-------------------------------------------------------------------------------------
+                                     plpgsql_check_function                                     
+------------------------------------------------------------------------------------------------
  error:42804:4:RETURN NEXT:returned record type does not match expected record type
- Detail: Returned type numeric does not match expected type integer in column 1.
+ Detail: Returned type numeric does not match expected type integer in column "a" (position 1).
 (2 rows)
 
 drop function f1();
