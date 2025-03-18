@@ -46,26 +46,6 @@
 static Oid plpgsql_check_PLpgSQLlanguageId = InvalidOid;
 
 /*
- * Fix - change of typename in Postgres 14
- */
-bool
-plpgsql_check_is_eventtriggeroid(Oid typoid)
-{
-
-#if PG_VERSION_NUM >= 140000
-
-	return typoid == EVENT_TRIGGEROID;
-
-#else
-
-	return typoid == EVTTRIGGEROID;
-
-#endif
-
-}
-
-
-/*
  * Prepare metadata necessary for plpgsql_check
  */
 void
@@ -88,17 +68,9 @@ plpgsql_check_get_function_info(plpgsql_check_info *cinfo)
 	if (functyptype == TYPTYPE_PSEUDO)
 	{
 		/* we assume OPAQUE with no arguments means a trigger */
-		if (proc->prorettype == TRIGGEROID
-
-#if PG_VERSION_NUM < 130000
-
-			|| (proc->prorettype == OPAQUEOID && proc->pronargs == 0)
-
-#endif
-
-			)
+		if (proc->prorettype == TRIGGEROID)
 			cinfo->trigtype = PLPGSQL_DML_TRIGGER;
-		else if (plpgsql_check_is_eventtriggeroid(proc->prorettype))
+		else if (proc->prorettype == EVENT_TRIGGEROID)
 			cinfo->trigtype = PLPGSQL_EVENT_TRIGGER;
 		else if (proc->prorettype != RECORDOID &&
 				 proc->prorettype != VOIDOID &&

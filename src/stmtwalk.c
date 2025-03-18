@@ -412,22 +412,6 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						cstate->estate->err_text = str.data;
 					}
 
-#if PG_VERSION_NUM < 140000
-
-					else if (d->dtype == PLPGSQL_DTYPE_ARRAYELEM)
-					{
-						PLpgSQL_arrayelem *elem = (PLpgSQL_arrayelem *) d;
-						PLpgSQL_variable *var = (PLpgSQL_variable *) cstate->estate->datums[elem->arrayparentno];
-
-						appendStringInfo(&str, "at assignment to element of variable \"%s\" declared on line %d",
-										 var->refname,
-										 var->lineno);
-
-						cstate->estate->err_text = str.data;
-					}
-
-#endif
-
 					plpgsql_check_assignment(cstate, stmt_assign->expr, NULL, NULL,
 											 stmt_assign->varno);
 
@@ -1032,16 +1016,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 											(errcode(ERRCODE_SYNTAX_ERROR),
 											 errmsg("too few parameters specified for RAISE")));
 
-#if PG_VERSION_NUM >= 130000
-
 								current_param = lnext(stmt_raise->params, current_param);
-
-#else
-
-								current_param = lnext(current_param);
-
-#endif
-
 							}
 						}
 					}
@@ -1185,15 +1160,6 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 								 ((PLpgSQL_stmt_close *) stmt)->curvar);
 
 				break;
-
-#if PG_VERSION_NUM < 140000
-			case PLPGSQL_STMT_SET:
-				/*
-				 * We can not check this now, syntax should be ok.
-				 * The expression there has not plan.
-				 */
-				break;
-#endif			/* PG_VERSION_NUM < 140000 */
 
 			case PLPGSQL_STMT_COMMIT:
 			case PLPGSQL_STMT_ROLLBACK:
@@ -1894,18 +1860,8 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 				{
 					if (!found_literal_placeholder)
 					{
-
-#if PG_VERSION_NUM >= 140000
-
 						/* in this case we can do only basic parser check */
 						raw_parser(fstr, RAW_PARSE_DEFAULT);
-
-#else
-
-						raw_parser(fstr);
-
-#endif
-
 					}
 
 					if (!found_ident_placeholder)
@@ -1928,17 +1884,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		volatile bool is_ok = true;
 
 		dynexpr = palloc0(sizeof(PLpgSQL_expr));
-
-#if PG_VERSION_NUM >= 140000
-
 		dynexpr->expr_rw_param = NULL;
-
-#else
-
-		dynexpr->rwparam = -1;
-
-#endif
-
 		dynexpr->query = dynquery;
 
 		dsp.args = params;

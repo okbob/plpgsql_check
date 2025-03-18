@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	2.7.15
+Version:	2.8.0
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -49,6 +49,9 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/*.control
 
 %changelog
+* Tue Mar 18 2025 - Pavel Stehule <pavel.stehule@gmail.com> 2.8.0
+- remove support for PostgreSQL 12 and 13
+
 * Wed Dec 6 2023 - Pavel Stehule <pavel.stehule@gmail.com> 2.7.0
 - unclosed cursors detection
 

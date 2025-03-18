@@ -1503,15 +1503,6 @@ profiler_get_expr(PLpgSQL_stmt *stmt, bool *dynamic, List **params)
 		case PLPGSQL_STMT_CALL:
 			expr = ((PLpgSQL_stmt_call *) stmt)->expr;
 			break;
-
-#if PG_VERSION_NUM < 140000
-
-		case PLPGSQL_STMT_SET:
-			expr = ((PLpgSQL_stmt_set *) stmt)->expr;
-			break;
-
-#endif			/* PG_VERSION_NUM < 140000 */
-
 		case PLPGSQL_STMT_IF:
 			expr = ((PLpgSQL_stmt_if *) stmt)->cond;
 			break;
@@ -1809,21 +1800,10 @@ profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
  * Generate simple queryid  for testing purpose.
  * DO NOT USE IN PRODUCTION.
  */
-#if PG_VERSION_NUM >= 140000
-
 static void
 profiler_fake_queryid_hook(ParseState *pstate, Query *query, JumbleState *jstate)
 {
 	(void) jstate;
-
-#else
-
-static void
-profiler_fake_queryid_hook(ParseState *pstate, Query *query)
-{
-
-#endif
-
 	(void) pstate;
 
 	Assert(query->queryId == NOQUERYID);

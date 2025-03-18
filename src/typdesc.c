@@ -47,13 +47,6 @@ plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *Cal
 		int			nfields = 0;
 		int			numargs;
 
-#if PG_VERSION_NUM < 140000
-
-		List	   *funcargs;
-		ListCell   *lc;
-
-#endif
-
 		plansource = plpgsql_check_get_plan_source(cstate, CallExpr->plan);
 
 		/*
@@ -73,25 +66,11 @@ plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *Cal
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for function %u", funcexpr->funcid);
 
-#if PG_VERSION_NUM < 140000
-
-		/* Extract function arguments, and expand any named-arg notation */
-		funcargs = expand_function_arguments(funcexpr->args,
-					   funcexpr->funcresulttype,
-					   tuple);
-
-		get_func_arg_info(tuple, &argtypes, &argnames, &argmodes);
-		numargs = list_length(funcargs);
-
-#else
-
 		/*
 		 * Get the argument names and modes, so that we can deliver on-point error
 		 * messages when something is wrong.
 		 */
 		numargs = get_func_arg_info(tuple, &argtypes, &argnames, &argmodes);
-
-#endif
 
 		ReleaseSysCache(tuple);
 
@@ -101,48 +80,6 @@ plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *Cal
 		row->dno = -1;
 		row->lineno = -1;
 		row->varnos = (int *) palloc(numargs * sizeof(int));
-
-#if PG_VERSION_NUM < 140000
-
-		/*
-		 * Construct row
-		 */
-		i = 0;
-		foreach(lc, funcargs)
-		{
-			Node	   *n = lfirst(lc);
-
-			if (argmodes &&
-				(argmodes[i] == PROARGMODE_INOUT ||
-				 argmodes[i] == PROARGMODE_OUT))
-			{
-				if (IsA(n, Param))
-				{
-					Param	   *param = (Param *) n;
-
-					/* paramid is offset by 1 (see make_datum_param()) */
-					row->varnos[nfields++] = param->paramid - 1;
-					plpgsql_check_is_assignable(cstate->estate, param->paramid - 1);
-				}
-				else
-				{
-					/* report error using parameter name, if available */
-					if (argnames && argnames[i] && argnames[i][0])
-						ereport(ERROR,
-								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("procedure parameter \"%s\" is an output parameter but corresponding argument is not writable",
-										argnames[i])));
-					else
-						ereport(ERROR,
-								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("procedure parameter %d is an output parameter but corresponding argument is not writable",
-								 i + 1)));
-				}
-			}
-			i++;
-		}
-
-#else
 
 		/*
 		 * Examine procedure's argument list.  Each output arg position should be
@@ -187,8 +124,6 @@ plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *Cal
 		}
 
 		Assert(nfields == list_length(stmt->outargs));
-
-#endif
 
 		row->nfields = nfields;
 
@@ -570,15 +505,7 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 		 * plan if it is just function call and if it is then we can try to
 		 * derive a tupledes from function's description.
 		 */
-#if PG_VERSION_NUM >= 140000
-
-	cplan = GetCachedPlan(plansource, NULL, NULL, NULL);
-
-#else
-
-	cplan = GetCachedPlan(plansource, NULL, true, NULL);
-
-#endif
+		cplan = GetCachedPlan(plansource, NULL, NULL, NULL);
 		_stmt = (PlannedStmt *) linitial(cplan->stmt_list);
 
 		if (IsA(_stmt, PlannedStmt) &&_stmt->commandType == CMD_SELECT)
@@ -666,16 +593,7 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 
 							FreeTupleDesc(tupdesc);
 
-#if PG_VERSION_NUM >= 140000
-
 							if (c->consttype == RECORDOID && c->consttypmod == -1 && !c->constisnull)
-
-#else
-
-							if (c->consttype == RECORDOID && c->consttypmod == -1)
-
-#endif
-
 							{
 								Oid		tupType;
 								int32	tupTypmod;
@@ -712,16 +630,7 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 			}
 		}
 
-#if PG_VERSION_NUM >= 140000
-
 		ReleaseCachedPlan(cplan, NULL);
-
-#else
-
-		ReleaseCachedPlan(cplan, true);
-
-#endif
-
 	}
 	return tupdesc;
 }

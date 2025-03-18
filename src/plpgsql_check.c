@@ -131,7 +131,7 @@ pg_extension_cache_callback(Datum arg, int cacheid, uint32 hashvalue)
  */
 #define LOAD_EXTERNAL_FUNCTION(file, funcname)	((void *) (load_external_function(file, funcname, true, NULL)))
 
-#define EXPECTED_EXTVERSION		"2.7"
+#define EXPECTED_EXTVERSION		"2.8"
 
 void
 plpgsql_check_check_ext_version(Oid fn_oid)

@@ -119,16 +119,6 @@ plpgsql_check_is_assignable(PLpgSQL_execstate *estate, int dno)
 								  ((PLpgSQL_recfield *) datum)->recparentno);
 			break;
 
-#if PG_VERSION_NUM < 140000
-
-		case PLPGSQL_DTYPE_ARRAYELEM:
-			/* assignable if parent record is */
-			plpgsql_check_is_assignable(estate,
-								  ((PLpgSQL_arrayelem *) datum)->arrayparentno);
-			break;
-
-#endif
-
 		default:
 			elog(ERROR, "unrecognized dtype: %d", datum->dtype);
 			break;
@@ -237,71 +227,6 @@ plpgsql_check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid
 					*expected_typmod = TupleDescAttr(recvar_tupdesc(rec), fno - 1)->atttypmod;
 			}
 			break;
-
-#if PG_VERSION_NUM < 140000
-
-		case PLPGSQL_DTYPE_ARRAYELEM:
-			{
-				/*
-				 * Target is an element of an array
-				 */
-				int			nsubscripts;
-
-				/*
-				 * To handle constructs like x[1][2] := something, we have to
-				 * be prepared to deal with a chain of arrayelem datums. Chase
-				 * back to find the base array datum, and save the subscript
-				 * expressions as we go.  (We are scanning right to left here,
-				 * but want to evaluate the subscripts left-to-right to
-				 * minimize surprises.)
-				 */
-				nsubscripts = 0;
-				do
-				{
-					PLpgSQL_arrayelem *arrayelem = (PLpgSQL_arrayelem *) target;
-
-					if (nsubscripts++ >= MAXDIM)
-						ereport(ERROR,
-								(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-								 errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)",
-										nsubscripts + 1, MAXDIM)));
-
-					plpgsql_check_expr(cstate, arrayelem->subscript);
-
-					target = cstate->estate->datums[arrayelem->arrayparentno];
-				} while (target->dtype == PLPGSQL_DTYPE_ARRAYELEM);
-
-				if (expected_typoid || expected_typmod)
-				{
-					int			arraytypmod;
-					Oid			arrayelemtypeid;
-					Oid			arraytypeid;
-
-					plpgsql_check_target(cstate, target->dno, &arraytypeid, &arraytypmod);
-
-					/*
-					 * If target is domain over array, reduce to base type
-					 */
-					arraytypeid = getBaseType(arraytypeid);
-					arrayelemtypeid = get_element_type(arraytypeid);
-
-					if (!OidIsValid(arrayelemtypeid))
-						ereport(ERROR,
-								(errcode(ERRCODE_DATATYPE_MISMATCH),
-								 errmsg("subscripted object is not an array")));
-
-					if (expected_typoid)
-						*expected_typoid = arrayelemtypeid;
-
-					if (expected_typmod)
-						*expected_typmod = arraytypmod;
-				}
-
-				plpgsql_check_record_variable_usage(cstate, target->dno, true);
-			}
-			break;
-
-#endif
 
 		default:
 			;		/* nope */
@@ -428,51 +353,6 @@ plpgsql_check_assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDes
 									 isnull);
 			}
 			break;
-
-#if PG_VERSION_NUM < 140000
-
-		case PLPGSQL_DTYPE_ARRAYELEM:
-			{
-				Oid expected_typoid;
-				int expected_typmod;
-
-				plpgsql_check_target(cstate, varno, &expected_typoid, &expected_typmod);
-
-				/* When target is composite type, then source is expanded already */
-				if (type_is_rowtype(expected_typoid))
-				{
-					PLpgSQL_rec rec;
-
-					plpgsql_check_recval_init(&rec);
-
-					PG_TRY();
-					{
-						plpgsql_check_recval_assign_tupdesc(cstate, &rec,
-											  lookup_rowtype_tupdesc_noerror(expected_typoid,
-																			 expected_typmod,
-																			 true),
-																			 isnull);
-
-						plpgsql_check_assign_tupdesc_row_or_rec(cstate, NULL, &rec, tupdesc, isnull);
-						plpgsql_check_recval_release(&rec);
-					}
-					PG_CATCH();
-					{
-						plpgsql_check_recval_release(&rec);
-
-						PG_RE_THROW();
-					}
-					PG_END_TRY();
-				}
-				else
-					plpgsql_check_assign_to_target_type(cstate,
-									    expected_typoid, expected_typmod,
-									    TupleDescAttr(tupdesc, 0)->atttypid,
-									    isnull);
-			}
-			break;
-
-#endif
 
 		default:
 			;		/* nope */

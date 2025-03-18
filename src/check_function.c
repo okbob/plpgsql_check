@@ -709,8 +709,6 @@ replace_polymorphic_type(plpgsql_check_info *cinfo,
 				typ = is_variadic ? get_array_type(cinfo->anyrangeoid) : cinfo->anyrangeoid;
 				break;
 
-#if PG_VERSION_NUM >= 130000
-
 			case ANYCOMPATIBLEOID:
 				typ = is_variadic ? anycompatible_array_oid : cinfo->anycompatibleoid;
 				break;
@@ -728,8 +726,6 @@ replace_polymorphic_type(plpgsql_check_info *cinfo,
 			case ANYCOMPATIBLERANGEOID:
 				typ = is_variadic ? get_array_type(cinfo->anycompatiblerangeoid) : cinfo->anycompatiblerangeoid;
 				break;
-
-#endif
 
 			default:
 				/* fallback */
@@ -847,21 +843,9 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 			anyelement_base_oid = getBaseType(cinfo->anyelementoid);
 			is_array_anyelement = OidIsValid(get_element_type(anyelement_base_oid));
 
-#if PG_VERSION_NUM >= 130000
-
 			anycompatible_array_oid = get_array_type(cinfo->anycompatibleoid);
 			anycompatible_base_oid = getBaseType(cinfo->anycompatibleoid);
 			is_array_anycompatible = OidIsValid(get_element_type(anycompatible_base_oid));
-
-#else
-
-			anycompatible_array_oid = InvalidOid;
-			anycompatible_base_oid = InvalidOid;
-			is_array_anycompatible = false;
-
-			(void) anycompatible_base_oid;
-
-#endif
 
 			/*
 			 * when polymorphic types are used, then we need to build fake fn_expr,
@@ -941,15 +925,7 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 			resultTupleDesc = NULL;
 		}
 	}
-	else if (cinfo->rettype == TRIGGEROID
-
-#if PG_VERSION_NUM < 130000
-
-			|| cinfo->rettype == OPAQUEOID
-
-#endif
-
-			)
+	else if (cinfo->rettype == TRIGGEROID)
 	{
 		/* trigger - return value should be ROW or RECORD based on relid */
 		if (trigdata->tg_relation)
@@ -1116,14 +1092,7 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->has_execute_stmt = false;
 	cstate->volatility = PROVOLATILE_IMMUTABLE;
 	cstate->skip_volatility_check = (cinfo->rettype == TRIGGEROID ||
-
-#if PG_VERSION_NUM < 130000
-
-									 cinfo->rettype == OPAQUEOID ||
-
-#endif
-
-									 plpgsql_check_is_eventtriggeroid(cinfo->rettype) ||
+									 cinfo->rettype == EVENT_TRIGGEROID ||
 									 cinfo->is_procedure);
 	cstate->estate = NULL;
 	cstate->result_info = result_info;
@@ -1325,13 +1294,6 @@ copy_plpgsql_datum(PLpgSQL_checkstate *cstate, PLpgSQL_datum *datum)
 
 		case PLPGSQL_DTYPE_ROW:
 		case PLPGSQL_DTYPE_RECFIELD:
-
-#if PG_VERSION_NUM < 140000
-
-		case PLPGSQL_DTYPE_ARRAYELEM:
-
-#endif
-
 			/*
 			 * These datum records are read-only at runtime, so no need to
 			 * copy them (well, ARRAYELEM contains some cached type data, but

@@ -41,15 +41,7 @@ static char *convert_plpgsql_datum_to_string(PLpgSQL_execstate *estate, PLpgSQL_
 
 PG_FUNCTION_INFO_V1(plpgsql_check_tracer_ctrl);
 
-#if PG_VERSION_NUM >= 140000
-
 #define STREXPR_START		0
-
-#else
-
-#define STREXPR_START		7
-
-#endif
 
 /*
  * This structure is used as pldbgapi2 extension parameter
@@ -430,9 +422,6 @@ print_expr_args(PLpgSQL_execstate *estate,
 	if (!expr->plan)
 	{
 		SPIPlanPtr		plan;
-
-#if PG_VERSION_NUM >= 140000
-
 		SPIPrepareOptions options;
 
 		memset(&options, 0, sizeof(options));
@@ -441,29 +430,12 @@ print_expr_args(PLpgSQL_execstate *estate,
 		options.parseMode = expr->parseMode;
 		options.cursorOptions = 0;
 
-#endif
-
 		expr->func = estate->func;
 
-#if PG_VERSION_NUM >= 140000
-
 		/*
-		 * Generate and save the plan
+		 * Generate and save the plan (enforce query parsing) and throw plan
 		 */
 		plan = SPI_prepare_extended(expr->query, &options);
-
-#else
-
-		/*
-		 * Generate the plan (enforce expr query parsing) and throw plan 
-		 */
-		plan = SPI_prepare_params(expr->query,
-								  (ParserSetupHook) plpgsql_check__parser_setup_p,
-								  (void *) expr,
-								  0);
-
-#endif
-
 		SPI_freeplan(plan);
 	}
 
@@ -574,9 +546,6 @@ print_assert_args(PLpgSQL_execstate *estate, PLpgSQL_stmt_assert *stmt)
 	if (!stmt->cond->plan)
 	{
 		SPIPlanPtr		plan;
-
-#if PG_VERSION_NUM >= 140000
-
 		SPIPrepareOptions options;
 
 		memset(&options, 0, sizeof(options));
@@ -585,29 +554,12 @@ print_assert_args(PLpgSQL_execstate *estate, PLpgSQL_stmt_assert *stmt)
 		options.parseMode = stmt->cond->parseMode;
 		options.cursorOptions = 0;
 
-#endif
-
 		stmt->cond->func = estate->func;
 
-#if PG_VERSION_NUM >= 140000
-
 		/*
-		 * Generate and save the plan
+		 * force parsing - generate and throw plan
 		 */
 		plan = SPI_prepare_extended((void *) stmt->cond->query, &options);
-
-#else
-
-		/*
-		 * Generate the plan (enforce expr query parsing) and throw plan
-		 */
-		plan = SPI_prepare_params(stmt->cond->query,
-								  (ParserSetupHook) plpgsql_check__parser_setup_p,
-								  (void *) stmt->cond,
-								  0);
-
-#endif
-
 		SPI_freeplan(plan);
 	}
 
@@ -866,15 +818,7 @@ get_outer_info(char **errcontextstr, int *frame_num)
 
 		econtext = error_context_stack->previous;
 
-#if PG_VERSION_NUM >= 130000
-
 		errstart(ERROR, TEXTDOMAIN);
-
-#else
-
-		errstart(ERROR, __FILE__, __LINE__, PG_FUNCNAME_MACRO, TEXTDOMAIN);
-
-#endif
 
 		MemoryContextSwitchTo(oldcxt);
 
@@ -919,23 +863,10 @@ tracer_func_beg(PLpgSQL_execstate *estate,
 
 	if (plpgsql_check_tracer_show_nsubxids)
 	{
-
-#if PG_VERSION_NUM >= 140000
-
 		if (MyProc->subxidStatus.overflowed)
 			snprintf(buffer, 30, ", nxids=OF");
 		else
 			snprintf(buffer, 30, ", nxids=%d", MyProc->subxidStatus.count);
-
-#else
-
-		if (MyPgXact->overflowed)
-			snprintf(buffer, 30, ", nxids=OF");
-		else
-			snprintf(buffer, 30, ", nxids=%d", MyPgXact->nxids);
-
-#endif
-
 	}
 	else
 		buffer[0] = '\0';
@@ -1123,27 +1054,12 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 
 	if (plpgsql_check_tracer_show_nsubxids)
 	{
-
-#if PG_VERSION_NUM >= 140000
-
 		if (MyProc->subxidStatus.overflowed)
 			snprintf(buffer, 20, " (tnl=%d, nxids=OF)",
 					 GetCurrentTransactionNestLevel());
 		else
 			snprintf(buffer, 20, " (tnl=%d, nxids=%d)",
 					 GetCurrentTransactionNestLevel(), MyProc->subxidStatus.count);
-
-#else
-
-		if (MyPgXact->overflowed)
-			snprintf(buffer, 20, " (tnl=%d, nxids=OF)",
-					 GetCurrentTransactionNestLevel());
-		else
-			snprintf(buffer, 20, " (tnl=%d, nxids=%d)",
-					 GetCurrentTransactionNestLevel(), MyPgXact->nxids);
-
-#endif
-
 	}
 	else
 		snprintf(buffer, 20, " (tnl=%d)", GetCurrentTransactionNestLevel());
@@ -1172,9 +1088,6 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 			case PLPGSQL_STMT_ASSIGN:
 				{
 					PLpgSQL_stmt_assign	*stmt_assign = (PLpgSQL_stmt_assign *) stmt;
-
-#if PG_VERSION_NUM >= 140000
-
 					PLpgSQL_datum	   *target = estate->datums[stmt_assign->varno];
 
 					expr = stmt_assign->expr;
@@ -1183,12 +1096,6 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 						expr->target_param = target->dno;
 					else
 						expr->target_param = -1;
-
-#else
-
-					expr = stmt_assign->expr;
-
-#endif
 
 					exprname = "expr";
 					is_assignment = true;
@@ -1232,8 +1139,6 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 		{
 			int startpos;
 
-#if PG_VERSION_NUM >= 140000
-
 			if (strcmp(exprname, "perform") == 0)
 			{
 				startpos = 7;
@@ -1241,20 +1146,6 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 			}
 			else
 				startpos = 0;
-
-#else
-
-			if (strcmp(exprname, "perform") == 0)
-			{
-				startpos = 7;
-				exprname = "expr";
-			}
-			else if (strcmp(exprname, "query") == 0)
-				startpos = 0;
-			else
-				startpos = STREXPR_START;
-
-#endif
 
 			if (is_assignment)
 			{

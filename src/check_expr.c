@@ -21,15 +21,9 @@
 #include "optimizer/clauses.h"
 #include "optimizer/optimizer.h"
 #include "parser/parse_node.h"
-
-#if PG_VERSION_NUM >= 140000
-
 #include "nodes/nodeFuncs.h"
 #include "parser/parse_coerce.h"
 #include "utils/builtins.h"
-
-#endif
-
 #include "tcop/utility.h"
 #include "utils/lsyscache.h"
 
@@ -84,9 +78,6 @@ parserhook_wrapper_update_used_variables(ParseState *pstate, Node *node)
 
 			if (bms_is_member(dno, expr->paramnos))
 			{
-
-#if PG_VERSION_NUM >= 140000
-
 				/*
 				 * PostgreSQL 14 and higher uses SQL parser for parsing
 				 * left side of assign statement too. We should to eliminate
@@ -94,9 +85,6 @@ parserhook_wrapper_update_used_variables(ParseState *pstate, Node *node)
 				 * NEVER READ.
 				 */
 				if (dno != expr->target_param)
-
-#endif
-
 				{
 					MemoryContext	oldcxt = MemoryContextSwitchTo(cstate->check_cxt);
 
@@ -177,9 +165,6 @@ _prepare_plan(PLpgSQL_checkstate *cstate,
 	{
 		MemoryContext old_cxt;
 		void	   *old_plugin_info;
-
-#if PG_VERSION_NUM >= 140000
-
 		SPIPrepareOptions options;
 
 		memset(&options, 0, sizeof(options));
@@ -188,8 +173,6 @@ _prepare_plan(PLpgSQL_checkstate *cstate,
 		options.parserSetupArg = arg ? arg : (void *) expr;
 		options.parseMode = expr->parseMode;
 		options.cursorOptions = cursorOptions;
-
-#endif
 
 		/*
 		 * The grammar can't conveniently set expr->func while building the parse
@@ -201,26 +184,10 @@ _prepare_plan(PLpgSQL_checkstate *cstate,
 
 		PG_TRY();
 		{
-
-#if PG_VERSION_NUM >= 140000
-
 			/*
 			 * Generate and save the plan
 			 */
 			plan = SPI_prepare_extended(expr->query, &options);
-
-#else
-
-			/*
-			 * Generate and save the plan
-			 */
-			plan = SPI_prepare_params(expr->query,
-									  parser_setup ? parser_setup : (ParserSetupHook) plpgsql_parser_setup_wrapper,
-									  arg ? arg : (void *) expr,
-									  cursorOptions);
-
-#endif
-
 			expr->func->cur_estate->plugin_info = old_plugin_info;
 		}
 		PG_CATCH();
@@ -675,19 +642,9 @@ prohibit_write_plan(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_s
 
 			initStringInfo(&message);
 
-#if PG_VERSION_NUM >= 130000
-
 			appendStringInfo(&message,
 					"%s is not allowed in a non volatile function",
 							GetCommandTagName(CreateCommandTag((Node *) pstmt)));
-
-#else
-
-			appendStringInfo(&message,
-					"%s is not allowed in a non volatile function",
-							CreateCommandTag((Node *) pstmt));
-
-#endif
 
 			plpgsql_check_put_error(cstate,
 					  ERRCODE_FEATURE_NOT_SUPPORTED, 0,
@@ -807,15 +764,7 @@ plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 		}
 	}
 
-#if PG_VERSION_NUM >= 140000
-
 	ReleaseCachedPlan(cplan, NULL);
-
-#else
-
-	ReleaseCachedPlan(cplan, true);
-
-#endif
 
 	return result;
 }
@@ -956,16 +905,7 @@ force_plan_checks(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 	/* do all checks for this plan, reduce a access to plan cache */
 	plan_checks(cstate, cplan, expr->query);
 
-#if PG_VERSION_NUM >= 140000
-
 	ReleaseCachedPlan(cplan, NULL);
-
-#else
-
-	ReleaseCachedPlan(cplan, true);
-
-#endif
-
 }
 
 /*
@@ -1280,18 +1220,10 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 		if (!type_is_rowtype(expected_typoid))
 			expand = false;
 
-#if PG_VERSION_NUM >= 140000
-
 		expr->target_param = targetdno;
 	}
 	else
 		expr->target_param = -1;
-
-#else
-
-	}
-
-#endif
 
 	/*
 	 * SELECT INTO for composite target type doesn't do
@@ -1320,8 +1252,6 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 	{
 		prepare_plan(cstate, expr, 0, NULL, NULL, is_expression);
 		/* record all variables used by the query */
-
-#if PG_VERSION_NUM >= 140000
 
 		if (expr->target_param != -1)
 		{
@@ -1420,12 +1350,6 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 		else
 			cstate->used_variables = bms_add_members(cstate->used_variables,
 													 expr->paramnos);
-
-#else
-
-		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
-
-#endif
 
 		/*
 		 * there is a possibility to call a plpgsql_pragma like default for some aux
