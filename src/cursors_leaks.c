@@ -17,6 +17,12 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 
+#if PG_VERSION_NUM >= 180000
+
+#include "utils/funccache.h"
+
+#endif
+
 bool plpgsql_check_cursors_leaks = true;
 bool plpgsql_check_cursors_leaks_strict = false;
 int plpgsql_check_cursors_leaks_level = WARNING;
@@ -102,7 +108,16 @@ get_function_trace(PLpgSQL_function *func)
 	}
 
 	key.fn_oid = func->fn_oid;
+
+#if PG_VERSION_NUM >= 180000
+
+	key.fn_xmin = func->cfunc.fn_xmin;
+
+#else
+
 	key.fn_xmin = func->fn_xmin;
+
+#endif
 
 	ftrace = (FunctionTrace *) hash_search(traces,
 										  (void *) &key,
@@ -112,7 +127,17 @@ get_function_trace(PLpgSQL_function *func)
 	if (!found)
 	{
 		ftrace->key.fn_oid = func->fn_oid;
+
+#if PG_VERSION_NUM >= 180000
+
+		ftrace->key.fn_xmin = func->cfunc.fn_xmin;
+
+#else
+
 		ftrace->key.fn_xmin = func->fn_xmin;
+
+#endif
+
 		ftrace->ncursors = 0;
 		ftrace->cursors_size = 0;
 		ftrace->cursors_traces = NULL;
@@ -164,7 +189,16 @@ func_end(PLpgSQL_execstate *estate,
 		 * Iterate over traced cursors. Remove slots for tracing
 		 * immediately, when traced cursor is closed already.
 		 */
+#if PG_VERSION_NUM >= 180000
+
+		if (ct->curname && ct->rec_level == func->cfunc.use_count)
+
+#else
+
 		if (ct->curname && ct->rec_level == func->use_count)
+
+#endif
+
 		{
 			if (SPI_cursor_find(ct->curname))
 			{
@@ -246,7 +280,16 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info)
 
 				if (SPI_cursor_find(ct->curname))
 				{
+#if PG_VERSION_NUM >= 180000
+
+					if (estate->func->cfunc.use_count == 1 && !plpgsql_check_cursors_leaks_strict)
+
+#else
+
 					if (estate->func->use_count == 1 && !plpgsql_check_cursors_leaks_strict)
+
+#endif
+
 					{
 						char	*context;
 
@@ -312,7 +355,17 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info)
 			}
 
 			ct->stmtid = stmt->stmtid;
+
+#if PG_VERSION_NUM >= 180000
+
+			ct->rec_level = estate->func->cfunc.use_count;
+
+#else
+
 			ct->rec_level = estate->func->use_count;
+
+#endif
+
 			ct->curname = pstrdup(curname);
 
 			MemoryContextSwitchTo(oldcxt);

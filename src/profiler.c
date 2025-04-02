@@ -411,8 +411,19 @@ profiler_init_hashkey(profiler_hashkey *hk, PLpgSQL_function *func)
 
 	hk->db_oid = MyDatabaseId;
 	hk->fn_oid = func->fn_oid;
+
+#if PG_VERSION_NUM >= 180000
+
+	hk->fn_xmin = func->cfunc.fn_xmin;
+	hk->fn_tid = func->cfunc.fn_tid;
+
+#else
+
 	hk->fn_xmin = func->fn_xmin;
 	hk->fn_tid = func->fn_tid;
+
+#endif
+
 	hk->chunk_num = 1;
 }
 
