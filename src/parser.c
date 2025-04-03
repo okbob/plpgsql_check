@@ -1892,7 +1892,7 @@ next_char:
 
 				src += 1;
 
-				while (*src)
+				if (*src)
 				{
 					size_t		i;
 
@@ -1904,7 +1904,6 @@ next_char:
 
 					/* found complete custom string separator */
 					src += cust_str_length;
-					break;
 				}
 			}
 			else
