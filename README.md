@@ -285,7 +285,7 @@ or
             JOIN pg_trigger t ON t.tgfoid = p.oid 
             JOIN pg_language l ON p.prolang = l.oid
             JOIN pg_namespace n ON p.pronamespace = n.oid,
-            LATERAL plpgsql_check_function(p.oid, t.tgrelid) cf
+            LATERAL plpgsql_check_function(p.oid, t.tgrelid, oldtable=>t.tgoldtable, newtable=>t.tgnewtable) cf
       WHERE n.nspname = 'public' and l.lanname = 'plpgsql';
 
 or
@@ -298,7 +298,9 @@ or
     FROM
     (
         SELECT
-            plpgsql_check_function_tb(pg_proc.oid, COALESCE(pg_trigger.tgrelid, 0)) AS pcf
+            plpgsql_check_function_tb(pg_proc.oid, COALESCE(pg_trigger.tgrelid, 0),
+                                      oldtable=>pg_trigger.tgoldtable,
+                                      newtable=>pg_trigger.tgnewtable) AS pcf
         FROM pg_proc
         LEFT JOIN pg_trigger
             ON (pg_trigger.tgfoid = pg_proc.oid)
