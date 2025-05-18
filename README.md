@@ -946,6 +946,11 @@ result:
      All 3 tests passed. 
     =====================
 
+## Compilation for PostgresPro
+
+`plpgsql_check` requires some unpublished patches to successufully compiled and used with PostgresPro. Use
+`plpgsql_check` from PostgresPro repository.
+
 ## Compilation on Ubuntu
 
 Sometimes successful compilation can require libicu-dev package (PostgreSQL 10 and higher - when pg was compiled with
