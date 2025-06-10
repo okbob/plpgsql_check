@@ -43,7 +43,7 @@ runtime_pragma_apply(char *pragma_str)
 
 		if (strcasecmp(pragma_str, "TRACER") == 0)
 			elog(NOTICE, "tracer is %s",
-					plpgsql_check_tracer ? "enabled" : "disabled");
+				 plpgsql_check_tracer ? "enabled" : "disabled");
 	}
 	else if (strncasecmp(pragma_str, "ENABLE:", 7) == 0)
 	{
@@ -74,7 +74,7 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 			 PLpgSQL_nsitem *ns,
 			 int lineno)
 {
-	bool	is_valid = true;
+	bool		is_valid = true;
 
 	Assert(cstate);
 
@@ -94,28 +94,28 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 
 		if (strcasecmp(pragma_str, "CHECK") == 0)
 			elog(NOTICE, "check is %s",
-					pv->disable_check ? "disabled" : "enabled");
+				 pv->disable_check ? "disabled" : "enabled");
 		else if (strcasecmp(pragma_str, "TRACER") == 0)
 			elog(NOTICE, "tracer is %s",
-					pv->disable_tracer ? "disabled" : "enabled");
+				 pv->disable_tracer ? "disabled" : "enabled");
 		else if (strcasecmp(pragma_str, "OTHER_WARNINGS") == 0)
 			elog(NOTICE, "other_warnings is %s",
-					pv->disable_other_warnings ? "disabled" : "enabled");
+				 pv->disable_other_warnings ? "disabled" : "enabled");
 		else if (strcasecmp(pragma_str, "PERFORMANCE_WARNINGS") == 0)
 			elog(NOTICE, "performance_warnings is %s",
-					pv->disable_performance_warnings ? "disabled" : "enabled");
+				 pv->disable_performance_warnings ? "disabled" : "enabled");
 		else if (strcasecmp(pragma_str, "EXTRA_WARNINGS") == 0)
 			elog(NOTICE, "extra_warnings is %s",
-					pv->disable_extra_warnings ? "disabled" : "enabled");
+				 pv->disable_extra_warnings ? "disabled" : "enabled");
 		else if (strcasecmp(pragma_str, "SECURITY_WARNINGS") == 0)
 			elog(NOTICE, "security_warnings is %s",
-					pv->disable_security_warnings ? "disabled" : "enabled");
+				 pv->disable_security_warnings ? "disabled" : "enabled");
 		else if (strcasecmp(pragma_str, "COMPATIBILITY_WARNINGS") == 0)
 			elog(NOTICE, "compatibility_warnings is %s",
-					pv->disable_compatibility_warnings ? "disabled" : "enabled");
+				 pv->disable_compatibility_warnings ? "disabled" : "enabled");
 		else if (strcasecmp(pragma_str, "CONSTANTS_TRANCING") == 0)
 			elog(NOTICE, "constants_traising is %s",
-					pv->disable_constants_tracing ? "disabled" : "enabled");
+				 pv->disable_constants_tracing ? "disabled" : "enabled");
 		else
 		{
 			elog(WARNING, "unsuported pragma: %s", pragma_str);
@@ -227,7 +227,7 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 Datum
 plpgsql_check_pragma(PG_FUNCTION_ARGS)
 {
-	ArrayType *array;
+	ArrayType  *array;
 	ArrayIterator iter;
 	bool		isnull;
 	Datum		value;

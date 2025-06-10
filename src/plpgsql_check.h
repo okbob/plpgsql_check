@@ -18,10 +18,11 @@ enum
 {
 	PLPGSQL_CHECK_ERROR,
 	PLPGSQL_CHECK_WARNING_OTHERS,
-	PLPGSQL_CHECK_WARNING_EXTRA,					/* check shadowed variables */
-	PLPGSQL_CHECK_WARNING_PERFORMANCE,				/* invisible cast check */
-	PLPGSQL_CHECK_WARNING_SECURITY,					/* sql injection check */
-	PLPGSQL_CHECK_WARNING_COMPATIBILITY				/* obsolete setting of cursor's or refcursor's variable */
+	PLPGSQL_CHECK_WARNING_EXTRA,	/* check shadowed variables */
+	PLPGSQL_CHECK_WARNING_PERFORMANCE,	/* invisible cast check */
+	PLPGSQL_CHECK_WARNING_SECURITY, /* sql injection check */
+	PLPGSQL_CHECK_WARNING_COMPATIBILITY /* obsolete setting of cursor's or
+										 * refcursor's variable */
 };
 
 enum
@@ -39,10 +40,12 @@ enum
 
 enum
 {
-	PLPGSQL_CHECK_MODE_DISABLED,		/* all functionality is disabled */
-	PLPGSQL_CHECK_MODE_BY_FUNCTION,		/* checking is allowed via CHECK function only (default) */
-	PLPGSQL_CHECK_MODE_FRESH_START,		/* check only when function is called first time */
-	PLPGSQL_CHECK_MODE_EVERY_START		/* check on every start */
+	PLPGSQL_CHECK_MODE_DISABLED,	/* all functionality is disabled */
+	PLPGSQL_CHECK_MODE_BY_FUNCTION, /* checking is allowed via CHECK function
+									 * only (default) */
+	PLPGSQL_CHECK_MODE_FRESH_START, /* check only when function is called
+									 * first time */
+	PLPGSQL_CHECK_MODE_EVERY_START	/* check on every start */
 };
 
 enum
@@ -86,12 +89,13 @@ typedef struct PLpgSQL_statements
 
 typedef struct plpgsql_check_result_info
 {
-	int			format;						/* produced / expected format */
-	Tuplestorestate	*tuple_store;			/* target tuple store */
-	TupleDesc	tupdesc;					/* target tuple store tuple descriptor */
-	MemoryContext query_ctx;				/* memory context for string operations */
-	StringInfo	sinfo;						/* buffer for multi line one value output formats */
-	bool		init_tag;					/* true, when init tag should be created */
+	int			format;			/* produced / expected format */
+	Tuplestorestate *tuple_store;	/* target tuple store */
+	TupleDesc	tupdesc;		/* target tuple store tuple descriptor */
+	MemoryContext query_ctx;	/* memory context for string operations */
+	StringInfo	sinfo;			/* buffer for multi line one value output
+								 * formats */
+	bool		init_tag;		/* true, when init tag should be created */
 } plpgsql_check_result_info;
 
 typedef struct plpgsql_check_info
@@ -129,14 +133,14 @@ typedef struct plpgsql_check_info
 
 typedef struct plpgsql_check_pragma_vector
 {
-	unsigned int disable_check : 1;
-	unsigned int disable_tracer : 1;		/* has not any effect - it's runtime */
-	unsigned int disable_other_warnings : 1;
-	unsigned int disable_performance_warnings : 1;
-	unsigned int disable_extra_warnings : 1;
-	unsigned int disable_security_warnings : 1;
-	unsigned int disable_compatibility_warnings : 1;
-	unsigned int disable_constants_tracing : 1;
+	unsigned int disable_check:1;
+	unsigned int disable_tracer:1;	/* has not any effect - it's runtime */
+	unsigned int disable_other_warnings:1;
+	unsigned int disable_performance_warnings:1;
+	unsigned int disable_extra_warnings:1;
+	unsigned int disable_security_warnings:1;
+	unsigned int disable_compatibility_warnings:1;
+	unsigned int disable_constants_tracing:1;
 } plpgsql_check_pragma_vector;
 
 #define CI_MAGIC		2023042922
@@ -145,38 +149,51 @@ typedef struct PLpgSQL_checkstate
 {
 	int			ci_magic;
 
-	List	    *argnames;					/* function arg names */
-	char		decl_volatility;			/* declared function volatility */
-	char		volatility;					/* detected function volatility */
-	bool		has_execute_stmt;			/* detected dynamic SQL, disable volatility check */
-	bool		skip_volatility_check;		/* don't do this test for trigger */
-	PLpgSQL_execstate *estate;				/* check state is estate extension */
+	List	   *argnames;		/* function arg names */
+	char		decl_volatility;	/* declared function volatility */
+	char		volatility;		/* detected function volatility */
+	bool		has_execute_stmt;	/* detected dynamic SQL, disable
+									 * volatility check */
+	bool		skip_volatility_check;	/* don't do this test for trigger */
+	PLpgSQL_execstate *estate;	/* check state is estate extension */
 	MemoryContext check_cxt;
-	List	   *exprs;						/* list of all expression created by checker */
-	bool		is_active_mode;				/* true, when checking is started by plpgsql_check_function */
-	Bitmapset  *used_variables;				/* track which variables have been used; bit per varno */
-	Bitmapset  *modif_variables;			/* track which variables had been changed; bit per varno */
-	PLpgSQL_stmt_stack_item *top_stmt_stack;	/* list of known labels + related command */
-	bool		found_return_query;			/* true, when code contains RETURN query */
-	bool		found_return_dyn_query;		/* true, when code contains RETURN QUERY EXECUTE */
-	Bitmapset  *func_oids;					/* list of used (and displayed) functions */
-	Bitmapset  *rel_oids;					/* list of used (and displayed) relations */
-	bool		fake_rtd;					/* true when functions returns record */
+	List	   *exprs;			/* list of all expression created by checker */
+	bool		is_active_mode; /* true, when checking is started by
+								 * plpgsql_check_function */
+	Bitmapset  *used_variables; /* track which variables have been used; bit
+								 * per varno */
+	Bitmapset  *modif_variables;	/* track which variables had been changed;
+									 * bit per varno */
+	PLpgSQL_stmt_stack_item *top_stmt_stack;	/* list of known labels +
+												 * related command */
+	bool		found_return_query; /* true, when code contains RETURN query */
+	bool		found_return_dyn_query; /* true, when code contains RETURN
+										 * QUERY EXECUTE */
+	Bitmapset  *func_oids;		/* list of used (and displayed) functions */
+	Bitmapset  *rel_oids;		/* list of used (and displayed) relations */
+	bool		fake_rtd;		/* true when functions returns record */
 	plpgsql_check_result_info *result_info;
 	plpgsql_check_info *cinfo;
-	Bitmapset  *safe_variables;				/* track which variables are safe against sql injection */
-	Bitmapset  *out_variables;				/* what variables are used as OUT variables */
-	Bitmapset  *protected_variables;		/* what variables should be assigned internal only */
-	Bitmapset  *auto_variables;				/* variables initialized, used by runtime */
-	Bitmapset  *typed_variables;			/* record variables with assigned type by pragma TYPE */
-	bool		stop_check;					/* true after error when fatal_errors option is active */
-	bool		allow_mp;					/* true, when multiple plans in plancache are allowed */
-	bool		has_mp;						/* true, when multiple plan was used */
-	bool		was_pragma;					/* true, when last expression was a plpgsql_check pragma */
+	Bitmapset  *safe_variables; /* track which variables are safe against sql
+								 * injection */
+	Bitmapset  *out_variables;	/* what variables are used as OUT variables */
+	Bitmapset  *protected_variables;	/* what variables should be assigned
+										 * internal only */
+	Bitmapset  *auto_variables; /* variables initialized, used by runtime */
+	Bitmapset  *typed_variables;	/* record variables with assigned type by
+									 * pragma TYPE */
+	bool		stop_check;		/* true after error when fatal_errors option
+								 * is active */
+	bool		allow_mp;		/* true, when multiple plans in plancache are
+								 * allowed */
+	bool		has_mp;			/* true, when multiple plan was used */
+	bool		was_pragma;		/* true, when last expression was a
+								 * plpgsql_check pragma */
 	plpgsql_check_pragma_vector pragma_vector;
-	Oid			pragma_foid;				/* oid of plpgsql_check pragma function */
-	char	  **strconstvars;				/* the values of string variables where the value is constant */
-	PLpgSQL_statements *top_stmts;			/* pointer to current statement group */
+	Oid			pragma_foid;	/* oid of plpgsql_check pragma function */
+	char	  **strconstvars;	/* the values of string variables where the
+								 * value is constant */
+	PLpgSQL_statements *top_stmts;	/* pointer to current statement group */
 } PLpgSQL_checkstate;
 
 typedef struct coverage_state
@@ -194,10 +211,10 @@ extern void plpgsql_check_record_variable_usage(PLpgSQL_checkstate *cstate, int 
 extern void plpgsql_check_row_or_rec(PLpgSQL_checkstate *cstate, PLpgSQL_row *row, PLpgSQL_rec *rec);
 extern void plpgsql_check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *expected_typmod);
 extern void plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
-	Oid target_typoid, int32 target_typmod, Oid value_typoid, bool isnull);
+												Oid target_typoid, int32 target_typmod, Oid value_typoid, bool isnull);
 extern void plpgsql_check_assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, bool isnull);
 extern void plpgsql_check_assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
-	PLpgSQL_row *row, PLpgSQL_rec *rec, TupleDesc tupdesc, bool isnull);
+													PLpgSQL_row *row, PLpgSQL_rec *rec, TupleDesc tupdesc, bool isnull);
 extern void plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec, TupleDesc tupdesc, bool is_null);
 extern void plpgsql_check_recval_init(PLpgSQL_rec *rec);
 extern void plpgsql_check_recval_release(PLpgSQL_rec *rec);
@@ -206,19 +223,19 @@ extern void plpgsql_check_is_assignable(PLpgSQL_execstate *estate, int dno);
 /*
  * functions from format.c
  */
-extern int plpgsql_check_format_num(char *format_str);
+extern int	plpgsql_check_format_num(char *format_str);
 extern void plpgsql_check_init_ri(plpgsql_check_result_info *ri, int format, ReturnSetInfo *rsinfo);
 extern void plpgsql_check_finalize_ri(plpgsql_check_result_info *ri);
 extern void plpgsql_check_put_error(PLpgSQL_checkstate *cstate, int sqlerrcode, int lineno,
-	const char *message, const char *detail, const char *hint, int level, int position, const char *query, const char *context);
+									const char *message, const char *detail, const char *hint, int level, int position, const char *query, const char *context);
 extern void plpgsql_check_put_error_edata(PLpgSQL_checkstate *cstate, ErrorData *edata);
 extern void plpgsql_check_put_dependency(plpgsql_check_result_info *ri, char *type, Oid oid, char *schema, char *name, char *params);
 extern void plpgsql_check_put_profile(plpgsql_check_result_info *ri, Datum queryids_array, int lineno, int stmt_lineno,
-	int cmds_on_row, int64 exec_count, int64 exec_count_err, int64 us_total, Datum max_time_array, Datum processed_rows_array, char *source_row);
+									  int cmds_on_row, int64 exec_count, int64 exec_count_err, int64 us_total, Datum max_time_array, Datum processed_rows_array, char *source_row);
 extern void plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri, pc_queryid queryid, int stmtid, int parent_stmtid, const char *parent_note, int block_num, int lineno,
-	int64 exec_stmts, int64 exec_count_err, double total_time, double max_time, int64 processed_rows, char *stmtname);
+												int64 exec_stmts, int64 exec_count_err, double total_time, double max_time, int64 processed_rows, char *stmtname);
 extern void plpgsql_check_put_profiler_functions_all_tb(plpgsql_check_result_info *ri, Oid funcoid, int64 exec_count, int64 exec_count_err,
-	double total_time, double avg_time, double stddev_time, double min_time, double max_time);
+														double total_time, double avg_time, double stddev_time, double min_time, double max_time);
 
 /*
  * function from catalog.c
@@ -227,9 +244,9 @@ extern bool plpgsql_check_is_eventtriggeroid(Oid typoid);
 extern void plpgsql_check_get_function_info(plpgsql_check_info *cinfo);
 extern void plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo);
 extern char *plpgsql_check_get_src(HeapTuple procTuple);
-extern Oid plpgsql_check_pragma_func_oid(void);
+extern Oid	plpgsql_check_pragma_func_oid(void);
 extern bool plpgsql_check_is_plpgsql_function(Oid foid);
-extern Oid plpgsql_check_get_op_namespace(Oid opno);
+extern Oid	plpgsql_check_get_op_namespace(Oid opno);
 
 #if PG_VERSION_NUM < 180000
 
@@ -252,12 +269,12 @@ extern void plpgsql_check_set_without_warnings(plpgsql_check_info *cinfo);
  * functions from check_function.c
  */
 extern void plpgsql_check_function_internal(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo);
-extern void plpgsql_check_on_func_beg(PLpgSQL_execstate * estate, PLpgSQL_function * func);
+extern void plpgsql_check_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func);
 extern void plpgsql_check_HashTableInit(void);
 extern bool plpgsql_check_is_checked(PLpgSQL_function *func);
 extern void plpgsql_check_mark_as_checked(PLpgSQL_function *func);
 extern void plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo, FmgrInfo *flinfo, FunctionCallInfo fcinfo,
-	ReturnSetInfo *rsinfo, TriggerData *trigdata, EventTriggerData *etrigdata, Trigger *tg_trigger, bool *fake_rtd);
+									   ReturnSetInfo *rsinfo, TriggerData *trigdata, EventTriggerData *etrigdata, Trigger *tg_trigger, bool *fake_rtd);
 
 extern bool plpgsql_check_other_warnings;
 extern bool plpgsql_check_extra_warnings;
@@ -265,7 +282,7 @@ extern bool plpgsql_check_performance_warnings;
 extern bool plpgsql_check_compatibility_warnings;
 extern bool plpgsql_check_fatal_errors;
 extern bool plpgsql_check_constants_tracing;
-extern int plpgsql_check_mode;
+extern int	plpgsql_check_mode;
 
 /*
  * functions from expr_walk.c
@@ -279,7 +296,7 @@ extern bool plpgsql_check_contain_volatile_functions(Node *clause, PLpgSQL_check
 extern bool plpgsql_check_contain_mutable_functions(Node *clause, PLpgSQL_checkstate *cstate);
 extern bool plpgsql_check_vardno_is_used_for_reading(Node *node, int dno);
 extern char *plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate, const char *fmt, List *args,
-	bool *found_ident_placeholder, bool *found_literal_placeholder, bool *expr_is_const);
+												bool *found_ident_placeholder, bool *found_literal_placeholder, bool *expr_is_const);
 
 /*
  * functions from check_expr.c
@@ -290,30 +307,30 @@ extern char *plpgsql_check_get_const_string(PLpgSQL_checkstate *cstate, Node *no
 extern void plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, Oid expected_typoid, bool required);
 extern void plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expression);
 extern void plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
-	PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow, int targetdno, bool use_element_type, bool is_expression);
+										 PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow, int targetdno, bool use_element_type, bool is_expression);
 extern void plpgsql_check_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 extern void plpgsql_check_assignment_with_possible_slices(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
-	PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow, int targetdno, bool use_element_type);
+														  PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow, int targetdno, bool use_element_type);
 extern void plpgsql_check_expr_as_sqlstmt_nodata(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 extern void plpgsql_check_expr_as_sqlstmt_data(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 extern bool plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 extern void plpgsql_check_assignment(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
-	PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow, int targetdno);
+									 PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow, int targetdno);
 extern void plpgsql_check_expr_generic(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 extern void plpgsql_check_expr_generic_with_parser_setup(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
-	ParserSetupHook parser_setup, void *arg);
+														 ParserSetupHook parser_setup, void *arg);
 
 extern Node *plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool force_plan_checks);
 extern char *plpgsql_check_const_to_string(Node *node, int *location);
 extern CachedPlanSource *plpgsql_check_get_plan_source(PLpgSQL_checkstate *cstate, SPIPlanPtr plan);
 
 extern void plpgsql_check_assignment_to_variable(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
-	PLpgSQL_variable *targetvar, int targetdno);
+												 PLpgSQL_variable *targetvar, int targetdno);
 
 /*
  * functions from report.c
  */
-extern char * plpgsql_check_datum_get_refname(PLpgSQL_checkstate *cstate, PLpgSQL_datum *d);
+extern char *plpgsql_check_datum_get_refname(PLpgSQL_checkstate *cstate, PLpgSQL_datum *d);
 extern void plpgsql_check_report_unused_variables(PLpgSQL_checkstate *cstate);
 extern void plpgsql_check_report_too_high_volatility(PLpgSQL_checkstate *cstate);
 extern bool is_internal_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var);
@@ -328,14 +345,14 @@ extern void plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, i
  * functions from typdesc.c
  */
 extern TupleDesc plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate, PLpgSQL_expr *query,
-	bool use_element_type, bool expand_record, bool is_expression, Oid *first_level_typoid);
+											 bool use_element_type, bool expand_record, bool is_expression, Oid *first_level_typoid);
 extern void plpgsql_check_recvar_info(PLpgSQL_rec *rec, Oid *typoid, int32 *typmod);
-extern PLpgSQL_row * plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr);
+extern PLpgSQL_row *plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *CallExpr);
 
 /*
  * functions from parser.c
  */
-extern Oid plpgsql_check_parse_name_or_signature(char *name_or_signature);
+extern Oid	plpgsql_check_parse_name_or_signature(char *name_or_signature);
 extern bool plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate, const char *str, PLpgSQL_nsitem *ns, int lineno);
 extern bool plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int lineno);
 extern bool plpgsql_check_pragma_sequence(PLpgSQL_checkstate *cstate, const char *str, int lineno);
@@ -348,10 +365,10 @@ extern char *plpgsql_check_process_echo_string(char *str, plpgsql_check_info *ci
  * functions from profiler.c
  */
 extern bool plpgsql_check_profiler;
-extern int plpgsql_check_profiler_max_shared_chunks;
+extern int	plpgsql_check_profiler_max_shared_chunks;
 
-extern needs_fmgr_hook_type		plpgsql_check_next_needs_fmgr_hook;
-extern fmgr_hook_type			plpgsql_check_next_fmgr_hook;
+extern needs_fmgr_hook_type plpgsql_check_next_needs_fmgr_hook;
+extern fmgr_hook_type plpgsql_check_next_fmgr_hook;
 
 #if PG_VERSION_NUM >= 150000
 extern void plpgsql_check_profiler_shmem_request(void);
@@ -362,7 +379,7 @@ extern Size plpgsql_check_shmem_size(void);
 extern void plpgsql_check_profiler_init_hash_tables(void);
 
 extern void plpgsql_check_iterate_over_profile(plpgsql_check_info *cinfo, profiler_stmt_walker_mode mode,
-   plpgsql_check_result_info *ri, coverage_state *cs);
+											   plpgsql_check_result_info *ri, coverage_state *cs);
 
 extern void plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo);
 extern void plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri);
@@ -383,8 +400,8 @@ extern bool plpgsql_check_tracer;
 extern bool plpgsql_check_trace_assert;
 extern bool plpgsql_check_tracer_test_mode;
 
-extern int plpgsql_check_tracer_variable_max_length;
-extern int plpgsql_check_tracer_errlevel;
+extern int	plpgsql_check_tracer_variable_max_length;
+extern int	plpgsql_check_tracer_errlevel;
 
 extern PGErrorVerbosity plpgsql_check_tracer_verbosity;
 extern PGErrorVerbosity plpgsql_check_trace_assert_verbosity;
@@ -415,7 +432,7 @@ typedef struct plpgsql_check_plugin2_stmt_info
 	const char *typname;
 	bool		is_invisible;
 	bool		is_container;
-} plpgsql_check_plugin2_stmt_info;
+}			plpgsql_check_plugin2_stmt_info;
 
 /*
  * functions from pldbgapi2
@@ -448,15 +465,15 @@ typedef struct plpgsql_check_plugin2
 							   Datum value, bool *isnull,
 							   Oid valtype, int32 valtypmod,
 							   Oid reqtype, int32 reqtypmod);
-} plpgsql_check_plugin2;
+}			plpgsql_check_plugin2;
 
-extern void plpgsql_check_register_pldbgapi2_plugin(plpgsql_check_plugin2 *plugin2);
+extern void plpgsql_check_register_pldbgapi2_plugin(plpgsql_check_plugin2 * plugin2);
 extern void plpgsql_check_init_pldbgapi2(void);
 
-extern plpgsql_check_plugin2_stmt_info *plpgsql_check_get_current_stmt_info(int stmtid);
+extern plpgsql_check_plugin2_stmt_info * plpgsql_check_get_current_stmt_info(int stmtid);
 
-extern plpgsql_check_plugin2_stmt_info *plpgsql_check_get_current_stmts_info(void);
-extern plpgsql_check_plugin2_stmt_info *plpgsql_check_get_stmts_info(PLpgSQL_function *func);
+extern plpgsql_check_plugin2_stmt_info * plpgsql_check_get_current_stmts_info(void);
+extern plpgsql_check_plugin2_stmt_info * plpgsql_check_get_stmts_info(PLpgSQL_function *func);
 
 extern int *plpgsql_check_get_current_stmtid_map(void);
 extern int *plpgsql_check_get_stmtid_map(PLpgSQL_function *func);
@@ -476,7 +493,7 @@ extern void plpgsql_check_finish_pldbgapi2(void);
  */
 extern bool plpgsql_check_cursors_leaks;
 extern bool plpgsql_check_cursors_leaks_strict;
-extern int plpgsql_check_cursors_leaks_level;
+extern int	plpgsql_check_cursors_leaks_level;
 
 extern void plpgsql_check_cursors_leaks_init(void);
 
@@ -512,8 +529,8 @@ typedef int (*plpgsql_check__recognize_err_condition_t) (const char *condname, b
 extern plpgsql_check__recognize_err_condition_t plpgsql_check__recognize_err_condition_p;
 
 typedef PLpgSQL_nsitem *(*plpgsql_check__ns_lookup_t) (PLpgSQL_nsitem *ns_cur, bool localmode,
-													  const char *name1, const char *name2, const char *name3,
-													  int *names_used);
+													   const char *name1, const char *name2, const char *name3,
+													   int *names_used);
 extern plpgsql_check__ns_lookup_t plpgsql_check__ns_lookup_p;
 
 #define NEVER_READ_VARIABLE_TEXT		"never read variable \"%s\""

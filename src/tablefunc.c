@@ -91,11 +91,11 @@ plpgsql_check_set_without_warnings(plpgsql_check_info *cinfo)
 static Datum
 check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 {
-	plpgsql_check_info		cinfo;
+	plpgsql_check_info cinfo;
 	plpgsql_check_result_info ri;
 	ReturnSetInfo *rsinfo;
 	ErrorContextCallback *prev_errorcontext;
-	int	format;
+	int			format;
 
 	plpgsql_check_check_ext_version(fcinfo->flinfo->fn_oid);
 
@@ -236,7 +236,7 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 static Datum
 check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 {
-	plpgsql_check_info		cinfo;
+	plpgsql_check_info cinfo;
 	plpgsql_check_result_info ri;
 	ReturnSetInfo *rsinfo;
 	ErrorContextCallback *prev_errorcontext;
@@ -378,7 +378,7 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 static Datum
 show_dependency_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 {
-	plpgsql_check_info		cinfo;
+	plpgsql_check_info cinfo;
 	plpgsql_check_result_info ri;
 	ReturnSetInfo *rsinfo;
 
@@ -443,7 +443,7 @@ show_dependency_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 static Datum
 profiler_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 {
-	plpgsql_check_info		cinfo;
+	plpgsql_check_info cinfo;
 	plpgsql_check_result_info ri;
 	ReturnSetInfo *rsinfo;
 
@@ -486,7 +486,7 @@ profiler_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 static Datum
 profiler_function_statements_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 {
-	plpgsql_check_info		cinfo;
+	plpgsql_check_info cinfo;
 	plpgsql_check_result_info ri;
 	ReturnSetInfo *rsinfo;
 
@@ -528,7 +528,7 @@ profiler_function_statements_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 Datum
 plpgsql_check_function(PG_FUNCTION_ARGS)
 {
-	Oid fnoid;
+	Oid			fnoid;
 
 	if (PG_ARGISNULL(0))
 		ERR_NULL_OPTION("funcoid");
@@ -541,7 +541,7 @@ plpgsql_check_function(PG_FUNCTION_ARGS)
 Datum
 plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 {
-	Oid fnoid;
+	Oid			fnoid;
 
 	if (PG_ARGISNULL(0))
 		ERR_NULL_OPTION("funcoid");
@@ -554,7 +554,7 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 Datum
 plpgsql_show_dependency_tb(PG_FUNCTION_ARGS)
 {
-	Oid fnoid;
+	Oid			fnoid;
 
 	if (PG_ARGISNULL(0))
 		ERR_NULL_OPTION("funcoid");
@@ -567,7 +567,7 @@ plpgsql_show_dependency_tb(PG_FUNCTION_ARGS)
 Datum
 plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 {
-	Oid fnoid;
+	Oid			fnoid;
 
 	if (PG_ARGISNULL(0))
 		ERR_NULL_OPTION("funcoid");
@@ -580,7 +580,7 @@ plpgsql_profiler_function_tb(PG_FUNCTION_ARGS)
 Datum
 plpgsql_profiler_function_statements_tb(PG_FUNCTION_ARGS)
 {
-	Oid fnoid;
+	Oid			fnoid;
 
 	if (PG_ARGISNULL(0))
 		ERR_NULL_OPTION("funcoid");
@@ -593,8 +593,8 @@ plpgsql_profiler_function_statements_tb(PG_FUNCTION_ARGS)
 Datum
 plpgsql_check_function_name(PG_FUNCTION_ARGS)
 {
-	Oid 	fnoid;
-	char   *name_or_signature;
+	Oid			fnoid;
+	char	   *name_or_signature;
 
 	if (PG_ARGISNULL(0))
 		ERR_NULL_OPTION("name");
@@ -608,8 +608,8 @@ plpgsql_check_function_name(PG_FUNCTION_ARGS)
 Datum
 plpgsql_check_function_tb_name(PG_FUNCTION_ARGS)
 {
-	Oid		fnoid;
-	char   *name_or_signature;
+	Oid			fnoid;
+	char	   *name_or_signature;
 
 	if (PG_ARGISNULL(0))
 		ERR_NULL_OPTION("name");
@@ -623,8 +623,8 @@ plpgsql_check_function_tb_name(PG_FUNCTION_ARGS)
 Datum
 plpgsql_show_dependency_tb_name(PG_FUNCTION_ARGS)
 {
-	Oid		fnoid;
-	char   *name_or_signature;
+	Oid			fnoid;
+	char	   *name_or_signature;
 
 	if (PG_ARGISNULL(0))
 		ERR_NULL_OPTION("name");
@@ -638,8 +638,8 @@ plpgsql_show_dependency_tb_name(PG_FUNCTION_ARGS)
 Datum
 plpgsql_profiler_function_tb_name(PG_FUNCTION_ARGS)
 {
-	Oid		fnoid;
-	char   *name_or_signature;
+	Oid			fnoid;
+	char	   *name_or_signature;
 
 	if (PG_ARGISNULL(0))
 		ERR_NULL_OPTION("name");
@@ -653,8 +653,8 @@ plpgsql_profiler_function_tb_name(PG_FUNCTION_ARGS)
 Datum
 plpgsql_profiler_function_statements_tb_name(PG_FUNCTION_ARGS)
 {
-	Oid		fnoid;
-	char   *name_or_signature;
+	Oid			fnoid;
+	char	   *name_or_signature;
 
 	if (PG_ARGISNULL(0))
 		ERR_NULL_OPTION("name");

@@ -22,21 +22,21 @@
 #include "utils/xml.h"
 
 static void put_text_line(plpgsql_check_result_info *ri, const char *message, int len);
-static const char * error_level_str(int level);
+static const char *error_level_str(int level);
 static void init_tag(plpgsql_check_result_info *ri, Oid fn_oid);
 static void close_and_save(plpgsql_check_result_info *ri);
 
 static void put_error_text(plpgsql_check_result_info *ri, PLpgSQL_execstate *estate, int sqlerrcode, int lineno,
-	const char *message, const char *detail, const char *hint, int level, int position, const char *query, const char *context);
+						   const char *message, const char *detail, const char *hint, int level, int position, const char *query, const char *context);
 
 static void format_error_xml(StringInfo str, PLpgSQL_execstate *estate, int sqlerrcode, int lineno,
-	const char *message, const char *detail, const char *hint, int level, int position, const char *query, const char *context);
+							 const char *message, const char *detail, const char *hint, int level, int position, const char *query, const char *context);
 
 static void format_error_json(StringInfo str, PLpgSQL_execstate *estate, int sqlerrcode, int lineno,
-	const char *message, const char *detail, const char *hint, int level, int position, const char *query, const char *context);
+							  const char *message, const char *detail, const char *hint, int level, int position, const char *query, const char *context);
 
 static void put_error_tabular(plpgsql_check_result_info *ri, PLpgSQL_execstate *estate, Oid fn_oid, int sqlerrcode, int lineno,
-	const char *message, const char *detail, const char *hint, int level, int position, const char *query, const char *context);
+							  const char *message, const char *detail, const char *hint, int level, int position, const char *query, const char *context);
 
 /*
  * columns of plpgsql_check_function_table result
@@ -57,7 +57,7 @@ static void put_error_tabular(plpgsql_check_result_info *ri, PLpgSQL_execstate *
 #define Anum_result_context			10
 
 /*
- * columns of plpgsql_show_dependency_tb result 
+ * columns of plpgsql_show_dependency_tb result
  *
  */
 #define Natts_dependency				5
@@ -164,9 +164,9 @@ static void put_error_tabular(plpgsql_check_result_info *ri, PLpgSQL_execstate *
 int
 plpgsql_check_format_num(char *format_str)
 {
-	int		result;
+	int			result;
 
-	char *format_lower_str = str_tolower(format_str, strlen(format_str), DEFAULT_COLLATION_OID);
+	char	   *format_lower_str = str_tolower(format_str, strlen(format_str), DEFAULT_COLLATION_OID);
 
 	if (strcmp(format_lower_str, "text") == 0)
 		result = PLPGSQL_CHECK_FORMAT_TEXT;
@@ -178,8 +178,8 @@ plpgsql_check_format_num(char *format_str)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("unrecognize format: \"%s\"",
-									 format_str),
-			errhint("Only \"text\", \"xml\" and \"json\" formats are supported.")));
+						format_str),
+				 errhint("Only \"text\", \"xml\" and \"json\" formats are supported.")));
 
 	return result;
 }
@@ -194,8 +194,8 @@ plpgsql_check_init_ri(plpgsql_check_result_info *ri,
 					  ReturnSetInfo *rsinfo)
 {
 	int			natts;
-	MemoryContext	per_query_ctx;
-	MemoryContext	oldctx;
+	MemoryContext per_query_ctx;
+	MemoryContext oldctx;
 
 	ri->format = format;
 	ri->sinfo = NULL;
@@ -227,7 +227,7 @@ plpgsql_check_init_ri(plpgsql_check_result_info *ri,
 	}
 
 	ri->init_tag = format == PLPGSQL_CHECK_FORMAT_XML ||
-				   format == PLPGSQL_CHECK_FORMAT_JSON;
+		format == PLPGSQL_CHECK_FORMAT_JSON;
 
 	/* need to build tuplestore in query context */
 	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
@@ -273,15 +273,15 @@ plpgsql_check_finalize_ri(plpgsql_check_result_info *ri)
  */
 static void
 plpgsql_check_put_error_internal(PLpgSQL_checkstate *cstate,
-					  int sqlerrcode,
-					  int lineno,
-					  const char *message,
-					  const char *detail,
-					  const char *hint,
-					  int level,
-					  int position,
-					  const char *query,
-					  const char *context)
+								 int sqlerrcode,
+								 int lineno,
+								 const char *message,
+								 const char *detail,
+								 const char *hint,
+								 int level,
+								 int position,
+								 const char *query,
+								 const char *context)
 {
 	plpgsql_check_result_info *ri = cstate->result_info;
 	PLpgSQL_execstate *estate = cstate->estate;
@@ -291,17 +291,17 @@ plpgsql_check_put_error_internal(PLpgSQL_checkstate *cstate,
 
 	/* ignore warnings when is not requested */
 	if ((level == PLPGSQL_CHECK_WARNING_PERFORMANCE && !cstate->cinfo->performance_warnings) ||
-				(level == PLPGSQL_CHECK_WARNING_OTHERS && !cstate->cinfo->other_warnings) ||
-				(level == PLPGSQL_CHECK_WARNING_EXTRA && !cstate->cinfo->extra_warnings) ||
-				(level == PLPGSQL_CHECK_WARNING_SECURITY && !cstate->cinfo->security_warnings) ||
-				(level == PLPGSQL_CHECK_WARNING_COMPATIBILITY && !cstate->cinfo->compatibility_warnings))
+		(level == PLPGSQL_CHECK_WARNING_OTHERS && !cstate->cinfo->other_warnings) ||
+		(level == PLPGSQL_CHECK_WARNING_EXTRA && !cstate->cinfo->extra_warnings) ||
+		(level == PLPGSQL_CHECK_WARNING_SECURITY && !cstate->cinfo->security_warnings) ||
+		(level == PLPGSQL_CHECK_WARNING_COMPATIBILITY && !cstate->cinfo->compatibility_warnings))
 		return;
 
 	if ((level == PLPGSQL_CHECK_WARNING_PERFORMANCE && cstate->pragma_vector.disable_performance_warnings) ||
-			(level == PLPGSQL_CHECK_WARNING_OTHERS && cstate->pragma_vector.disable_other_warnings) ||
-			(level == PLPGSQL_CHECK_WARNING_EXTRA && cstate->pragma_vector.disable_extra_warnings) ||
-			(level == PLPGSQL_CHECK_WARNING_SECURITY && cstate->pragma_vector.disable_security_warnings) ||
-			(level == PLPGSQL_CHECK_WARNING_COMPATIBILITY && cstate->pragma_vector.disable_compatibility_warnings))
+		(level == PLPGSQL_CHECK_WARNING_OTHERS && cstate->pragma_vector.disable_other_warnings) ||
+		(level == PLPGSQL_CHECK_WARNING_EXTRA && cstate->pragma_vector.disable_extra_warnings) ||
+		(level == PLPGSQL_CHECK_WARNING_SECURITY && cstate->pragma_vector.disable_security_warnings) ||
+		(level == PLPGSQL_CHECK_WARNING_COMPATIBILITY && cstate->pragma_vector.disable_compatibility_warnings))
 		return;
 
 	if (cstate->pragma_vector.disable_check)
@@ -339,7 +339,7 @@ plpgsql_check_put_error_internal(PLpgSQL_checkstate *cstate,
 				format_error_json(ri->sinfo, estate,
 								  sqlerrcode, lineno, message, detail,
 								  hint, level, position, query, context);
-			break;
+				break;
 		}
 
 		/* stop checking if it is necessary */
@@ -349,11 +349,11 @@ plpgsql_check_put_error_internal(PLpgSQL_checkstate *cstate,
 	}
 	else
 	{
-		int elevel;
+		int			elevel;
 
 		/*
-		 * when a passive mode is active and fatal_errors is false, then
-		 * raise warning everytime.
+		 * when a passive mode is active and fatal_errors is false, then raise
+		 * warning everytime.
 		 */
 		if (!cstate->is_active_mode && !cstate->cinfo->fatal_errors)
 			elevel = WARNING;
@@ -393,34 +393,34 @@ plpgsql_check_put_error_edata(PLpgSQL_checkstate *cstate,
 
 void
 plpgsql_check_put_error(PLpgSQL_checkstate *cstate,
-					  int sqlerrcode,
-					  int lineno,
-					  const char *message,
-					  const char *detail,
-					  const char *hint,
-					  int level,
-					  int position,
-					  const char *query,
-					  const char *context)
+						int sqlerrcode,
+						int lineno,
+						const char *message,
+						const char *detail,
+						const char *hint,
+						int level,
+						int position,
+						const char *query,
+						const char *context)
 {
 	/*
 	 * Trapped internal errors has transformed position. The plpgsql_check
-	 * errors (and warnings) have to have same transformation for position
-	 * to correct display caret (for trapped and reraised, and raised errors)
+	 * errors (and warnings) have to have same transformation for position to
+	 * correct display caret (for trapped and reraised, and raised errors)
 	 */
 	if (position != -1 && query)
 		position = pg_mbstrlen_with_len(query, position) + 1;
 
 	plpgsql_check_put_error_internal(cstate,
-							sqlerrcode,
-							lineno,
-							message,
-							detail,
-							hint,
-							level,
-							position,
-							query,
-							context);
+									 sqlerrcode,
+									 lineno,
+									 message,
+									 detail,
+									 hint,
+									 level,
+									 position,
+									 query,
+									 context);
 }
 
 /*
@@ -430,9 +430,9 @@ plpgsql_check_put_error(PLpgSQL_checkstate *cstate,
 static void
 put_text_line(plpgsql_check_result_info *ri, const char *message, int len)
 {
-	Datum           value;
-	bool            isnull = false;
-	HeapTuple       tuple;
+	Datum		value;
+	bool		isnull = false;
+	HeapTuple	tuple;
 
 	if (len >= 0)
 		value = PointerGetDatum(cstring_to_text_with_len(message, len));
@@ -481,7 +481,7 @@ put_error_text(plpgsql_check_result_info *ri,
 			   const char *query,
 			   const char *context)
 {
-	StringInfoData  sinfo;
+	StringInfoData sinfo;
 	const char *level_str = error_level_str(level);
 
 	Assert(message != NULL);
@@ -491,47 +491,47 @@ put_error_text(plpgsql_check_result_info *ri,
 	/* lineno should be valid for actual statements */
 	if (estate != NULL && estate->err_stmt != NULL && estate->err_stmt->lineno > 0)
 		appendStringInfo(&sinfo, "%s:%s:%d:%s:%s",
-				 level_str,
-				 unpack_sql_state(sqlerrcode),
-				 estate->err_stmt->lineno,
-				 plpgsql_check__stmt_typename_p(estate->err_stmt),
-				 message);
+						 level_str,
+						 unpack_sql_state(sqlerrcode),
+						 estate->err_stmt->lineno,
+						 plpgsql_check__stmt_typename_p(estate->err_stmt),
+						 message);
 	else if (strncmp(message, UNUSED_VARIABLE_TEXT, UNUSED_VARIABLE_TEXT_CHECK_LENGTH) == 0)
 	{
 		appendStringInfo(&sinfo, "%s:%s:%d:%s:%s",
-				 level_str,
-				 unpack_sql_state(sqlerrcode),
-				 lineno,
-				 "DECLARE",
-				 message);
+						 level_str,
+						 unpack_sql_state(sqlerrcode),
+						 lineno,
+						 "DECLARE",
+						 message);
 	}
 	else if (strncmp(message, NEVER_READ_VARIABLE_TEXT, NEVER_READ_VARIABLE_TEXT_CHECK_LENGTH) == 0)
 	{
 		appendStringInfo(&sinfo, "%s:%s:%d:%s:%s",
-				 level_str,
-				 unpack_sql_state(sqlerrcode),
-				 lineno,
-				 "DECLARE",
-				 message);
+						 level_str,
+						 unpack_sql_state(sqlerrcode),
+						 lineno,
+						 "DECLARE",
+						 message);
 	}
 	else
 	{
 		appendStringInfo(&sinfo, "%s:%s:%s",
-				 level_str,
-				 unpack_sql_state(sqlerrcode),
-				 message);
+						 level_str,
+						 unpack_sql_state(sqlerrcode),
+						 message);
 	}
 
 	put_text_line(ri, sinfo.data, sinfo.len);
 	resetStringInfo(&sinfo);
 
-	if (query != NULL) 
+	if (query != NULL)
 	{
-		char           *query_line;	/* pointer to beginning of current line */
-		int             line_caret_pos;
-		bool            is_first_line = true;
-		char           *_query = pstrdup(query);
-		char           *ptr;
+		char	   *query_line; /* pointer to beginning of current line */
+		int			line_caret_pos;
+		bool		is_first_line = true;
+		char	   *_query = pstrdup(query);
+		char	   *ptr;
 
 		ptr = _query;
 		query_line = ptr;
@@ -547,7 +547,8 @@ put_error_text(plpgsql_check_result_info *ri,
 				{
 					appendStringInfo(&sinfo, "Query: %s", query_line);
 					is_first_line = false;
-				} else
+				}
+				else
 					appendStringInfo(&sinfo, "       %s", query_line);
 
 				put_text_line(ri, sinfo.data, sinfo.len);
@@ -556,7 +557,7 @@ put_error_text(plpgsql_check_result_info *ri,
 				if (line_caret_pos > 0 && position == 0)
 				{
 					appendStringInfo(&sinfo, "--     %*s",
-						       line_caret_pos, "^");
+									 line_caret_pos, "^");
 
 					put_text_line(ri, sinfo.data, sinfo.len);
 					resetStringInfo(&sinfo);
@@ -591,7 +592,7 @@ put_error_text(plpgsql_check_result_info *ri,
 			if (line_caret_pos > 0 && position == 0)
 			{
 				appendStringInfo(&sinfo, "--     %*s",
-						 line_caret_pos, "^");
+								 line_caret_pos, "^");
 				put_text_line(ri, sinfo.data, sinfo.len);
 				resetStringInfo(&sinfo);
 			}
@@ -614,7 +615,7 @@ put_error_text(plpgsql_check_result_info *ri,
 		resetStringInfo(&sinfo);
 	}
 
-	if (context != NULL) 
+	if (context != NULL)
 	{
 		appendStringInfo(&sinfo, "Context: %s", context);
 		put_text_line(ri, sinfo.data, sinfo.len);
@@ -639,7 +640,7 @@ init_tag(plpgsql_check_result_info *ri, Oid fn_oid)
 			resetStringInfo(ri->sinfo);
 		else
 		{
-			MemoryContext	oldcxt;
+			MemoryContext oldcxt;
 
 			/* StringInfo should be created in some longer life context */
 			oldcxt = MemoryContextSwitchTo(ri->query_ctx);
@@ -657,7 +658,8 @@ init_tag(plpgsql_check_result_info *ri, Oid fn_oid)
 			else
 				appendStringInfo(ri->sinfo, "<Function oid=\"%d\">\n", fn_oid);
 		}
-		else if (ri->format == PLPGSQL_CHECK_FORMAT_JSON) {
+		else if (ri->format == PLPGSQL_CHECK_FORMAT_JSON)
+		{
 			/* create a initial tag */
 			if (plpgsql_check_regress_test_mode)
 				appendStringInfo(ri->sinfo, "{ \"issues\":[\n");
@@ -682,7 +684,8 @@ close_and_save(plpgsql_check_result_info *ri)
 	}
 	else if (ri->format == PLPGSQL_CHECK_FORMAT_JSON)
 	{
-		if (ri->sinfo->len > 1 && ri->sinfo->data[ri->sinfo->len -1] == ',') {
+		if (ri->sinfo->len > 1 && ri->sinfo->data[ri->sinfo->len - 1] == ',')
+		{
 			ri->sinfo->data[ri->sinfo->len - 1] = '\n';
 		}
 		appendStringInfoString(ri->sinfo, "\n]\n}");
@@ -696,16 +699,16 @@ close_and_save(plpgsql_check_result_info *ri)
  */
 static void
 format_error_xml(StringInfo str,
-						  PLpgSQL_execstate *estate,
-								 int sqlerrcode,
-								 int lineno,
-								 const char *message,
-								 const char *detail,
-								 const char *hint,
-								 int level,
-								 int position,
-								 const char *query,
-								 const char *context)
+				 PLpgSQL_execstate *estate,
+				 int sqlerrcode,
+				 int lineno,
+				 const char *message,
+				 const char *detail,
+				 const char *hint,
+				 int level,
+				 int position,
+				 const char *query,
+				 const char *context)
 {
 	const char *level_str = error_level_str(level);
 
@@ -716,31 +719,31 @@ format_error_xml(StringInfo str,
 
 	appendStringInfo(str, "    <Level>%s</Level>\n", level_str);
 	appendStringInfo(str, "    <Sqlstate>%s</Sqlstate>\n",
-						 unpack_sql_state(sqlerrcode));
+					 unpack_sql_state(sqlerrcode));
 	appendStringInfo(str, "    <Message>%s</Message>\n",
-							 escape_xml(message));
+					 escape_xml(message));
 	if (estate != NULL && estate->err_stmt != NULL)
 		appendStringInfo(str, "    <Stmt lineno=\"%d\">%s</Stmt>\n",
-				 estate->err_stmt->lineno,
-			   plpgsql_check__stmt_typename_p(estate->err_stmt));
+						 estate->err_stmt->lineno,
+						 plpgsql_check__stmt_typename_p(estate->err_stmt));
 
 	else if (strcmp(message, "unused declared variable") == 0)
 		appendStringInfo(str, "    <Stmt lineno=\"%d\">DECLARE</Stmt>\n",
-				 lineno);
+						 lineno);
 
 	if (hint != NULL)
 		appendStringInfo(str, "    <Hint>%s</Hint>\n",
-								 escape_xml(hint));
+						 escape_xml(hint));
 	if (detail != NULL)
 		appendStringInfo(str, "    <Detail>%s</Detail>\n",
-								 escape_xml(detail));
+						 escape_xml(detail));
 	if (query != NULL)
 		appendStringInfo(str, "    <Query position=\"%d\">%s</Query>\n",
-							 position, escape_xml(query));
+						 position, escape_xml(query));
 
 	if (context != NULL)
 		appendStringInfo(str, "    <Context>%s</Context>\n",
-							 escape_xml(context));
+						 escape_xml(context));
 
 	/* flush closing tag */
 	appendStringInfoString(str, "  </Issue>\n");
@@ -751,19 +754,19 @@ format_error_xml(StringInfo str,
 */
 static void
 format_error_json(StringInfo str,
-	PLpgSQL_execstate *estate,
-	int sqlerrcode,
-	int lineno,
-	const char *message,
-	const char *detail,
-	const char *hint,
-	int level,
-	int position,
-	const char *query,
-	const char *context)
+				  PLpgSQL_execstate *estate,
+				  int sqlerrcode,
+				  int lineno,
+				  const char *message,
+				  const char *detail,
+				  const char *hint,
+				  int level,
+				  int position,
+				  const char *query,
+				  const char *context)
 {
 	const char *level_str = error_level_str(level);
-	StringInfoData sinfo; /*Holds escaped json*/
+	StringInfoData sinfo;		/* Holds escaped json */
 
 	Assert(message != NULL);
 
@@ -772,44 +775,51 @@ format_error_json(StringInfo str,
 	/* flush tag */
 	appendStringInfoString(str, "  {\n");
 	appendStringInfo(str, "    \"level\":\"%s\",\n", level_str);
-		
+
 	escape_json(&sinfo, message);
 	appendStringInfo(str, "    \"message\":%s,\n", sinfo.data);
 	if (estate != NULL && estate->err_stmt != NULL)
 		appendStringInfo(str, "    \"statement\":{\n\"lineNumber\":\"%d\",\n\"text\":\"%s\"\n},\n",
-			estate->err_stmt->lineno,
-			plpgsql_check__stmt_typename_p(estate->err_stmt));
+						 estate->err_stmt->lineno,
+						 plpgsql_check__stmt_typename_p(estate->err_stmt));
 
 	else if (strcmp(message, "unused declared variable") == 0)
 		appendStringInfo(str, "    \"statement\":{\n\"lineNumber\":\"%d\",\n\"text\":\"DECLARE\"\n},",
-			lineno);
+						 lineno);
 
-	if (hint != NULL) {
+	if (hint != NULL)
+	{
 		resetStringInfo(&sinfo);
 		escape_json(&sinfo, hint);
 		appendStringInfo(str, "    \"hint\":%s,\n", sinfo.data);
 	}
-	if (detail != NULL) {
+	if (detail != NULL)
+	{
 		resetStringInfo(&sinfo);
 		escape_json(&sinfo, detail);
 		appendStringInfo(str, "    \"detail\":%s,\n", sinfo.data);
 	}
-	if (query != NULL) {
+	if (query != NULL)
+	{
 		resetStringInfo(&sinfo);
 		escape_json(&sinfo, query);
 		appendStringInfo(str, "    \"query\":{\n\"position\":\"%d\",\n\"text\":%s\n},\n", position, sinfo.data);
 	}
 
-	if (context != NULL) {
+	if (context != NULL)
+	{
 		resetStringInfo(&sinfo);
 		escape_json(&sinfo, context);
 		appendStringInfo(str, "    \"context\":%s,\n", sinfo.data);
 	}
 
-	/* placing this property last as to avoid a trailing comma*/
-	appendStringInfo(str, "    \"sqlState\":\"%s\"\n",	unpack_sql_state(sqlerrcode));
+	/* placing this property last as to avoid a trailing comma */
+	appendStringInfo(str, "    \"sqlState\":\"%s\"\n", unpack_sql_state(sqlerrcode));
 
-	/* flush closing tag. Needs comman jus in case there is more than one issue. Comma removed in epilog */
+	/*
+	 * flush closing tag. Needs comman jus in case there is more than one
+	 * issue. Comma removed in epilog
+	 */
 	appendStringInfoString(str, "  },");
 }
 
@@ -831,8 +841,8 @@ put_error_tabular(plpgsql_check_result_info *ri,
 				  const char *query,
 				  const char *context)
 {
-	Datum	values[Natts_result];
-	bool	nulls[Natts_result];
+	Datum		values[Natts_result];
+	bool		nulls[Natts_result];
 
 	Assert(ri->tuple_store);
 	Assert(ri->tupdesc);
@@ -863,7 +873,7 @@ put_error_tabular(plpgsql_check_result_info *ri,
 	{
 		SET_RESULT_NULL(Anum_result_lineno);
 		SET_RESULT_NULL(Anum_result_statement);
-	} 
+	}
 
 	SET_RESULT_TEXT(Anum_result_sqlstate, unpack_sql_state(sqlerrcode));
 	SET_RESULT_TEXT(Anum_result_message, message);
@@ -894,8 +904,8 @@ plpgsql_check_put_dependency(plpgsql_check_result_info *ri,
 							 char *name,
 							 char *params)
 {
-	Datum	values[Natts_dependency];
-	bool	nulls[Natts_dependency];
+	Datum		values[Natts_dependency];
+	bool		nulls[Natts_dependency];
 
 	Assert(ri->tuple_store);
 	Assert(ri->tupdesc);
@@ -926,8 +936,8 @@ plpgsql_check_put_profile(plpgsql_check_result_info *ri,
 						  Datum processed_rows_array,
 						  char *source_row)
 {
-	Datum	values[Natts_profiler];
-	bool	nulls[Natts_profiler];
+	Datum		values[Natts_profiler];
+	bool		nulls[Natts_profiler];
 
 	Assert(ri->tuple_store);
 	Assert(ri->tupdesc);
@@ -964,7 +974,7 @@ plpgsql_check_put_profile(plpgsql_check_result_info *ri,
 }
 
 /*
- * Store one output row of profiler to result tuplestore in statement 
+ * Store one output row of profiler to result tuplestore in statement
  * oriented format
  *
  */
@@ -983,8 +993,8 @@ plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri,
 									int64 processed_rows,
 									char *stmtname)
 {
-	Datum	values[Natts_profiler_statements];
-	bool	nulls[Natts_profiler_statements];
+	Datum		values[Natts_profiler_statements];
+	bool		nulls[Natts_profiler_statements];
 
 	Assert(ri->tuple_store);
 	Assert(ri->tupdesc);
@@ -1040,8 +1050,8 @@ plpgsql_check_put_profiler_functions_all_tb(plpgsql_check_result_info *ri,
 											double min_time,
 											double max_time)
 {
-	Datum	values[Natts_profiler_functions_all_tb];
-	bool	nulls[Natts_profiler_functions_all_tb];
+	Datum		values[Natts_profiler_functions_all_tb];
+	bool		nulls[Natts_profiler_functions_all_tb];
 
 	Assert(ri->tuple_store);
 	Assert(ri->tupdesc);

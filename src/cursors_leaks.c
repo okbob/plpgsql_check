@@ -23,9 +23,9 @@
 
 #endif
 
-bool plpgsql_check_cursors_leaks = true;
-bool plpgsql_check_cursors_leaks_strict = false;
-int plpgsql_check_cursors_leaks_level = WARNING;
+bool		plpgsql_check_cursors_leaks = true;
+bool		plpgsql_check_cursors_leaks_strict = false;
+int			plpgsql_check_cursors_leaks_level = WARNING;
 
 
 #define MAX_NAMES_PER_STATEMENT			20
@@ -66,8 +66,11 @@ static void func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void *
 static void func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
 static void stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info);
 
-static plpgsql_check_plugin2 cursors_leaks_plugin2 = { func_setup, NULL, func_end, NULL,
-													   NULL, stmt_end, NULL, NULL, NULL, NULL, NULL, NULL };
+static plpgsql_check_plugin2 cursors_leaks_plugin2 =
+{
+	func_setup, NULL, func_end, NULL,
+		NULL, stmt_end, NULL, NULL, NULL, NULL, NULL, NULL
+};
 
 #if PG_VERSION_NUM >= 170000
 
@@ -91,8 +94,8 @@ get_function_trace(PLpgSQL_function *func)
 		HASHCTL		ctl;
 
 		traces_mcxt = AllocSetContextCreate(TopTransactionContext,
-										    "plpgsql_check - trace cursors",
-										    ALLOCSET_DEFAULT_SIZES);
+											"plpgsql_check - trace cursors",
+											ALLOCSET_DEFAULT_SIZES);
 
 		memset(&ctl, 0, sizeof(ctl));
 		ctl.keysize = sizeof(FunctionTraceKey);
@@ -120,9 +123,9 @@ get_function_trace(PLpgSQL_function *func)
 #endif
 
 	ftrace = (FunctionTrace *) hash_search(traces,
-										  (void *) &key,
-										  HASH_ENTER,
-										  &found);
+										   (void *) &key,
+										   HASH_ENTER,
+										   &found);
 
 	if (!found)
 	{
@@ -169,8 +172,8 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_inf
 
 static void
 func_end(PLpgSQL_execstate *estate,
-				PLpgSQL_function *func,
-				void **plugin2_info)
+		 PLpgSQL_function *func,
+		 void **plugin2_info)
 {
 	CursorLeaksPlugin2Info *pinfo = *plugin2_info;
 	FunctionTrace *ftrace;
@@ -186,8 +189,8 @@ func_end(PLpgSQL_execstate *estate,
 		CursorTrace *ct = &ftrace->cursors_traces[i];
 
 		/*
-		 * Iterate over traced cursors. Remove slots for tracing
-		 * immediately, when traced cursor is closed already.
+		 * Iterate over traced cursors. Remove slots for tracing immediately,
+		 * when traced cursor is closed already.
 		 */
 #if PG_VERSION_NUM >= 180000
 
@@ -204,7 +207,7 @@ func_end(PLpgSQL_execstate *estate,
 			{
 				if (plpgsql_check_cursors_leaks_strict)
 				{
-					char	*context;
+					char	   *context;
 
 					context = GetErrorContextStack();
 
@@ -269,8 +272,8 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info)
 				/*
 				 * PLpgSQL open statements reuses portal name and does check
 				 * already used portal with already used portal name. So when
-				 * the traced name and name in cursor variable is same, we should
-				 * not to do this check. This eliminate false alarms.
+				 * the traced name and name in cursor variable is same, we
+				 * should not to do this check. This eliminate false alarms.
 				 */
 				if (strcmp(curname, ct->curname) == 0)
 				{
@@ -291,7 +294,7 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info)
 #endif
 
 					{
-						char	*context;
+						char	   *context;
 
 						context = GetErrorContextStack();
 
@@ -347,7 +350,7 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info)
 					{
 						ftrace->cursors_size = 10;
 						ftrace->cursors_traces = palloc_array(CursorTrace,
-														  ftrace->cursors_size);
+															  ftrace->cursors_size);
 					}
 				}
 

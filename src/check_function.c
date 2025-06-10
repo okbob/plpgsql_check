@@ -25,13 +25,13 @@
 
 static HTAB *plpgsql_check_HashTable = NULL;
 
-bool plpgsql_check_other_warnings = false;
-bool plpgsql_check_extra_warnings = false;
-bool plpgsql_check_performance_warnings = false;
-bool plpgsql_check_compatibility_warnings = false;
-bool plpgsql_check_fatal_errors = true;
-bool plpgsql_check_constants_tracing = true;
-int plpgsql_check_mode = PLPGSQL_CHECK_MODE_BY_FUNCTION;
+bool		plpgsql_check_other_warnings = false;
+bool		plpgsql_check_extra_warnings = false;
+bool		plpgsql_check_performance_warnings = false;
+bool		plpgsql_check_compatibility_warnings = false;
+bool		plpgsql_check_fatal_errors = true;
+bool		plpgsql_check_constants_tracing = true;
+int			plpgsql_check_mode = PLPGSQL_CHECK_MODE_BY_FUNCTION;
 
 /* ----------
  * Hash table for checked functions
@@ -52,26 +52,29 @@ typedef struct plpgsql_hashent
 
 	TransactionId fn_xmin;
 	ItemPointerData fn_tid;
-	bool is_checked;
-} plpgsql_check_HashEnt;
+	bool		is_checked;
+}			plpgsql_check_HashEnt;
 
 
 static void function_check(PLpgSQL_function *func, PLpgSQL_checkstate *cstate);
 static void trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate);
 static void release_exprs(List *exprs);
-static int load_configuration(HeapTuple procTuple, bool *reload_config);
+static int	load_configuration(HeapTuple procTuple, bool *reload_config);
 static void init_datum_dno(PLpgSQL_checkstate *cstate, int dno, bool is_auto, bool is_protected);
-static PLpgSQL_datum * copy_plpgsql_datum(PLpgSQL_checkstate *cstate, PLpgSQL_datum *datum);
+static PLpgSQL_datum *copy_plpgsql_datum(PLpgSQL_checkstate *cstate, PLpgSQL_datum *datum);
 static void setup_estate(PLpgSQL_execstate *estate, PLpgSQL_function *func, ReturnSetInfo *rsi, plpgsql_check_info *cinfo);
 static void setup_cstate(PLpgSQL_checkstate *cstate, plpgsql_check_result_info *result_info,
-	plpgsql_check_info *cinfo, bool is_active_mode, bool fake_rtd);
+						 plpgsql_check_info *cinfo, bool is_active_mode, bool fake_rtd);
 
 static void passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
 
-static plpgsql_check_plugin2 check_plugin2 = { NULL,
-											   passive_check_func_beg, NULL, NULL,
-											   NULL, NULL, NULL,
-											   NULL, NULL, NULL, NULL, NULL };
+static plpgsql_check_plugin2 check_plugin2 =
+{
+	NULL,
+		passive_check_func_beg, NULL, NULL,
+		NULL, NULL, NULL,
+		NULL, NULL, NULL, NULL, NULL
+};
 
 /*
  * Prepare list of OUT variables for later report
@@ -83,14 +86,14 @@ collect_out_variables(PLpgSQL_function *func, PLpgSQL_checkstate *cstate)
 
 	if (func->out_param_varno != -1)
 	{
-		int		varno = func->out_param_varno;
+		int			varno = func->out_param_varno;
 		PLpgSQL_variable *var = (PLpgSQL_variable *) func->datums[varno];
 
 		if (var->dtype == PLPGSQL_DTYPE_ROW && is_internal_variable(cstate, var))
 		{
 			/* this function has more OUT parameters */
-			PLpgSQL_row *row = (PLpgSQL_row*) var;
-			int		fnum;
+			PLpgSQL_row *row = (PLpgSQL_row *) var;
+			int			fnum;
 
 			for (fnum = 0; fnum < row->nfields; fnum++)
 				cstate->out_variables = bms_add_member(cstate->out_variables, row->varnos[fnum]);
@@ -127,12 +130,13 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 	PLpgSQL_checkstate cstate;
 	PLpgSQL_function *volatile function = NULL;
 	bool		reload_config;
+
 	LOCAL_FCINFO(fake_fcinfo, 0);
 
 	FmgrInfo	flinfo;
 	TriggerData trigdata;
 	EventTriggerData etrigdata;
-	Trigger tg_trigger;
+	Trigger		tg_trigger;
 	int			rc;
 	ResourceOwner oldowner;
 	PLpgSQL_execstate *cur_estate = NULL;
@@ -153,26 +157,27 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 							   &rsinfo,
 							   &trigdata,
 							   &etrigdata,
-								&tg_trigger,
-								&fake_rtd);
+							   &tg_trigger,
+							   &fake_rtd);
 
 	setup_cstate(&cstate, ri, cinfo, true, fake_rtd);
 
 	old_cxt = MemoryContextSwitchTo(cstate.check_cxt);
 
 	/*
-	 * Copy argument names for later check, only when other warnings are required.
-	 * Argument names are used for check parameter versus local variable collision.
+	 * Copy argument names for later check, only when other warnings are
+	 * required. Argument names are used for check parameter versus local
+	 * variable collision.
 	 */
 	if (cinfo->other_warnings)
 	{
-		int		numargs;
+		int			numargs;
 		Oid		   *argtypes;
 		char	  **argnames;
 		char	   *argmodes;
 
 		numargs = get_func_arg_info(cinfo->proctuple,
-							&argtypes, &argnames, &argmodes);
+									&argtypes, &argnames, &argmodes);
 
 		if (argnames != NULL)
 		{
@@ -216,8 +221,9 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 			cstate.estate = &estate;
 
 			/*
-			 * Mark the function as busy, ensure higher than zero usage. There is no
-			 * reason for protection function against delete, but I afraid of asserts.
+			 * Mark the function as busy, ensure higher than zero usage. There
+			 * is no reason for protection function against delete, but I
+			 * afraid of asserts.
 			 */
 #if PG_VERSION_NUM >= 180000
 
@@ -333,25 +339,25 @@ static void
 passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info)
 {
 	const char *err_text = estate->err_text;
-	int closing;
-	List		*exceptions;
+	int			closing;
+	List	   *exceptions;
 
 	if (plpgsql_check_mode == PLPGSQL_CHECK_MODE_FRESH_START ||
-		   plpgsql_check_mode == PLPGSQL_CHECK_MODE_EVERY_START)
+		plpgsql_check_mode == PLPGSQL_CHECK_MODE_EVERY_START)
 	{
-		int i;
+		int			i;
 		PLpgSQL_rec *saved_records;
 		PLpgSQL_var *saved_vars;
 		MemoryContext oldcontext,
-					 old_cxt;
+					old_cxt;
 		ResourceOwner oldowner;
 		plpgsql_check_result_info ri;
 		plpgsql_check_info cinfo;
 		PLpgSQL_checkstate cstate;
 
 		/*
-		 * don't allow repeated execution on checked function
-		 * when it is not requsted. 
+		 * don't allow repeated execution on checked function when it is not
+		 * requsted.
 		 */
 		if (plpgsql_check_mode == PLPGSQL_CHECK_MODE_FRESH_START &&
 			plpgsql_check_is_checked(func))
@@ -380,10 +386,10 @@ passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, void *
 			cinfo.volatility = PROVOLATILE_VOLATILE;
 
 		cinfo.fatal_errors = plpgsql_check_fatal_errors,
-		cinfo.other_warnings = plpgsql_check_other_warnings,
-		cinfo.performance_warnings = plpgsql_check_performance_warnings,
-		cinfo.extra_warnings = plpgsql_check_extra_warnings,
-		cinfo.compatibility_warnings = plpgsql_check_compatibility_warnings;
+			cinfo.other_warnings = plpgsql_check_other_warnings,
+			cinfo.performance_warnings = plpgsql_check_performance_warnings,
+			cinfo.extra_warnings = plpgsql_check_extra_warnings,
+			cinfo.compatibility_warnings = plpgsql_check_compatibility_warnings;
 		cinfo.constants_tracing = plpgsql_check_constants_tracing;
 
 		ri.format = PLPGSQL_CHECK_FORMAT_ELOG;
@@ -398,8 +404,8 @@ passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, void *
 		old_cxt = MemoryContextSwitchTo(cstate.check_cxt);
 
 		/*
-		 * During the check stage a rec and vars variables are modified, so we should
-		 * to save their content
+		 * During the check stage a rec and vars variables are modified, so we
+		 * should to save their content
 		 */
 		saved_records = palloc(sizeof(PLpgSQL_rec) * estate->ndatums);
 		saved_vars = palloc(sizeof(PLpgSQL_var) * estate->ndatums);
@@ -435,7 +441,7 @@ passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, void *
 
 		/*
 		 * Raised exception should be trapped in outer functtion. Protection
-		 * against outer trap is QUERY_CANCELED exception. 
+		 * against outer trap is QUERY_CANCELED exception.
 		 */
 		oldcontext = CurrentMemoryContext;
 		oldowner = CurrentResourceOwner;
@@ -454,13 +460,13 @@ passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, void *
 				if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS &&
 					return_is_required(cstate.cinfo))
 					plpgsql_check_put_error(&cstate,
-									  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
-									  "control reached end of function without RETURN",
-									  NULL,
-									  NULL,
-									  closing == PLPGSQL_CHECK_UNCLOSED ?
+											ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
+											"control reached end of function without RETURN",
+											NULL,
+											NULL,
+											closing == PLPGSQL_CHECK_UNCLOSED ?
 											PLPGSQL_CHECK_ERROR : PLPGSQL_CHECK_WARNING_EXTRA,
-									  0, NULL, NULL);
+											0, NULL, NULL);
 
 				plpgsql_check_report_unused_variables(&cstate);
 				plpgsql_check_report_too_high_volatility(&cstate);
@@ -526,7 +532,7 @@ static void
 function_check(PLpgSQL_function *func, PLpgSQL_checkstate *cstate)
 {
 	int			i;
-	int closing = PLPGSQL_CHECK_UNCLOSED;
+	int			closing = PLPGSQL_CHECK_UNCLOSED;
 	List	   *exceptions;
 	ListCell   *lc;
 
@@ -551,15 +557,15 @@ function_check(PLpgSQL_function *func, PLpgSQL_checkstate *cstate)
 
 			initStringInfo(&str);
 			appendStringInfo(&str, "name of parameter \"%s\" is reserved keyword",
-						 argname);
+							 argname);
 
 			plpgsql_check_put_error(cstate,
-						  0, 0,
-						  str.data,
-						  "The reserved keyword was used as parameter name.",
-						  NULL,
-						  PLPGSQL_CHECK_WARNING_OTHERS,
-						  0, NULL, NULL);
+									0, 0,
+									str.data,
+									"The reserved keyword was used as parameter name.",
+									NULL,
+									PLPGSQL_CHECK_WARNING_OTHERS,
+									0, NULL, NULL);
 			pfree(str.data);
 		}
 	}
@@ -586,12 +592,12 @@ function_check(PLpgSQL_function *func, PLpgSQL_checkstate *cstate)
 		if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS &&
 			return_is_required(cstate->cinfo))
 			plpgsql_check_put_error(cstate,
-							  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
-							  "control reached end of function without RETURN",
-							  NULL,
-							  NULL,
-							  closing == PLPGSQL_CHECK_UNCLOSED ? PLPGSQL_CHECK_ERROR : PLPGSQL_CHECK_WARNING_EXTRA,
-							  0, NULL, NULL);
+									ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
+									"control reached end of function without RETURN",
+									NULL,
+									NULL,
+									closing == PLPGSQL_CHECK_UNCLOSED ? PLPGSQL_CHECK_ERROR : PLPGSQL_CHECK_WARNING_EXTRA,
+									0, NULL, NULL);
 
 		plpgsql_check_report_unused_variables(cstate);
 		plpgsql_check_report_too_high_volatility(cstate);
@@ -606,7 +612,7 @@ static void
 trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate)
 {
 	int			i;
-	int closing = PLPGSQL_CHECK_UNCLOSED;
+	int			closing = PLPGSQL_CHECK_UNCLOSED;
 	List	   *exceptions;
 
 	/*
@@ -672,12 +678,12 @@ trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate)
 		if (closing != PLPGSQL_CHECK_CLOSED && closing != PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS &&
 			return_is_required(cstate->cinfo))
 			plpgsql_check_put_error(cstate,
-							  ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
-							  "control reached end of function without RETURN",
-							  NULL,
-							  NULL,
-							  closing == PLPGSQL_CHECK_UNCLOSED ? PLPGSQL_CHECK_ERROR : PLPGSQL_CHECK_WARNING_EXTRA,
-							  0, NULL, NULL);
+									ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT, 0,
+									"control reached end of function without RETURN",
+									NULL,
+									NULL,
+									closing == PLPGSQL_CHECK_UNCLOSED ? PLPGSQL_CHECK_ERROR : PLPGSQL_CHECK_WARNING_EXTRA,
+									0, NULL, NULL);
 
 		plpgsql_check_report_unused_variables(cstate);
 		plpgsql_check_report_too_high_volatility(cstate);
@@ -690,7 +696,7 @@ trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate)
 static bool
 is_polymorphic_tupdesc(TupleDesc tupdesc)
 {
-	int	i;
+	int			i;
 
 	for (i = 0; i < tupdesc->natts; i++)
 		if (IsPolymorphicType(TupleDescAttr(tupdesc, i)->atttypid))
@@ -704,12 +710,12 @@ is_polymorphic_tupdesc(TupleDesc tupdesc)
  */
 static Oid
 replace_polymorphic_type(plpgsql_check_info *cinfo,
-								Oid typ,
-								Oid anyelement_array_oid,
-								bool is_array_anyelement,
-								Oid anycompatible_array_oid,
-								bool is_array_anycompatible,
-								bool is_variadic)
+						 Oid typ,
+						 Oid anyelement_array_oid,
+						 bool is_array_anyelement,
+						 Oid anycompatible_array_oid,
+						 bool is_array_anycompatible,
+						 bool is_variadic)
 {
 	/* quite compiler warnings */
 	(void) anycompatible_array_oid;
@@ -735,7 +741,7 @@ replace_polymorphic_type(plpgsql_check_info *cinfo,
 				if (!type_is_enum(cinfo->anyenumoid))
 					elog(ERROR, "type specified by anyenumtype option is not enum");
 				typ = cinfo->anyenumoid;
-			break;
+				break;
 
 			case ANYARRAYOID:
 				typ = anyelement_array_oid;
@@ -782,21 +788,21 @@ replace_polymorphic_type(plpgsql_check_info *cinfo,
  */
 void
 plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
-						  FmgrInfo *flinfo,
-						  FunctionCallInfo fcinfo,
-						  ReturnSetInfo *rsinfo,
-						  TriggerData *trigdata,
-						  EventTriggerData *etrigdata,
-						  Trigger *tg_trigger,
-						  bool *fake_rtd)
+						   FmgrInfo *flinfo,
+						   FunctionCallInfo fcinfo,
+						   ReturnSetInfo *rsinfo,
+						   TriggerData *trigdata,
+						   EventTriggerData *etrigdata,
+						   Trigger *tg_trigger,
+						   bool *fake_rtd)
 {
-	TupleDesc resultTupleDesc;
-	int		nargs;
-	Oid	   *argtypes;
-	char  **argnames;
-	char   *argmodes;
-	Oid		rettype;
-	bool	found_polymorphic = false;
+	TupleDesc	resultTupleDesc;
+	int			nargs;
+	Oid		   *argtypes;
+	char	  **argnames;
+	char	   *argmodes;
+	Oid			rettype;
+	bool		found_polymorphic = false;
 
 	*fake_rtd = false;
 
@@ -842,18 +848,18 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 
 	if (nargs > 0)
 	{
-		int		i;
+		int			i;
 
 		for (i = 0; i < nargs; i++)
 		{
-			Oid		argtype = InvalidOid;
+			Oid			argtype = InvalidOid;
 
 			if (argmodes)
 			{
 				if (argmodes[i] == FUNC_PARAM_IN ||
 					argmodes[i] == FUNC_PARAM_INOUT ||
 					argmodes[i] == FUNC_PARAM_VARIADIC)
-				argtype = argtypes[i];
+					argtype = argtypes[i];
 			}
 			else
 				argtype = argtypes[i];
@@ -884,13 +890,13 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 			is_array_anycompatible = OidIsValid(get_element_type(anycompatible_base_oid));
 
 			/*
-			 * when polymorphic types are used, then we need to build fake fn_expr,
-			 * to be in plpgsql_resolve_polymorphic_argtypes happy.
+			 * when polymorphic types are used, then we need to build fake
+			 * fn_expr, to be in plpgsql_resolve_polymorphic_argtypes happy.
 			 */
 			for (i = 0; i < nargs; i++)
 			{
-				bool	is_variadic = false;
-				Oid		argtype = InvalidOid;
+				bool		is_variadic = false;
+				Oid			argtype = InvalidOid;
 
 				if (argmodes)
 				{
@@ -921,13 +927,13 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 				}
 			}
 
-			rettype =  replace_polymorphic_type(cinfo,
-												rettype,
-												anyelement_array_oid,
-												is_array_anyelement,
-												anycompatible_array_oid,
-												is_array_anycompatible,
-												false);
+			rettype = replace_polymorphic_type(cinfo,
+											   rettype,
+											   anyelement_array_oid,
+											   is_array_anyelement,
+											   anycompatible_array_oid,
+											   is_array_anycompatible,
+											   false);
 
 			fcinfo->flinfo->fn_expr = (Node *) makeFuncExpr(cinfo->fn_oid,
 															rettype,
@@ -945,7 +951,7 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 	if (argmodes)
 		pfree(argmodes);
 
-	/* 
+	/*
 	 * prepare ReturnSetInfo
 	 *
 	 * necessary for RETURN NEXT and RETURN QUERY
@@ -978,8 +984,8 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 			resultTupleDesc = CreateTemplateTupleDesc(1);
 
 			TupleDescInitEntry(resultTupleDesc,
-							    (AttrNumber) 1, "__result__",
-							    cinfo->rettype, -1, 0);
+							   (AttrNumber) 1, "__result__",
+							   cinfo->rettype, -1, 0);
 			resultTupleDesc = BlessTupleDesc(resultTupleDesc);
 		}
 	}
@@ -988,9 +994,9 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 		if (IsPolymorphicType(cinfo->rettype))
 		{
 			/*
-			 * ensure replacament of polymorphic rettype, but this
-			 * error is checked in validation stage, so this case
-			 * should not be possible.
+			 * ensure replacament of polymorphic rettype, but this error is
+			 * checked in validation stage, so this case should not be
+			 * possible.
 			 */
 			if (IsPolymorphicType(rettype))
 				elog(ERROR, "return type is still polymorphic");
@@ -1007,9 +1013,8 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 		rsinfo->returnMode = SFRM_ValuePerCall;
 
 		/*
-		 * ExprContext is created inside CurrentMemoryContext,
-		 * without any additional source allocation. It is released
-		 * on end of transaction.
+		 * ExprContext is created inside CurrentMemoryContext, without any
+		 * additional source allocation. It is released on end of transaction.
 		 */
 		rsinfo->econtext = CreateStandaloneExprContext();
 	}
@@ -1021,9 +1026,9 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
  */
 static void
 setup_estate(PLpgSQL_execstate *estate,
-					 PLpgSQL_function *func,
-					 ReturnSetInfo *rsi,
-					 plpgsql_check_info *cinfo)
+			 PLpgSQL_function *func,
+			 ReturnSetInfo *rsi,
+			 plpgsql_check_info *cinfo)
 {
 	/* this link will be restored at exit from plpgsql_call_handler */
 	func->cur_estate = estate;
@@ -1043,8 +1048,8 @@ setup_estate(PLpgSQL_execstate *estate,
 
 	estate->eval_econtext = makeNode(ExprContext);
 	estate->eval_econtext->ecxt_per_tuple_memory = AllocSetContextCreate(CurrentMemoryContext,
-													"ExprContext",
-													ALLOCSET_DEFAULT_SIZES);
+																		 "ExprContext",
+																		 ALLOCSET_DEFAULT_SIZES);
 	estate->datum_context = CurrentMemoryContext;
 
 	estate->exitlabel = NULL;
@@ -1076,7 +1081,7 @@ setup_estate(PLpgSQL_execstate *estate,
 	if (cinfo->oldtable)
 	{
 		EphemeralNamedRelation enr = palloc(sizeof(EphemeralNamedRelationData));
-		int rc PG_USED_FOR_ASSERTS_ONLY;
+		int			rc PG_USED_FOR_ASSERTS_ONLY;
 
 		enr->md.name = cinfo->oldtable;
 		enr->md.reliddesc = cinfo->relid;
@@ -1092,7 +1097,7 @@ setup_estate(PLpgSQL_execstate *estate,
 	if (cinfo->newtable)
 	{
 		EphemeralNamedRelation enr = palloc(sizeof(EphemeralNamedRelationData));
-		int rc PG_USED_FOR_ASSERTS_ONLY;
+		int			rc PG_USED_FOR_ASSERTS_ONLY;
 
 		enr->md.name = cinfo->newtable;
 		enr->md.reliddesc = cinfo->relid;
@@ -1146,8 +1151,8 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->rel_oids = NULL;
 
 	cstate->check_cxt = AllocSetContextCreate(CurrentMemoryContext,
-										 "plpgsql_check temporary cxt",
-										   ALLOCSET_DEFAULT_SIZES);
+											  "plpgsql_check temporary cxt",
+											  ALLOCSET_DEFAULT_SIZES);
 
 	cstate->found_return_query = false;
 	cstate->found_return_dyn_query = false;
@@ -1222,7 +1227,7 @@ load_configuration(HeapTuple procTuple, bool *reload_config)
 static void
 release_exprs(List *exprs)
 {
-	ListCell *l;
+	ListCell   *l;
 
 	foreach(l, exprs)
 	{
@@ -1271,7 +1276,7 @@ init_datum_dno(PLpgSQL_checkstate *cstate, int dno, bool is_auto, bool is_protec
 				for (fnum = 0; fnum < row->nfields; fnum++)
 				{
 					if (row->varnos[fnum] < 0)
-						continue;		/* skip dropped column in row struct */
+						continue;	/* skip dropped column in row struct */
 
 					init_datum_dno(cstate, row->varnos[fnum], is_auto, is_protected);
 				}
@@ -1330,6 +1335,7 @@ copy_plpgsql_datum(PLpgSQL_checkstate *cstate, PLpgSQL_datum *datum)
 
 		case PLPGSQL_DTYPE_ROW:
 		case PLPGSQL_DTYPE_RECFIELD:
+
 			/*
 			 * These datum records are read-only at runtime, so no need to
 			 * copy them (well, ARRAYELEM contains some cached type data, but
@@ -1369,9 +1375,9 @@ plpgsql_check_HashTableInit(void)
 
 	ctl.entrysize = sizeof(plpgsql_check_HashEnt);
 	plpgsql_check_HashTable = hash_create("plpgsql_check function cache",
-									FUNCS_PER_USER,
-									&ctl,
-									HASH_ELEM | HASH_BLOBS);
+										  FUNCS_PER_USER,
+										  &ctl,
+										  HASH_ELEM | HASH_BLOBS);
 }
 
 /*
@@ -1389,12 +1395,12 @@ plpgsql_check_is_checked(PLpgSQL_function *func)
 		return false;
 
 	hentry = (plpgsql_check_HashEnt *) hash_search(plpgsql_check_HashTable,
-											 (void *) func->cfunc.fn_hashkey,
-											 HASH_FIND,
-											 NULL);
+												   (void *) func->cfunc.fn_hashkey,
+												   HASH_FIND,
+												   NULL);
 
 	if (hentry != NULL && hentry->fn_xmin == func->cfunc.fn_xmin &&
-			  ItemPointerEquals(&hentry->fn_tid, &func->cfunc.fn_tid))
+		ItemPointerEquals(&hentry->fn_tid, &func->cfunc.fn_tid))
 		return hentry->is_checked;
 
 #else
@@ -1403,12 +1409,12 @@ plpgsql_check_is_checked(PLpgSQL_function *func)
 		return false;
 
 	hentry = (plpgsql_check_HashEnt *) hash_search(plpgsql_check_HashTable,
-											 (void *) func->fn_hashkey,
-											 HASH_FIND,
-											 NULL);
+												   (void *) func->fn_hashkey,
+												   HASH_FIND,
+												   NULL);
 
 	if (hentry != NULL && hentry->fn_xmin == func->fn_xmin &&
-			  ItemPointerEquals(&hentry->fn_tid, &func->fn_tid))
+		ItemPointerEquals(&hentry->fn_tid, &func->fn_tid))
 		return hentry->is_checked;
 
 #endif
@@ -1432,9 +1438,9 @@ plpgsql_check_mark_as_checked(PLpgSQL_function *func)
 #if PG_VERSION_NUM >= 180000
 
 		hentry = (plpgsql_check_HashEnt *) hash_search(plpgsql_check_HashTable,
-												 (void *) func->cfunc.fn_hashkey,
-												 HASH_ENTER,
-												 &found);
+													   (void *) func->cfunc.fn_hashkey,
+													   HASH_ENTER,
+													   &found);
 
 		hentry->fn_xmin = func->cfunc.fn_xmin;
 		hentry->fn_tid = func->cfunc.fn_tid;
@@ -1442,9 +1448,9 @@ plpgsql_check_mark_as_checked(PLpgSQL_function *func)
 #else
 
 		hentry = (plpgsql_check_HashEnt *) hash_search(plpgsql_check_HashTable,
-												 (void *) func->fn_hashkey,
-												 HASH_ENTER,
-												 &found);
+													   (void *) func->fn_hashkey,
+													   HASH_ENTER,
+													   &found);
 
 		hentry->fn_xmin = func->fn_xmin;
 		hentry->fn_tid = func->fn_tid;

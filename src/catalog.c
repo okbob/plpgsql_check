@@ -43,7 +43,7 @@
 
 #endif
 
-static Oid plpgsql_check_PLpgSQLlanguageId = InvalidOid;
+static Oid	plpgsql_check_PLpgSQLlanguageId = InvalidOid;
 
 /*
  * Prepare metadata necessary for plpgsql_check
@@ -89,8 +89,8 @@ plpgsql_check_get_function_info(plpgsql_check_info *cinfo)
 char *
 plpgsql_check_get_src(HeapTuple procTuple)
 {
-	Datum	prosrcdatum;
-	bool	isnull;
+	Datum		prosrcdatum;
+	bool		isnull;
 
 	prosrcdatum = SysCacheGetAttr(PROCOID, procTuple,
 								  Anum_pg_proc_prosrc, &isnull);
@@ -257,8 +257,8 @@ get_extension_version(Oid ext_oid)
 char *
 get_extension_version2(Oid ext_oid)
 {
-	HeapTuple extTuple;
-	Datum	extversiondatum;
+	HeapTuple	extTuple;
+	Datum		extversiondatum;
 	char	   *result;
 	bool		isnull;
 
@@ -288,8 +288,8 @@ get_extension_version2(Oid ext_oid)
 Oid
 plpgsql_check_pragma_func_oid(void)
 {
-	Oid		result = InvalidOid;
-	Oid		extoid;
+	Oid			result = InvalidOid;
+	Oid			extoid;
 
 	extoid = get_extension_oid("plpgsql_check", true);
 
@@ -367,6 +367,7 @@ plpgsql_check_get_op_namespace(Oid opno)
 	if (HeapTupleIsValid(tp))
 	{
 		Form_pg_operator optup = (Form_pg_operator) GETSTRUCT(tp);
+
 		ReleaseSysCache(tp);
 		return optup->oprnamespace;
 	}

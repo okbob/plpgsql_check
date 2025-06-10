@@ -27,7 +27,7 @@
  */
 typedef struct PragmaTokenType
 {
-	int		value;
+	int			value;
 	const char *substr;
 	size_t		size;
 } PragmaTokenType;
@@ -35,7 +35,7 @@ typedef struct PragmaTokenType
 typedef struct TokenizerState
 {
 	const char *str;
-	PragmaTokenType	saved_token;
+	PragmaTokenType saved_token;
 	bool		saved_token_is_valid;
 } TokenizerState;
 
@@ -52,12 +52,18 @@ static const char *tagstr = "@plpgsql_check_options:";
 
 static void *
 memmem(const void *haystack, size_t haystack_len,
-	   const void * const needle, const size_t needle_len)
+	   const void *const needle, const size_t needle_len)
 {
-	if (haystack == NULL) return NULL; // or assert(haystack != NULL);
-	if (haystack_len == 0) return NULL;
-	if (needle == NULL) return NULL; // or assert(needle != NULL);
-	if (needle_len == 0) return NULL;
+	if (haystack == NULL)
+		return NULL;
+	//or assert(haystack != NULL);
+	if (haystack_len == 0)
+		return NULL;
+	if (needle == NULL)
+		return NULL;
+	//or assert(needle != NULL);
+	if (needle_len == 0)
+		return NULL;
 
 	for (const char *h = haystack;
 		 haystack_len >= needle_len;
@@ -310,7 +316,7 @@ get_token(TokenizerState *state, PragmaTokenType *token)
 
 	if (isdigit(*state->str))
 	{
-		bool	have_dot = false;
+		bool		have_dot = false;
 
 		token->value = PRAGMA_TOKEN_NUMBER;
 		token->substr = state->str++;
@@ -330,7 +336,7 @@ get_token(TokenizerState *state, PragmaTokenType *token)
 	}
 	else if (*state->str == '"')
 	{
-		bool	is_error = true;
+		bool		is_error = true;
 
 		token->value = PRAGMA_TOKEN_QIDENTIF;
 		token->substr = state->str++;
@@ -357,7 +363,7 @@ get_token(TokenizerState *state, PragmaTokenType *token)
 	}
 	else if (*state->str == '\'')
 	{
-		bool	is_error = true;
+		bool		is_error = true;
 
 		token->value = PRAGMA_TOKEN_STRING;
 		token->substr = state->str++;
@@ -420,8 +426,8 @@ token_is_keyword(PragmaTokenType *token, const char *str)
 		return false;
 
 	if (token->value == PRAGMA_TOKEN_IDENTIF &&
-			token->size == strlen(str) &&
-			strncasecmp(token->substr, str, token->size) == 0)
+		token->size == strlen(str) &&
+		strncasecmp(token->substr, str, token->size) == 0)
 		return true;
 
 	return false;
@@ -542,11 +548,12 @@ make_string(PragmaTokenType *token)
 static List *
 get_qualified_identifier(TokenizerState *state, List *result)
 {
-	bool	read_atleast_one = false;
+	bool		read_atleast_one = false;
 
 	while (1)
 	{
-		PragmaTokenType token, *_token;
+		PragmaTokenType token,
+				   *_token;
 
 		_token = get_token(state, &token);
 		if (!_token)
@@ -583,12 +590,13 @@ static void
 parse_qualified_identifier(TokenizerState *state, const char **startptr, size_t *size)
 {
 	bool		read_atleast_one = false;
-	const char	   *_startptr = *startptr;
-	size_t			_size = 0;
+	const char *_startptr = *startptr;
+	size_t		_size = 0;
 
 	while (1)
 	{
-		PragmaTokenType token, *_token;
+		PragmaTokenType token,
+				   *_token;
 
 		_token = get_token(state, &token);
 		if (!_token)
@@ -632,9 +640,10 @@ parse_qualified_identifier(TokenizerState *state, const char **startptr, size_t 
 static Oid
 get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool istop)
 {
-	PragmaTokenType	token, *_token;
-	const char	   *typename_start = NULL;
-	size_t			typename_length = 0;
+	PragmaTokenType token,
+			   *_token;
+	const char *typename_start = NULL;
+	size_t		typename_length = 0;
 	const char *typestr;
 	TypeName   *typeName = NULL;
 	Oid			typtype;
@@ -660,11 +669,11 @@ get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool
 			typtype = get_type_internal(state, typmod, allow_rectype, false);
 			if (!type_is_rowtype(typtype))
 				elog(ERROR, "\"%s\" is not composite type",
-								  format_type_be(typtype));
+					 format_type_be(typtype));
 
 			_token = get_token(state, &token);
 			if (!_token ||
-					_token->value != ')')
+				_token->value != ')')
 				elog(ERROR, "Syntax error (expected \")\")");
 
 			return typtype;
@@ -674,8 +683,8 @@ get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool
 
 		while (1)
 		{
-			Oid		_typtype;
-			int32	_typmod;
+			Oid			_typtype;
+			int32		_typmod;
 
 			_token = get_token(state, &token);
 			if (!_token ||
@@ -718,7 +727,8 @@ get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool
 	}
 	else if (_token->value == PRAGMA_TOKEN_IDENTIF)
 	{
-		PragmaTokenType	token2, *_token2;
+		PragmaTokenType token2,
+				   *_token2;
 
 		_token2 = get_token(state, &token2);
 
@@ -800,7 +810,7 @@ get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool
 				elog(ERROR, "Syntax error (unclosed array specification)");
 
 			if (_token->value != ']')
-					elog(ERROR, "Syntax error (expected \"]\")");
+				elog(ERROR, "Syntax error (expected \"]\")");
 
 			typename_length = _token->substr + _token->size - typename_start;
 		}
@@ -844,23 +854,23 @@ get_varno(PLpgSQL_nsitem *cur_ns, List *names)
 	switch (list_length(names))
 	{
 		case 1:
-		{
-			name1 = (char *) linitial(names);
-			break;
-		}
+			{
+				name1 = (char *) linitial(names);
+				break;
+			}
 		case 2:
-		{
-			name1 = (char *) linitial(names);
-			name2 = (char *) lsecond(names);
-			break;
-		}
+			{
+				name1 = (char *) linitial(names);
+				name2 = (char *) lsecond(names);
+				break;
+			}
 		case 3:
-		{
-			name1 = (char *) linitial(names);
-			name2 = (char *) lsecond(names);
-			name3 = (char *) lthird(names);
-			break;
-		}
+			{
+				name1 = (char *) linitial(names);
+				name2 = (char *) lsecond(names);
+				name3 = (char *) lthird(names);
+				break;
+			}
 		default:
 			return -1;
 	}
@@ -873,8 +883,8 @@ get_varno(PLpgSQL_nsitem *cur_ns, List *names)
 static char *
 get_name(List *names)
 {
-	bool	is_first = true;
-	ListCell *lc;
+	bool		is_first = true;
+	ListCell   *lc;
 
 	StringInfoData sinfo;
 
@@ -939,7 +949,7 @@ check_var_column(PLpgSQL_checkstate *cstate, int dno1, int dno2, int dno3)
 {
 	char	   *attname = cstate->strconstvars[dno3];
 	Oid			relid = check_var_table(cstate, dno1, dno2);
-	AttrNumber  attnum;
+	AttrNumber	attnum;
 
 	attnum = get_attnum(relid, attname);
 	if (attnum == InvalidAttrNumber)
@@ -962,13 +972,13 @@ plpgsql_check_pragma_assert(PLpgSQL_checkstate *cstate,
 {
 	MemoryContext oldCxt;
 	ResourceOwner oldowner;
-	volatile int  dno[3];
-	volatile int  nvars = 0;
+	volatile int dno[3];
+	volatile int nvars = 0;
 	volatile bool result = true;
 
 	/*
-	 * namespace is available only in compile check mode, and only in this mode
-	 * this pragma can be used.
+	 * namespace is available only in compile check mode, and only in this
+	 * mode this pragma can be used.
 	 */
 	if (!ns || !cstate)
 		return true;
@@ -982,7 +992,7 @@ plpgsql_check_pragma_assert(PLpgSQL_checkstate *cstate,
 	PG_TRY();
 	{
 		TokenizerState tstate;
-		int		i;
+		int			i;
 		List	   *names;
 
 		initialize_tokenizer(&tstate, str);
@@ -991,7 +1001,8 @@ plpgsql_check_pragma_assert(PLpgSQL_checkstate *cstate,
 		{
 			if (i > 0)
 			{
-				PragmaTokenType	token, *_token;
+				PragmaTokenType token,
+						   *_token;
 
 				_token = get_token(&tstate, &token);
 				if (_token->value != ',')
@@ -1018,7 +1029,7 @@ plpgsql_check_pragma_assert(PLpgSQL_checkstate *cstate,
 			elog(ERROR, "Syntax error (unexpected chars after variable)");
 
 		if ((pat == PLPGSQL_CHECK_PRAGMA_ASSERT_SCHEMA && nvars > 1) ||
-			(pat == PLPGSQL_CHECK_PRAGMA_ASSERT_TABLE  && nvars > 2) ||
+			(pat == PLPGSQL_CHECK_PRAGMA_ASSERT_TABLE && nvars > 2) ||
 			(pat == PLPGSQL_CHECK_PRAGMA_ASSERT_COLUMN && nvars > 3))
 			elog(ERROR, "too much variables for \"%s\" pragma",
 				 pragma_assert_name(pat));
@@ -1078,17 +1089,17 @@ plpgsql_check_pragma_assert(PLpgSQL_checkstate *cstate,
 
 bool
 plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate,
-							 const char *str,
-							 PLpgSQL_nsitem *ns,
-							 int lineno)
+						  const char *str,
+						  PLpgSQL_nsitem *ns,
+						  int lineno)
 {
 	MemoryContext oldCxt;
 	ResourceOwner oldowner;
 	volatile bool result = true;
 
 	/*
-	 * namespace is available only in compile check mode, and only in this mode
-	 * this pragma can be used.
+	 * namespace is available only in compile check mode, and only in this
+	 * mode this pragma can be used.
 	 */
 	if (!ns || !cstate)
 		return true;
@@ -1102,7 +1113,7 @@ plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate,
 	PG_TRY();
 	{
 		TokenizerState tstate;
-		int		target_dno;
+		int			target_dno;
 		PLpgSQL_datum *target;
 		List	   *names;
 		Oid			typtype;
@@ -1184,8 +1195,10 @@ plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int line
 	PG_TRY();
 	{
 		TokenizerState tstate;
-		PragmaTokenType token, *_token;
-		PragmaTokenType token2, *_token2;
+		PragmaTokenType token,
+				   *_token;
+		PragmaTokenType token2,
+				   *_token2;
 		StringInfoData query;
 		int32		typmod;
 
@@ -1193,21 +1206,21 @@ plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int line
 
 		_token = get_token(&tstate, &token);
 		if (!_token || (_token->value != PRAGMA_TOKEN_IDENTIF
-				&& _token->value != PRAGMA_TOKEN_QIDENTIF))
+						&& _token->value != PRAGMA_TOKEN_QIDENTIF))
 			elog(ERROR, "Syntax error (expected identifier)");
 
 		_token2 = get_token(&tstate, &token2);
 
 		if (_token2 && _token2->value == '.')
 		{
-			char *nsname = make_ident(_token);
+			char	   *nsname = make_ident(_token);
 
 			if (strcmp(nsname, "pg_temp") != 0)
 				elog(ERROR, "schema \"%s\" cannot be used in pragma \"table\" (only \"pg_temp\" schema is allowed)", nsname);
 
 			_token = get_token(&tstate, &token);
 			if (!_token || (_token->value != PRAGMA_TOKEN_IDENTIF
-					&& _token->value != PRAGMA_TOKEN_QIDENTIF))
+							&& _token->value != PRAGMA_TOKEN_QIDENTIF))
 				elog(ERROR, "Syntax error (expected identifier)");
 
 			_token2 = get_token(&tstate, &token2);
@@ -1284,29 +1297,31 @@ plpgsql_check_pragma_sequence(PLpgSQL_checkstate *cstate, const char *str, int l
 	PG_TRY();
 	{
 		TokenizerState tstate;
-		PragmaTokenType token, *_token;
-		PragmaTokenType token2, *_token2;
+		PragmaTokenType token,
+				   *_token;
+		PragmaTokenType token2,
+				   *_token2;
 		StringInfoData query;
 
 		initialize_tokenizer(&tstate, str);
 
 		_token = get_token(&tstate, &token);
 		if (!_token || (_token->value != PRAGMA_TOKEN_IDENTIF
-				&& _token->value != PRAGMA_TOKEN_QIDENTIF))
+						&& _token->value != PRAGMA_TOKEN_QIDENTIF))
 			elog(ERROR, "Syntax error (expected identifier)");
 
 		_token2 = get_token(&tstate, &token2);
 
 		if (_token2 && _token2->value == '.')
 		{
-			char *nsname = make_ident(_token);
+			char	   *nsname = make_ident(_token);
 
 			if (strcmp(nsname, "pg_temp") != 0)
 				elog(ERROR, "schema \"%s\" cannot be used in pragma \"sequence\" (only \"pg_temp\" schema is allowed)", nsname);
 
 			_token = get_token(&tstate, &token);
 			if (!_token || (_token->value != PRAGMA_TOKEN_IDENTIF
-					&& _token->value != PRAGMA_TOKEN_QIDENTIF))
+							&& _token->value != PRAGMA_TOKEN_QIDENTIF))
 				elog(ERROR, "Syntax error (expected identifier)");
 
 			(void) get_token(&tstate, &token2);
@@ -1357,7 +1372,8 @@ plpgsql_check_pragma_sequence(PLpgSQL_checkstate *cstate, const char *str, int l
 static bool
 get_boolean_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_info *cinfo)
 {
-	PragmaTokenType token, *_token;
+	PragmaTokenType token,
+			   *_token;
 
 	_token = get_token(tstate, &token);
 	if (!_token)
@@ -1399,7 +1415,8 @@ get_boolean_comment_option(TokenizerState *tstate, const char *name, plpgsql_che
 static char *
 get_name_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_info *cinfo)
 {
-	PragmaTokenType token, *_token;
+	PragmaTokenType token,
+			   *_token;
 
 	_token = get_token(tstate, &token);
 	if (!_token)
@@ -1432,7 +1449,8 @@ get_name_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_
 static Oid
 get_type_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_info *cinfo)
 {
-	PragmaTokenType token, *_token;
+	PragmaTokenType token,
+			   *_token;
 
 	_token = get_token(tstate, &token);
 	if (!_token)
@@ -1477,7 +1495,8 @@ get_type_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_
 static Oid
 get_table_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_info *cinfo)
 {
-	PragmaTokenType token, *_token;
+	PragmaTokenType token,
+			   *_token;
 
 	_token = get_token(tstate, &token);
 	if (!_token)
@@ -1592,7 +1611,8 @@ static void
 comment_options_parser(char *str, plpgsql_check_info *cinfo)
 {
 	TokenizerState tstate;
-	PragmaTokenType token, *_token;
+	PragmaTokenType token,
+			   *_token;
 
 	initialize_tokenizer(&tstate, str);
 
@@ -1636,7 +1656,7 @@ comment_options_parser(char *str, plpgsql_check_info *cinfo)
 		}
 		else if (token_is_keyword(_token, "anyelementtype"))
 		{
-			cinfo->anyelementoid = get_type_comment_option(&tstate, "anyelementtype",cinfo);
+			cinfo->anyelementoid = get_type_comment_option(&tstate, "anyelementtype", cinfo);
 		}
 		else if (token_is_keyword(_token, "anyenumtype"))
 		{
@@ -1719,11 +1739,12 @@ comment_options_parser(char *str, plpgsql_check_info *cinfo)
 static void
 comment_options_parsecontent(char *str, size_t bytes, plpgsql_check_info *cinfo)
 {
-	char *endchar = str + bytes;
+	char	   *endchar = str + bytes;
 
 	do
 	{
-		char	   *ptr, *optsline;
+		char	   *ptr,
+				   *optsline;
 		bool		found_eol;
 
 		str += strlen(tagstr);
@@ -1731,7 +1752,8 @@ comment_options_parsecontent(char *str, size_t bytes, plpgsql_check_info *cinfo)
 		Assert(str <= endchar);
 
 		/* find end of line */
-		ptr = str; found_eol = false;
+		ptr = str;
+		found_eol = false;
 
 		while (ptr < endchar && *ptr)
 		{
@@ -1768,7 +1790,7 @@ search_comment_options_linecomment(char *src, plpgsql_check_info *cinfo)
 	{
 		if (*src == '\n')
 		{
-			char *tag;
+			char	   *tag;
 
 			tag = memmem(start, src - start,
 						 tagstr, strlen(tagstr));
@@ -1793,7 +1815,7 @@ search_comment_options_multilinecomment(char *src, plpgsql_check_info *cinfo)
 	{
 		if (*src == '*' && src[1] == '/')
 		{
-			char *tag;
+			char	   *tag;
 
 			tag = memmem(start, src - start,
 						 tagstr, strlen(tagstr));
@@ -1816,7 +1838,7 @@ search_comment_options_multilinecomment(char *src, plpgsql_check_info *cinfo)
 void
 plpgsql_check_search_comment_options(plpgsql_check_info *cinfo)
 {
-	char *src = plpgsql_check_get_src(cinfo->proctuple);
+	char	   *src = plpgsql_check_get_src(cinfo->proctuple);
 
 	cinfo->all_warnings = false;
 	cinfo->without_warnings = false;
@@ -1884,11 +1906,11 @@ plpgsql_check_search_comment_options(plpgsql_check_info *cinfo)
 
 			if (is_custom_string)
 			{
-				size_t			cust_str_length = 0;
+				size_t		cust_str_length = 0;
 
 				cust_str_length = src - start + 1;
 
-next_char:
+		next_char:
 
 				src += 1;
 

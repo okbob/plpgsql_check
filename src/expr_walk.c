@@ -25,16 +25,16 @@ typedef struct check_funcexpr_walker_params
 {
 	PLpgSQL_checkstate *cstate;
 	PLpgSQL_expr *expr;
-	char *query_str;
+	char	   *query_str;
 } check_funcexpr_walker_params;
 
-static int check_fmt_string(const char *fmt,
-							List *args,
-							int location,
-							check_funcexpr_walker_params *wp,
-							bool *is_error,
-							int *unsafe_expr_location,
-							bool no_error);
+static int	check_fmt_string(const char *fmt,
+							 List *args,
+							 int location,
+							 check_funcexpr_walker_params *wp,
+							 bool *is_error,
+							 int *unsafe_expr_location,
+							 bool no_error);
 
 /*
  * Send to ouput all not yet displayed relations, operators and functions.
@@ -50,8 +50,8 @@ detect_dependency_walker(Node *node, void *context)
 
 	if (IsA(node, Query))
 	{
-		Query *query = (Query *) node;
-		ListCell *lc;
+		Query	   *query = (Query *) node;
+		ListCell   *lc;
 
 		foreach(lc, query->rtable)
 		{
@@ -75,7 +75,7 @@ detect_dependency_walker(Node *node, void *context)
 
 		if (query->utilityStmt && IsA(query->utilityStmt, CallStmt))
 		{
-			CallStmt *callstmt = (CallStmt *) query->utilityStmt;
+			CallStmt   *callstmt = (CallStmt *) query->utilityStmt;
 
 			detect_dependency_walker((Node *) callstmt->funcexpr, context);
 		}
@@ -85,15 +85,15 @@ detect_dependency_walker(Node *node, void *context)
 								 context, 0);
 	}
 
-	if (IsA(node, FuncExpr) )
+	if (IsA(node, FuncExpr))
 	{
-		FuncExpr *fexpr = (FuncExpr *) node;
+		FuncExpr   *fexpr = (FuncExpr *) node;
 
 		if (get_func_namespace(fexpr->funcid) != PG_CATALOG_NAMESPACE)
 		{
 			if (!bms_is_member(fexpr->funcid, cstate->func_oids))
 			{
-				StringInfoData	str;
+				StringInfoData str;
 				ListCell   *lc;
 				bool		is_first = true;
 				char		prokind = get_func_prokind(fexpr->funcid);
@@ -102,7 +102,7 @@ detect_dependency_walker(Node *node, void *context)
 				appendStringInfoChar(&str, '(');
 				foreach(lc, fexpr->args)
 				{
-					Node *expr = (Node *) lfirst(lc);
+					Node	   *expr = (Node *) lfirst(lc);
 
 					if (!is_first)
 						appendStringInfoChar(&str, ',');
@@ -114,11 +114,11 @@ detect_dependency_walker(Node *node, void *context)
 				appendStringInfoChar(&str, ')');
 
 				plpgsql_check_put_dependency(ri,
-											  prokind == PROKIND_PROCEDURE ? "PROCEDURE" : "FUNCTION",
-											  fexpr->funcid,
-											  get_namespace_name(get_func_namespace(fexpr->funcid)),
-											  get_func_name(fexpr->funcid),
-											  str.data);
+											 prokind == PROKIND_PROCEDURE ? "PROCEDURE" : "FUNCTION",
+											 fexpr->funcid,
+											 get_namespace_name(get_func_namespace(fexpr->funcid)),
+											 get_func_name(fexpr->funcid),
+											 str.data);
 
 				pfree(str.data);
 
@@ -129,36 +129,36 @@ detect_dependency_walker(Node *node, void *context)
 
 	if (IsA(node, OpExpr))
 	{
-		OpExpr *opexpr = (OpExpr *) node;
+		OpExpr	   *opexpr = (OpExpr *) node;
 
 		if (plpgsql_check_get_op_namespace(opexpr->opno) != PG_CATALOG_NAMESPACE)
 		{
-				StringInfoData		str;
-				Oid					lefttype;
-				Oid					righttype;
+			StringInfoData str;
+			Oid			lefttype;
+			Oid			righttype;
 
-				op_input_types(opexpr->opno, &lefttype, &righttype);
+			op_input_types(opexpr->opno, &lefttype, &righttype);
 
-				initStringInfo(&str);
-				appendStringInfoChar(&str, '(');
-				if (lefttype != InvalidOid)
-					appendStringInfoString(&str, format_type_be(lefttype));
-				else
-					appendStringInfoChar(&str, '-');
-				appendStringInfoChar(&str, ',');
-				if (righttype != InvalidOid)
-					appendStringInfoString(&str, format_type_be(righttype));
-				else
-					appendStringInfoChar(&str, '-');
-				appendStringInfoChar(&str, ')');
+			initStringInfo(&str);
+			appendStringInfoChar(&str, '(');
+			if (lefttype != InvalidOid)
+				appendStringInfoString(&str, format_type_be(lefttype));
+			else
+				appendStringInfoChar(&str, '-');
+			appendStringInfoChar(&str, ',');
+			if (righttype != InvalidOid)
+				appendStringInfoString(&str, format_type_be(righttype));
+			else
+				appendStringInfoChar(&str, '-');
+			appendStringInfoChar(&str, ')');
 
-				plpgsql_check_put_dependency(ri,
-											 "OPERATOR",
-											 opexpr->opno,
-											 get_namespace_name(plpgsql_check_get_op_namespace(opexpr->opno)),
-											 get_opname(opexpr->opno),
-											 str.data);
-				pfree(str.data);
+			plpgsql_check_put_dependency(ri,
+										 "OPERATOR",
+										 opexpr->opno,
+										 get_namespace_name(plpgsql_check_get_op_namespace(opexpr->opno)),
+										 get_opname(opexpr->opno),
+										 str.data);
+			pfree(str.data);
 		}
 	}
 
@@ -193,7 +193,7 @@ check_funcexpr_walker(Node *node, void *context)
 	}
 	if (IsA(node, FuncExpr))
 	{
-		FuncExpr *fexpr = (FuncExpr *) node;
+		FuncExpr   *fexpr = (FuncExpr *) node;
 
 		switch (fexpr->funcid)
 		{
@@ -202,16 +202,16 @@ check_funcexpr_walker(Node *node, void *context)
 			case SETVAL_OID:
 			case SETVAL2_OID:
 				{
-					Node *first_arg = linitial(fexpr->args);
+					Node	   *first_arg = linitial(fexpr->args);
 					int			location = fexpr->location;
 
 					if (first_arg && IsA(first_arg, Const))
 					{
-						Const *c = (Const *) first_arg;
+						Const	   *c = (Const *) first_arg;
 
 						if (c->consttype == REGCLASSOID && !c->constisnull)
 						{
-							Oid		classid;
+							Oid			classid;
 
 							if (c->location != -1)
 								location = c->location;
@@ -220,7 +220,7 @@ check_funcexpr_walker(Node *node, void *context)
 
 							if (get_rel_relkind(classid) != RELKIND_SEQUENCE)
 							{
-								char	message[1024];
+								char		message[1024];
 								check_funcexpr_walker_params *wp;
 
 								wp = (check_funcexpr_walker_params *) context;
@@ -229,7 +229,7 @@ check_funcexpr_walker(Node *node, void *context)
 
 								plpgsql_check_put_error(wp->cstate,
 														ERRCODE_WRONG_OBJECT_TYPE, 0,
-					  									message,
+														message,
 														NULL, NULL,
 														PLPGSQL_CHECK_ERROR,
 														location,
@@ -244,18 +244,18 @@ check_funcexpr_walker(Node *node, void *context)
 			case FORMAT_NPARAM_OID:
 				{
 					/* We can do check only when first argument is constant */
-					Node *first_arg = linitial(fexpr->args);
+					Node	   *first_arg = linitial(fexpr->args);
 
 					if (first_arg && IsA(first_arg, Const))
 					{
-						Const *c = (Const *) first_arg;
+						Const	   *c = (Const *) first_arg;
 
 						if (c->consttype == TEXTOID && !c->constisnull)
 						{
-							char *fmt = TextDatumGetCString(c->constvalue);
+							char	   *fmt = TextDatumGetCString(c->constvalue);
 							check_funcexpr_walker_params *wp;
-							int		required_nargs;
-							bool	is_error;
+							int			required_nargs;
+							bool		is_error;
 
 							wp = (check_funcexpr_walker_params *) context;
 
@@ -283,7 +283,7 @@ check_funcexpr_walker(Node *node, void *context)
 void
 plpgsql_check_funcexpr(PLpgSQL_checkstate *cstate, Query *query, char *query_str)
 {
-	check_funcexpr_walker_params  wp;
+	check_funcexpr_walker_params wp;
 
 	wp.cstate = cstate;
 	wp.query_str = query_str;
@@ -529,8 +529,8 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 								   bool *expr_is_const)
 {
 	StringInfoData sinfo;
-	const char	   *cp;
-	const char	   *end_ptr = fmt + strlen(fmt);
+	const char *cp;
+	const char *end_ptr = fmt + strlen(fmt);
 	int			nargs = list_length(args);
 	int			arg = 1;
 	int			_arg;
@@ -597,7 +597,7 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 			}
 		}
 
-		_arg = argpos >= 1 ? argpos + 1: arg + 1;
+		_arg = argpos >= 1 ? argpos + 1 : arg + 1;
 		if (_arg <= nargs)
 		{
 			char	   *str;
@@ -620,9 +620,9 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 				if (!str)
 				{
 					/*
-					 * Original idea was used external parameter,
-					 * but external parameters requires known type,
-					 * so most safe value is NULL instead.
+					 * Original idea was used external parameter, but external
+					 * parameters requires known type, so most safe value is
+					 * NULL instead.
 					 */
 					appendStringInfoString(&sinfo, " null ");
 					*found_literal_placeholder = true;
@@ -683,8 +683,8 @@ check_fmt_string(const char *fmt,
 				 int *unsafe_expr_location,
 				 bool no_error)
 {
-	const char	   *cp;
-	const char	   *end_ptr = fmt + strlen(fmt);
+	const char *cp;
+	const char *end_ptr = fmt + strlen(fmt);
 	int			nargs = list_length(args);
 	int			required_nargs = 0;
 	int			arg = 1;
@@ -721,12 +721,12 @@ check_fmt_string(const char *fmt,
 		 */
 		if (strchr("sIL", *cp) == NULL)
 		{
-			StringInfoData	sinfo;
+			StringInfoData sinfo;
 
 			initStringInfo(&sinfo);
 
 			appendStringInfo(&sinfo,
-					"unrecognized format() type specifier \"%c\"", *cp);
+							 "unrecognized format() type specifier \"%c\"", *cp);
 
 			if (!no_error)
 				plpgsql_check_put_error(wp->cstate,
@@ -764,9 +764,12 @@ check_fmt_string(const char *fmt,
 		{
 			if (*cp == 's')
 			{
-				int		argn = argpos >= 1 ? argpos : arg + 1;
+				int			argn = argpos >= 1 ? argpos : arg + 1;
 
-				/* this is usually called after format check, but better be safe*/
+				/*
+				 * this is usually called after format check, but better be
+				 * safe
+				 */
 				if (argn <= nargs)
 				{
 					if (plpgsql_check_is_sql_injection_vulnerable(wp->cstate,
@@ -809,11 +812,11 @@ has_rtable_walker(Node *node, void *context)
 
 	if (IsA(node, Query))
 	{
-		Query *query = (Query *) node;
+		Query	   *query = (Query *) node;
 		bool		has_relation = false;
-		ListCell *lc;
+		ListCell   *lc;
 
-		foreach (lc, query->rtable)
+		foreach(lc, query->rtable)
 		{
 			RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
 
@@ -856,15 +859,15 @@ contain_fishy_cast_walker(Node *node, void *context)
 
 	if (IsA(node, OpExpr))
 	{
-		OpExpr *opexpr = (OpExpr *) node;
+		OpExpr	   *opexpr = (OpExpr *) node;
 
 		if (!opexpr->opretset && opexpr->opresulttype == BOOLOID
-				&& list_length(opexpr->args) == 2)
+			&& list_length(opexpr->args) == 2)
 		{
-			Node *l1 = linitial(opexpr->args);
-			Node *l2 = lsecond(opexpr->args);
-			Param *param = NULL;
-			FuncExpr *fexpr = NULL;
+			Node	   *l1 = linitial(opexpr->args);
+			Node	   *l2 = lsecond(opexpr->args);
+			Param	   *param = NULL;
+			FuncExpr   *fexpr = NULL;
 
 			if (IsA(l1, Param))
 				param = (Param *) l1;
@@ -882,9 +885,9 @@ contain_fishy_cast_walker(Node *node, void *context)
 					return false;
 
 				if (fexpr->funcformat != COERCE_IMPLICIT_CAST ||
-						fexpr->funcretset ||
-						list_length(fexpr->args) != 1 ||
-						param->paramtype != fexpr->funcresulttype)
+					fexpr->funcretset ||
+					list_length(fexpr->args) != 1 ||
+					param->paramtype != fexpr->funcresulttype)
 					return false;
 
 				if (!IsA(linitial(fexpr->args), Var))
@@ -903,7 +906,7 @@ contain_fishy_cast_walker(Node *node, void *context)
 bool
 plpgsql_check_qual_has_fishy_cast(PlannedStmt *plannedstmt, Plan *plan, Param **param)
 {
-	ListCell *lc;
+	ListCell   *lc;
 
 	if (plan == NULL)
 		return false;
@@ -918,8 +921,8 @@ plpgsql_check_qual_has_fishy_cast(PlannedStmt *plannedstmt, Plan *plan, Param **
 
 	foreach(lc, plan->initPlan)
 	{
-		SubPlan *subplan = (SubPlan *) lfirst(lc);
-		Plan *s_plan = exec_subplan_get_plan(plannedstmt, subplan);
+		SubPlan    *subplan = (SubPlan *) lfirst(lc);
+		Plan	   *s_plan = exec_subplan_get_plan(plannedstmt, subplan);
 
 		if (plpgsql_check_qual_has_fishy_cast(plannedstmt, s_plan, param))
 			return true;
@@ -944,13 +947,13 @@ plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
 {
 	if (IsA(node, FuncExpr))
 	{
-		FuncExpr *fexpr = (FuncExpr *) node;
-		bool	is_vulnerable = false;
-		ListCell *lc;
+		FuncExpr   *fexpr = (FuncExpr *) node;
+		bool		is_vulnerable = false;
+		ListCell   *lc;
 
 		foreach(lc, fexpr->args)
 		{
-			Node *arg = lfirst(lc);
+			Node	   *arg = lfirst(lc);
 
 			if (plpgsql_check_is_sql_injection_vulnerable(cstate, expr, arg, location))
 			{
@@ -961,8 +964,8 @@ plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
 
 		if (is_vulnerable)
 		{
-			bool	typispreferred;
-			char 	typcategory;
+			bool		typispreferred;
+			char		typcategory;
 
 			get_type_category_preferred(fexpr->funcresulttype,
 										&typcategory,
@@ -980,7 +983,10 @@ plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
 					case FORMAT_0PARAM_OID:
 					case FORMAT_NPARAM_OID:
 						{
-							/* We can do check only when first argument is constant */
+							/*
+							 * We can do check only when first argument is
+							 * constant
+							 */
 							char	   *fmt;
 							int			loc;
 
@@ -989,7 +995,7 @@ plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
 							if (fmt)
 							{
 								check_funcexpr_walker_params wp;
-								bool	is_error;
+								bool		is_error;
 
 								wp.cstate = cstate;
 								wp.expr = expr;
@@ -998,7 +1004,10 @@ plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
 								*location = -1;
 								check_fmt_string(fmt, fexpr->args, loc, &wp, &is_error, location, true);
 
-								/* only in this case, "format" function obviously sanitize parameters */
+								/*
+								 * only in this case, "format" function
+								 * obviously sanitize parameters
+								 */
 								if (!is_error)
 									return *location != -1;
 							}
@@ -1006,7 +1015,7 @@ plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
 						break;
 					default:
 						/* do nothing */
-							;
+						;
 				}
 
 				return true;
@@ -1017,13 +1026,13 @@ plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
 	}
 	else if (IsA(node, OpExpr))
 	{
-		OpExpr *op = (OpExpr *) node;
-		bool	is_vulnerable = false;
-		ListCell *lc;
+		OpExpr	   *op = (OpExpr *) node;
+		bool		is_vulnerable = false;
+		ListCell   *lc;
 
 		foreach(lc, op->args)
 		{
-			Node *arg = lfirst(lc);
+			Node	   *arg = lfirst(lc);
 
 			if (plpgsql_check_is_sql_injection_vulnerable(cstate, expr, arg, location))
 			{
@@ -1034,16 +1043,16 @@ plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
 
 		if (is_vulnerable)
 		{
-			bool	typispreferred;
-			char 	typcategory;
+			bool		typispreferred;
+			char		typcategory;
 
 			get_type_category_preferred(op->opresulttype,
 										&typcategory,
 										&typispreferred);
 			if (typcategory == 'S')
 			{
-				char *opname = get_opname(op->opno);
-				bool	result = false;
+				char	   *opname = get_opname(op->opno);
+				bool		result = false;
 
 				if (opname)
 				{
@@ -1068,12 +1077,12 @@ plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
 	}
 	else if (IsA(node, Param))
 	{
-		Param *p = (Param *) node;
+		Param	   *p = (Param *) node;
 
 		if (p->paramkind == PARAM_EXTERN || p->paramkind == PARAM_EXEC)
 		{
-			bool	typispreferred;
-			char 	typcategory;
+			bool		typispreferred;
+			char		typcategory;
 
 			get_type_category_preferred(p->paramtype, &typcategory, &typispreferred);
 			if (typcategory == 'S')
@@ -1083,9 +1092,9 @@ plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
 					int			dno = p->paramid - 1;
 
 					/*
-					 * When paramid looks well and related datum is variable with same
-					 * type, then we can check, if this variable has sanitized content
-					 * already.
+					 * When paramid looks well and related datum is variable
+					 * with same type, then we can check, if this variable has
+					 * sanitized content already.
 					 */
 					if (expr && bms_is_member(dno, expr->paramnos))
 					{
@@ -1247,7 +1256,7 @@ has_external_param_with_paramid(Node *node, void *context)
 
 	if (IsA(node, Param))
 	{
-		Param *p = (Param *) node;
+		Param	   *p = (Param *) node;
 
 		if (p->paramkind == PARAM_EXTERN &&
 			p->paramid > 0 && p->location != -1)
@@ -1273,7 +1282,7 @@ plpgsql_check_vardno_is_used_for_reading(Node *node, int dno)
 		return false;
 
 	if (IsA(node, SubscriptingRef))
-		node  = (Node *) ((SubscriptingRef *) node)->refassgnexpr;
+		node = (Node *) ((SubscriptingRef *) node)->refassgnexpr;
 
 	return has_external_param_with_paramid(node, (void *) &dno);
 }

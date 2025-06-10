@@ -43,8 +43,8 @@
 #define FMGR_CACHE_MAGIC		2023071110
 #define PLUGIN_INFO_MAGIC		2023071111
 
-static Oid PLpgSQLlanguageId = InvalidOid;
-static Oid PLpgSQLinlineFunc = InvalidOid;
+static Oid	PLpgSQLlanguageId = InvalidOid;
+static Oid	PLpgSQLinlineFunc = InvalidOid;
 
 typedef struct func_info_hashkey
 {
@@ -55,7 +55,7 @@ typedef struct func_info_hashkey
 
 typedef struct func_info_entry
 {
-	func_info_hashkey	key;
+	func_info_hashkey key;
 	uint32		hashValue;
 	char	   *fn_name;
 	char	   *fn_signature;
@@ -102,8 +102,8 @@ static fmgr_plpgsql_cache *last_fmgr_plpgsql_cache = NULL;
 static needs_fmgr_hook_type prev_needs_fmgr_hook = NULL;
 static fmgr_hook_type prev_fmgr_hook = NULL;
 
-static plpgsql_check_plugin2 *plpgsql_plugins2[MAX_PLDBGAPI2_PLUGINS];
-static int		nplpgsql_plugins2 = 0;
+static plpgsql_check_plugin2 * plpgsql_plugins2[MAX_PLDBGAPI2_PLUGINS];
+static int	nplpgsql_plugins2 = 0;
 
 static void pldbgapi2_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func);
 static void pldbgapi2_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func);
@@ -111,23 +111,23 @@ static void pldbgapi2_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func
 static void pldbgapi2_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 static void pldbgapi2_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 
-static PLpgSQL_plugin pldbgapi2_plugin = { pldbgapi2_func_setup,
-										   pldbgapi2_func_beg, pldbgapi2_func_end,
-										   pldbgapi2_stmt_beg, pldbgapi2_stmt_end,
+static PLpgSQL_plugin pldbgapi2_plugin = {pldbgapi2_func_setup,
+	pldbgapi2_func_beg, pldbgapi2_func_end,
+	pldbgapi2_stmt_beg, pldbgapi2_stmt_end,
 
 #if PG_VERSION_NUM >= 150000
 
-										   NULL, NULL, NULL, NULL, NULL };
+NULL, NULL, NULL, NULL, NULL};
 
 #else
 
-										   NULL, NULL };
+NULL, NULL};
 
 #endif
 
-static PLpgSQL_plugin  *prev_plpgsql_plugin = NULL;
+static PLpgSQL_plugin *prev_plpgsql_plugin = NULL;
 
-static MemoryContext		pldbgapi2_mcxt = NULL;
+static MemoryContext pldbgapi2_mcxt = NULL;
 
 typedef struct pldbgapi2_plugin_info
 {
@@ -172,7 +172,7 @@ plpgsql_check_get_stmts_info(PLpgSQL_function *func)
 {
 	func_info_entry *func_info;
 	plpgsql_check_plugin2_stmt_info *stmts_info;
-	size_t			bytes;
+	size_t		bytes;
 
 	func_info = get_func_info(func);
 	bytes = func->nstatements * sizeof(plpgsql_check_plugin2_stmt_info);
@@ -275,9 +275,9 @@ func_info_HashTableInit(void)
 	ctl.hcxt = pldbgapi2_mcxt;
 
 	func_info_HashTable = hash_create("plpgsql_check function pldbgapi2 statements info cache",
-									   FUNCS_PER_USER,
-									   &ctl,
-									   HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+									  FUNCS_PER_USER,
+									  &ctl,
+									  HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 }
 
 static void
@@ -300,17 +300,17 @@ init_hash_tables(void)
 	func_info_HashTableInit();
 }
 
-static void set_stmt_info(PLpgSQL_stmt *stmt, plpgsql_check_plugin2_stmt_info *stmts_info, int *stmtid_map, int level, int *natural_id, int parent_id);
+static void set_stmt_info(PLpgSQL_stmt *stmt, plpgsql_check_plugin2_stmt_info * stmts_info, int *stmtid_map, int level, int *natural_id, int parent_id);
 
 static void
 set_stmts_info(List *stmts,
-			   plpgsql_check_plugin2_stmt_info *stmts_info,
+			   plpgsql_check_plugin2_stmt_info * stmts_info,
 			   int *stmtid_map,
 			   int level,
 			   int *natural_id,
 			   int parent_id)
 {
-	ListCell *lc;
+	ListCell   *lc;
 
 	foreach(lc, stmts)
 	{
@@ -325,15 +325,15 @@ set_stmts_info(List *stmts,
 
 static void
 set_stmt_info(PLpgSQL_stmt *stmt,
-			  plpgsql_check_plugin2_stmt_info *stmts_info,
+			  plpgsql_check_plugin2_stmt_info * stmts_info,
 			  int *stmtid_map,
 			  int level,
 			  int *natural_id,
 			  int parent_id)
 {
-	ListCell *lc;
+	ListCell   *lc;
 	int			stmtid_idx = stmt->stmtid - 1;
-	bool		is_invisible =  stmt->lineno < 1;
+	bool		is_invisible = stmt->lineno < 1;
 
 	Assert(stmts_info);
 
@@ -344,21 +344,21 @@ set_stmt_info(PLpgSQL_stmt *stmt,
 	stmts_info[stmtid_idx].natural_id = ++(*natural_id);
 
 	/*
-	 * natural id to parser id map allows to use natural statement order
-	 * for saving metrics and their presentation without necessity to
-	 * iterate over statement tree
+	 * natural id to parser id map allows to use natural statement order for
+	 * saving metrics and their presentation without necessity to iterate over
+	 * statement tree
 	 */
 	stmtid_map[stmts_info[stmtid_idx].natural_id - 1] = stmt->stmtid;
 
 	/*
-	 * parent_id is used for synchronization stmts stack
-	 * after handled exception
+	 * parent_id is used for synchronization stmts stack after handled
+	 * exception
 	 */
 	stmts_info[stmtid_idx].parent_id = parent_id;
 
 	/*
-	 * persistent stmt type name can be used by tracer
-	 * when syntax tree can be unaccessable
+	 * persistent stmt type name can be used by tracer when syntax tree can be
+	 * unaccessable
 	 */
 	stmts_info[stmtid_idx].typname = plpgsql_check__stmt_typename_p(stmt);
 
@@ -546,7 +546,7 @@ get_func_lang(Oid funcid)
 
 	procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
 	if (!HeapTupleIsValid(procTuple))
-			elog(ERROR, "cache lookup failed for function %u", funcid);
+		elog(ERROR, "cache lookup failed for function %u", funcid);
 
 	result = ((Form_pg_proc) GETSTRUCT(procTuple))->prolang;
 	ReleaseSysCache(procTuple);
@@ -586,15 +586,15 @@ pldbgapi2_needs_fmgr_hook(Oid fn_oid)
 		return true;
 
 	/*
-	 * We need to delay initialization of PLpgSQLlanguageId. If library
-	 * was initialized too early, the system catalog is not accessable.
+	 * We need to delay initialization of PLpgSQLlanguageId. If library was
+	 * initialized too early, the system catalog is not accessable.
 	 */
 	if (!OidIsValid(PLpgSQLlanguageId))
 		set_plpgsql_info();
 
 	/*
-	 * code of DO statements is executed by execution of function
-	 * laninline. We need to fmgr hook for plpgsql_inline_handler too.
+	 * code of DO statements is executed by execution of function laninline.
+	 * We need to fmgr hook for plpgsql_inline_handler too.
 	 */
 	if (fn_oid == PLpgSQLinlineFunc)
 		return true;
@@ -672,12 +672,13 @@ pldbgapi2_fmgr_hook(FmgrHookEventType event,
 
 		case FHET_END:
 		case FHET_ABORT:
+
 			/*
-			 * Unfortunately, the fmgr hook can be redirected inside security definer
-			 * function, and then there can be possible to so FHET_END or FHET_ABORT
-			 * are called with private for previous plugin. In this case, the best
-			 * solution is probably do nothing, and skip processing to previous
-			 * plugin.
+			 * Unfortunately, the fmgr hook can be redirected inside security
+			 * definer function, and then there can be possible to so FHET_END
+			 * or FHET_ABORT are called with private for previous plugin. In
+			 * this case, the best solution is probably do nothing, and skip
+			 * processing to previous plugin.
 			 */
 			is_pldbgapi2_fcache = (fcache && fcache->magic == FMGR_CACHE_MAGIC);
 
@@ -701,16 +702,16 @@ pldbgapi2_fmgr_hook(FmgrHookEventType event,
 					for (i = 0; i < nplpgsql_plugins2; i++)
 					{
 						if (plpgsql_plugins2[i]->stmt_end2_aborted)
-							(plpgsql_plugins2[i]->stmt_end2_aborted)(fn_oid, stmtid,
-																	 &fcache_plpgsql->plugin2_info[i]);
+							(plpgsql_plugins2[i]->stmt_end2_aborted) (fn_oid, stmtid,
+																	  &fcache_plpgsql->plugin2_info[i]);
 					}
 				}
 
 				for (i = 0; i < nplpgsql_plugins2; i++)
 				{
 					if (plpgsql_plugins2[i]->func_end2_aborted)
-						(plpgsql_plugins2[i]->func_end2_aborted)(fn_oid,
-																 &fcache_plpgsql->plugin2_info[i]);
+						(plpgsql_plugins2[i]->func_end2_aborted) (fn_oid,
+																  &fcache_plpgsql->plugin2_info[i]);
 				}
 
 				current_fmgr_plpgsql_cache = NULL;
@@ -841,9 +842,8 @@ pldbgapi2_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	int			i;
 
 	/*
-	 * Initialize fmgr_plpgsql_cache, when fmgr hook is not called
-	 * in expected order (usually when plpgsql_check is initialized
-	 * inside function.
+	 * Initialize fmgr_plpgsql_cache, when fmgr hook is not called in expected
+	 * order (usually when plpgsql_check is initialized inside function.
 	 */
 	if (!fcache_plpgsql ||
 		fcache_plpgsql->magic != FMGR_CACHE_MAGIC ||
@@ -911,7 +911,7 @@ pldbgapi2_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 		oldcxt = MemoryContextSwitchTo(fcache_plpgsql->fn_mcxt);
 
 		if (plpgsql_plugins2[i]->func_setup2)
-			(plpgsql_plugins2[i]->func_setup2)(estate, func, &fcache_plpgsql->plugin2_info[i]);
+			(plpgsql_plugins2[i]->func_setup2) (estate, func, &fcache_plpgsql->plugin2_info[i]);
 
 		MemoryContextSwitchTo(oldcxt);
 	}
@@ -933,7 +933,7 @@ pldbgapi2_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 		{
 			PG_TRY();
 			{
-				(prev_plpgsql_plugin->func_setup)(estate, func);
+				(prev_plpgsql_plugin->func_setup) (estate, func);
 
 				plugin_info->prev_plugin_info = estate->plugin_info;
 				estate->plugin_info = plugin_info;
@@ -994,7 +994,7 @@ pldbgapi2_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	for (i = 0; i < nplpgsql_plugins2; i++)
 	{
 		if (plpgsql_plugins2[i]->func_beg2)
-			(plpgsql_plugins2[i]->func_beg2)(estate, func, &fcache_plpgsql->plugin2_info[i]);
+			(plpgsql_plugins2[i]->func_beg2) (estate, func, &fcache_plpgsql->plugin2_info[i]);
 	}
 
 	current_fmgr_plpgsql_cache = NULL;
@@ -1005,7 +1005,7 @@ pldbgapi2_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 		{
 			estate->plugin_info = plugin_info->prev_plugin_info;
 
-			(prev_plpgsql_plugin->func_beg)(estate, func);
+			(prev_plpgsql_plugin->func_beg) (estate, func);
 
 			plugin_info->prev_plugin_info = estate->plugin_info;
 			estate->plugin_info = plugin_info;
@@ -1029,10 +1029,10 @@ pldbgapi2_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	int			i;
 
 	/*
-	 * When extension is installed by EXECUTE 'CREATE EXTENSION plpgsql_check',
-	 * then plpgsql debug API is activated, but plugin info is NULL, or maybe
-	 * there can be plugin info for ather plugin, because plpgsql_check was not
-	 * correctly initialized.
+	 * When extension is installed by EXECUTE 'CREATE EXTENSION
+	 * plpgsql_check', then plpgsql debug API is activated, but plugin info is
+	 * NULL, or maybe there can be plugin info for ather plugin, because
+	 * plpgsql_check was not correctly initialized.
 	 */
 	if (!plugin_info || plugin_info->magic != PLUGIN_INFO_MAGIC)
 		return;
@@ -1060,7 +1060,7 @@ pldbgapi2_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	for (i = 0; i < nplpgsql_plugins2; i++)
 	{
 		if (plpgsql_plugins2[i]->func_end2)
-			(plpgsql_plugins2[i]->func_end2)(estate, func, &fcache_plpgsql->plugin2_info[i]);
+			(plpgsql_plugins2[i]->func_end2) (estate, func, &fcache_plpgsql->plugin2_info[i]);
 	}
 
 	current_fmgr_plpgsql_cache = NULL;
@@ -1075,7 +1075,7 @@ pldbgapi2_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 		{
 			estate->plugin_info = plugin_info->prev_plugin_info;
 
-			(prev_plpgsql_plugin->func_end)(estate, func);
+			(prev_plpgsql_plugin->func_end) (estate, func);
 
 			plugin_info->prev_plugin_info = estate->plugin_info;
 			estate->plugin_info = plugin_info;
@@ -1100,10 +1100,10 @@ pldbgapi2_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	int			parent_id = 0;
 
 	/*
-	 * When extension is installed by EXECUTE 'CREATE EXTENSION plpgsql_check',
-	 * then plpgsql debug API is activated, but plugin info is NULL, or maybe
-	 * there can be plugin info for ather plugin, because plpgsql_check was not
-	 * correctly initialized.
+	 * When extension is installed by EXECUTE 'CREATE EXTENSION
+	 * plpgsql_check', then plpgsql debug API is activated, but plugin info is
+	 * NULL, or maybe there can be plugin info for ather plugin, because
+	 * plpgsql_check was not correctly initialized.
 	 */
 	if (!plugin_info || plugin_info->magic != PLUGIN_INFO_MAGIC)
 		return;
@@ -1138,8 +1138,8 @@ pldbgapi2_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 			for (i = 0; i < nplpgsql_plugins2; i++)
 			{
 				if (plpgsql_plugins2[i]->stmt_end2_aborted)
-					(plpgsql_plugins2[i]->stmt_end2_aborted)(estate->func->fn_oid, stmtid,
-															 &fcache_plpgsql->plugin2_info[i]);
+					(plpgsql_plugins2[i]->stmt_end2_aborted) (estate->func->fn_oid, stmtid,
+															  &fcache_plpgsql->plugin2_info[i]);
 			}
 
 			fcache_plpgsql->current_stmtid_stack_size -= 1;
@@ -1147,15 +1147,15 @@ pldbgapi2_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	}
 
 	if (parent_id &&
-		  fcache_plpgsql->stmtid_stack[fcache_plpgsql->current_stmtid_stack_size - 1] != parent_id)
+		fcache_plpgsql->stmtid_stack[fcache_plpgsql->current_stmtid_stack_size - 1] != parent_id)
 		elog(ERROR, "cannot find parent statement on pldbgapi2 call stack");
 
 	/*
-	 * We want to close broken statements before we start execution of 
+	 * We want to close broken statements before we start execution of
 	 * exception handler. This needs more work than closing broken statements
-	 * after an exception handler, but it simplify calculation of execution times.
-	 * We need to chec, if stack has an expected value (should be parent statement,
-	 * and if not, then we are in exception handler.
+	 * after an exception handler, but it simplify calculation of execution
+	 * times. We need to chec, if stack has an expected value (should be
+	 * parent statement, and if not, then we are in exception handler.
 	 */
 
 	if (fcache_plpgsql->current_stmtid_stack_size >= fcache_plpgsql->stmtid_stack_size)
@@ -1170,8 +1170,8 @@ pldbgapi2_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	for (i = 0; i < nplpgsql_plugins2; i++)
 	{
 		if (plpgsql_plugins2[i]->stmt_beg2)
-			(plpgsql_plugins2[i]->stmt_beg2)(estate, stmt,
-											 &fcache_plpgsql->plugin2_info[i]);
+			(plpgsql_plugins2[i]->stmt_beg2) (estate, stmt,
+											  &fcache_plpgsql->plugin2_info[i]);
 	}
 
 	current_fmgr_plpgsql_cache = NULL;
@@ -1182,7 +1182,7 @@ pldbgapi2_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		{
 			estate->plugin_info = plugin_info->prev_plugin_info;
 
-			(prev_plpgsql_plugin->stmt_beg)(estate, stmt);
+			(prev_plpgsql_plugin->stmt_beg) (estate, stmt);
 
 			plugin_info->prev_plugin_info = estate->plugin_info;
 			estate->plugin_info = plugin_info;
@@ -1206,10 +1206,10 @@ pldbgapi2_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	int			i;
 
 	/*
-	 * When extension is installed by EXECUTE 'CREATE EXTENSION plpgsql_check',
-	 * then plpgsql debug API is activated, but plugin info is NULL, or maybe
-	 * there can be plugin info for ather plugin, because plpgsql_check was not
-	 * correctly initialized.
+	 * When extension is installed by EXECUTE 'CREATE EXTENSION
+	 * plpgsql_check', then plpgsql debug API is activated, but plugin info is
+	 * NULL, or maybe there can be plugin info for ather plugin, because
+	 * plpgsql_check was not correctly initialized.
 	 */
 	if (!plugin_info || plugin_info->magic != PLUGIN_INFO_MAGIC)
 		return;
@@ -1236,9 +1236,9 @@ pldbgapi2_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	current_fmgr_plpgsql_cache = fcache_plpgsql;
 
 	/*
-	 * The exception handler can be empty (see issue #156). In this case
-	 * the statement on stack can be different, then current statemnt, and
-	 * we should to fix stack.
+	 * The exception handler can be empty (see issue #156). In this case the
+	 * statement on stack can be different, then current statemnt, and we
+	 * should to fix stack.
 	 */
 	if (stmt->cmd_type == PLPGSQL_STMT_BLOCK)
 	{
@@ -1250,8 +1250,8 @@ pldbgapi2_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 			for (i = 0; i < nplpgsql_plugins2; i++)
 			{
 				if (plpgsql_plugins2[i]->stmt_end2_aborted)
-					(plpgsql_plugins2[i]->stmt_end2_aborted)(estate->func->fn_oid, stmtid,
-															 &fcache_plpgsql->plugin2_info[i]);
+					(plpgsql_plugins2[i]->stmt_end2_aborted) (estate->func->fn_oid, stmtid,
+															  &fcache_plpgsql->plugin2_info[i]);
 			}
 
 			fcache_plpgsql->current_stmtid_stack_size -= 1;
@@ -1264,8 +1264,8 @@ pldbgapi2_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	for (i = 0; i < nplpgsql_plugins2; i++)
 	{
 		if (plpgsql_plugins2[i]->stmt_end2)
-			(plpgsql_plugins2[i]->stmt_end2)(estate, stmt,
-											 &fcache_plpgsql->plugin2_info[i]);
+			(plpgsql_plugins2[i]->stmt_end2) (estate, stmt,
+											  &fcache_plpgsql->plugin2_info[i]);
 	}
 
 	current_fmgr_plpgsql_cache = NULL;
@@ -1276,7 +1276,7 @@ pldbgapi2_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		{
 			estate->plugin_info = plugin_info->prev_plugin_info;
 
-			(prev_plpgsql_plugin->stmt_end)(estate, stmt);
+			(prev_plpgsql_plugin->stmt_end) (estate, stmt);
 
 			plugin_info->prev_plugin_info = estate->plugin_info;
 			estate->plugin_info = plugin_info;
@@ -1293,7 +1293,7 @@ pldbgapi2_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 }
 
 void
-plpgsql_check_register_pldbgapi2_plugin(plpgsql_check_plugin2 *plugin2)
+plpgsql_check_register_pldbgapi2_plugin(plpgsql_check_plugin2 * plugin2)
 {
 	if (nplpgsql_plugins2 < MAX_PLDBGAPI2_PLUGINS)
 		plpgsql_plugins2[nplpgsql_plugins2++] = plugin2;
@@ -1336,7 +1336,7 @@ void
 plpgsql_check_init_pldbgapi2(void)
 {
 	PLpgSQL_plugin **plugin_ptr;
-	static bool		inited = false;
+	static bool inited = false;
 
 	if (inited)
 		return;
@@ -1347,7 +1347,7 @@ plpgsql_check_init_pldbgapi2(void)
 	needs_fmgr_hook = pldbgapi2_needs_fmgr_hook;
 	fmgr_hook = pldbgapi2_fmgr_hook;
 
-	plugin_ptr = (PLpgSQL_plugin **)find_rendezvous_variable("PLpgSQL_plugin");
+	plugin_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
 	prev_plpgsql_plugin = *plugin_ptr;
 	*plugin_ptr = &pldbgapi2_plugin;
 
@@ -1368,7 +1368,7 @@ plpgsql_check_finish_pldbgapi2(void)
 	needs_fmgr_hook = prev_needs_fmgr_hook;
 	fmgr_hook = prev_fmgr_hook;
 
-	plugin_ptr = (PLpgSQL_plugin **)find_rendezvous_variable("PLpgSQL_plugin");
+	plugin_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
 	*plugin_ptr = prev_plpgsql_plugin;
 }
 

@@ -51,12 +51,12 @@ plpgsql_check_record_variable_usage(PLpgSQL_checkstate *cstate, int dno, bool wr
 
 				appendStringInfo(&message, "auto varible \"%s\" should not be modified by user", var->refname);
 				plpgsql_check_put_error(cstate,
-						  0, var->lineno,
-						  message.data,
-						  NULL,
-						  NULL,
-						  PLPGSQL_CHECK_WARNING_EXTRA,
-						  0, NULL, NULL);
+										0, var->lineno,
+										message.data,
+										NULL,
+										NULL,
+										PLPGSQL_CHECK_WARNING_EXTRA,
+										0, NULL, NULL);
 				pfree(message.data);
 			}
 		}
@@ -116,7 +116,7 @@ plpgsql_check_is_assignable(PLpgSQL_execstate *estate, int dno)
 		case PLPGSQL_DTYPE_RECFIELD:
 			/* assignable if parent record is */
 			plpgsql_check_is_assignable(estate,
-								  ((PLpgSQL_recfield *) datum)->recparentno);
+										((PLpgSQL_recfield *) datum)->recparentno);
 			break;
 
 		default:
@@ -204,9 +204,9 @@ plpgsql_check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid
 				 */
 				if (!HeapTupleIsValid(recvar_tuple(rec)))
 					ereport(ERROR,
-						  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-					errmsg("record \"%s\" is not assigned to tuple structure",
-						   rec->refname)));
+							(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+							 errmsg("record \"%s\" is not assigned to tuple structure",
+									rec->refname)));
 
 				/*
 				 * Get the number of the records field to change and the
@@ -229,7 +229,7 @@ plpgsql_check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid
 			break;
 
 		default:
-			;		/* nope */
+			;					/* nope */
 	}
 }
 
@@ -254,57 +254,57 @@ plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 
 	if (type_is_rowtype(value_typoid) && !type_is_rowtype(target_typoid))
 	{
-		StringInfoData	str;
+		StringInfoData str;
 
 		initStringInfo(&str);
 		appendStringInfo(&str, "cannot cast composite value of \"%s\" type to a scalar value of \"%s\" type",
-									format_type_be(value_typoid),
-									format_type_be(target_typoid));
+						 format_type_be(value_typoid),
+						 format_type_be(target_typoid));
 
 		plpgsql_check_put_error(cstate,
-					  ERRCODE_DATATYPE_MISMATCH, 0,
-					  str.data,
-					  NULL,
-					  NULL,
-					  PLPGSQL_CHECK_ERROR,
-					  0, NULL, NULL);
+								ERRCODE_DATATYPE_MISMATCH, 0,
+								str.data,
+								NULL,
+								NULL,
+								PLPGSQL_CHECK_ERROR,
+								0, NULL, NULL);
 	}
 	else if (!isnull)
 	{
-		StringInfoData	str;
+		StringInfoData str;
 
 		initStringInfo(&str);
 		appendStringInfo(&str, "cast \"%s\" value to \"%s\" type",
-									format_type_be(value_typoid),
-									format_type_be(target_typoid));
+						 format_type_be(value_typoid),
+						 format_type_be(target_typoid));
 
 		/* accent warning when cast is without supported explicit casting */
 		if (!can_coerce_type(1, &value_typoid, &target_typoid, COERCION_EXPLICIT))
 			plpgsql_check_put_error(cstate,
-						  ERRCODE_DATATYPE_MISMATCH, 0,
-						  "target type is different type than source type",
-						  str.data,
-						  "There are no possible explicit coercion between those types, possibly bug!",
-						  PLPGSQL_CHECK_WARNING_OTHERS,
-						  0, NULL, NULL);
+									ERRCODE_DATATYPE_MISMATCH, 0,
+									"target type is different type than source type",
+									str.data,
+									"There are no possible explicit coercion between those types, possibly bug!",
+									PLPGSQL_CHECK_WARNING_OTHERS,
+									0, NULL, NULL);
 		else if (!can_coerce_type(1, &value_typoid, &target_typoid, COERCION_ASSIGNMENT))
 			plpgsql_check_put_error(cstate,
-						  ERRCODE_DATATYPE_MISMATCH, 0,
-						  "target type is different type than source type",
-						  str.data,
-						  "The input expression type does not have an assignment cast to the target type.",
-						  PLPGSQL_CHECK_WARNING_OTHERS,
-						  0, NULL, NULL);
+									ERRCODE_DATATYPE_MISMATCH, 0,
+									"target type is different type than source type",
+									str.data,
+									"The input expression type does not have an assignment cast to the target type.",
+									PLPGSQL_CHECK_WARNING_OTHERS,
+									0, NULL, NULL);
 		else
 		{
 			/* highly probably only performance issue */
 			plpgsql_check_put_error(cstate,
-						  ERRCODE_DATATYPE_MISMATCH, 0,
-						  "target type is different type than source type",
-						  str.data,
-						  "Hidden casting can be a performance issue.",
-						  PLPGSQL_CHECK_WARNING_PERFORMANCE,
-						  0, NULL, NULL);
+									ERRCODE_DATATYPE_MISMATCH, 0,
+									"target type is different type than source type",
+									str.data,
+									"Hidden casting can be a performance issue.",
+									PLPGSQL_CHECK_WARNING_PERFORMANCE,
+									0, NULL, NULL);
 		}
 
 		pfree(str.data);
@@ -326,9 +326,9 @@ plpgsql_check_assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDes
 				PLpgSQL_var *var = (PLpgSQL_var *) target;
 
 				plpgsql_check_assign_to_target_type(cstate,
-									 var->datatype->typoid, var->datatype->atttypmod,
-									 TupleDescAttr(tupdesc, 0)->atttypid,
-									 isnull);
+													var->datatype->typoid, var->datatype->atttypmod,
+													TupleDescAttr(tupdesc, 0)->atttypid,
+													isnull);
 			}
 			break;
 
@@ -342,20 +342,20 @@ plpgsql_check_assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDes
 
 		case PLPGSQL_DTYPE_RECFIELD:
 			{
-				Oid		typoid;
-				int		typmod;
+				Oid			typoid;
+				int			typmod;
 
 				plpgsql_check_target(cstate, varno, &typoid, &typmod);
 
 				plpgsql_check_assign_to_target_type(cstate,
-									 typoid, typmod,
-									 TupleDescAttr(tupdesc, 0)->atttypid,
-									 isnull);
+													typoid, typmod,
+													TupleDescAttr(tupdesc, 0)->atttypid,
+													isnull);
 			}
 			break;
 
 		default:
-			;		/* nope */
+			;					/* nope */
 	}
 }
 
@@ -366,18 +366,18 @@ plpgsql_check_assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDes
  */
 void
 plpgsql_check_assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
-								  PLpgSQL_row *row,
-								  PLpgSQL_rec *rec,
-								  TupleDesc tupdesc,
-								  bool isnull)
+										PLpgSQL_row *row,
+										PLpgSQL_rec *rec,
+										TupleDesc tupdesc,
+										bool isnull)
 {
 	if (tupdesc == NULL)
 	{
 		plpgsql_check_put_error(cstate,
-					  0, 0,
-					  "tuple descriptor is empty", NULL, NULL,
-					  PLPGSQL_CHECK_WARNING_OTHERS,
-					  0, NULL, NULL);
+								0, 0,
+								"tuple descriptor is empty", NULL, NULL,
+								PLPGSQL_CHECK_WARNING_OTHERS,
+								0, NULL, NULL);
 		return;
 	}
 
@@ -408,7 +408,7 @@ plpgsql_check_assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 
 			if (anum < td_natts)
 			{
-				Oid	valtype = SPI_gettypeid(tupdesc, anum + 1);
+				Oid			valtype = SPI_gettypeid(tupdesc, anum + 1);
 				PLpgSQL_datum *target = cstate->estate->datums[row->varnos[fnum]];
 
 				switch (target->dtype)
@@ -418,24 +418,24 @@ plpgsql_check_assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 							PLpgSQL_var *var = (PLpgSQL_var *) target;
 
 							plpgsql_check_assign_to_target_type(cstate,
-												 var->datatype->typoid,
-												 var->datatype->atttypmod,
-														 valtype,
-														 isnull);
+																var->datatype->typoid,
+																var->datatype->atttypmod,
+																valtype,
+																isnull);
 						}
 						break;
 
 					case PLPGSQL_DTYPE_RECFIELD:
 						{
-							Oid	expected_typoid;
-							int	expected_typmod;
+							Oid			expected_typoid;
+							int			expected_typmod;
 
 							plpgsql_check_target(cstate, target->dno, &expected_typoid, &expected_typmod);
 							plpgsql_check_assign_to_target_type(cstate,
-												 expected_typoid,
-												 expected_typmod,
-														valtype,
-														isnull);
+																expected_typoid,
+																expected_typmod,
+																valtype,
+																isnull);
 						}
 						break;
 					default:
@@ -478,9 +478,9 @@ plpgsql_check_recval_release(PLpgSQL_rec *rec)
 void
 plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec, TupleDesc tupdesc, bool is_null)
 {
-	PLpgSQL_execstate	   *estate = cstate->estate;
-	ExpandedRecordHeader   *newerh;
-	MemoryContext			mcontext;
+	PLpgSQL_execstate *estate = cstate->estate;
+	ExpandedRecordHeader *newerh;
+	MemoryContext mcontext;
 	TupleDesc	var_tupdesc;
 	Datum	   *newvalues;
 	bool	   *newnulls;
@@ -497,7 +497,7 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 	if (rec->rectypeid != RECORDOID)
 	{
 		newerh = make_expanded_record_from_typeid(rec->rectypeid, -1,
-													  mcontext);
+												  mcontext);
 	}
 	else
 	{
@@ -505,7 +505,7 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 			return;
 
 		newerh = make_expanded_record_from_tupdesc(tupdesc,
-													   mcontext);
+												   mcontext);
 	}
 
 	/*
@@ -516,12 +516,12 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 
 	if (!is_null && tupdesc != NULL && !compatible_tupdescs(var_tupdesc, tupdesc))
 	{
-		int		attn1 = 0;
-		int		attn2 = 0;
-		int		target_nfields = 0;
-		int		src_nfields = 0;
-		bool	src_field_is_valid = false;
-		bool	target_field_is_valid = false;
+		int			attn1 = 0;
+		int			attn2 = 0;
+		int			target_nfields = 0;
+		int			src_nfields = 0;
+		bool		src_field_is_valid = false;
+		bool		target_field_is_valid = false;
 		Form_pg_attribute sattr = NULL;
 		Form_pg_attribute tattr = NULL;
 
@@ -554,12 +554,12 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 			if (src_field_is_valid && target_field_is_valid)
 			{
 				plpgsql_check_assign_to_target_type(cstate,
-												tattr->atttypid, tattr->atttypmod,
-												sattr->atttypid,
-												false);
+													tattr->atttypid, tattr->atttypmod,
+													sattr->atttypid,
+													false);
 
 				/* try to search next tuple of fields */
-				src_field_is_valid =  false;
+				src_field_is_valid = false;
 				target_field_is_valid = false;
 				attn1 += 1;
 				attn2 += 1;
@@ -570,20 +570,20 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 
 		if (src_nfields < target_nfields)
 			plpgsql_check_put_error(cstate,
-						  0, 0,
-						  "too few attributes for composite variable",
-						  NULL,
-						  NULL,
-						  PLPGSQL_CHECK_WARNING_OTHERS,
-						  0, NULL, NULL);
+									0, 0,
+									"too few attributes for composite variable",
+									NULL,
+									NULL,
+									PLPGSQL_CHECK_WARNING_OTHERS,
+									0, NULL, NULL);
 		else if (src_nfields > target_nfields)
 			plpgsql_check_put_error(cstate,
-						  0, 0,
-						  "too many attributes for composite variable",
-						  NULL,
-						  NULL,
-						  PLPGSQL_CHECK_WARNING_OTHERS,
-						  0, NULL, NULL);
+									0, 0,
+									"too many attributes for composite variable",
+									NULL,
+									NULL,
+									PLPGSQL_CHECK_WARNING_OTHERS,
+									0, NULL, NULL);
 	}
 
 	chunk = eval_mcontext_alloc(estate,

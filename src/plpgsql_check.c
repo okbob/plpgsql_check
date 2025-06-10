@@ -84,11 +84,11 @@ static const struct config_enum_entry cursors_leaks_level_options[] = {
 };
 
 
-void			_PG_init(void);
+void		_PG_init(void);
 
 #if PG_VERSION_NUM < 150000
 
-void			_PG_fini(void);
+void		_PG_fini(void);
 
 #endif
 
@@ -100,7 +100,7 @@ shmem_request_hook_type plpgsql_check_prev_shmem_request_hook = NULL;
 
 shmem_startup_hook_type plpgsql_check_prev_shmem_startup_hook = NULL;
 
-bool plpgsql_check_regress_test_mode;
+bool		plpgsql_check_regress_test_mode;
 
 /*
  * Links to function in plpgsql module
@@ -179,7 +179,7 @@ plpgsql_check_check_ext_version(Oid fn_oid)
  * join to PLpgSQL executor
  *
  */
-void 
+void
 _PG_init(void)
 {
 
@@ -220,144 +220,144 @@ _PG_init(void)
 		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_ns_lookup");
 
 	DefineCustomBoolVariable("plpgsql_check.regress_test_mode",
-					    "reduces volatile output",
-					    NULL,
-					    &plpgsql_check_regress_test_mode,
-					    false,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "reduces volatile output",
+							 NULL,
+							 &plpgsql_check_regress_test_mode,
+							 false,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomEnumVariable("plpgsql_check.mode",
-					    "choose a mode for enhanced checking",
-					    NULL,
-					    &plpgsql_check_mode,
-					    PLPGSQL_CHECK_MODE_BY_FUNCTION,
-					    plpgsql_check_mode_options,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "choose a mode for enhanced checking",
+							 NULL,
+							 &plpgsql_check_mode,
+							 PLPGSQL_CHECK_MODE_BY_FUNCTION,
+							 plpgsql_check_mode_options,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.show_nonperformance_extra_warnings",
-					    "when is true, then extra warning (except performance warnings) are showed",
-					    NULL,
-					    &plpgsql_check_extra_warnings,
-					    false,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "when is true, then extra warning (except performance warnings) are showed",
+							 NULL,
+							 &plpgsql_check_extra_warnings,
+							 false,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.show_nonperformance_warnings",
-					    "when is true, then warning (except performance warnings) are showed",
-					    NULL,
-					    &plpgsql_check_other_warnings,
-					    false,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "when is true, then warning (except performance warnings) are showed",
+							 NULL,
+							 &plpgsql_check_other_warnings,
+							 false,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.show_performance_warnings",
-					    "when is true, then performance warnings are showed",
-					    NULL,
-					    &plpgsql_check_performance_warnings,
-					    false,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "when is true, then performance warnings are showed",
+							 NULL,
+							 &plpgsql_check_performance_warnings,
+							 false,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.compatibility_warnings",
-					    "when is true, then compatibility warnings are showed",
-					    NULL,
-					    &plpgsql_check_compatibility_warnings,
-					    false,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "when is true, then compatibility warnings are showed",
+							 NULL,
+							 &plpgsql_check_compatibility_warnings,
+							 false,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.constants_tracing",
-					    "when is true, the variables with constant value can be used like constant",
-					    NULL,
-					    &plpgsql_check_constants_tracing,
-					    true,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "when is true, the variables with constant value can be used like constant",
+							 NULL,
+							 &plpgsql_check_constants_tracing,
+							 true,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.fatal_errors",
-					    "when is true, then plpgsql check stops execution on detected error",
-					    NULL,
-					    &plpgsql_check_fatal_errors,
-					    true,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "when is true, then plpgsql check stops execution on detected error",
+							 NULL,
+							 &plpgsql_check_fatal_errors,
+							 true,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.profiler",
-					    "when is true, then function execution profile is updated",
-					    NULL,
-					    &plpgsql_check_profiler,
-					    false,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "when is true, then function execution profile is updated",
+							 NULL,
+							 &plpgsql_check_profiler,
+							 false,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.enable_tracer",
-					    "when is true, then tracer's functionality is enabled",
-					    NULL,
-					    &plpgsql_check_enable_tracer,
-					    false,
-					    PGC_SUSET, 0,
-					    NULL, NULL, NULL);
+							 "when is true, then tracer's functionality is enabled",
+							 NULL,
+							 &plpgsql_check_enable_tracer,
+							 false,
+							 PGC_SUSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.tracer",
-					    "when is true, then function is traced",
-					    NULL,
-					    &plpgsql_check_tracer,
-					    false,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "when is true, then function is traced",
+							 NULL,
+							 &plpgsql_check_tracer,
+							 false,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.trace_assert",
-					    "when is true, then statement ASSERT is traced",
-					    NULL,
-					    &plpgsql_check_trace_assert,
-					    false,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "when is true, then statement ASSERT is traced",
+							 NULL,
+							 &plpgsql_check_trace_assert,
+							 false,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.tracer_test_mode",
-					    "when is true, then output of tracer is in regress test possible format",
-					    NULL,
-					    &plpgsql_check_tracer_test_mode,
-					    false,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "when is true, then output of tracer is in regress test possible format",
+							 NULL,
+							 &plpgsql_check_tracer_test_mode,
+							 false,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.tracer_show_nsubxids",
-					    "when is true, then the tracer shows number of current subxids",
-					    NULL,
-					    &plpgsql_check_tracer_show_nsubxids,
-					    false,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "when is true, then the tracer shows number of current subxids",
+							 NULL,
+							 &plpgsql_check_tracer_show_nsubxids,
+							 false,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomEnumVariable("plpgsql_check.tracer_verbosity",
-					    "sets the verbosity of tracer",
-					    NULL,
-					    (int *) &plpgsql_check_tracer_verbosity,
-					    PGERROR_DEFAULT,
-					    tracer_verbosity_options,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "sets the verbosity of tracer",
+							 NULL,
+							 (int *) &plpgsql_check_tracer_verbosity,
+							 PGERROR_DEFAULT,
+							 tracer_verbosity_options,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomEnumVariable("plpgsql_check.trace_assert_verbosity",
-					    "sets the verbosity of trace ASSERT statement",
-					    NULL,
-					    (int *) &plpgsql_check_trace_assert_verbosity,
-					    PGERROR_DEFAULT,
-					    tracer_verbosity_options,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "sets the verbosity of trace ASSERT statement",
+							 NULL,
+							 (int *) &plpgsql_check_trace_assert_verbosity,
+							 PGERROR_DEFAULT,
+							 tracer_verbosity_options,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomEnumVariable("plpgsql_check.tracer_errlevel",
-					    "sets an error level of tracer's messages",
-					    NULL,
-					    (int *) &plpgsql_check_tracer_errlevel,
-					    NOTICE,
-					    tracer_level_options,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "sets an error level of tracer's messages",
+							 NULL,
+							 (int *) &plpgsql_check_tracer_errlevel,
+							 NOTICE,
+							 tracer_level_options,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomIntVariable("plpgsql_check.tracer_variable_max_length",
 							"Maximum output length of content of variables in bytes",
@@ -369,29 +369,29 @@ _PG_init(void)
 							NULL, NULL, NULL);
 
 	DefineCustomEnumVariable("plpgsql_check.cursors_leaks_errlevel",
-					    "sets an error level of detection of unclosed cursors",
-					    NULL,
-					    (int *) &plpgsql_check_cursors_leaks_level,
-					    WARNING,
-					    cursors_leaks_level_options,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "sets an error level of detection of unclosed cursors",
+							 NULL,
+							 (int *) &plpgsql_check_cursors_leaks_level,
+							 WARNING,
+							 cursors_leaks_level_options,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.cursors_leaks",
-					    "when is true, then detection of unclosed cursors is active",
-					    NULL,
-					    &plpgsql_check_cursors_leaks,
-					    true,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "when is true, then detection of unclosed cursors is active",
+							 NULL,
+							 &plpgsql_check_cursors_leaks,
+							 true,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomBoolVariable("plpgsql_check.strict_cursors_leaks",
-					    "when is true, then detection of unclosed cursors is executed immediately when function is finished",
-					    NULL,
-					    &plpgsql_check_cursors_leaks_strict,
-					    false,
-					    PGC_USERSET, 0,
-					    NULL, NULL, NULL);
+							 "when is true, then detection of unclosed cursors is executed immediately when function is finished",
+							 NULL,
+							 &plpgsql_check_cursors_leaks_strict,
+							 false,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
 
 	EmitWarningsOnPlaceholders("plpgsql_check");
 
@@ -403,19 +403,19 @@ _PG_init(void)
 	{
 
 		DefineCustomIntVariable("plpgsql_check.profiler_max_shared_chunks",
-						    "maximum numbers of statements chunks in shared memory",
-						    NULL,
-						    &plpgsql_check_profiler_max_shared_chunks,
-						    15000, 50, 100000,
-						    PGC_POSTMASTER, 0,
-						    NULL, NULL, NULL);
+								"maximum numbers of statements chunks in shared memory",
+								NULL,
+								&plpgsql_check_profiler_max_shared_chunks,
+								15000, 50, 100000,
+								PGC_POSTMASTER, 0,
+								NULL, NULL, NULL);
 
 #if PG_VERSION_NUM < 150000
 
 		/*
 		 * If you change code here, don't forget to also report the
-		 * modifications in plpgsql_check_profiler_shmem_request() for pg15 and
-		 * later.
+		 * modifications in plpgsql_check_profiler_shmem_request() for pg15
+		 * and later.
 		 */
 		RequestAddinShmemSpace(plpgsql_check_shmem_size());
 
@@ -454,4 +454,3 @@ _PG_init(void)
 #endif
 	inited = true;
 }
-

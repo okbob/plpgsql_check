@@ -28,21 +28,21 @@
 #include "utils/lsyscache.h"
 
 static void collect_volatility(PLpgSQL_checkstate *cstate, Query *query);
-static Query * ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, CachedPlanSource *plansource);
+static Query *ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, CachedPlanSource *plansource);
 static void check_pure_expr(PLpgSQL_checkstate *cstate, Query *query, char *query_str);
 
-static CachedPlan * get_cached_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *has_result_desc);
+static CachedPlan *get_cached_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *has_result_desc);
 static void plan_checks(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str);
 static void prohibit_write_plan(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str);
 static void prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str);
 static void check_fishy_qual(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str);
 
-static Const * expr_get_const(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
+static Const *expr_get_const(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 static bool is_const_null_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 static void force_plan_checks(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 
-static int RowGetValidFields(PLpgSQL_row *row);
-static int TupleDescNVatts(TupleDesc tupdesc);
+static int	RowGetValidFields(PLpgSQL_row *row);
+static int	TupleDescNVatts(TupleDesc tupdesc);
 
 static PreParseColumnRefHook p_pre_columnref_hook = NULL;
 static PostParseColumnRefHook p_post_columnref_hook = NULL;
@@ -79,14 +79,14 @@ parserhook_wrapper_update_used_variables(ParseState *pstate, Node *node)
 			if (bms_is_member(dno, expr->paramnos))
 			{
 				/*
-				 * PostgreSQL 14 and higher uses SQL parser for parsing
-				 * left side of assign statement too. We should to eliminate
-				 * it from used_variables (read) if we want to get warning
-				 * NEVER READ.
+				 * PostgreSQL 14 and higher uses SQL parser for parsing left
+				 * side of assign statement too. We should to eliminate it
+				 * from used_variables (read) if we want to get warning NEVER
+				 * READ.
 				 */
 				if (dno != expr->target_param)
 				{
-					MemoryContext	oldcxt = MemoryContextSwitchTo(cstate->check_cxt);
+					MemoryContext oldcxt = MemoryContextSwitchTo(cstate->check_cxt);
 
 					cstate->used_variables = bms_add_member(cstate->used_variables, dno);
 					MemoryContextSwitchTo(oldcxt);
@@ -137,8 +137,8 @@ plpgsql_parser_setup_wrapper(struct ParseState *pstate, PLpgSQL_expr *expr)
 	/*
 	 * save previous hooks.
 	 *
-	 * The prepare_plan routine can be called recursively in passive mode.
-	 * the planner can try to execute any immutable functions with constant
+	 * The prepare_plan routine can be called recursively in passive mode. the
+	 * planner can try to execute any immutable functions with constant
 	 * parameters. Then saving old hooks to global variables is not 100%
 	 * correct, but the addresses should be same always.
 	 */
@@ -154,10 +154,10 @@ plpgsql_parser_setup_wrapper(struct ParseState *pstate, PLpgSQL_expr *expr)
 
 static void
 _prepare_plan(PLpgSQL_checkstate *cstate,
-			 PLpgSQL_expr *expr,
-			 int cursorOptions,
-			 ParserSetupHook parser_setup,
-			 void *arg)
+			  PLpgSQL_expr *expr,
+			  int cursorOptions,
+			  ParserSetupHook parser_setup,
+			  void *arg)
 {
 	SPIPlanPtr	plan;
 
@@ -175,8 +175,8 @@ _prepare_plan(PLpgSQL_checkstate *cstate,
 		options.cursorOptions = cursorOptions;
 
 		/*
-		 * The grammar can't conveniently set expr->func while building the parse
-		 * tree, so make sure it's set before parser hooks need it.
+		 * The grammar can't conveniently set expr->func while building the
+		 * parse tree, so make sure it's set before parser hooks need it.
 		 */
 		expr->func = cstate->estate->func;
 		old_plugin_info = expr->func->cur_estate->plugin_info;
@@ -284,8 +284,8 @@ static void
 collect_volatility(PLpgSQL_checkstate *cstate, Query *query)
 {
 	if (cstate->skip_volatility_check ||
-			cstate->volatility == PROVOLATILE_VOLATILE ||
-			!cstate->cinfo->performance_warnings)
+		cstate->volatility == PROVOLATILE_VOLATILE ||
+		!cstate->cinfo->performance_warnings)
 		return;
 
 	if (query->commandType == CMD_SELECT)
@@ -298,8 +298,8 @@ collect_volatility(PLpgSQL_checkstate *cstate, Query *query)
 			else if (!plpgsql_check_contain_mutable_functions((Node *) query, cstate))
 			{
 				/*
-				 * when level is still immutable, check if there
-				 * are not reference to tables.
+				 * when level is still immutable, check if there are not
+				 * reference to tables.
 				 */
 				if (cstate->volatility == PROVOLATILE_IMMUTABLE)
 				{
@@ -336,9 +336,9 @@ plpgsql_check_get_plan_source(PLpgSQL_checkstate *cstate, SPIPlanPtr plan)
 	if (nplans > 1)
 	{
 		/*
-		 * We can allow multiple plans for commands executed by
-		 * EXECUTE command. Result of last plan is result. But
-		 * it can be allowed only in main query - not in parameters.
+		 * We can allow multiple plans for commands executed by EXECUTE
+		 * command. Result of last plan is result. But it can be allowed only
+		 * in main query - not in parameters.
 		 */
 		if (cstate->allow_mp)
 		{
@@ -389,8 +389,8 @@ is_pure_expr(PLpgSQL_checkstate *cstate, Query *query)
 		return false;
 
 	/*
-	 * unfortunately, the resname should not be checked,
-	 * postgres uses ?column?, varname, or type names, ...
+	 * unfortunately, the resname should not be checked, postgres uses
+	 * ?column?, varname, or type names, ...
 	 */
 
 	return true;
@@ -421,7 +421,7 @@ check_pure_expr(PLpgSQL_checkstate *cstate, Query *query, char *query_str)
 static Query *
 ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, CachedPlanSource *plansource)
 {
-	Query *result = NULL;
+	Query	   *result = NULL;
 
 	Assert(plansource);
 	Assert(plansource->is_valid);
@@ -430,8 +430,8 @@ ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, CachedPlanSource *p
 		elog(ERROR, "missing plan in plancache source");
 
 	/*
-	 * query_list has more fields, when rules are used. There
-	 * can be combination INSERT; NOTIFY
+	 * query_list has more fields, when rules are used. There can be
+	 * combination INSERT; NOTIFY
 	 */
 	if (list_length(plansource->query_list) > 1)
 	{
@@ -439,7 +439,7 @@ ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, CachedPlanSource *p
 		CmdType		first_ctype = CMD_UNKNOWN;
 		bool		first = true;
 
-		foreach (lc, plansource->query_list)
+		foreach(lc, plansource->query_list)
 		{
 			Query	   *query = (Query *) lfirst(lc);
 
@@ -452,8 +452,8 @@ ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, CachedPlanSource *p
 			else
 			{
 				/*
-				 * When current command is SELECT, then first command
-				 * should be SELECT too
+				 * When current command is SELECT, then first command should
+				 * be SELECT too
 				 */
 				if (query->commandType == CMD_SELECT)
 				{
@@ -484,13 +484,13 @@ ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, CachedPlanSource *p
 
 			if (selectStmt->targetList && IsA(linitial(selectStmt->targetList), ResTarget))
 			{
-				ResTarget *rt = (ResTarget *) linitial(selectStmt->targetList);
+				ResTarget  *rt = (ResTarget *) linitial(selectStmt->targetList);
 
 				if (rt->val && IsA(rt->val, A_Const))
 				{
-					A_Const	   *ac = (A_Const *) rt->val;
+					A_Const    *ac = (A_Const *) rt->val;
 					bool		is_perform_stmt;
-					char *str = NULL;
+					char	   *str = NULL;
 
 					is_perform_stmt = (cstate->estate &&
 									   cstate->estate->err_stmt &&
@@ -531,17 +531,17 @@ ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, CachedPlanSource *p
 
 					if (strcmp(funcname, "plpgsql_check_pragma") == 0)
 					{
-						ListCell	   *lc;
+						ListCell   *lc;
 
 						cstate->was_pragma = true;
 
 						foreach(lc, fc->args)
 						{
-							Node *arg = (Node *) lfirst(lc);
+							Node	   *arg = (Node *) lfirst(lc);
 
 							if (IsA(arg, A_Const))
 							{
-								A_Const *ac = (A_Const *) arg;
+								A_Const    *ac = (A_Const *) arg;
 
 #if PG_VERSION_NUM < 150000
 
@@ -579,7 +579,7 @@ static CachedPlan *
 get_cached_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *has_result_desc)
 {
 	CachedPlanSource *plansource = NULL;
-	CachedPlan	*cplan;
+	CachedPlan *cplan;
 
 	plansource = plpgsql_check_get_plan_source(cstate, expr->plan);
 	if (!plansource)
@@ -626,7 +626,7 @@ plan_checks(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str)
 static void
 prohibit_write_plan(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str)
 {
-	ListCell	*lc;
+	ListCell   *lc;
 
 	if (!cstate->estate->readonly_func)
 		return;
@@ -643,16 +643,16 @@ prohibit_write_plan(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_s
 			initStringInfo(&message);
 
 			appendStringInfo(&message,
-					"%s is not allowed in a non volatile function",
-							GetCommandTagName(CreateCommandTag((Node *) pstmt)));
+							 "%s is not allowed in a non volatile function",
+							 GetCommandTagName(CreateCommandTag((Node *) pstmt)));
 
 			plpgsql_check_put_error(cstate,
-					  ERRCODE_FEATURE_NOT_SUPPORTED, 0,
-					  message.data,
-					  NULL,
-					  NULL,
-					  PLPGSQL_CHECK_ERROR,
-					  0, query_str, NULL);
+									ERRCODE_FEATURE_NOT_SUPPORTED, 0,
+									message.data,
+									NULL,
+									NULL,
+									PLPGSQL_CHECK_ERROR,
+									0, query_str, NULL);
 
 			pfree(message.data);
 			message.data = NULL;
@@ -666,11 +666,11 @@ prohibit_write_plan(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_s
 static void
 prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str)
 {
-	ListCell	*lc;
+	ListCell   *lc;
 
 	foreach(lc, cplan->stmt_list)
 	{
-		Node *pstmt = (Node *) lfirst(lc);
+		Node	   *pstmt = (Node *) lfirst(lc);
 
 		/* PostgtreSQL 10 can have one level of nesting more */
 		if (IsA(pstmt, PlannedStmt))
@@ -700,19 +700,19 @@ prohibit_transaction_stmt(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *q
 static void
 check_fishy_qual(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str)
 {
-	ListCell	*lc;
+	ListCell   *lc;
 
 	if (!cstate->cinfo->performance_warnings)
 		return;
 
 	foreach(lc, cplan->stmt_list)
 	{
-		Param	*param;
+		Param	   *param;
 		PlannedStmt *pstmt = (PlannedStmt *) lfirst(lc);
-		Plan *plan = NULL;
+		Plan	   *plan = NULL;
 
 		/* Only plans can contains fishy quals */
-		if(!IsA(pstmt, PlannedStmt))
+		if (!IsA(pstmt, PlannedStmt))
 			continue;
 
 		plan = pstmt->planTree;
@@ -720,13 +720,13 @@ check_fishy_qual(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str)
 		if (plpgsql_check_qual_has_fishy_cast(pstmt, plan, &param))
 		{
 			plpgsql_check_put_error(cstate,
-					  ERRCODE_DATATYPE_MISMATCH, 0,
-					  "implicit cast of attribute caused by different PLpgSQL variable type in WHERE clause",
-					  "An index of some attribute cannot be used, when variable, used in predicate, has not right type like a attribute",
-					  "Check a variable type - int versus numeric",
-					  PLPGSQL_CHECK_WARNING_PERFORMANCE,
-					  param->location,
-					  query_str, NULL);
+									ERRCODE_DATATYPE_MISMATCH, 0,
+									"implicit cast of attribute caused by different PLpgSQL variable type in WHERE clause",
+									"An index of some attribute cannot be used, when variable, used in predicate, has not right type like a attribute",
+									"Check a variable type - int versus numeric",
+									PLPGSQL_CHECK_WARNING_PERFORMANCE,
+									param->location,
+									query_str, NULL);
 		}
 	}
 }
@@ -749,7 +749,7 @@ plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 
 	_stmt = (PlannedStmt *) linitial(cplan->stmt_list);
 
-	if (has_result_desc && IsA(_stmt, PlannedStmt) &&_stmt->commandType == CMD_SELECT)
+	if (has_result_desc && IsA(_stmt, PlannedStmt) && _stmt->commandType == CMD_SELECT)
 	{
 		Plan	   *_plan;
 
@@ -778,7 +778,7 @@ plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 static Const *
 expr_get_const(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 {
-	Node *node = plpgsql_check_expr_get_node(cstate, expr, true);
+	Node	   *node = plpgsql_check_expr_get_node(cstate, expr, true);
 
 	if (node && node->type == T_Const)
 		return (Const *) node;
@@ -805,15 +805,15 @@ plpgsql_check_const_to_string(Node *node, int *location)
 {
 	if (IsA(node, Const))
 	{
-		Const *c = (Const *) node;
+		Const	   *c = (Const *) node;
 
 		if (location)
 			*location = c->location;
 
 		if (!c->constisnull)
 		{
-			Oid		typoutput;
-			bool	typisvarlena;
+			Oid			typoutput;
+			bool		typisvarlena;
 
 			getTypeOutputInfo(c->consttype, &typoutput, &typisvarlena);
 
@@ -835,7 +835,7 @@ plpgsql_check_get_tracked_const(PLpgSQL_checkstate *cstate, Node *node)
 
 	if (IsA(node, Param))
 	{
-		Param *p = (Param *) node;
+		Param	   *p = (Param *) node;
 
 		if (p->paramkind == PARAM_EXTERN && p->paramid > 0 && p->location != -1)
 		{
@@ -848,8 +848,8 @@ plpgsql_check_get_tracked_const(PLpgSQL_checkstate *cstate, Node *node)
 	else if (IsA(node, CoerceViaIO))
 	{
 		CoerceViaIO *coerce = (CoerceViaIO *) node;
-		bool	typispreferred;
-		char 	typcategory;
+		bool		typispreferred;
+		char		typcategory;
 
 		get_type_category_preferred(coerce->resulttype, &typcategory, &typispreferred);
 		if (typcategory == 'S')
@@ -884,7 +884,7 @@ char *
 plpgsql_check_expr_get_string(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, int *location)
 {
 
-	Node *node = plpgsql_check_expr_get_node(cstate, expr, true);
+	Node	   *node = plpgsql_check_expr_get_node(cstate, expr, true);
 
 	if (!node)
 		return NULL;
@@ -940,9 +940,9 @@ plpgsql_check_expr_generic_with_parser_setup(PLpgSQL_checkstate *cstate,
  */
 void
 plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
-									 PLpgSQL_expr *expr,
-									 Oid expected_typoid,
-									 bool required)
+									PLpgSQL_expr *expr,
+									Oid expected_typoid,
+									bool required)
 {
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
@@ -978,9 +978,9 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
 			/* when we know value or type */
 			if (!is_immutable_null)
 				plpgsql_check_assign_to_target_type(cstate,
-								    expected_typoid, -1,
-								    TupleDescAttr(tupdesc, 0)->atttypid,
-								    is_immutable_null);
+													expected_typoid, -1,
+													TupleDescAttr(tupdesc, 0)->atttypid,
+													is_immutable_null);
 
 			ReleaseTupleDesc(tupdesc);
 		}
@@ -1041,7 +1041,10 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 
 		prepare_plan(cstate, expr, 0, NULL, NULL, is_expression);
 
-		/* record all variables used by the query, should be after prepare_plan */
+		/*
+		 * record all variables used by the query, should be after
+		 * prepare_plan
+		 */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
 		tupdesc = plpgsql_check_expr_get_desc(cstate, expr, false, true, is_expression, &first_level_typ);
@@ -1082,32 +1085,36 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 		if (tupdesc)
 		{
 			/* enforce check for trigger function - result must be composit */
-			if (func->fn_retistuple && is_expression 
-						  && !(type_is_rowtype(TupleDescAttr(tupdesc, 0)->atttypid) ||
-							   type_is_rowtype(first_level_typ) || tupdesc->natts > 1))
+			if (func->fn_retistuple && is_expression
+				&& !(type_is_rowtype(TupleDescAttr(tupdesc, 0)->atttypid) ||
+					 type_is_rowtype(first_level_typ) || tupdesc->natts > 1))
 			{
 				/* but we should to allow NULL */
 				if (!is_immutable_null)
 					plpgsql_check_put_error(cstate,
-								ERRCODE_DATATYPE_MISMATCH, 0,
-					"cannot return non-composite value from function returning composite type",
-												NULL,
-												NULL,
-												PLPGSQL_CHECK_ERROR,
-												0, NULL, NULL);
+											ERRCODE_DATATYPE_MISMATCH, 0,
+											"cannot return non-composite value from function returning composite type",
+											NULL,
+											NULL,
+											PLPGSQL_CHECK_ERROR,
+											0, NULL, NULL);
 			}
-			/* tupmap is used when function returns tuple or RETURN QUERY was used */
+
+			/*
+			 * tupmap is used when function returns tuple or RETURN QUERY was
+			 * used
+			 */
 			else if (func->fn_retistuple || is_return_query)
 			{
 				/* should to know expected result */
 				if (!cstate->fake_rtd && estate->rsi && IsA(estate->rsi, ReturnSetInfo))
 				{
 					TupleDesc	rettupdesc = estate->rsi->expectedDesc;
-					TupleConversionMap *tupmap ;
+					TupleConversionMap *tupmap;
 
 					tupmap = convert_tuples_by_position(tupdesc, rettupdesc,
-			    !is_expression ? gettext_noop("structure of query does not match function result type")
-			                   : gettext_noop("returned record type does not match expected record type"));
+														!is_expression ? gettext_noop("structure of query does not match function result type")
+														: gettext_noop("returned record type does not match expected record type"));
 
 					if (tupmap)
 						free_conversion_map(tupmap);
@@ -1119,9 +1126,9 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 				if (!IsPolymorphicType(func->fn_rettype))
 				{
 					plpgsql_check_assign_to_target_type(cstate,
-									    func->fn_rettype, -1,
-									    TupleDescAttr(tupdesc, 0)->atttypid,
-									    is_immutable_null);
+														func->fn_rettype, -1,
+														TupleDescAttr(tupdesc, 0)->atttypid,
+														is_immutable_null);
 				}
 			}
 
@@ -1169,7 +1176,7 @@ free_string_constant(PLpgSQL_checkstate *cstate, PLpgSQL_row *row)
 	for (fnum = 0; fnum < row->nfields; fnum++)
 	{
 		PLpgSQL_datum *field;
-		int				varno = row->varnos[fnum];
+		int			varno = row->varnos[fnum];
 
 		/* skip dropped fields */
 		if (varno < 0)
@@ -1197,25 +1204,25 @@ free_string_constant(PLpgSQL_checkstate *cstate, PLpgSQL_row *row)
  */
 void
 plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
-					  PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
-					int targetdno, bool use_element_type, bool is_expression)
+							 PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
+							 int targetdno, bool use_element_type, bool is_expression)
 {
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
 	TupleDesc	tupdesc;
-	bool is_immutable_null;
+	bool		is_immutable_null;
 	volatile bool expand = true;
 	Oid			first_level_typoid;
-	Oid expected_typoid = InvalidOid;
-	int expected_typmod = InvalidOid;
+	Oid			expected_typoid = InvalidOid;
+	int			expected_typmod = InvalidOid;
 
 	if (targetdno != -1)
 	{
 		plpgsql_check_target(cstate, targetdno, &expected_typoid, &expected_typmod);
 
 		/*
-		 * When target variable is not compossite, then we should not
-		 * to expand result tupdesc.
+		 * When target variable is not compossite, then we should not to
+		 * expand result tupdesc.
 		 */
 		if (!type_is_rowtype(expected_typoid))
 			expand = false;
@@ -1226,8 +1233,7 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 		expr->target_param = -1;
 
 	/*
-	 * SELECT INTO for composite target type doesn't do
-	 * expand.
+	 * SELECT INTO for composite target type doesn't do expand.
 	 */
 	if (targetrec || targetrow)
 	{
@@ -1255,19 +1261,22 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 
 		if (expr->target_param != -1)
 		{
-			int		target_dno = expr->target_param;
-			Node *node;
-			Oid		target_typoid = InvalidOid;
-			Oid		value_typoid = InvalidOid;
+			int			target_dno = expr->target_param;
+			Node	   *node;
+			Oid			target_typoid = InvalidOid;
+			Oid			value_typoid = InvalidOid;
 
 			node = plpgsql_check_expr_get_node(cstate, expr, false);
 
 			if (bms_is_member(target_dno, expr->paramnos))
 			{
-				/* recheck if target_dno is really used on right side of assignment */
+				/*
+				 * recheck if target_dno is really used on right side of
+				 * assignment
+				 */
 				if (!plpgsql_check_vardno_is_used_for_reading(node, target_dno))
 				{
-					Bitmapset *paramnos;
+					Bitmapset  *paramnos;
 
 					/* create set without target_param */
 					paramnos = bms_copy(expr->paramnos);
@@ -1290,7 +1299,7 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 			/* check implicit coercion */
 			if (node && IsA(node, FuncExpr))
 			{
-				FuncExpr	   *fexpr = (FuncExpr *) node;
+				FuncExpr   *fexpr = (FuncExpr *) node;
 
 				if (fexpr->funcformat == COERCE_IMPLICIT_CAST)
 				{
@@ -1300,7 +1309,7 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 			}
 			else if (node && IsA(node, CoerceViaIO))
 			{
-				CoerceViaIO	   *cexpr = (CoerceViaIO *) node;
+				CoerceViaIO *cexpr = (CoerceViaIO *) node;
 
 				if (cexpr->coerceformat == COERCE_IMPLICIT_CAST)
 				{
@@ -1311,38 +1320,41 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 
 			if (target_typoid != value_typoid)
 			{
-				StringInfoData	str;
+				StringInfoData str;
 
 				initStringInfo(&str);
 				appendStringInfo(&str, "cast \"%s\" value to \"%s\" type",
-											format_type_be(value_typoid),
-											format_type_be(target_typoid));
+								 format_type_be(value_typoid),
+								 format_type_be(target_typoid));
 
-				/* accent warning when cast is without supported explicit casting */
+				/*
+				 * accent warning when cast is without supported explicit
+				 * casting
+				 */
 				if (!can_coerce_type(1, &value_typoid, &target_typoid, COERCION_EXPLICIT))
 					plpgsql_check_put_error(cstate,
-								  ERRCODE_DATATYPE_MISMATCH, 0,
-								  "target type is different type than source type",
-								  str.data,
-								  "There are no possible explicit coercion between those types, possibly bug!",
-								  PLPGSQL_CHECK_WARNING_OTHERS,
-								  0, NULL, NULL);
+											ERRCODE_DATATYPE_MISMATCH, 0,
+											"target type is different type than source type",
+											str.data,
+											"There are no possible explicit coercion between those types, possibly bug!",
+											PLPGSQL_CHECK_WARNING_OTHERS,
+											0, NULL, NULL);
 				else if (!can_coerce_type(1, &value_typoid, &target_typoid, COERCION_ASSIGNMENT))
 					plpgsql_check_put_error(cstate,
-								  ERRCODE_DATATYPE_MISMATCH, 0,
-								  "target type is different type than source type",
-								  str.data,
-								  "The input expression type does not have an assignment cast to the target type.",
-								  PLPGSQL_CHECK_WARNING_OTHERS,
-								  0, NULL, NULL);
+											ERRCODE_DATATYPE_MISMATCH, 0,
+											"target type is different type than source type",
+											str.data,
+											"The input expression type does not have an assignment cast to the target type.",
+											PLPGSQL_CHECK_WARNING_OTHERS,
+											0, NULL, NULL);
 				else
 					plpgsql_check_put_error(cstate,
-								  ERRCODE_DATATYPE_MISMATCH, 0,
-								  "target type is different type than source type",
-								  str.data,
-								  "Hidden casting can be a performance issue.",
-								  PLPGSQL_CHECK_WARNING_PERFORMANCE,
-								  0, NULL, NULL);
+											ERRCODE_DATATYPE_MISMATCH, 0,
+											"target type is different type than source type",
+											str.data,
+											"Hidden casting can be a performance issue.",
+											PLPGSQL_CHECK_WARNING_PERFORMANCE,
+											0, NULL, NULL);
 
 				pfree(str.data);
 			}
@@ -1352,9 +1364,9 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 													 expr->paramnos);
 
 		/*
-		 * there is a possibility to call a plpgsql_pragma like default for some aux
-		 * variable. When we detect this case, then we mark target variable as used
-		 * variable.
+		 * there is a possibility to call a plpgsql_pragma like default for
+		 * some aux variable. When we detect this case, then we mark target
+		 * variable as used variable.
 		 */
 		if (cstate->was_pragma && targetdno != -1)
 			cstate->used_variables = bms_add_member(cstate->used_variables, targetdno);
@@ -1369,13 +1381,13 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 
 			if (var->dtype == PLPGSQL_DTYPE_VAR && var->datatype->typoid == REFCURSOROID)
 			{
-				Node *node = plpgsql_check_expr_get_node(cstate, expr, false);
+				Node	   *node = plpgsql_check_expr_get_node(cstate, expr, false);
 				bool		is_declare_cursor;
 				bool		is_ok = true;
 
 				is_declare_cursor = cstate->estate->err_stmt &&
-									cstate->estate->err_stmt->cmd_type == PLPGSQL_STMT_BLOCK &&
-									var->cursor_explicit_expr;
+					cstate->estate->err_stmt->cmd_type == PLPGSQL_STMT_BLOCK &&
+					var->cursor_explicit_expr;
 
 				if (IsA((Node *) node, Const))
 				{
@@ -1393,7 +1405,8 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 					is_ok = false;
 
 				/*
-				 * when the assignment is still ok, check an immutability of bound cursor
+				 * when the assignment is still ok, check an immutability of
+				 * bound cursor
 				 */
 				if (is_ok && var->cursor_explicit_expr)
 				{
@@ -1420,14 +1433,14 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 
 			if (var->dtype == PLPGSQL_DTYPE_VAR)
 			{
-				bool	typispreferred;
-				char 	typcategory;
+				bool		typispreferred;
+				char		typcategory;
 
 				get_type_category_preferred(var->datatype->typoid, &typcategory, &typispreferred);
 				if (typcategory == 'S')
 				{
-					Node *node = plpgsql_check_expr_get_node(cstate, expr, false);
-					int		location;
+					Node	   *node = plpgsql_check_expr_get_node(cstate, expr, false);
+					int			location;
 
 					if (plpgsql_check_is_sql_injection_vulnerable(cstate, expr, node, &location))
 						cstate->safe_variables = bms_del_member(cstate->safe_variables, targetdno);
@@ -1441,8 +1454,8 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 		{
 			/*
 			 * We cannot to cut constants with results now, but we have to
-			 * reset all possible string constants saved in variables from
-			 * row variable.
+			 * reset all possible string constants saved in variables from row
+			 * variable.
 			 */
 			free_string_constant(cstate, targetrow);
 		}
@@ -1463,8 +1476,9 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 					cstate->strconstvars = palloc0(sizeof(char *) * cstate->estate->ndatums);
 
 				/*
-				 * We need to do copy string first. There is an possibility to self
-				 * reference, and then we need to first copy, and after that free.
+				 * We need to do copy string first. There is an possibility to
+				 * self reference, and then we need to first copy, and after
+				 * that free.
 				 */
 				prev_val = cstate->strconstvars[targetdno];
 				cstate->strconstvars[targetdno] = pstrdup(str);
@@ -1493,19 +1507,19 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 			if (!type_is_rowtype(first_level_typoid) && !is_immutable_null)
 			{
 				plpgsql_check_put_error(cstate,
-						  ERRCODE_DATATYPE_MISMATCH, 0,
-							  "cannot assign scalar variable to composite target",
-							  NULL,
-							  NULL,
-							  PLPGSQL_CHECK_ERROR,
-							  0, NULL, NULL);
+										ERRCODE_DATATYPE_MISMATCH, 0,
+										"cannot assign scalar variable to composite target",
+										NULL,
+										NULL,
+										PLPGSQL_CHECK_ERROR,
+										0, NULL, NULL);
 
 				goto no_other_check;
 			}
 
 			/* simple ok, target and source composite types are same */
 			if (type_is_rowtype(first_level_typoid)
-				    && first_level_typoid != RECORDOID && first_level_typoid == expected_typoid)
+				&& first_level_typoid != RECORDOID && first_level_typoid == expected_typoid)
 				goto no_other_check;
 		}
 
@@ -1521,20 +1535,20 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 			{
 				if (RowGetValidFields(targetrow) > TupleDescNVatts(tupdesc))
 					plpgsql_check_put_error(cstate,
-								  0, 0,
-								  "too few attributes for target variables",
-								  "There are more target variables than output columns in query.",
-						  "Check target variables in SELECT INTO statement.",
-								  PLPGSQL_CHECK_WARNING_OTHERS,
-								  0, NULL, NULL);
+											0, 0,
+											"too few attributes for target variables",
+											"There are more target variables than output columns in query.",
+											"Check target variables in SELECT INTO statement.",
+											PLPGSQL_CHECK_WARNING_OTHERS,
+											0, NULL, NULL);
 				else if (RowGetValidFields(targetrow) < TupleDescNVatts(tupdesc))
 					plpgsql_check_put_error(cstate,
-								  0, 0,
-								  "too many attributes for target variables",
-								  "There are less target variables than output columns in query.",
-						   "Check target variables in SELECT INTO statement",
-								  PLPGSQL_CHECK_WARNING_OTHERS,
-								  0, NULL, NULL);
+											0, 0,
+											"too many attributes for target variables",
+											"There are less target variables than output columns in query.",
+											"Check target variables in SELECT INTO statement",
+											PLPGSQL_CHECK_WARNING_OTHERS,
+											0, NULL, NULL);
 			}
 		}
 
@@ -1731,9 +1745,9 @@ plpgsql_check_assignment(PLpgSQL_checkstate *cstate,
 
 void
 plpgsql_check_assignment_to_variable(PLpgSQL_checkstate *cstate,
-							 PLpgSQL_expr *expr,
-							 PLpgSQL_variable *targetvar,
-							 int targetdno)
+									 PLpgSQL_expr *expr,
+									 PLpgSQL_variable *targetvar,
+									 int targetdno)
 {
 	if (targetvar != NULL)
 	{
@@ -1775,8 +1789,8 @@ plpgsql_check_assignment_to_variable(PLpgSQL_checkstate *cstate,
 static int
 RowGetValidFields(PLpgSQL_row *row)
 {
-	int		i;
-	int		result = 0;
+	int			i;
+	int			result = 0;
 
 	for (i = 0; i < row->nfields; i++)
 	{
@@ -1793,8 +1807,8 @@ RowGetValidFields(PLpgSQL_row *row)
 static int
 TupleDescNVatts(TupleDesc tupdesc)
 {
-	int		natts = 0;
-	int		i;
+	int			natts = 0;
+	int			i;
 
 	for (i = 0; i < tupdesc->natts; i++)
 	{

@@ -22,14 +22,14 @@
 #include "common/keywords.h"
 
 static void check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **exceptions);
-static PLpgSQL_stmt_stack_item * push_stmt_to_stmt_stack(PLpgSQL_checkstate *cstate);
+static PLpgSQL_stmt_stack_item *push_stmt_to_stmt_stack(PLpgSQL_checkstate *cstate);
 static void pop_stmt_from_stmt_stack(PLpgSQL_checkstate *cstate);
 static bool is_any_loop_stmt(PLpgSQL_stmt *stmt);
 static bool is_inside_exception_handler(PLpgSQL_stmt_stack_item *current);
-static PLpgSQL_stmt * find_nearest_loop(PLpgSQL_stmt_stack_item *current);
-static PLpgSQL_stmt * find_stmt_with_label(char *label, PLpgSQL_stmt_stack_item *current);
-static int possibly_closed(int c);
-static int merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int err_code);
+static PLpgSQL_stmt *find_nearest_loop(PLpgSQL_stmt_stack_item *current);
+static PLpgSQL_stmt *find_stmt_with_label(char *label, PLpgSQL_stmt_stack_item *current);
+static int	possibly_closed(int c);
+static int	merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int err_code);
 static bool exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond);
 static bool found_shadowed_variable(char *varname, PLpgSQL_stmt_stack_item *current, PLpgSQL_checkstate *cstate);
 static void check_dynamic_sql(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, PLpgSQL_expr *query, bool into, PLpgSQL_variable *target, List *params);
@@ -45,7 +45,7 @@ check_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var)
 	if (var->dtype == PLPGSQL_DTYPE_ROW)
 	{
 		PLpgSQL_row *row = (PLpgSQL_row *) var;
-		int		fnum;
+		int			fnum;
 
 		for (fnum = 0; fnum < row->nfields; fnum++)
 		{
@@ -79,7 +79,7 @@ check_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var)
 bool
 plpgsql_check_is_reserved_keyword(char *name)
 {
-	int		i;
+	int			i;
 
 	for (i = 0; i < ScanKeywords.num_keywords; i++)
 	{
@@ -123,12 +123,12 @@ check_variable_name(PLpgSQL_checkstate *cstate,
 							 refname);
 
 			plpgsql_check_put_error(cstate,
-						  0, 0,
-						  str.data,
-						  "The reserved keyword was used as variable name.",
-						  NULL,
-						  PLPGSQL_CHECK_WARNING_OTHERS,
-						  0, NULL, NULL);
+									0, 0,
+									str.data,
+									"The reserved keyword was used as variable name.",
+									NULL,
+									PLPGSQL_CHECK_WARNING_OTHERS,
+									0, NULL, NULL);
 			pfree(str.data);
 		}
 
@@ -145,14 +145,14 @@ check_variable_name(PLpgSQL_checkstate *cstate,
 								 refname);
 
 				plpgsql_check_put_error(cstate,
-							  0, 0,
-							  str.data,
-							  is_auto ?
-							  "Local auto variable shadows function parameter." :
-							  "Local variable shadows function parameter.",
-							  NULL,
-							  PLPGSQL_CHECK_WARNING_OTHERS,
-							  0, NULL, NULL);
+										0, 0,
+										str.data,
+										is_auto ?
+										"Local auto variable shadows function parameter." :
+										"Local variable shadows function parameter.",
+										NULL,
+										PLPGSQL_CHECK_WARNING_OTHERS,
+										0, NULL, NULL);
 				pfree(str.data);
 			}
 		}
@@ -163,15 +163,15 @@ check_variable_name(PLpgSQL_checkstate *cstate,
 
 			initStringInfo(&str);
 			appendStringInfo(&str, "%svariable \"%s\" shadows a previously defined variable",
-								 is_auto ? "auto " : "", refname);
+							 is_auto ? "auto " : "", refname);
 
 			plpgsql_check_put_error(cstate,
-							  0, 0,
-							  str.data,
-							  NULL,
-							  "SET plpgsql.extra_warnings TO 'shadowed_variables'",
-							  PLPGSQL_CHECK_WARNING_EXTRA,
-							  0, NULL, NULL);
+									0, 0,
+									str.data,
+									NULL,
+									"SET plpgsql.extra_warnings TO 'shadowed_variables'",
+									PLPGSQL_CHECK_WARNING_EXTRA,
+									0, NULL, NULL);
 			pfree(str.data);
 		}
 	}
@@ -234,8 +234,8 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 							initStringInfo(&str);
 							appendStringInfo(&str, "during statement block local variable \"%s\" initialization on line %d",
-												 var->refname,
-												 var->lineno);
+											 var->refname,
+											 var->lineno);
 
 							cstate->estate->err_text = str.data;
 
@@ -259,10 +259,10 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 					if (stmt_block->exceptions)
 					{
-						int closing_local;
-						List   *exceptions_local = NIL;
-						int		closing_handlers = PLPGSQL_CHECK_UNKNOWN;
-						List   *exceptions_transformed = NIL;
+						int			closing_local;
+						List	   *exceptions_local = NIL;
+						int			closing_handlers = PLPGSQL_CHECK_UNKNOWN;
+						List	   *exceptions_transformed = NIL;
 
 						cstate->top_stmt_stack->is_exception_handler = true;
 
@@ -270,9 +270,9 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						{
 							ListCell   *lc;
 							ListCell   *l;
-							int		errn = 0;
-							int    *err_codes = NULL;
-							int		nerr_codes = 0;
+							int			errn = 0;
+							int		   *err_codes = NULL;
+							int			nerr_codes = 0;
 
 							/* copy errcodes to a array */
 							nerr_codes = list_length(*exceptions);
@@ -287,17 +287,20 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 							{
 								PLpgSQL_exception *exception = (PLpgSQL_exception *) lfirst(l);
 
-								/* RETURN in exception handler ~ is possible closing */
+								/*
+								 * RETURN in exception handler ~ is possible
+								 * closing
+								 */
 								check_stmts(cstate, exception->action,
-												&closing_local, &exceptions_local);
+											&closing_local, &exceptions_local);
 
 								if (*exceptions != NIL)
 								{
-									int		idx;
+									int			idx;
 
 									for (idx = 0; idx < nerr_codes; idx++)
 									{
-										int		err_code = err_codes[idx];
+										int			err_code = err_codes[idx];
 
 										if (err_code != -1 &&
 											exception_matches_conditions(err_code, exception->conditions))
@@ -334,9 +337,12 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 							{
 								PLpgSQL_exception *exception = (PLpgSQL_exception *) lfirst(l);
 
-								/* RETURN in exception handler ~ it is possible closing only */
+								/*
+								 * RETURN in exception handler ~ it is
+								 * possible closing only
+								 */
 								check_stmts(cstate, exception->action,
-												&closing_local, &exceptions_local);
+											&closing_local, &exceptions_local);
 
 								closing_handlers = merge_closing(closing_handlers, closing_local,
 																 &exceptions_transformed, exceptions_local,
@@ -368,12 +374,13 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					PLpgSQL_stmt_assert *stmt_assert = (PLpgSQL_stmt_assert *) stmt;
 
 					/*
-					 * Should or should not to depends on plpgsql_check_asserts?
-					 * I am thinking, so any code (active or inactive) should be valid,
-					 * so I ignore plpgsql_check_asserts option.
+					 * Should or should not to depends on
+					 * plpgsql_check_asserts? I am thinking, so any code
+					 * (active or inactive) should be valid, so I ignore
+					 * plpgsql_check_asserts option.
 					 */
 					plpgsql_check_expr_with_scalar_type(cstate,
-									 stmt_assert->cond, BOOLOID, true);
+														stmt_assert->cond, BOOLOID, true);
 					if (stmt_assert->message != NULL)
 						plpgsql_check_expr(cstate, stmt_assert->message);
 				}
@@ -422,14 +429,14 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 			case PLPGSQL_STMT_IF:
 				{
-					PLpgSQL_stmt_if	*stmt_if = (PLpgSQL_stmt_if *) stmt;
-					ListCell    *l;
-					int		closing_local;
-					int		closing_all_paths = PLPGSQL_CHECK_UNKNOWN;
-					List   *exceptions_local;
+					PLpgSQL_stmt_if *stmt_if = (PLpgSQL_stmt_if *) stmt;
+					ListCell   *l;
+					int			closing_local;
+					int			closing_all_paths = PLPGSQL_CHECK_UNKNOWN;
+					List	   *exceptions_local;
 
 					plpgsql_check_expr_with_scalar_type(cstate,
-									     stmt_if->cond, BOOLOID, true);
+														stmt_if->cond, BOOLOID, true);
 
 					check_stmts(cstate, stmt_if->then_body, &closing_local,
 								&exceptions_local);
@@ -444,7 +451,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						PLpgSQL_if_elsif *elif = (PLpgSQL_if_elsif *) lfirst(l);
 
 						plpgsql_check_expr_with_scalar_type(cstate,
-										     elif->cond, BOOLOID, true);
+															elif->cond, BOOLOID, true);
 						check_stmts(cstate, elif->stmts, &closing_local,
 									&exceptions_local);
 						closing_all_paths = merge_closing(closing_all_paths,
@@ -475,9 +482,9 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				{
 					PLpgSQL_stmt_case *stmt_case = (PLpgSQL_stmt_case *) stmt;
 					int			closing_local;
-					List	    *exceptions_local;
-					ListCell    *l;
-					int		closing_all_paths = PLPGSQL_CHECK_UNKNOWN;
+					List	   *exceptions_local;
+					ListCell   *l;
+					int			closing_all_paths = PLPGSQL_CHECK_UNKNOWN;
 
 					if (stmt_case->t_expr != NULL)
 					{
@@ -494,11 +501,11 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 																 stmt_case->t_expr->paramnos);
 
 						tupdesc = plpgsql_check_expr_get_desc(cstate,
-												stmt_case->t_expr,
-												false,	/* no element type */
-												true,	/* expand record */
-												true,	/* is expression */
-												NULL);
+															  stmt_case->t_expr,
+															  false,	/* no element type */
+															  true, /* expand record */
+															  true, /* is expression */
+															  NULL);
 						result_oid = TupleDescAttr(tupdesc, 0)->atttypid;
 
 						/*
@@ -510,9 +517,9 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						if (t_var->datatype->typoid != result_oid)
 
 							t_var->datatype = plpgsql_check__build_datatype_p(result_oid,
-																	 -1,
-								   cstate->estate->func->fn_input_collation,
-								   t_var->datatype->origtypname);
+																			  -1,
+																			  cstate->estate->func->fn_input_collation,
+																			  t_var->datatype->origtypname);
 
 						ReleaseTupleDesc(tupdesc);
 					}
@@ -534,10 +541,10 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					{
 						check_stmts(cstate, stmt_case->else_stmts, &closing_local, &exceptions_local);
 						*closing = merge_closing(closing_all_paths,
-														  closing_local,
-														  exceptions,
-														  exceptions_local,
-														  -1);
+												 closing_local,
+												 exceptions,
+												 exceptions_local,
+												 -1);
 					}
 					else
 						/* is not ensured all path evaluation */
@@ -552,13 +559,13 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 			case PLPGSQL_STMT_WHILE:
 				{
 					PLpgSQL_stmt_while *stmt_while = (PLpgSQL_stmt_while *) stmt;
-					int		closing_local;
-					List   *exceptions_local;
+					int			closing_local;
+					List	   *exceptions_local;
 
 					plpgsql_check_expr_with_scalar_type(cstate,
-										     stmt_while->cond,
-										     BOOLOID,
-										     true);
+														stmt_while->cond,
+														BOOLOID,
+														true);
 
 					/*
 					 * When is not guaranteed execution (possible zero loops),
@@ -573,8 +580,8 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				{
 					PLpgSQL_stmt_fori *stmt_fori = (PLpgSQL_stmt_fori *) stmt;
 					int			dno = stmt_fori->var->dno;
-					int		closing_local;
-					List   *exceptions_local;
+					int			closing_local;
+					List	   *exceptions_local;
 
 					/* prepare plan if desn't exist yet */
 					plpgsql_check_assignment(cstate, stmt_fori->lower, NULL, NULL, dno);
@@ -597,14 +604,14 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 			case PLPGSQL_STMT_FORS:
 				{
 					PLpgSQL_stmt_fors *stmt_fors = (PLpgSQL_stmt_fors *) stmt;
-					int		closing_local;
-					List   *exceptions_local;
+					int			closing_local;
+					List	   *exceptions_local;
 
 					check_variable(cstate, stmt_fors->var);
 
 					/* we need to set hidden variable type */
 					plpgsql_check_assignment_to_variable(cstate, stmt_fors->query,
-									 stmt_fors->var, -1);
+														 stmt_fors->var, -1);
 
 					check_stmts(cstate, stmt_fors->body, &closing_local, &exceptions_local);
 					*closing = possibly_closed(closing_local);
@@ -615,29 +622,29 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				{
 					PLpgSQL_stmt_forc *stmt_forc = (PLpgSQL_stmt_forc *) stmt;
 					PLpgSQL_var *var = (PLpgSQL_var *) func->datums[stmt_forc->curvar];
-					int		closing_local;
-					List   *exceptions_local;
+					int			closing_local;
+					List	   *exceptions_local;
 
 					check_variable(cstate, stmt_forc->var);
 					plpgsql_check_expr_as_sqlstmt_data(cstate, stmt_forc->argquery);
 
 					if (var->cursor_explicit_expr != NULL)
 						plpgsql_check_assignment_to_variable(cstate, var->cursor_explicit_expr,
-										 stmt_forc->var, -1);
+															 stmt_forc->var, -1);
 
 					check_stmts(cstate, stmt_forc->body, &closing_local, &exceptions_local);
 					*closing = possibly_closed(closing_local);
 
 					cstate->used_variables = bms_add_member(cstate->used_variables,
-										 stmt_forc->curvar);
+															stmt_forc->curvar);
 				}
 				break;
 
 			case PLPGSQL_STMT_DYNFORS:
 				{
 					PLpgSQL_stmt_dynfors *stmt_dynfors = (PLpgSQL_stmt_dynfors *) stmt;
-					int		closing_local;
-					List   *exceptions_local;
+					int			closing_local;
+					List	   *exceptions_local;
 
 					check_dynamic_sql(cstate,
 									  stmt,
@@ -654,23 +661,23 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 			case PLPGSQL_STMT_FOREACH_A:
 				{
 					PLpgSQL_stmt_foreach_a *stmt_foreach_a = (PLpgSQL_stmt_foreach_a *) stmt;
-					bool use_element_type;
-					int		closing_local;
-					List   *exceptions_local;
+					bool		use_element_type;
+					int			closing_local;
+					List	   *exceptions_local;
 
 					plpgsql_check_target(cstate, stmt_foreach_a->varno, NULL, NULL);
 
 					/*
-					 * When slice > 0, then result and target are a array.
-					 * We shoudl to disable a array element refencing.
+					 * When slice > 0, then result and target are a array. We
+					 * shoudl to disable a array element refencing.
 					 */
 					use_element_type = stmt_foreach_a->slice == 0;
 
 					plpgsql_check_assignment_with_possible_slices(cstate,
-											 stmt_foreach_a->expr, 
-											 NULL, NULL,
-											 stmt_foreach_a->varno,
-											 use_element_type);
+																  stmt_foreach_a->expr,
+																  NULL, NULL,
+																  stmt_foreach_a->varno,
+																  use_element_type);
 
 					check_stmts(cstate, stmt_foreach_a->body, &closing_local, &exceptions_local);
 					*closing = possibly_closed(closing_local);
@@ -682,33 +689,34 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					PLpgSQL_stmt_exit *stmt_exit = (PLpgSQL_stmt_exit *) stmt;
 
 					plpgsql_check_expr_with_scalar_type(cstate,
-										     stmt_exit->cond,
-										     BOOLOID,
-										     false);
+														stmt_exit->cond,
+														BOOLOID,
+														false);
 
 					if (stmt_exit->label != NULL)
 					{
 						PLpgSQL_stmt *labeled_stmt = find_stmt_with_label(stmt_exit->label,
-												    outer_stmt_stack);
+																		  outer_stmt_stack);
+
 						if (labeled_stmt == NULL)
 							ereport(ERROR,
-								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("label \"%s\" does not exist", stmt_exit->label)));
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("label \"%s\" does not exist", stmt_exit->label)));
 
 						/* CONTINUE only allows loop labels */
 						if (!is_any_loop_stmt(labeled_stmt) && !stmt_exit->is_exit)
 							ereport(ERROR,
 									(errcode(ERRCODE_SYNTAX_ERROR),
 									 errmsg("block label \"%s\" cannot be used in CONTINUE",
-									 stmt_exit->label)));
+											stmt_exit->label)));
 					}
 					else
 					{
 						if (find_nearest_loop(outer_stmt_stack) == NULL)
 							ereport(ERROR,
-								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("%s cannot be used outside a loop",
-								 plpgsql_check__stmt_typename_p((PLpgSQL_stmt *) stmt_exit))));
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("%s cannot be used outside a loop",
+											plpgsql_check__stmt_typename_p((PLpgSQL_stmt *) stmt_exit))));
 					}
 				}
 				break;
@@ -717,16 +725,15 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				plpgsql_check_expr_as_sqlstmt(cstate, ((PLpgSQL_stmt_perform *) stmt)->expr);
 
 				/*
-				 * Note: if you want to raise warning when used expressions returns
-				 * some value (other than VOID type), change previous command plpgsql_check_expr
-				 * to following check_expr_with_expected_scalar_type. This should be 
-				 * not enabled by default, because PERFORM can be used with reason
+				 * Note: if you want to raise warning when used expressions
+				 * returns some value (other than VOID type), change previous
+				 * command plpgsql_check_expr to following
+				 * check_expr_with_expected_scalar_type. This should be not
+				 * enabled by default, because PERFORM can be used with reason
 				 * to ignore result.
 				 *
 				 * check_expr_with_expected_scalar_type(cstate,
-				 * 					     ((PLpgSQL_stmt_perform *) stmt)->expr,
-				 * 					     VOIDOID,
-				 * 					     true);
+				 * ((PLpgSQL_stmt_perform *) stmt)->expr, VOIDOID, true);
 				 */
 
 				break;
@@ -766,16 +773,19 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 								{
 									PLpgSQL_rec *rec = (PLpgSQL_rec *) retvar;
 
-									/* don't do next check, when result tuple desc is fake */
+									/*
+									 * don't do next check, when result tuple
+									 * desc is fake
+									 */
 									if (recvar_tupdesc(rec) &&
 										!cstate->fake_rtd &&
 										estate->rsi && IsA(estate->rsi, ReturnSetInfo))
 									{
 										TupleDesc	rettupdesc = estate->rsi->expectedDesc;
-										TupleConversionMap *tupmap ;
+										TupleConversionMap *tupmap;
 
 										tupmap = convert_tuples_by_position(recvar_tupdesc(rec), rettupdesc,
-											 gettext_noop("returned record type does not match expected record type"));
+																			gettext_noop("returned record type does not match expected record type"));
 
 										if (tupmap)
 											free_conversion_map(tupmap);
@@ -792,10 +802,10 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 										estate->rsi && IsA(estate->rsi, ReturnSetInfo))
 									{
 										TupleDesc	rettupdesc = estate->rsi->expectedDesc;
-										TupleConversionMap *tupmap ;
+										TupleConversionMap *tupmap;
 
 										tupmap = convert_tuples_by_position(row->rowtupdesc, rettupdesc,
-											 gettext_noop("returned record type does not match expected record type"));
+																			gettext_noop("returned record type does not match expected record type"));
 
 										if (tupmap)
 											free_conversion_map(tupmap);
@@ -804,14 +814,14 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 								break;
 
 							default:
-								;		/* nope */
+								;	/* nope */
 						}
 
 						if (cstate->estate->func->fn_rettype == REFCURSOROID &&
 							cstate->cinfo->compatibility_warnings)
 						{
 							if (!(retvar->dtype == PLPGSQL_DTYPE_VAR &&
-								((PLpgSQL_var *) retvar)->datatype->typoid == REFCURSOROID))
+								  ((PLpgSQL_var *) retvar)->datatype->typoid == REFCURSOROID))
 							{
 								plpgsql_check_put_error(cstate,
 														0, 0,
@@ -837,7 +847,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					{
 						PLpgSQL_datum *retvar = cstate->estate->datums[stmt_rn->retvarno];
 						PLpgSQL_execstate *estate = cstate->estate;
-						int		natts;
+						int			natts;
 
 						cstate->used_variables = bms_add_member(cstate->used_variables, stmt_rn->retvarno);
 
@@ -861,8 +871,8 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 												 errmsg("wrong result type supplied in RETURN NEXT")));
 
 									plpgsql_check_assign_to_target_type(cstate,
-										 cstate->estate->func->fn_rettype, -1,
-										 var->datatype->typoid, false);
+																		cstate->estate->func->fn_rettype, -1,
+																		var->datatype->typoid, false);
 								}
 								break;
 
@@ -872,19 +882,19 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 									if (!HeapTupleIsValid(recvar_tuple(rec)))
 										ereport(ERROR,
-												  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-												   errmsg("record \"%s\" is not assigned yet",
-												   rec->refname),
-										errdetail("The tuple structure of a not-yet-assigned"
-															  " record is indeterminate.")));
+												(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+												 errmsg("record \"%s\" is not assigned yet",
+														rec->refname),
+												 errdetail("The tuple structure of a not-yet-assigned"
+														   " record is indeterminate.")));
 
 									if (tupdesc)
 									{
 										TupleConversionMap *tupmap;
 
 										tupmap = convert_tuples_by_position(recvar_tupdesc(rec),
-																tupdesc,
-											gettext_noop("wrong record type supplied in RETURN NEXT"));
+																			tupdesc,
+																			gettext_noop("wrong record type supplied in RETURN NEXT"));
 										if (tupmap)
 											free_conversion_map(tupmap);
 									}
@@ -925,13 +935,13 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 										if (!row_is_valid_result)
 											ereport(ERROR,
 													(errcode(ERRCODE_DATATYPE_MISMATCH),
-											errmsg("wrong record type supplied in RETURN NEXT")));
+													 errmsg("wrong record type supplied in RETURN NEXT")));
 									}
 								}
 								break;
 
 							default:
-								;		/* nope */
+								;	/* nope */
 						}
 					}
 
@@ -993,7 +1003,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 							if (value != NULL)
 								err_code = plpgsql_check__recognize_err_condition_p(value, true);
 							else
-								err_code = -1;		/* cannot be calculated now */
+								err_code = -1;	/* cannot be calculated now */
 						}
 					}
 
@@ -1023,7 +1033,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					if (current_param != NULL)
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("too many parameters specified for RAISE")));
+								 errmsg("too many parameters specified for RAISE")));
 
 					if (stmt_raise->elog_level >= ERROR)
 					{
@@ -1031,7 +1041,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						if (err_code == 0)
 							err_code = ERRCODE_RAISE_EXCEPTION;
 						else if (err_code == -1)
-							err_code = 0; /* cannot be calculated */
+							err_code = 0;	/* cannot be calculated */
 						*exceptions = list_make1_int(err_code);
 					}
 					/* without any parameters it is reRAISE */
@@ -1040,7 +1050,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					{
 						*closing = PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS;
 						/* should be enhanced in future */
-						*exceptions = list_make1_int(-2); /* reRAISE */
+						*exceptions = list_make1_int(-2);	/* reRAISE */
 					}
 				}
 				break;
@@ -1053,7 +1063,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					{
 						check_variable(cstate, stmt_execsql->target);
 						plpgsql_check_assignment_to_variable(cstate, stmt_execsql->sqlstmt,
-													  stmt_execsql->target, -1);
+															 stmt_execsql->target, -1);
 					}
 					else
 						/* only statement */
@@ -1100,7 +1110,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					plpgsql_check_target(cstate, stmt_open->curvar, NULL, NULL);
 
 					cstate->modif_variables = bms_add_member(cstate->modif_variables,
-									 stmt_open->curvar);
+															 stmt_open->curvar);
 				}
 				break;
 
@@ -1116,8 +1126,8 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						plpgsql_check_target(cstate, diag_item->target, NULL, NULL);
 
 						/*
-						 * Using GET DIAGNOSTICS stack = PG_CONTEXT is like using
-						 * other VOLATILE function.
+						 * Using GET DIAGNOSTICS stack = PG_CONTEXT is like
+						 * using other VOLATILE function.
 						 */
 						if (!cstate->skip_volatility_check &&
 							cstate->cinfo->performance_warnings &&
@@ -1133,7 +1143,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_STACKED_DIAGNOSTICS_ACCESSED_WITHOUT_ACTIVE_HANDLER),
-								  errmsg("GET STACKED DIAGNOSTICS cannot be used outside an exception handler")));
+								 errmsg("GET STACKED DIAGNOSTICS cannot be used outside an exception handler")));
 					}
 				}
 				break;
@@ -1147,7 +1157,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 					if (var != NULL && var->cursor_explicit_expr != NULL)
 						plpgsql_check_assignment_to_variable(cstate, var->cursor_explicit_expr,
-									   stmt_fetch->target, -1);
+															 stmt_fetch->target, -1);
 
 					plpgsql_check_expr(cstate, stmt_fetch->expr);
 
@@ -1157,7 +1167,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 			case PLPGSQL_STMT_CLOSE:
 				cstate->used_variables = bms_add_member(cstate->used_variables,
-								 ((PLpgSQL_stmt_close *) stmt)->curvar);
+														((PLpgSQL_stmt_close *) stmt)->curvar);
 
 				break;
 
@@ -1190,7 +1200,10 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 					has_data = plpgsql_check_expr_as_sqlstmt(cstate, stmt_call->expr);
 
-					/* any check_expr_xxx should be called before CallExprGetRowTarget */
+					/*
+					 * any check_expr_xxx should be called before
+					 * CallExprGetRowTarget
+					 */
 					target = plpgsql_check_CallExprGetRowTarget(cstate, stmt_call->expr);
 
 					if (has_data != (target != NULL))
@@ -1201,7 +1214,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						check_variable(cstate, (PLpgSQL_variable *) target);
 
 						plpgsql_check_assignment_to_variable(cstate, stmt_call->expr,
-																(PLpgSQL_variable *) target, -1);
+															 (PLpgSQL_variable *) target, -1);
 
 						pfree(target->varnos);
 						pfree(target);
@@ -1237,8 +1250,8 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 		{
 			/*
 			 * If fatal_errors is true, we just propagate the error up to the
-			 * highest level. Otherwise the error is appended to our current list
-			 * of errors, and we continue checking.
+			 * highest level. Otherwise the error is appended to our current
+			 * list of errors, and we continue checking.
 			 */
 			if (cstate->cinfo->fatal_errors)
 				ReThrowError(edata);
@@ -1260,9 +1273,9 @@ static void
 invalidate_strconstvars(PLpgSQL_checkstate *cstate)
 {
 	/*
-	 * We cannot to safely use string constant when we leave related
-	 * path (maybe we can, but it needs deeper analyze ensure so we
-	 * will provess all possible variants).
+	 * We cannot to safely use string constant when we leave related path
+	 * (maybe we can, but it needs deeper analyze ensure so we will provess
+	 * all possible variants).
 	 */
 	if (cstate->top_stmts->invalidate_strconstvars)
 	{
@@ -1273,8 +1286,8 @@ invalidate_strconstvars(PLpgSQL_checkstate *cstate)
 		while ((dno = bms_next_member(cstate->top_stmts->invalidate_strconstvars, dno)) >= 0)
 		{
 			/*
-			 * there is an possibility so string was invalided in some
-			 * nested node. If still it is valid, invalidate it.
+			 * there is an possibility so string was invalided in some nested
+			 * node. If still it is valid, invalidate it.
 			 */
 			if (cstate->strconstvars[dno])
 			{
@@ -1296,7 +1309,7 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 {
 	int			closing_local;
 	List	   *exceptions_local;
-	plpgsql_check_pragma_vector		prev_pragma_vector = cstate->pragma_vector;
+	plpgsql_check_pragma_vector prev_pragma_vector = cstate->pragma_vector;
 	PLpgSQL_statements current_stmts;
 
 	*closing = PLPGSQL_CHECK_UNCLOSED;
@@ -1313,7 +1326,7 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 
 		foreach(lc, stmts)
 		{
-			PLpgSQL_stmt	   *stmt = (PLpgSQL_stmt *) lfirst(lc);
+			PLpgSQL_stmt *stmt = (PLpgSQL_stmt *) lfirst(lc);
 
 			closing_local = PLPGSQL_CHECK_UNCLOSED;
 			exceptions_local = NIL;
@@ -1324,12 +1337,12 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 			if (dead_code_alert && stmt->lineno > 0)
 			{
 				plpgsql_check_put_error(cstate,
-							  0, stmt->lineno,
-							  "unreachable code",
-							  NULL,
-							  NULL,
-							  PLPGSQL_CHECK_WARNING_EXTRA,
-							  0, NULL, NULL);
+										0, stmt->lineno,
+										"unreachable code",
+										NULL,
+										NULL,
+										PLPGSQL_CHECK_WARNING_EXTRA,
+										0, NULL, NULL);
 				/* don't raise this warning every line */
 				dead_code_alert = false;
 			}
@@ -1481,7 +1494,7 @@ find_stmt_with_label(char *label, PLpgSQL_stmt_stack_item *current)
 	while (current != NULL)
 	{
 		if (current->label != NULL
-				&& strcmp(current->label, label) == 0)
+			&& strcmp(current->label, label) == 0)
 			return current->stmt;
 
 		current = current->outer;
@@ -1626,15 +1639,15 @@ merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int
 
 			if (err_code != -1)
 			{
-				ListCell *lc;
+				ListCell   *lc;
 
 				/* replace reRAISE symbol (-2) by real err_code */
 				foreach(lc, exceptions_local)
 				{
-					int		t_err_code = lfirst_int(lc);
+					int			t_err_code = lfirst_int(lc);
 
 					*exceptions = list_append_unique_int(*exceptions,
-														t_err_code != -2 ? t_err_code : err_code);
+														 t_err_code != -2 ? t_err_code : err_code);
 				}
 			}
 			else
@@ -1648,7 +1661,7 @@ merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int
 	{
 		if (c == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS ||
 			c_local == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
-		return PLPGSQL_CHECK_CLOSED;
+			return PLPGSQL_CHECK_CLOSED;
 	}
 
 	return PLPGSQL_CHECK_POSSIBLY_CLOSED;
@@ -1673,7 +1686,7 @@ exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond)
 		if (_sqlerrstate == 0)
 		{
 			if (sqlerrstate != ERRCODE_QUERY_CANCELED &&
-				 sqlerrstate != ERRCODE_ASSERT_FAILURE)
+				sqlerrstate != ERRCODE_ASSERT_FAILURE)
 				return true;
 		}
 		/* Exact match? */
@@ -1696,9 +1709,9 @@ exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond)
 
 typedef struct DynSQLParams
 {
-	List			   *args;
+	List	   *args;
 	PLpgSQL_checkstate *cstate;
-	bool	use_params;
+	bool		use_params;
 } DynSQLParams;
 
 static Node *
@@ -1806,17 +1819,18 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	/*
 	 * possible checks:
 	 *
-	 * 1. When expression is string literal, then we can check this query similary
-	 *    like cursor query with parameters. When this query has not a parameters,
-	 *    and it is not DDL, DML, then we can raise a performance warning'.
+	 * 1. When expression is string literal, then we can check this query
+	 * similary like cursor query with parameters. When this query has not a
+	 * parameters, and it is not DDL, DML, then we can raise a performance
+	 * warning'.
 	 *
-	 * 2. When expression is real expression, then we should to check any string
-	 *    kind parameters if are sanitized by functions quote_ident, qoute_literal,
-	 *    or format.
+	 * 2. When expression is real expression, then we should to check any
+	 * string kind parameters if are sanitized by functions quote_ident,
+	 * qoute_literal, or format.
 	 *
-	 * 3. When expression is based on calling format function, and there are used
-	 *    only placeholders %I and %L, then we can try to check syntax of embeded
-	 *    query.
+	 * 3. When expression is based on calling format function, and there are
+	 * used only placeholders %I and %L, then we can try to check syntax of
+	 * embeded query.
 	 */
 
 	cstate->has_execute_stmt = true;
@@ -1831,7 +1845,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 	if (IsA(expr_node, FuncExpr))
 	{
-		FuncExpr *fexpr = (FuncExpr *) expr_node;
+		FuncExpr   *fexpr = (FuncExpr *) expr_node;
 
 		if (fexpr->funcid == FORMAT_0PARAM_OID ||
 			fexpr->funcid == FORMAT_NPARAM_OID)
@@ -1853,7 +1867,10 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 														  &found_literal_placeholder,
 														  &_expr_is_const);
 
-				/* fix passing 'volatile bool *' to parameter of type 'bool *' discards qualifiers  */
+				/*
+				 * fix passing 'volatile bool *' to parameter of type 'bool *'
+				 * discards qualifiers
+				 */
 				expr_is_const = _expr_is_const;
 
 				if (fstr)
@@ -1880,7 +1897,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	{
 		PLpgSQL_expr *dynexpr = NULL;
 		DynSQLParams dsp;
-		volatile bool		is_mp;
+		volatile bool is_mp;
 		volatile bool is_ok = true;
 
 		dynexpr = palloc0(sizeof(PLpgSQL_expr));
@@ -1892,10 +1909,9 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		dsp.use_params = false;
 
 		/*
-		 * When dynquery is not really constant, then there are
-		 * possible false alarms because we try to replace string
-		 * literal by parameter, so we can use it just for type
-		 * detection when check is ok.
+		 * When dynquery is not really constant, then there are possible false
+		 * alarms because we try to replace string literal by parameter, so we
+		 * can use it just for type detection when check is ok.
 		 */
 		if (expr_is_const)
 		{
@@ -1904,9 +1920,9 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 				cstate->allow_mp = true;
 
 				plpgsql_check_expr_generic_with_parser_setup(cstate,
-													 dynexpr,
-													 (ParserSetupHook) dynsql_parser_setup,
-													 &dsp);
+															 dynexpr,
+															 (ParserSetupHook) dynsql_parser_setup,
+															 &dsp);
 
 				is_mp = cstate->has_mp;
 				cstate->has_mp = false;
@@ -1926,10 +1942,10 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 			ResourceOwner oldowner;
 
 			/*
-			 * When dynquery is not really constant, then there are
-			 * possible false alarms because we try to replace string
-			 * literal by parameter, so we can use it just for type
-			 * detection when check is ok.
+			 * When dynquery is not really constant, then there are possible
+			 * false alarms because we try to replace string literal by
+			 * parameter, so we can use it just for type detection when check
+			 * is ok.
 			 */
 
 			oldCxt = CurrentMemoryContext;
@@ -1943,9 +1959,9 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 				cstate->allow_mp = true;
 
 				plpgsql_check_expr_generic_with_parser_setup(cstate,
-													 dynexpr,
-													 (ParserSetupHook) dynsql_parser_setup,
-													 &dsp);
+															 dynexpr,
+															 (ParserSetupHook) dynsql_parser_setup,
+															 &dsp);
 
 				is_mp = cstate->has_mp;
 				cstate->has_mp = false;
@@ -1988,7 +2004,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		{
 			plpgsql_check_put_error(cstate,
 									0, 0,
-						  "values passed to EXECUTE statement by USING clause was not used",
+									"values passed to EXECUTE statement by USING clause was not used",
 									NULL,
 									NULL,
 									PLPGSQL_CHECK_WARNING_OTHERS,
@@ -2019,8 +2035,8 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	if (!expr_is_const)
 	{
 		/*
-		 * execute string is not constant (is not safe),
-		 * but we can check sanitize parameters.
+		 * execute string is not constant (is not safe), but we can check
+		 * sanitize parameters.
 		 */
 		if (cstate->cinfo->security_warnings &&
 			plpgsql_check_is_sql_injection_vulnerable(cstate, query, expr_node, &loc))
@@ -2028,9 +2044,9 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 			if (loc != -1)
 				plpgsql_check_put_error(cstate,
 										0, 0,
-							"text type variable is not sanitized",
-							"The EXECUTE expression is SQL injection vulnerable.",
-							"Use quote_ident, quote_literal or format function to secure variable.",
+										"text type variable is not sanitized",
+										"The EXECUTE expression is SQL injection vulnerable.",
+										"Use quote_ident, quote_literal or format function to secure variable.",
 										PLPGSQL_CHECK_WARNING_SECURITY,
 										loc,
 										query->query,
@@ -2038,9 +2054,9 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 			else
 				plpgsql_check_put_error(cstate,
 										0, 0,
-							"the expression is not SQL injection safe",
-							"Cannot ensure so dynamic EXECUTE statement is SQL injection secure.",
-							"Use quote_ident, quote_literal or format function to secure variable.",
+										"the expression is not SQL injection safe",
+										"Cannot ensure so dynamic EXECUTE statement is SQL injection secure.",
+										"Use quote_ident, quote_literal or format function to secure variable.",
 										PLPGSQL_CHECK_WARNING_SECURITY,
 										-1,
 										query->query,
@@ -2055,8 +2071,8 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		}
 
 		/*
-		 * In this case, we don't know a result type, and we should
-		 * to raise warning about this situation.
+		 * In this case, we don't know a result type, and we should to raise
+		 * warning about this situation.
 		 */
 		if (into && !known_type_of_dynexpr)
 		{
@@ -2081,7 +2097,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 										0, 0,
 										"cannot determinate a result of dynamic SQL",
 										"There is a risk of related false alarms.",
-							  "Don't use dynamic SQL and record type together, when you would check function.",
+										"Don't use dynamic SQL and record type together, when you would check function.",
 										PLPGSQL_CHECK_WARNING_OTHERS,
 										0, NULL, NULL);
 		}

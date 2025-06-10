@@ -67,8 +67,8 @@ plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *Cal
 			elog(ERROR, "cache lookup failed for function %u", funcexpr->funcid);
 
 		/*
-		 * Get the argument names and modes, so that we can deliver on-point error
-		 * messages when something is wrong.
+		 * Get the argument names and modes, so that we can deliver on-point
+		 * error messages when something is wrong.
 		 */
 		numargs = get_func_arg_info(tuple, &argtypes, &argnames, &argmodes);
 
@@ -82,9 +82,9 @@ plpgsql_check_CallExprGetRowTarget(PLpgSQL_checkstate *cstate, PLpgSQL_expr *Cal
 		row->varnos = (int *) palloc(numargs * sizeof(int));
 
 		/*
-		 * Examine procedure's argument list.  Each output arg position should be
-		 * an unadorned plpgsql variable (Datum), which we can insert into the row
-		 * Datum.
+		 * Examine procedure's argument list.  Each output arg position should
+		 * be an unadorned plpgsql variable (Datum), which we can insert into
+		 * the row Datum.
 		 */
 		nfields = 0;
 		for (i = 0; i < numargs; i++)
@@ -161,11 +161,9 @@ plpgsql_check_recvar_info(PLpgSQL_rec *rec, Oid *typoid, int32 *typmod)
 		if (typmod != NULL)
 			*typmod = -1;
 	}
-	else
-
-	if (recvar_tupdesc(rec) != NULL)
+	else if (recvar_tupdesc(rec) != NULL)
 	{
-		TupleDesc tdesc = recvar_tupdesc(rec);
+		TupleDesc	tdesc = recvar_tupdesc(rec);
 
 		BlessTupleDesc(tdesc);
 
@@ -186,16 +184,16 @@ plpgsql_check_recvar_info(PLpgSQL_rec *rec, Oid *typoid, int32 *typmod)
 static TupleDesc
 param_get_desc(PLpgSQL_checkstate *cstate, Param *p)
 {
-	TupleDesc rettupdesc = NULL;
+	TupleDesc	rettupdesc = NULL;
 
 	if (!type_is_rowtype(p->paramtype))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
-		 errmsg("function does not return composite type, is not possible to identify composite type")));
+				 errmsg("function does not return composite type, is not possible to identify composite type")));
 
 	if (p->paramkind == PARAM_EXTERN && p->paramid > 0 && p->location != -1)
 	{
-		int		dno;
+		int			dno;
 		PLpgSQL_var *var;
 
 		/*
@@ -216,8 +214,8 @@ param_get_desc(PLpgSQL_checkstate *cstate, Param *p)
 			if (var->dtype == PLPGSQL_DTYPE_REC)
 			{
 				PLpgSQL_rec *rec = (PLpgSQL_rec *) var;
-				Oid		typoid;
-				int32	typmod;
+				Oid			typoid;
+				int32		typmod;
 
 				plpgsql_check_recvar_info(rec, &typoid, &typmod);
 
@@ -285,26 +283,27 @@ pofce_get_desc(PLpgSQL_checkstate *cstate,
 			{
 				if (IsA(list_nth(fn->args, i), Param))
 				{
-					Param *p = (Param *) list_nth(fn->args, i);
+					Param	   *p = (Param *) list_nth(fn->args, i);
 
 					if (p->paramkind == PARAM_EXTERN && p->paramid > 0 && p->location != -1)
 					{
-						int		dno = p->paramid - 1;
+						int			dno = p->paramid - 1;
 
 						/*
-						 * When paramid looks well and related datum is variable with same
-						 * type, then we can check, if this variable has sanitized content
-						 * already.
+						 * When paramid looks well and related datum is
+						 * variable with same type, then we can check, if this
+						 * variable has sanitized content already.
 						 */
 						if (expr && bms_is_member(dno, expr->paramnos))
 						{
 							PLpgSQL_var *var = (PLpgSQL_var *) cstate->estate->datums[dno];
 
 							/*
-							 * When we know a datatype, then we expect eq with param type.
-							 * But sometimes a Oid of datatype is not valid - record type
-							 * for some older releases. What is worse - sometimes Oid is 0
-							 * or FFFFFFFF.
+							 * When we know a datatype, then we expect eq with
+							 * param type. But sometimes a Oid of datatype is
+							 * not valid - record type for some older
+							 * releases. What is worse - sometimes Oid is 0 or
+							 * FFFFFFFF.
 							 */
 							if (var->dtype == PLPGSQL_DTYPE_REC &&
 								(!var->datatype ||
@@ -313,8 +312,8 @@ pofce_get_desc(PLpgSQL_checkstate *cstate,
 								 var->datatype->typoid == p->paramtype))
 							{
 								PLpgSQL_rec *rec = (PLpgSQL_rec *) var;
-								Oid		typoid;
-								int32	typmod;
+								Oid			typoid;
+								int32		typmod;
 								TupleDesc	rectupdesc;
 
 								plpgsql_check_recvar_info(rec, &typoid, &typmod);
@@ -354,11 +353,11 @@ pofce_get_desc(PLpgSQL_checkstate *cstate,
  */
 TupleDesc
 plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
-			  PLpgSQL_expr *query,
-			  bool use_element_type,
-			  bool expand_record,
-			  bool is_expression,
-			  Oid *first_level_typoid)
+							PLpgSQL_expr *query,
+							bool use_element_type,
+							bool expand_record,
+							bool is_expression,
+							Oid *first_level_typoid)
 {
 	TupleDesc	tupdesc = NULL;
 	CachedPlanSource *plansource = NULL;
@@ -368,8 +367,8 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 		plansource = plpgsql_check_get_plan_source(cstate, query->plan);
 
 		/*
-		 * The EXECUTE command can sucessfully execute empty string.
-		 * Then the plansource is empty - NULL.
+		 * The EXECUTE command can sucessfully execute empty string. Then the
+		 * plansource is empty - NULL.
 		 */
 		if (!plansource)
 			return NULL;
@@ -416,8 +415,8 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
-				errmsg("FOREACH expression must yield an array, not type %s",
-					   format_type_be(TupleDescAttr(tupdesc, 0)->atttypid))));
+					 errmsg("FOREACH expression must yield an array, not type %s",
+							format_type_be(TupleDescAttr(tupdesc, 0)->atttypid))));
 			FreeTupleDesc(tupdesc);
 		}
 
@@ -427,7 +426,7 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 		/* when elemtype is not composity, prepare single field tupdesc */
 		if (!type_is_rowtype(elemtype))
 		{
-			TupleDesc rettupdesc;
+			TupleDesc	rettupdesc;
 
 			rettupdesc = CreateTemplateTupleDesc(1);
 
@@ -468,7 +467,7 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 		TupleDesc	unpack_tupdesc;
 
 		unpack_tupdesc = lookup_rowtype_tupdesc_noerror(TupleDescAttr(tupdesc, 0)->atttypid,
-												TupleDescAttr(tupdesc, 0)->atttypmod,
+														TupleDescAttr(tupdesc, 0)->atttypmod,
 														true);
 		if (unpack_tupdesc != NULL)
 		{
@@ -508,11 +507,11 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 		cplan = GetCachedPlan(plansource, NULL, NULL, NULL);
 		_stmt = (PlannedStmt *) linitial(cplan->stmt_list);
 
-		if (IsA(_stmt, PlannedStmt) &&_stmt->commandType == CMD_SELECT)
+		if (IsA(_stmt, PlannedStmt) && _stmt->commandType == CMD_SELECT)
 		{
 			_plan = _stmt->planTree;
 
-			if (IsA(_plan, Result) &&list_length(_plan->targetlist) == 1)
+			if (IsA(_plan, Result) && list_length(_plan->targetlist) == 1)
 			{
 				tle = (TargetEntry *) linitial(_plan->targetlist);
 
@@ -522,10 +521,11 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 						{
 							FuncExpr   *fn = (FuncExpr *) tle->expr;
 							FmgrInfo	flinfo;
+
 							LOCAL_FCINFO(fcinfo, 0);
 							TupleDesc	rd;
 							Oid			rt;
-							TypeFuncClass	tfc;
+							TypeFuncClass tfc;
 
 							fmgr_info(fn->funcid, &flinfo);
 							flinfo.fn_expr = (Node *) fn;
@@ -537,7 +537,7 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 							if (tfc == TYPEFUNC_SCALAR || tfc == TYPEFUNC_OTHER)
 								ereport(ERROR,
 										(errcode(ERRCODE_DATATYPE_MISMATCH),
-								 errmsg("function does not return composite type, is not possible to identify composite type")));
+										 errmsg("function does not return composite type, is not possible to identify composite type")));
 
 							FreeTupleDesc(tupdesc);
 
@@ -549,8 +549,8 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 							else
 							{
 								/*
-								 * for polymorphic function we can determine record typmod (and tupdesc)
-								 * from arguments.
+								 * for polymorphic function we can determine
+								 * record typmod (and tupdesc) from arguments.
 								 */
 								tupdesc = pofce_get_desc(cstate, query, fn);
 							}
@@ -559,24 +559,24 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 
 					case T_RowExpr:
 						{
-							RowExpr		*row = (RowExpr *) tle->expr;
-							ListCell *lc_colname;
-							ListCell *lc_arg;
-							TupleDesc rettupdesc;
+							RowExpr    *row = (RowExpr *) tle->expr;
+							ListCell   *lc_colname;
+							ListCell   *lc_arg;
+							TupleDesc	rettupdesc;
 							int			i = 1;
 
 							rettupdesc = CreateTemplateTupleDesc(list_length(row->args));
 
-							forboth (lc_colname, row->colnames, lc_arg, row->args)
+							forboth(lc_colname, row->colnames, lc_arg, row->args)
 							{
-								Node	*arg = lfirst(lc_arg);
-								char	*name = strVal(lfirst(lc_colname));
+								Node	   *arg = lfirst(lc_arg);
+								char	   *name = strVal(lfirst(lc_colname));
 
 								TupleDescInitEntry(rettupdesc, i,
-												    name,
-												    exprType(arg),
-												    exprTypmod(arg),
-												    0);
+												   name,
+												   exprType(arg),
+												   exprTypmod(arg),
+												   0);
 								i++;
 							}
 
@@ -589,16 +589,17 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 
 					case T_Const:
 						{
-							Const *c = (Const *) tle->expr;
+							Const	   *c = (Const *) tle->expr;
 
 							FreeTupleDesc(tupdesc);
 
 							if (c->consttype == RECORDOID && c->consttypmod == -1 && !c->constisnull)
 							{
-								Oid		tupType;
-								int32	tupTypmod;
+								Oid			tupType;
+								int32		tupTypmod;
 
 								HeapTupleHeader rec = DatumGetHeapTupleHeader(c->constvalue);
+
 								tupType = HeapTupleHeaderGetTypeId(rec);
 								tupTypmod = HeapTupleHeaderGetTypMod(rec);
 								tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
@@ -610,12 +611,12 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 
 					case T_Param:
 						{
-							Param *p = (Param *) tle->expr;
+							Param	   *p = (Param *) tle->expr;
 
 							if (!type_is_rowtype(p->paramtype))
 								ereport(ERROR,
 										(errcode(ERRCODE_DATATYPE_MISMATCH),
-								 errmsg("function does not return composite type, is not possible to identify composite type")));
+										 errmsg("function does not return composite type, is not possible to identify composite type")));
 
 							FreeTupleDesc(tupdesc);
 							tupdesc = param_get_desc(cstate, p);
@@ -623,9 +624,9 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 						break;
 
 					default:
-							/* cannot to take tupdesc */
-							FreeTupleDesc(tupdesc);
-							tupdesc = NULL;
+						/* cannot to take tupdesc */
+						FreeTupleDesc(tupdesc);
+						tupdesc = NULL;
 				}
 			}
 		}
