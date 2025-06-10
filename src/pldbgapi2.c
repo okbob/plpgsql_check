@@ -102,7 +102,7 @@ static fmgr_plpgsql_cache *last_fmgr_plpgsql_cache = NULL;
 static needs_fmgr_hook_type prev_needs_fmgr_hook = NULL;
 static fmgr_hook_type prev_fmgr_hook = NULL;
 
-static plpgsql_check_plugin2 * plpgsql_plugins2[MAX_PLDBGAPI2_PLUGINS];
+static plpgsql_check_plugin2 *plpgsql_plugins2[MAX_PLDBGAPI2_PLUGINS];
 static int	nplpgsql_plugins2 = 0;
 
 static void pldbgapi2_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func);
@@ -1293,7 +1293,7 @@ pldbgapi2_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 }
 
 void
-plpgsql_check_register_pldbgapi2_plugin(plpgsql_check_plugin2 * plugin2)
+plpgsql_check_register_pldbgapi2_plugin(plpgsql_check_plugin2 *plugin2)
 {
 	if (nplpgsql_plugins2 < MAX_PLDBGAPI2_PLUGINS)
 		plpgsql_plugins2[nplpgsql_plugins2++] = plugin2;

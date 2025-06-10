@@ -465,9 +465,9 @@ typedef struct plpgsql_check_plugin2
 							   Datum value, bool *isnull,
 							   Oid valtype, int32 valtypmod,
 							   Oid reqtype, int32 reqtypmod);
-}			plpgsql_check_plugin2;
+} plpgsql_check_plugin2;
 
-extern void plpgsql_check_register_pldbgapi2_plugin(plpgsql_check_plugin2 * plugin2);
+extern void plpgsql_check_register_pldbgapi2_plugin(plpgsql_check_plugin2 *plugin2);
 extern void plpgsql_check_init_pldbgapi2(void);
 
 extern plpgsql_check_plugin2_stmt_info * plpgsql_check_get_current_stmt_info(int stmtid);

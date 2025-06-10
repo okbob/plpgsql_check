@@ -73,9 +73,9 @@ static void tracer_stmt_end_aborted(Oid fn_oid, int stmtid, void **plugin2_info)
 static plpgsql_check_plugin2 tracer_plugin2 =
 {
 	tracer_func_setup,
-		tracer_func_beg, tracer_func_end, tracer_func_end_aborted,
-		tracer_stmt_beg, tracer_stmt_end, tracer_stmt_end_aborted,
-		NULL, NULL, NULL, NULL, NULL
+	tracer_func_beg, tracer_func_end, tracer_func_end_aborted,
+	tracer_stmt_beg, tracer_stmt_end, tracer_stmt_end_aborted,
+	NULL, NULL, NULL, NULL, NULL
 };
 
 /*

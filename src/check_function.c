@@ -71,9 +71,9 @@ static void passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *
 static plpgsql_check_plugin2 check_plugin2 =
 {
 	NULL,
-		passive_check_func_beg, NULL, NULL,
-		NULL, NULL, NULL,
-		NULL, NULL, NULL, NULL, NULL
+	passive_check_func_beg, NULL, NULL,
+	NULL, NULL, NULL,
+	NULL, NULL, NULL, NULL, NULL
 };
 
 /*

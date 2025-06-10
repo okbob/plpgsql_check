@@ -220,9 +220,9 @@ static void profiler_stmt_end_aborted(Oid fn_oid, int stmtid, void **plugin2_inf
 static plpgsql_check_plugin2 profiler_plugin2 =
 {
 	profiler_func_setup,
-		NULL, profiler_func_end, profiler_func_end_aborted,
-		profiler_stmt_beg, profiler_stmt_end, profiler_stmt_end_aborted,
-		NULL, NULL, NULL, NULL, NULL
+	NULL, profiler_func_end, profiler_func_end_aborted,
+	profiler_stmt_beg, profiler_stmt_end, profiler_stmt_end_aborted,
+	NULL, NULL, NULL, NULL, NULL
 };
 
 static HTAB *profiler_HashTable = NULL;

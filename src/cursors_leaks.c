@@ -69,7 +69,7 @@ static void stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugi
 static plpgsql_check_plugin2 cursors_leaks_plugin2 =
 {
 	func_setup, NULL, func_end, NULL,
-		NULL, stmt_end, NULL, NULL, NULL, NULL, NULL, NULL
+	NULL, stmt_end, NULL, NULL, NULL, NULL, NULL, NULL
 };
 
 #if PG_VERSION_NUM >= 170000
