@@ -24,4 +24,13 @@ fstats_hashkey
 fstats
 query_params
 profiler_stmt
-
+pg_queryid
+profiler_stmt_walker_mode
+PragmaAssertType
+PLpgSQL_stmt_stack_item
+PLpgSQL_statements
+plpgsql_check_result_info
+plpgsql_check_info
+plpgsql_check_pragma_vector
+PLpgSQL_checkstate
+coverage_state
