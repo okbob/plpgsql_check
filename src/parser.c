@@ -25,14 +25,14 @@
  * Originaly this structure was named TokenType, but this is in collision
  * with name from NT SDK. So it is renamed to PragmaTokenType.
  */
-typedef struct
+typedef struct PragmaTokenType
 {
 	int		value;
 	const char *substr;
 	size_t		size;
 } PragmaTokenType;
 
-typedef struct
+typedef struct TokenizerState
 {
 	const char *str;
 	PragmaTokenType	saved_token;

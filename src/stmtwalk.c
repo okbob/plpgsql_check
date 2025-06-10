@@ -1694,7 +1694,7 @@ exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond)
  * static SQL.
  */
 
-typedef struct
+typedef struct DynSQLParams
 {
 	List			   *args;
 	PLpgSQL_checkstate *cstate;

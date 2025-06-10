@@ -21,7 +21,7 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 
-typedef struct 
+typedef struct check_funcexpr_walker_params
 {
 	PLpgSQL_checkstate *cstate;
 	PLpgSQL_expr *expr;

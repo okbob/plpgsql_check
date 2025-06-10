@@ -54,14 +54,14 @@ enum
 	PLPGSQL_CHECK_UNKNOWN
 };
 
-typedef enum
+typedef enum profiler_stmt_walker_mode
 {
 	PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME,
 	PLPGSQL_CHECK_STMT_WALKER_PREPARE_RESULT,
 	PLPGSQL_CHECK_STMT_WALKER_COLLECT_COVERAGE
 } profiler_stmt_walker_mode;
 
-typedef enum
+typedef enum PragmaAssertType
 {
 	PLPGSQL_CHECK_PRAGMA_ASSERT_SCHEMA,
 	PLPGSQL_CHECK_PRAGMA_ASSERT_TABLE,
@@ -127,7 +127,7 @@ typedef struct plpgsql_check_info
 	bool		incomment_options_usage_warning;
 } plpgsql_check_info;
 
-typedef struct
+typedef struct plpgsql_check_pragma_vector
 {
 	unsigned int disable_check : 1;
 	unsigned int disable_tracer : 1;		/* has not any effect - it's runtime */
@@ -179,7 +179,7 @@ typedef struct PLpgSQL_checkstate
 	PLpgSQL_statements *top_stmts;			/* pointer to current statement group */
 } PLpgSQL_checkstate;
 
-typedef struct
+typedef struct coverage_state
 {
 	int			statements;
 	int			branches;

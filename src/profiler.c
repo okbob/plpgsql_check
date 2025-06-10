@@ -75,7 +75,7 @@ typedef struct fstats
  * This is used as cache for types of expressions of USING clause
  * (EXECUTE like statements).
  */
-typedef struct
+typedef struct query_params
 {
 	int			nparams;
 	Oid			paramtypes[FLEXIBLE_ARRAY_MEMBER];
@@ -157,7 +157,7 @@ typedef struct profiler_iterator
 
 } profiler_iterator;
 
-typedef struct
+typedef struct profiler_stmt_walker_options
 {
 	int			stmtid;
 	int64 nested_us_time;

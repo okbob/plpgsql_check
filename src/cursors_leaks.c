@@ -30,20 +30,20 @@ int plpgsql_check_cursors_leaks_level = WARNING;
 
 #define MAX_NAMES_PER_STATEMENT			20
 
-typedef struct
+typedef struct CursorTrace
 {
 	int			stmtid;
 	int			rec_level;
 	char	   *curname;
 } CursorTrace;
 
-typedef struct
+typedef struct FunctionTraceKey
 {
 	Oid			fn_oid;
 	TransactionId fn_xmin;
 } FunctionTraceKey;
 
-typedef struct
+typedef struct FunctionTrace
 {
 	FunctionTraceKey key;
 
@@ -52,7 +52,7 @@ typedef struct
 	CursorTrace *cursors_traces;
 } FunctionTrace;
 
-typedef struct
+typedef struct CursorLeaksPlugin2Info
 {
 	FunctionTrace *ftrace;
 	LocalTransactionId lxid;
