@@ -242,7 +242,8 @@ plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 									Oid target_typoid,
 									int32 target_typmod,
 									Oid value_typoid,
-									bool isnull)
+									bool isnull,
+									int targetdno)
 {
 	/* not used yet */
 	(void) target_typmod;
@@ -254,12 +255,12 @@ plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 
 	if (type_is_rowtype(value_typoid) && !type_is_rowtype(target_typoid))
 	{
-		StringInfoData	str;
+		StringInfoData str;
 
 		initStringInfo(&str);
 		appendStringInfo(&str, "cannot cast composite value of \"%s\" type to a scalar value of \"%s\" type",
-									format_type_be(value_typoid),
-									format_type_be(target_typoid));
+							format_type_be(value_typoid),
+							format_type_be(target_typoid));
 
 		plpgsql_check_put_error(cstate,
 					  ERRCODE_DATATYPE_MISMATCH, 0,
@@ -271,44 +272,86 @@ plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 	}
 	else if (!isnull)
 	{
-		StringInfoData	str;
+		StringInfoData str;
 
 		initStringInfo(&str);
-		appendStringInfo(&str, "cast \"%s\" value to \"%s\" type",
-									format_type_be(value_typoid),
-									format_type_be(target_typoid));
+		if (targetdno != -1) // && cstate->estate->err_stmt->cmd_type != PLPGSQL_STMT_RETURN)
+		{
+			PLpgSQL_var *var = (PLpgSQL_var *) cstate->estate->datums[targetdno];
+			appendStringInfo(&str, "cast \"%s\" value to \"%s\" type: variable \"%s\"",
+							format_type_be(value_typoid),
+							format_type_be(target_typoid),
+							var->refname);
+		}
+		else
+		{
+			appendStringInfo(&str, "cast \"%s\" value to \"%s\" type",
+							format_type_be(value_typoid),
+							format_type_be(target_typoid));
+		}
 
 		/* accent warning when cast is without supported explicit casting */
 		if (!can_coerce_type(1, &value_typoid, &target_typoid, COERCION_EXPLICIT))
 			plpgsql_check_put_error(cstate,
-						  ERRCODE_DATATYPE_MISMATCH, 0,
-						  "target type is different type than source type",
-						  str.data,
-						  "There are no possible explicit coercion between those types, possibly bug!",
-						  PLPGSQL_CHECK_WARNING_OTHERS,
-						  0, NULL, NULL);
+					  ERRCODE_DATATYPE_MISMATCH, 0,
+					  "target type is different type than source type",
+					  str.data,
+					  "There are no possible explicit coercion between those types, possibly bug!",
+					  PLPGSQL_CHECK_WARNING_OTHERS,
+					  0, NULL, NULL);
 		else if (!can_coerce_type(1, &value_typoid, &target_typoid, COERCION_ASSIGNMENT))
 			plpgsql_check_put_error(cstate,
-						  ERRCODE_DATATYPE_MISMATCH, 0,
-						  "target type is different type than source type",
-						  str.data,
-						  "The input expression type does not have an assignment cast to the target type.",
-						  PLPGSQL_CHECK_WARNING_OTHERS,
-						  0, NULL, NULL);
+					  ERRCODE_DATATYPE_MISMATCH, 0,
+					  "target type is different type than source type",
+					  str.data,
+					  "The input expression type does not have an assignment cast to the target type.",
+					  PLPGSQL_CHECK_WARNING_OTHERS,
+					  0, NULL, NULL);
 		else
 		{
-			/* highly probably only performance issue */
+			StringInfoData stmt_info;
+			initStringInfo(&stmt_info);
+			
+			if (cstate->estate->err_stmt)
+			{
+				switch (cstate->estate->err_stmt->cmd_type)
+				{
+					case PLPGSQL_STMT_ASSIGN:
+						appendStringInfo(&stmt_info, " in assignment statement");
+						break;
+					case PLPGSQL_STMT_FETCH:
+						appendStringInfo(&stmt_info, " in FETCH INTO statement");
+						break;
+					case PLPGSQL_STMT_GETDIAG:
+						appendStringInfo(&stmt_info, " in SELECT INTO statement");
+						break;
+					case PLPGSQL_STMT_EXECSQL:
+						appendStringInfo(&stmt_info, " in EXECUTE statement");
+						break;
+					case PLPGSQL_STMT_DYNEXECUTE:
+						appendStringInfo(&stmt_info, " in EXECUTE USING statement");
+						break;
+					default:
+						appendStringInfo(&stmt_info, " in %s statement", 
+							plpgsql_check__stmt_typename_p(cstate->estate->err_stmt));
+				}
+			}
+
 			plpgsql_check_put_error(cstate,
-						  ERRCODE_DATATYPE_MISMATCH, 0,
-						  "target type is different type than source type",
-						  str.data,
-						  "Hidden casting can be a performance issue.",
-						  PLPGSQL_CHECK_WARNING_PERFORMANCE,
-						  0, NULL, NULL);
+					  ERRCODE_DATATYPE_MISMATCH, 0,
+					  "target type is different type than source type",
+					  str.data,
+					  psprintf("Hidden casting can be a performance issue%s.", stmt_info.data),
+					  PLPGSQL_CHECK_WARNING_PERFORMANCE,
+					  0, NULL, NULL);
+
+			pfree(stmt_info.data);
 		}
 
 		pfree(str.data);
 	}
+
+	elog(NOTICE, "cmd_type: %d", cstate->estate->err_stmt->cmd_type);
 }
 
 /*
@@ -328,7 +371,7 @@ plpgsql_check_assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDes
 				plpgsql_check_assign_to_target_type(cstate,
 									 var->datatype->typoid, var->datatype->atttypmod,
 									 TupleDescAttr(tupdesc, 0)->atttypid,
-									 isnull);
+									 isnull, varno);
 			}
 			break;
 
@@ -350,7 +393,7 @@ plpgsql_check_assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDes
 				plpgsql_check_assign_to_target_type(cstate,
 									 typoid, typmod,
 									 TupleDescAttr(tupdesc, 0)->atttypid,
-									 isnull);
+									 isnull, varno);
 			}
 			break;
 
@@ -421,7 +464,7 @@ plpgsql_check_assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 												 var->datatype->typoid,
 												 var->datatype->atttypmod,
 														 valtype,
-														 isnull);
+														 isnull, row->varnos[fnum]);
 						}
 						break;
 
@@ -435,7 +478,7 @@ plpgsql_check_assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 												 expected_typoid,
 												 expected_typmod,
 														valtype,
-														isnull);
+														isnull, target->dno);
 						}
 						break;
 					default:
@@ -556,7 +599,7 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 				plpgsql_check_assign_to_target_type(cstate,
 												tattr->atttypid, tattr->atttypmod,
 												sattr->atttypid,
-												false);
+												false, -1);
 
 				/* try to search next tuple of fields */
 				src_field_is_valid =  false;

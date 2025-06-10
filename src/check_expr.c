@@ -719,14 +719,44 @@ check_fishy_qual(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str)
 
 		if (plpgsql_check_qual_has_fishy_cast(pstmt, plan, &param))
 		{
+			StringInfoData stmt_info;
+			initStringInfo(&stmt_info);
+			
+			if (cstate->estate->err_stmt)
+			{
+				switch (cstate->estate->err_stmt->cmd_type)
+				{
+					case PLPGSQL_STMT_ASSIGN:
+						appendStringInfo(&stmt_info, " in assignment statement");
+						break;
+					case PLPGSQL_STMT_FETCH:
+						appendStringInfo(&stmt_info, " in FETCH INTO statement");
+						break;
+					case PLPGSQL_STMT_GETDIAG:
+						appendStringInfo(&stmt_info, " in SELECT INTO statement");
+						break;
+					case PLPGSQL_STMT_EXECSQL:
+						appendStringInfo(&stmt_info, " in EXECUTE statement");
+						break;
+					case PLPGSQL_STMT_DYNEXECUTE:
+						appendStringInfo(&stmt_info, " in EXECUTE USING statement");
+						break;
+					default:
+						appendStringInfo(&stmt_info, " in %s statement", 
+							plpgsql_check__stmt_typename_p(cstate->estate->err_stmt));
+				}
+			}
+
 			plpgsql_check_put_error(cstate,
-					  ERRCODE_DATATYPE_MISMATCH, 0,
-					  "implicit cast of attribute caused by different PLpgSQL variable type in WHERE clause",
-					  "An index of some attribute cannot be used, when variable, used in predicate, has not right type like a attribute",
-					  "Check a variable type - int versus numeric",
-					  PLPGSQL_CHECK_WARNING_PERFORMANCE,
-					  param->location,
-					  query_str, NULL);
+						  ERRCODE_DATATYPE_MISMATCH, 0,
+						  "implicit cast of attribute caused by different PLpgSQL variable type in WHERE clause",
+						  "An index of some attribute cannot be used, when variable, used in predicate, has not right type like a attribute",
+						  psprintf("Check a variable type - int versus numeric. Hidden casting can be a performance issue%s.", stmt_info.data),
+						  PLPGSQL_CHECK_WARNING_PERFORMANCE,
+						  param->location,
+						  query_str, NULL);
+
+			pfree(stmt_info.data);
 		}
 	}
 }
@@ -980,7 +1010,7 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
 				plpgsql_check_assign_to_target_type(cstate,
 								    expected_typoid, -1,
 								    TupleDescAttr(tupdesc, 0)->atttypid,
-								    is_immutable_null);
+								    is_immutable_null, -1);
 
 			ReleaseTupleDesc(tupdesc);
 		}
@@ -1121,7 +1151,7 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 					plpgsql_check_assign_to_target_type(cstate,
 									    func->fn_rettype, -1,
 									    TupleDescAttr(tupdesc, 0)->atttypid,
-									    is_immutable_null);
+									    is_immutable_null, -1);
 				}
 			}
 
@@ -1314,9 +1344,20 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 				StringInfoData	str;
 
 				initStringInfo(&str);
-				appendStringInfo(&str, "cast \"%s\" value to \"%s\" type",
-											format_type_be(value_typoid),
-											format_type_be(target_typoid));
+				if (targetdno != -1)
+				{
+					PLpgSQL_var *var = (PLpgSQL_var *) cstate->estate->datums[targetdno];
+					appendStringInfo(&str, "cast \"%s\" value to \"%s\" type: variable \"%s\"",
+									format_type_be(value_typoid),
+									format_type_be(target_typoid),
+									var->refname);
+				}
+				else
+				{
+					appendStringInfo(&str, "cast \"%s\" value to \"%s\" type",
+									format_type_be(value_typoid),
+									format_type_be(target_typoid));
+				}
 
 				/* accent warning when cast is without supported explicit casting */
 				if (!can_coerce_type(1, &value_typoid, &target_typoid, COERCION_EXPLICIT))
@@ -1336,15 +1377,45 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 								  PLPGSQL_CHECK_WARNING_OTHERS,
 								  0, NULL, NULL);
 				else
+				{
+					StringInfoData stmt_info;
+					initStringInfo(&stmt_info);
+					
+					if (cstate->estate->err_stmt)
+					{
+						switch (cstate->estate->err_stmt->cmd_type)
+						{
+							case PLPGSQL_STMT_ASSIGN:
+								appendStringInfo(&stmt_info, " in assignment statement");
+								break;
+							case PLPGSQL_STMT_FETCH:
+								appendStringInfo(&stmt_info, " in FETCH INTO statement");
+								break;
+							case PLPGSQL_STMT_GETDIAG:
+								appendStringInfo(&stmt_info, " in SELECT INTO statement");
+								break;
+							case PLPGSQL_STMT_EXECSQL:
+								appendStringInfo(&stmt_info, " in EXECUTE statement");
+								break;
+							case PLPGSQL_STMT_DYNEXECUTE:
+								appendStringInfo(&stmt_info, " in EXECUTE USING statement");
+								break;
+							default:
+								appendStringInfo(&stmt_info, " in %s statement", 
+									plpgsql_check__stmt_typename_p(cstate->estate->err_stmt));
+						}
+					}
+
 					plpgsql_check_put_error(cstate,
 								  ERRCODE_DATATYPE_MISMATCH, 0,
 								  "target type is different type than source type",
 								  str.data,
-								  "Hidden casting can be a performance issue.",
+								  psprintf("Hidden casting can be a performance issue%s.", stmt_info.data),
 								  PLPGSQL_CHECK_WARNING_PERFORMANCE,
 								  0, NULL, NULL);
 
-				pfree(str.data);
+					pfree(stmt_info.data);
+				}
 			}
 		}
 		else

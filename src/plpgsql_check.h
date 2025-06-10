@@ -194,7 +194,7 @@ extern void plpgsql_check_record_variable_usage(PLpgSQL_checkstate *cstate, int 
 extern void plpgsql_check_row_or_rec(PLpgSQL_checkstate *cstate, PLpgSQL_row *row, PLpgSQL_rec *rec);
 extern void plpgsql_check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *expected_typmod);
 extern void plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
-	Oid target_typoid, int32 target_typmod, Oid value_typoid, bool isnull);
+	Oid target_typoid, int32 target_typmod, Oid value_typoid, bool isnull, int targetdno);
 extern void plpgsql_check_assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, bool isnull);
 extern void plpgsql_check_assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 	PLpgSQL_row *row, PLpgSQL_rec *rec, TupleDesc tupdesc, bool isnull);
