@@ -53,7 +53,7 @@ typedef struct plpgsql_hashent
 	TransactionId fn_xmin;
 	ItemPointerData fn_tid;
 	bool		is_checked;
-}			plpgsql_check_HashEnt;
+} plpgsql_check_HashEnt;
 
 
 static void function_check(PLpgSQL_function *func, PLpgSQL_checkstate *cstate);

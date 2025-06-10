@@ -33,6 +33,7 @@ plpgsql_check_result_info
 plpgsql_check_info
 plpgsql_check_pragma_vector
 PLpgSQL_checkstate
+plpgsql_check_HashEnt
 coverage_state
 ACCESS_ALLOWED_ACE
 ACL
