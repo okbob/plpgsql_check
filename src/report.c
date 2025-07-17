@@ -36,7 +36,7 @@ is_internal(char *refname, int lineno)
 }
 
 bool
-is_internal_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var)
+plpgsql_check_is_internal_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var)
 {
 	if (bms_is_member(var->dno, cstate->auto_variables))
 		return true;
@@ -97,7 +97,7 @@ plpgsql_check_datum_get_refname(PLpgSQL_checkstate *cstate, PLpgSQL_datum *d)
  * Returns true if dno is explicitly declared. It should not be used
  * for arguments.
  */
-bool
+static bool
 datum_is_explicit(PLpgSQL_checkstate *cstate, int dno)
 {
 	PLpgSQL_execstate *estate = cstate->estate;
@@ -336,7 +336,7 @@ plpgsql_check_report_unused_variables(PLpgSQL_checkstate *cstate)
 			int			varno = func->out_param_varno;
 			PLpgSQL_variable *var = (PLpgSQL_variable *) estate->datums[varno];
 
-			if (var->dtype == PLPGSQL_DTYPE_ROW && is_internal_variable(cstate, var))
+			if (var->dtype == PLPGSQL_DTYPE_ROW && plpgsql_check_is_internal_variable(cstate, var))
 			{
 				/* this function has more OUT parameters */
 				PLpgSQL_row *row = (PLpgSQL_row *) var;

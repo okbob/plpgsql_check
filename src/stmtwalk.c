@@ -388,41 +388,15 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 			case PLPGSQL_STMT_ASSIGN:
 				{
+					char	   *local_err_text = plpgsql_check_prepare_err_text_with_target_vardecl(cstate, stmt, -1);
 					PLpgSQL_stmt_assign *stmt_assign = (PLpgSQL_stmt_assign *) stmt;
-					PLpgSQL_datum *d = (PLpgSQL_datum *) cstate->estate->datums[stmt_assign->varno];
-					StringInfoData str;
 
-					initStringInfo(&str);
-
-					if (d->dtype == PLPGSQL_DTYPE_VAR ||
-						d->dtype == PLPGSQL_DTYPE_ROW ||
-						d->dtype == PLPGSQL_DTYPE_REC)
-					{
-						PLpgSQL_variable *var = (PLpgSQL_variable *) d;
-
-						appendStringInfo(&str, "at assignment to variable \"%s\" declared on line %d",
-										 var->refname,
-										 var->lineno);
-
-						cstate->estate->err_text = str.data;
-					}
-					else if (d->dtype == PLPGSQL_DTYPE_RECFIELD)
-					{
-						PLpgSQL_recfield *recfield = (PLpgSQL_recfield *) d;
-						PLpgSQL_variable *var = (PLpgSQL_variable *) cstate->estate->datums[recfield->recparentno];
-
-						appendStringInfo(&str, "at assignment to field \"%s\" of variable \"%s\" declared on line %d",
-										 recfield->fieldname,
-										 var->refname,
-										 var->lineno);
-
-						cstate->estate->err_text = str.data;
-					}
+					cstate->estate->err_text = local_err_text;
 
 					plpgsql_check_assignment(cstate, stmt_assign->expr, NULL, NULL,
 											 stmt_assign->varno);
 
-					pfree(str.data);
+					pfree(local_err_text);
 					cstate->estate->err_text = NULL;
 				}
 				break;
@@ -765,7 +739,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 									plpgsql_check_assign_to_target_type(cstate,
 																		rettype, -1,
-																		var->datatype->typoid, false);
+																		var->datatype->typoid, false, retvar->dno);
 								}
 								break;
 
@@ -872,7 +846,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 									plpgsql_check_assign_to_target_type(cstate,
 																		cstate->estate->func->fn_rettype, -1,
-																		var->datatype->typoid, false);
+																		var->datatype->typoid, false, var->dno);
 								}
 								break;
 

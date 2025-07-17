@@ -980,7 +980,8 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
 				plpgsql_check_assign_to_target_type(cstate,
 													expected_typoid, -1,
 													TupleDescAttr(tupdesc, 0)->atttypid,
-													is_immutable_null);
+													is_immutable_null,
+													-1);
 
 			ReleaseTupleDesc(tupdesc);
 		}
@@ -1128,7 +1129,8 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 					plpgsql_check_assign_to_target_type(cstate,
 														func->fn_rettype, -1,
 														TupleDescAttr(tupdesc, 0)->atttypid,
-														is_immutable_null);
+														is_immutable_null,
+														-1);
 				}
 			}
 
@@ -1256,6 +1258,25 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 
 	PG_TRY();
 	{
+		char	   *local_err_text;
+		bool		free_local_err_text;
+
+		if (cstate->estate->err_text)
+		{
+			local_err_text = (char *) cstate->estate->err_text;
+			free_local_err_text = false;
+		}
+		else if (cstate->estate->err_stmt)
+		{
+			local_err_text = plpgsql_check_prepare_err_text_with_target_vardecl(cstate, cstate->estate->err_stmt, -1);
+			free_local_err_text = local_err_text != NULL;
+		}
+		else
+		{
+			local_err_text = NULL;
+			free_local_err_text = false;
+		}
+
 		prepare_plan(cstate, expr, 0, NULL, NULL, is_expression);
 		/* record all variables used by the query */
 
@@ -1338,7 +1359,7 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 											str.data,
 											"There are no possible explicit coercion between those types, possibly bug!",
 											PLPGSQL_CHECK_WARNING_OTHERS,
-											0, NULL, NULL);
+											0, expr->query, local_err_text);
 				else if (!can_coerce_type(1, &value_typoid, &target_typoid, COERCION_ASSIGNMENT))
 					plpgsql_check_put_error(cstate,
 											ERRCODE_DATATYPE_MISMATCH, 0,
@@ -1346,7 +1367,7 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 											str.data,
 											"The input expression type does not have an assignment cast to the target type.",
 											PLPGSQL_CHECK_WARNING_OTHERS,
-											0, NULL, NULL);
+											0, expr->query, local_err_text);
 				else
 					plpgsql_check_put_error(cstate,
 											ERRCODE_DATATYPE_MISMATCH, 0,
@@ -1354,7 +1375,7 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 											str.data,
 											"Hidden casting can be a performance issue.",
 											PLPGSQL_CHECK_WARNING_PERFORMANCE,
-											0, NULL, NULL);
+											0, expr->query, local_err_text);
 
 				pfree(str.data);
 			}
@@ -1512,7 +1533,7 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 										NULL,
 										NULL,
 										PLPGSQL_CHECK_ERROR,
-										0, NULL, NULL);
+										0, NULL, local_err_text);
 
 				goto no_other_check;
 			}
@@ -1540,7 +1561,7 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 											"There are more target variables than output columns in query.",
 											"Check target variables in SELECT INTO statement.",
 											PLPGSQL_CHECK_WARNING_OTHERS,
-											0, NULL, NULL);
+											0, expr->query, local_err_text);
 				else if (RowGetValidFields(targetrow) < TupleDescNVatts(tupdesc))
 					plpgsql_check_put_error(cstate,
 											0, 0,
@@ -1548,13 +1569,16 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 											"There are less target variables than output columns in query.",
 											"Check target variables in SELECT INTO statement",
 											PLPGSQL_CHECK_WARNING_OTHERS,
-											0, NULL, NULL);
+											0, expr->query, local_err_text);
 			}
 		}
 
 no_other_check:
 		if (tupdesc)
 			ReleaseTupleDesc(tupdesc);
+
+		if (free_local_err_text)
+			pfree(local_err_text);
 
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);

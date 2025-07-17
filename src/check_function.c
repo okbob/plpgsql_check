@@ -89,7 +89,7 @@ collect_out_variables(PLpgSQL_function *func, PLpgSQL_checkstate *cstate)
 		int			varno = func->out_param_varno;
 		PLpgSQL_variable *var = (PLpgSQL_variable *) func->datums[varno];
 
-		if (var->dtype == PLPGSQL_DTYPE_ROW && is_internal_variable(cstate, var))
+		if (var->dtype == PLPGSQL_DTYPE_ROW && plpgsql_check_is_internal_variable(cstate, var))
 		{
 			/* this function has more OUT parameters */
 			PLpgSQL_row *row = (PLpgSQL_row *) var;

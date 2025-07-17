@@ -269,6 +269,167 @@ plpgsql_check_finalize_ri(plpgsql_check_result_info *ri)
 }
 
 /*
+ * returns string used like errcontext for warnings. When target variable is defined,
+ * then the string contains target variable name with the row of declaration.
+ */
+char *
+plpgsql_check_prepare_err_text_with_target_vardecl(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int varno)
+{
+	StringInfoData str;
+	int			target_varno = -1;
+	const char *direction = NULL;
+
+	initStringInfo(&str);
+
+	appendStringInfo(&str, "at %s", plpgsql_check__stmt_typename_p(stmt));
+
+	switch (stmt->cmd_type)
+	{
+		case PLPGSQL_STMT_ASSIGN:
+			target_varno = ((PLpgSQL_stmt_assign *) stmt)->varno;
+			direction = "to";
+			break;
+
+		case PLPGSQL_STMT_RETURN:
+			target_varno = ((PLpgSQL_stmt_return *) stmt)->retvarno;
+			direction = "of";
+			break;
+
+		case PLPGSQL_STMT_RETURN_NEXT:
+			target_varno = ((PLpgSQL_stmt_return_next *) stmt)->retvarno;
+			direction = "of";
+			break;
+
+		case PLPGSQL_STMT_FETCH:
+			{
+				PLpgSQL_stmt_fetch *stmt_fetch = (PLpgSQL_stmt_fetch *) stmt;
+
+				if (stmt_fetch->target)
+				{
+					target_varno = stmt_fetch->target->dno;
+					direction = "to";
+				}
+				break;
+			}
+
+		case PLPGSQL_STMT_EXECSQL:
+			{
+				PLpgSQL_stmt_execsql *stmt_execsql = (PLpgSQL_stmt_execsql *) stmt;
+
+				if (stmt_execsql->target)
+				{
+					target_varno = stmt_execsql->target->dno;
+					direction = "to";
+				}
+				break;
+			}
+
+		case PLPGSQL_STMT_DYNEXECUTE:
+			{
+				PLpgSQL_stmt_dynexecute *stmt_dynexec = (PLpgSQL_stmt_dynexecute *) stmt;
+
+				if (stmt_dynexec->target)
+				{
+					target_varno = stmt_dynexec->target->dno;
+					direction = "to";
+				}
+				break;
+			}
+
+		default:
+			varno = -1;
+	}
+
+	/*
+	 * SELECT INTO makes internal row variable for target. Showing this variable
+	 * as target is useless. We have to wait, when we know real target variable
+	 * (passed as fieldno).
+	 */
+	if (varno != -1)
+		target_varno = varno;
+
+	if (target_varno != -1)
+	{
+		PLpgSQL_datum *d = (PLpgSQL_datum*) cstate->estate->datums[target_varno];
+
+		if (d->dtype == PLPGSQL_DTYPE_VAR ||
+			d->dtype == PLPGSQL_DTYPE_ROW ||
+			d->dtype == PLPGSQL_DTYPE_REC)
+		{
+			PLpgSQL_variable *var = (PLpgSQL_variable *) d;
+
+			if (var->lineno != -1)
+			{
+				if (!plpgsql_check_is_internal_variable(cstate, var))
+				{
+					appendStringInfo(&str, " %s variable \"%s\" declared on line %d",
+									 direction,
+									 var->refname,
+									 var->lineno);
+				}
+				else if (d->dtype == PLPGSQL_DTYPE_ROW)
+				{
+					/* try to enumerate fields */
+					PLpgSQL_row *row = (PLpgSQL_row *) var;
+					PLpgSQL_datum *d2;
+					int			fnum;
+					bool		is_first = true;
+
+					for (fnum = 0; fnum < row->nfields; fnum++)
+					{
+						/* skip dropped columns */
+						if (row->varnos[fnum] < 0)
+							continue;
+
+						if (is_first)
+						{
+							appendStringInfo(&str, " %s ", direction);
+							is_first = false;
+						}
+						else
+							appendStringInfoString(&str, ", ");
+
+						d2 = (PLpgSQL_datum*) cstate->estate->datums[row->varnos[fnum]];
+						if (d2->dtype == PLPGSQL_DTYPE_VAR ||
+							d2->dtype == PLPGSQL_DTYPE_ROW ||
+							d2->dtype == PLPGSQL_DTYPE_REC)
+						{
+							appendStringInfo(&str, "%s", ((PLpgSQL_variable *) d2)->refname);
+						}
+						else if (d->dtype == PLPGSQL_DTYPE_RECFIELD)
+						{
+							PLpgSQL_recfield *recfield = (PLpgSQL_recfield *) d2;
+							PLpgSQL_variable *var2 = (PLpgSQL_variable *) cstate->estate->datums[recfield->recparentno];
+
+							appendStringInfo(&str, "%s.%s", var2->refname, recfield->fieldname);
+						}
+					}
+
+					if (!is_first)
+						appendStringInfoString(&str, " variables");
+				}
+			}
+		}
+		else if (d->dtype == PLPGSQL_DTYPE_RECFIELD)
+		{
+			PLpgSQL_recfield *recfield = (PLpgSQL_recfield *) d;
+			PLpgSQL_variable *var = (PLpgSQL_variable *) cstate->estate->datums[recfield->recparentno];
+
+			if (var->lineno != -1)
+			{
+				appendStringInfo(&str, " %s field \"%s\" of variable \"%s\" declared on line %d",
+								 direction,
+								 recfield->fieldname,
+								 var->refname,
+								 var->lineno);
+			}
+		}
+	}
+
+	return str.data;
+}
+
+/*
  * error message processing router
  */
 static void

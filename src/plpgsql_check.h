@@ -211,7 +211,8 @@ extern void plpgsql_check_record_variable_usage(PLpgSQL_checkstate *cstate, int 
 extern void plpgsql_check_row_or_rec(PLpgSQL_checkstate *cstate, PLpgSQL_row *row, PLpgSQL_rec *rec);
 extern void plpgsql_check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid, int *expected_typmod);
 extern void plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
-												Oid target_typoid, int32 target_typmod, Oid value_typoid, bool isnull);
+												Oid target_typoid, int32 target_typmod, Oid value_typoid, bool isnull,
+												int target_dno);
 extern void plpgsql_check_assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDesc tupdesc, bool isnull);
 extern void plpgsql_check_assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 													PLpgSQL_row *row, PLpgSQL_rec *rec, TupleDesc tupdesc, bool isnull);
@@ -236,6 +237,7 @@ extern void plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri, p
 												int64 exec_stmts, int64 exec_count_err, double total_time, double max_time, int64 processed_rows, char *stmtname);
 extern void plpgsql_check_put_profiler_functions_all_tb(plpgsql_check_result_info *ri, Oid funcoid, int64 exec_count, int64 exec_count_err,
 														double total_time, double avg_time, double stddev_time, double min_time, double max_time);
+extern char *plpgsql_check_prepare_err_text_with_target_vardecl(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int varno);
 
 /*
  * function from catalog.c
@@ -333,7 +335,8 @@ extern void plpgsql_check_assignment_to_variable(PLpgSQL_checkstate *cstate, PLp
 extern char *plpgsql_check_datum_get_refname(PLpgSQL_checkstate *cstate, PLpgSQL_datum *d);
 extern void plpgsql_check_report_unused_variables(PLpgSQL_checkstate *cstate);
 extern void plpgsql_check_report_too_high_volatility(PLpgSQL_checkstate *cstate);
-extern bool is_internal_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var);
+extern bool plpgsql_check_is_internal_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var);
+
 
 /*
  * functions from stmtwalk.c

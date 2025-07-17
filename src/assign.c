@@ -242,8 +242,20 @@ plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 									Oid target_typoid,
 									int32 target_typmod,
 									Oid value_typoid,
-									bool isnull)
+									bool isnull,
+									int target_dno)
 {
+	char	   *local_err_text = NULL;
+	char	   *local_query = NULL;
+
+	if (!cstate->estate->err_text && cstate->estate->err_stmt)
+		local_err_text = plpgsql_check_prepare_err_text_with_target_vardecl(cstate,
+																			cstate->estate->err_stmt,
+																			target_dno);
+
+	if (cstate->estate->err_stmt && cstate->estate->err_stmt->cmd_type == PLPGSQL_STMT_EXECSQL)
+		local_query = ((PLpgSQL_stmt_execsql *) cstate->estate->err_stmt)->sqlstmt->query;
+
 	/* not used yet */
 	(void) target_typmod;
 
@@ -267,7 +279,7 @@ plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 								NULL,
 								NULL,
 								PLPGSQL_CHECK_ERROR,
-								0, NULL, NULL);
+								0, local_query, local_err_text);
 	}
 	else if (!isnull)
 	{
@@ -286,7 +298,7 @@ plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 									str.data,
 									"There are no possible explicit coercion between those types, possibly bug!",
 									PLPGSQL_CHECK_WARNING_OTHERS,
-									0, NULL, NULL);
+									0, local_query, local_err_text);
 		else if (!can_coerce_type(1, &value_typoid, &target_typoid, COERCION_ASSIGNMENT))
 			plpgsql_check_put_error(cstate,
 									ERRCODE_DATATYPE_MISMATCH, 0,
@@ -294,7 +306,7 @@ plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 									str.data,
 									"The input expression type does not have an assignment cast to the target type.",
 									PLPGSQL_CHECK_WARNING_OTHERS,
-									0, NULL, NULL);
+									0, local_query, local_err_text);
 		else
 		{
 			/* highly probably only performance issue */
@@ -304,11 +316,15 @@ plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 									str.data,
 									"Hidden casting can be a performance issue.",
 									PLPGSQL_CHECK_WARNING_PERFORMANCE,
-									0, NULL, NULL);
+									0, local_query, local_err_text);
 		}
 
 		pfree(str.data);
 	}
+
+	/* release local err_text */
+	if (local_err_text)
+		pfree(local_err_text);
 }
 
 /*
@@ -328,7 +344,8 @@ plpgsql_check_assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDes
 				plpgsql_check_assign_to_target_type(cstate,
 													var->datatype->typoid, var->datatype->atttypmod,
 													TupleDescAttr(tupdesc, 0)->atttypid,
-													isnull);
+													isnull,
+													target->dno);
 			}
 			break;
 
@@ -350,7 +367,8 @@ plpgsql_check_assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDes
 				plpgsql_check_assign_to_target_type(cstate,
 													typoid, typmod,
 													TupleDescAttr(tupdesc, 0)->atttypid,
-													isnull);
+													isnull,
+													target->dno);
 			}
 			break;
 
@@ -373,11 +391,34 @@ plpgsql_check_assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 {
 	if (tupdesc == NULL)
 	{
+		char	   *local_err_text = NULL;
+
+		if (!cstate->estate->err_text && cstate->estate->err_stmt)
+		{
+			int		target_dno;
+
+			if (rec)
+				target_dno = rec->dno;
+			else if (row)
+				target_dno = row->dno;
+			else
+				target_dno = -1;
+
+			local_err_text = plpgsql_check_prepare_err_text_with_target_vardecl(cstate,
+																				cstate->estate->err_stmt,
+																				target_dno);
+		}
+
 		plpgsql_check_put_error(cstate,
 								0, 0,
 								"tuple descriptor is empty", NULL, NULL,
 								PLPGSQL_CHECK_WARNING_OTHERS,
-								0, NULL, NULL);
+								0, NULL, local_err_text);
+
+		/* release local err_text */
+		if (local_err_text)
+			pfree(local_err_text);
+
 		return;
 	}
 
@@ -421,7 +462,8 @@ plpgsql_check_assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 																var->datatype->typoid,
 																var->datatype->atttypmod,
 																valtype,
-																isnull);
+																isnull,
+																target->dno);
 						}
 						break;
 
@@ -435,7 +477,8 @@ plpgsql_check_assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 																expected_typoid,
 																expected_typmod,
 																valtype,
-																isnull);
+																isnull,
+																target->dno);
 						}
 						break;
 					default:
@@ -487,6 +530,16 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 	char	   *chunk;
 	int			vtd_natts;
 	int			i;
+	char	   *local_err_text = NULL;
+	char	   *local_query = NULL;
+
+	if (!cstate->estate->err_text && cstate->estate->err_stmt)
+		local_err_text = plpgsql_check_prepare_err_text_with_target_vardecl(cstate,
+																			cstate->estate->err_stmt,
+																			rec->dno);
+
+	if (cstate->estate->err_stmt && cstate->estate->err_stmt->cmd_type == PLPGSQL_STMT_EXECSQL)
+		local_query = ((PLpgSQL_stmt_execsql *) cstate->estate->err_stmt)->sqlstmt->query;
 
 	mcontext = get_eval_mcontext(estate);
 	plpgsql_check_recval_release(rec);
@@ -556,7 +609,8 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 				plpgsql_check_assign_to_target_type(cstate,
 													tattr->atttypid, tattr->atttypmod,
 													sattr->atttypid,
-													false);
+													false,
+													rec->dno);
 
 				/* try to search next tuple of fields */
 				src_field_is_valid = false;
@@ -575,7 +629,7 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 									NULL,
 									NULL,
 									PLPGSQL_CHECK_WARNING_OTHERS,
-									0, NULL, NULL);
+									0, local_query, local_err_text);
 		else if (src_nfields > target_nfields)
 			plpgsql_check_put_error(cstate,
 									0, 0,
@@ -583,7 +637,7 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 									NULL,
 									NULL,
 									PLPGSQL_CHECK_WARNING_OTHERS,
-									0, NULL, NULL);
+									0, local_query, local_err_text);
 	}
 
 	chunk = eval_mcontext_alloc(estate,
@@ -601,6 +655,10 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 
 	TransferExpandedRecord(newerh, estate->datum_context);
 	rec->erh = newerh;
+
+	/* release local err_text */
+	if (local_err_text)
+		pfree(local_err_text);
 }
 
 /*
