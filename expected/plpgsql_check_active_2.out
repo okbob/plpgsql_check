@@ -751,10 +751,10 @@ end;
 $$ language plpgsql;
 -- raise warning
 select * from plpgsql_check_function_tb('f1()');
- functionid | lineno |   statement   | sqlstate |                 message                  |                            detail                             |                      hint                       |     level     | position | query | context 
-------------+--------+---------------+----------+------------------------------------------+---------------------------------------------------------------+-------------------------------------------------+---------------+----------+-------+---------
- f1         |      4 | SQL statement | 00000    | too many attributes for target variables | There are less target variables than output columns in query. | Check target variables in SELECT INTO statement | warning       |          |       | 
- f1         |      2 | DECLARE       | 00000    | never read variable "a1"                 |                                                               |                                                 | warning extra |          |       | 
+ functionid | lineno |   statement   | sqlstate |                 message                  |                            detail                             |                      hint                       |     level     | position |    query     |             context              
+------------+--------+---------------+----------+------------------------------------------+---------------------------------------------------------------+-------------------------------------------------+---------------+----------+--------------+----------------------------------
+ f1         |      4 | SQL statement | 00000    | too many attributes for target variables | There are less target variables than output columns in query. | Check target variables in SELECT INTO statement | warning       |        1 | select 10,20 | at SQL statement to a1 variables
+ f1         |      2 | DECLARE       | 00000    | never read variable "a1"                 |                                                               |                                                 | warning extra |          |              | 
 (2 rows)
 
 create or replace function f1()
@@ -766,11 +766,11 @@ end;
 $$ language plpgsql;
 -- raise warning
 select * from plpgsql_check_function_tb('f1()');
- functionid | lineno |   statement   | sqlstate |                 message                 |                            detail                             |                       hint                       |     level     | position | query | context 
-------------+--------+---------------+----------+-----------------------------------------+---------------------------------------------------------------+--------------------------------------------------+---------------+----------+-------+---------
- f1         |      4 | SQL statement | 00000    | too few attributes for target variables | There are more target variables than output columns in query. | Check target variables in SELECT INTO statement. | warning       |          |       | 
- f1         |      2 | DECLARE       | 00000    | never read variable "a1"                |                                                               |                                                  | warning extra |          |       | 
- f1         |      2 | DECLARE       | 00000    | never read variable "a2"                |                                                               |                                                  | warning extra |          |       | 
+ functionid | lineno |   statement   | sqlstate |                 message                 |                            detail                             |                       hint                       |     level     | position |   query   |               context                
+------------+--------+---------------+----------+-----------------------------------------+---------------------------------------------------------------+--------------------------------------------------+---------------+----------+-----------+--------------------------------------
+ f1         |      4 | SQL statement | 00000    | too few attributes for target variables | There are more target variables than output columns in query. | Check target variables in SELECT INTO statement. | warning       |        1 | select 10 | at SQL statement to a1, a2 variables
+ f1         |      2 | DECLARE       | 00000    | never read variable "a1"                |                                                               |                                                  | warning extra |          |           | 
+ f1         |      2 | DECLARE       | 00000    | never read variable "a2"                |                                                               |                                                  | warning extra |          |           | 
 (3 rows)
 
 -- bogus code
@@ -1141,10 +1141,13 @@ select * from plpgsql_check_function('f1()');
                          plpgsql_check_function                         
 ------------------------------------------------------------------------
  warning:00000:4:SQL statement:too many attributes for target variables
+ Query: select 10,20
+ --     ^
  Detail: There are less target variables than output columns in query.
  Hint: Check target variables in SELECT INTO statement
+ Context: at SQL statement to a1 variables
  warning extra:00000:2:DECLARE:never read variable "a1"
-(4 rows)
+(7 rows)
 
 create or replace function f1()
 returns void as $$
@@ -1158,11 +1161,14 @@ select * from plpgsql_check_function('f1()');
                         plpgsql_check_function                         
 -----------------------------------------------------------------------
  warning:00000:4:SQL statement:too few attributes for target variables
+ Query: select 10
+ --     ^
  Detail: There are more target variables than output columns in query.
  Hint: Check target variables in SELECT INTO statement.
+ Context: at SQL statement to a1, a2 variables
  warning extra:00000:2:DECLARE:never read variable "a1"
  warning extra:00000:2:DECLARE:never read variable "a2"
-(5 rows)
+(8 rows)
 
 -- bogus code
 set check_function_bodies to off;
@@ -1270,9 +1276,10 @@ select * from plpgsql_check_function('f1()', performance_warnings := true);
  performance:42804:3:RETURN:target type is different type than source type
  Detail: cast "numeric" value to "integer" type
  Hint: Hidden casting can be a performance issue.
+ Context: at RETURN
  performance:00000:routine is marked as VOLATILE, should be STABLE
  Hint: When you fix this issue, please, recheck other functions that uses this function.
-(5 rows)
+(6 rows)
 
 create or replace function f1()
 returns int as $$
@@ -1394,17 +1401,25 @@ select * from plpgsql_check_function('f1()', performance_warnings := true);
                                 plpgsql_check_function                                
 --------------------------------------------------------------------------------------
  warning:42804:9:assignment:target type is different type than source type
+ Query: intval := current_date
+ --     ^
  Detail: cast "date" value to "integer" type
  Hint: There are no possible explicit coercion between those types, possibly bug!
  Context: at assignment to variable "intval" declared on line 3
  warning:42804:12:SQL statement:target type is different type than source type
+ Query: select '1'
+ --     ^
  Detail: cast "text" value to "integer" type
  Hint: The input expression type does not have an assignment cast to the target type.
+ Context: at SQL statement to variable "intval" declared on line 3
  warning:42804:13:SQL statement:target type is different type than source type
+ Query: select text '1'
+ --     ^
  Detail: cast "text" value to "integer" type
  Hint: The input expression type does not have an assignment cast to the target type.
+ Context: at SQL statement to variable "intval" declared on line 3
  warning extra:00000:3:DECLARE:never read variable "intval"
-(11 rows)
+(19 rows)
 
 drop function f1();
 create or replace function f1()
@@ -1432,9 +1447,10 @@ select * from plpgsql_check_function('f1()', performance_warnings := true);
  performance:42804:3:RETURN:target type is different type than source type
  Detail: cast "numeric" value to "integer" type
  Hint: Hidden casting can be a performance issue.
+ Context: at RETURN
  performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
  Hint: When you fix this issue, please, recheck other functions that uses this function.
-(5 rows)
+(6 rows)
 
 create or replace function f1()
 returns int as $$
@@ -1461,9 +1477,10 @@ select * from plpgsql_check_function('f1()', performance_warnings := true);
  warning:42804:3:RETURN:target type is different type than source type
  Detail: cast "date" value to "integer" type
  Hint: There are no possible explicit coercion between those types, possibly bug!
+ Context: at RETURN
  performance:00000:routine is marked as VOLATILE, should be STABLE
  Hint: When you fix this issue, please, recheck other functions that uses this function.
-(5 rows)
+(6 rows)
 
 create or replace function f1()
 returns int as $$
@@ -1492,9 +1509,10 @@ select * from plpgsql_check_function('f1()', performance_warnings := true);
  performance:42804:4:RETURN:target type is different type than source type
  Detail: cast "numeric" value to "integer" type
  Hint: Hidden casting can be a performance issue.
+ Context: at RETURN of variable "a" declared on line 2
  performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
  Hint: When you fix this issue, please, recheck other functions that uses this function.
-(5 rows)
+(6 rows)
 
 drop function f1();
 create or replace function f1()
@@ -1522,9 +1540,10 @@ select * from plpgsql_check_function('f1()', performance_warnings := true);
  performance:42804:3:RETURN NEXT:target type is different type than source type
  Detail: cast "numeric" value to "integer" type
  Hint: Hidden casting can be a performance issue.
+ Context: at RETURN NEXT
  performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
  Hint: When you fix this issue, please, recheck other functions that uses this function.
-(5 rows)
+(6 rows)
 
 drop function f1();
 create type t1 as (a int, b int, c int);
@@ -1675,9 +1694,9 @@ end;
 $body$
 language 'plpgsql' stable;
 select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
-     functionid     | lineno |     statement      | sqlstate |                     message                      |               detail                |                                       hint                                        |    level    | position | query | context 
---------------------+--------+--------------------+----------+--------------------------------------------------+-------------------------------------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
- foreach_array_loop |      7 | FOREACH over array | 42804    | target type is different type than source type   | cast "text" value to "integer" type | The input expression type does not have an assignment cast to the target type.    | warning     |          |       | 
+     functionid     | lineno |     statement      | sqlstate |                     message                      |               detail                |                                       hint                                        |    level    | position | query |        context        
+--------------------+--------+--------------------+----------+--------------------------------------------------+-------------------------------------+-----------------------------------------------------------------------------------+-------------+----------+-------+-----------------------
+ foreach_array_loop |      7 | FOREACH over array | 42804    | target type is different type than source type   | cast "text" value to "integer" type | The input expression type does not have an assignment cast to the target type.    | warning     |          |       | at FOREACH over array
  foreach_array_loop |        |                    | 00000    | routine is marked as STABLE, should be IMMUTABLE |                                     | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
 (2 rows)
 
@@ -1696,9 +1715,9 @@ end;
 $body$
 language 'plpgsql' stable;
 select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
-     functionid     | lineno |     statement      | sqlstate |                     message                      |               detail                |                                       hint                                        |    level    | position | query | context 
---------------------+--------+--------------------+----------+--------------------------------------------------+-------------------------------------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
- foreach_array_loop |      7 | FOREACH over array | 42804    | target type is different type than source type   | cast "date" value to "integer" type | There are no possible explicit coercion between those types, possibly bug!        | warning     |          |       | 
+     functionid     | lineno |     statement      | sqlstate |                     message                      |               detail                |                                       hint                                        |    level    | position | query |        context        
+--------------------+--------+--------------------+----------+--------------------------------------------------+-------------------------------------+-----------------------------------------------------------------------------------+-------------+----------+-------+-----------------------
+ foreach_array_loop |      7 | FOREACH over array | 42804    | target type is different type than source type   | cast "date" value to "integer" type | There are no possible explicit coercion between those types, possibly bug!        | warning     |          |       | at FOREACH over array
  foreach_array_loop |        |                    | 00000    | routine is marked as STABLE, should be IMMUTABLE |                                     | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
 (2 rows)
 
@@ -1733,9 +1752,9 @@ end;
 $body$
 language 'plpgsql' stable;
 select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
-     functionid     | lineno |     statement      | sqlstate |                     message                      |               detail                |                                       hint                                        |    level    | position | query | context 
---------------------+--------+--------------------+----------+--------------------------------------------------+-------------------------------------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
- foreach_array_loop |      5 | FOREACH over array | 42804    | target type is different type than source type   | cast "text" value to "integer" type | The input expression type does not have an assignment cast to the target type.    | warning     |          |       | 
+     functionid     | lineno |     statement      | sqlstate |                     message                      |               detail                |                                       hint                                        |    level    | position | query |        context        
+--------------------+--------+--------------------+----------+--------------------------------------------------+-------------------------------------+-----------------------------------------------------------------------------------+-------------+----------+-------+-----------------------
+ foreach_array_loop |      5 | FOREACH over array | 42804    | target type is different type than source type   | cast "text" value to "integer" type | The input expression type does not have an assignment cast to the target type.    | warning     |          |       | at FOREACH over array
  foreach_array_loop |        |                    | 00000    | routine is marked as STABLE, should be IMMUTABLE |                                     | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
 (2 rows)
 
@@ -1752,9 +1771,9 @@ end;
 $body$
 language 'plpgsql' stable;
 select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
-     functionid     | lineno |     statement      | sqlstate |                     message                      |               detail                |                                       hint                                        |    level    | position | query | context 
---------------------+--------+--------------------+----------+--------------------------------------------------+-------------------------------------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
- foreach_array_loop |      5 | FOREACH over array | 42804    | target type is different type than source type   | cast "date" value to "integer" type | There are no possible explicit coercion between those types, possibly bug!        | warning     |          |       | 
+     functionid     | lineno |     statement      | sqlstate |                     message                      |               detail                |                                       hint                                        |    level    | position | query |        context        
+--------------------+--------+--------------------+----------+--------------------------------------------------+-------------------------------------+-----------------------------------------------------------------------------------+-------------+----------+-------+-----------------------
+ foreach_array_loop |      5 | FOREACH over array | 42804    | target type is different type than source type   | cast "date" value to "integer" type | There are no possible explicit coercion between those types, possibly bug!        | warning     |          |       | at FOREACH over array
  foreach_array_loop |        |                    | 00000    | routine is marked as STABLE, should be IMMUTABLE |                                     | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
 (2 rows)
 
@@ -1786,9 +1805,9 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('scan_rows(int[])', performance_warnings := true);
- functionid | lineno |     statement      | sqlstate |                      message                       |                  detail                  |                                       hint                                        |    level    | position | query | context 
-------------+--------+--------------------+----------+----------------------------------------------------+------------------------------------------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
- scan_rows  |      5 | FOREACH over array | 42804    | target type is different type than source type     | cast "integer" value to "integer[]" type | There are no possible explicit coercion between those types, possibly bug!        | warning     |          |       | 
+ functionid | lineno |     statement      | sqlstate |                      message                       |                  detail                  |                                       hint                                        |    level    | position | query |        context        
+------------+--------+--------------------+----------+----------------------------------------------------+------------------------------------------+-----------------------------------------------------------------------------------+-------------+----------+-------+-----------------------
+ scan_rows  |      5 | FOREACH over array | 42804    | target type is different type than source type     | cast "integer" value to "integer[]" type | There are no possible explicit coercion between those types, possibly bug!        | warning     |          |       | at FOREACH over array
  scan_rows  |        |                    | 00000    | routine is marked as VOLATILE, should be IMMUTABLE |                                          | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
 (2 rows)
 
@@ -1962,9 +1981,9 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
- functionid | lineno |     statement      | sqlstate |                     message                     | detail |                                       hint                                        |    level    | position | query | context 
-------------+--------+--------------------+----------+-------------------------------------------------+--------+-----------------------------------------------------------------------------------+-------------+----------+-------+---------
- fx         |      6 | FOREACH over array | 00000    | too few attributes for composite variable       |        |                                                                                   | warning     |          |       | 
+ functionid | lineno |     statement      | sqlstate |                     message                     | detail |                                       hint                                        |    level    | position | query |        context        
+------------+--------+--------------------+----------+-------------------------------------------------+--------+-----------------------------------------------------------------------------------+-------------+----------+-------+-----------------------
+ fx         |      6 | FOREACH over array | 00000    | too few attributes for composite variable       |        |                                                                                   | warning     |          |       | at FOREACH over array
  fx         |        |                    | 00000    | routine is marked as VOLATILE, should be STABLE |        | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
 (2 rows)
 
@@ -1982,11 +2001,11 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true);
- functionid | lineno |     statement      | sqlstate |                     message                     |                 detail                 |                                       hint                                        |    level    | position | query |                     context                      
-------------+--------+--------------------+----------+-------------------------------------------------+----------------------------------------+-----------------------------------------------------------------------------------+-------------+----------+-------+--------------------------------------------------
- fx         |      6 | FOREACH over array | 42804    | target type is different type than source type  | cast "integer" value to "numeric" type | Hidden casting can be a performance issue.                                        | performance |          |       | 
- fx         |      8 | assignment         | 42804    | target type is different type than source type  | cast "numeric" value to "integer" type | Hidden casting can be a performance issue.                                        | performance |          |       | at assignment to variable "s" declared on line 3
- fx         |        |                    | 00000    | routine is marked as VOLATILE, should be STABLE |                                        | When you fix this issue, please, recheck other functions that uses this function. | performance |          |       | 
+ functionid | lineno |     statement      | sqlstate |                     message                     |                 detail                 |                                       hint                                        |    level    | position |     query      |                     context                      
+------------+--------+--------------------+----------+-------------------------------------------------+----------------------------------------+-----------------------------------------------------------------------------------+-------------+----------+----------------+--------------------------------------------------
+ fx         |      6 | FOREACH over array | 42804    | target type is different type than source type  | cast "integer" value to "numeric" type | Hidden casting can be a performance issue.                                        | performance |          |                | at FOREACH over array
+ fx         |      8 | assignment         | 42804    | target type is different type than source type  | cast "numeric" value to "integer" type | Hidden casting can be a performance issue.                                        | performance |        1 | s := r.a + r.b | at assignment to variable "s" declared on line 3
+ fx         |        |                    | 00000    | routine is marked as VOLATILE, should be STABLE |                                        | When you fix this issue, please, recheck other functions that uses this function. | performance |          |                | 
 (3 rows)
 
 drop function fx();
@@ -2087,10 +2106,10 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function_tb('fx()', performance_warnings := true, fatal_errors := false);
- functionid | lineno | statement  | sqlstate |                    message                     |               detail                |                                    hint                                    |     level     | position | query |                      context                      
-------------+--------+------------+----------+------------------------------------------------+-------------------------------------+----------------------------------------------------------------------------+---------------+----------+-------+---------------------------------------------------
- fx         |      9 | assignment | 42804    | target type is different type than source type | cast "date" value to "integer" type | There are no possible explicit coercion between those types, possibly bug! | warning       |          |       | at assignment to variable "sa" declared on line 4
- fx         |      4 | DECLARE    | 00000    | never read variable "sa"                       |                                     |                                                                            | warning extra |          |       | 
+ functionid | lineno | statement  | sqlstate |                    message                     |               detail                |                                    hint                                    |     level     | position |    query     |                      context                      
+------------+--------+------------+----------+------------------------------------------------+-------------------------------------+----------------------------------------------------------------------------+---------------+----------+--------------+---------------------------------------------------
+ fx         |      9 | assignment | 42804    | target type is different type than source type | cast "date" value to "integer" type | There are no possible explicit coercion between those types, possibly bug! | warning       |        1 | sa[10] := sd | at assignment to variable "sa" declared on line 4
+ fx         |      4 | DECLARE    | 00000    | never read variable "sa"                       |                                     |                                                                            | warning extra |          |              | 
 (2 rows)
 
 drop function fx();
@@ -2109,12 +2128,14 @@ select * from plpgsql_check_function('fx()', performance_warnings := true);
                             plpgsql_check_function                             
 -------------------------------------------------------------------------------
  performance:42804:7:assignment:target type is different type than source type
+ Query: _txt := _t
+ --     ^
  Detail: cast "t" value to "text" type
  Hint: Hidden casting can be a performance issue.
  Context: at assignment to variable "_txt" declared on line 3
  warning extra:00000:2:DECLARE:never read variable "_tt"
  warning extra:00000:3:DECLARE:never read variable "_txt"
-(6 rows)
+(8 rows)
 
 drop function fx();
 create or replace function fx()
@@ -2221,8 +2242,9 @@ select * from plpgsql_check_function('fx()', performance_warnings := true, fatal
  performance:42804:7:FETCH:target type is different type than source type
  Detail: cast "integer" value to "character varying" type
  Hint: Hidden casting can be a performance issue.
+ Context: at FETCH to variable "x" declared on line 4
  warning extra:00000:4:DECLARE:never read variable "x"
-(4 rows)
+(5 rows)
 
 drop function fx();
 create or replace function fx()
@@ -2334,17 +2356,26 @@ select * from plpgsql_check_function('fx()', performance_warnings := true, fatal
                          plpgsql_check_function                         
 ------------------------------------------------------------------------
  warning:00000:4:SQL statement:too many attributes for target variables
+ Query: select 1, 2
+ --     ^
  Detail: There are less target variables than output columns in query.
  Hint: Check target variables in SELECT INTO statement
+ Context: at SQL statement to f1 variables
  warning:00000:5:SQL statement:too few attributes for target variables
+ Query: select 1
+ --     ^
  Detail: There are more target variables than output columns in query.
  Hint: Check target variables in SELECT INTO statement.
+ Context: at SQL statement to f1, f2 variables
  warning:00000:6:SQL statement:too few attributes for target variables
+ Query: select a b             from foo
+ --     ^
  Detail: There are more target variables than output columns in query.
  Hint: Check target variables in SELECT INTO statement.
+ Context: at SQL statement to f1, f2 variables
  warning extra:00000:2:DECLARE:never read variable "f1"
  warning extra:00000:2:DECLARE:never read variable "f2"
-(11 rows)
+(20 rows)
 
 drop function fx();
 drop table foo;
@@ -2364,10 +2395,12 @@ select * from plpgsql_check_function('fx()', performance_warnings := true, fatal
                               plpgsql_check_function                              
 ----------------------------------------------------------------------------------
  warning:42804:4:assignment:target type is different type than source type
+ Query: d := (select 1 from pg_class limit 1)
+ --     ^
  Detail: cast "integer" value to "date" type
  Hint: There are no possible explicit coercion between those types, possibly bug!
  Context: at assignment to variable "d" declared on line 2
-(4 rows)
+(6 rows)
 
 drop function fx();
 create table tab_1(i int);
@@ -3974,9 +4007,12 @@ select * from plpgsql_check_function('dyn_sql_3');
 -----------------------------------------------------------------------------------------
  warning:00000:4:EXECUTE:values passed to EXECUTE statement by USING clause was not used
  warning:00000:4:EXECUTE:too few attributes for target variables
+ Query: select 1
+ --     ^
  Detail: There are more target variables than output columns in query.
  Hint: Check target variables in SELECT INTO statement.
-(4 rows)
+ Context: at EXECUTE to r1, r2 variables
+(7 rows)
 
 drop function dyn_sql_3();
 create or replace function dyn_sql_3()
@@ -8018,11 +8054,19 @@ select * from plpgsql_check_function('broken_into', fatal_errors => false);
                                            plpgsql_check_function                                           
 ------------------------------------------------------------------------------------------------------------
  error:42804:5:SQL statement:cannot cast composite value of "typ2" type to a scalar value of "integer" type
+ Query: select (10,20)::typ2
+ --     ^
+ Context: at SQL statement to variable "v" declared on line 2
  warning:00000:5:SQL statement:too few attributes for composite variable
+ Query: select (10,20)::typ2
+ --     ^
+ Context: at SQL statement to variable "v" declared on line 2
  error:42804:9:EXECUTE:cannot cast composite value of "typ2" type to a scalar value of "integer" type
+ Context: at EXECUTE to variable "v" declared on line 2
  warning:00000:9:EXECUTE:too few attributes for composite variable
+ Context: at EXECUTE to variable "v" declared on line 2
  warning extra:00000:2:DECLARE:never read variable "v"
-(5 rows)
+(13 rows)
 
 drop function broken_into();
 drop type typ2;
@@ -8502,7 +8546,8 @@ select * from plpgsql_check_function('foo01', extra_warnings => false, compatibi
  warning:42804:8:RETURN:target type is different type than source type
  Detail: cast "text" value to "refcursor" type
  Hint: The input expression type does not have an assignment cast to the target type.
-(5 rows)
+ Context: at RETURN
+(6 rows)
 
 -- pragma sequence test
 create or replace function test_function()
