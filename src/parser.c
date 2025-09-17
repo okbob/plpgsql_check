@@ -271,11 +271,26 @@ plpgsql_check_parse_name_or_signature(char *name_or_signature)
 	{
 		FuncCandidateList clist;
 
-		clist = FuncnameGetCandidates(names, -1, NIL, false, false,
-#if PG_VERSION_NUM >= 140000
-									  false,
-#endif
+#if PG_VERSION_NUM < 140000
+
+		clist = FuncnameGetCandidates(names, -1, NIL, false, false, true);
+
+
+#elif PG_VERSION_NUM < 190000
+
+		clist = FuncnameGetCandidates(names, -1, NIL, false, false, false,
 									  true);
+
+#else
+
+		int		fgc_flags;
+
+		clist = FuncnameGetCandidates(names, -1, NIL, false, false, false,
+									  true, &fgc_flags);
+
+		(void) fgc_flags;
+
+#endif
 
 		if (clist == NULL)
 			ereport(ERROR,
