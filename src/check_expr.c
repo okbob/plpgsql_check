@@ -590,15 +590,7 @@ get_cached_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *has_result
 
 	*has_result_desc = plansource->resultDesc ? true : false;
 
-#if PG_VERSION_NUM >= 140000
-
 	cplan = GetCachedPlan(plansource, NULL, NULL, NULL);
-
-#else
-
-	cplan = GetCachedPlan(plansource, NULL, true, NULL);
-
-#endif
 
 	return cplan;
 }

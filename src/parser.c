@@ -271,12 +271,7 @@ plpgsql_check_parse_name_or_signature(char *name_or_signature)
 	{
 		FuncCandidateList clist;
 
-#if PG_VERSION_NUM < 140000
-
-		clist = FuncnameGetCandidates(names, -1, NIL, false, false, true);
-
-
-#elif PG_VERSION_NUM < 190000
+#if PG_VERSION_NUM < 190000
 
 		clist = FuncnameGetCandidates(names, -1, NIL, false, false, false,
 									  true);
