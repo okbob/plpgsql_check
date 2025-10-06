@@ -5637,3 +5637,56 @@ $$ language plpgsql;
 select * from plpgsql_check_function('pure_expr()');
 
 drop table testtable_pure_expr;
+
+-- should not to raise false alarm
+
+drop function fxx(ct, ct);
+drop type ct;
+
+create type ct as (x int, y numeric, v varchar);
+
+create procedure proc_composite(inout cv ct, x int, y numeric, v varchar)
+as $$
+begin
+  cv.x := x;
+  cv.y := y;
+  cv.v := v;
+end;
+$$ language plpgsql;
+
+call proc_composite(null, 10, 10.2, 'ahoj');
+
+create or replace function test_proc_composite()
+returns void as $$
+declare cv ct;
+begin
+  call proc_composite(cv, 10, 10.2, 'ahoj');
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('test_proc_composite');
+
+drop function test_proc_composite;
+drop procedure proc_composite;
+
+create procedure proc_composite(inout cv1 ct, cv2 ct)
+as $$
+begin
+  cv1.x := 10;
+  cv2.v := 'Ahoj';
+end;
+$$ language plpgsql;
+
+create or replace function test_proc_composite()
+returns void as $$
+declare cv1 ct; cv2 ct;
+begin
+  call proc_composite(cv1, cv2);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('test_proc_composite');
+
+drop function test_proc_composite;
+drop procedure proc_composite;
+drop type ct;

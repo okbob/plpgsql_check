@@ -1237,7 +1237,8 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 
 			if (stmt &&
 				(stmt->cmd_type == PLPGSQL_STMT_EXECSQL ||
-				 stmt->cmd_type == PLPGSQL_STMT_DYNEXECUTE))
+				 stmt->cmd_type == PLPGSQL_STMT_DYNEXECUTE ||
+				 stmt->cmd_type == PLPGSQL_STMT_CALL))
 			{
 				expand = false;
 			}
