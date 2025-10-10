@@ -14,6 +14,13 @@
 
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+
+#if PG_VERSION_NUM >= 180000
+
+#include "common/hashfn.h"
+
+#endif
+
 #include "nodes/makefuncs.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
@@ -22,6 +29,7 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 #include "access/heapam.h"
+
 
 static HTAB *plpgsql_check_HashTable = NULL;
 
@@ -1353,6 +1361,75 @@ copy_plpgsql_datum(PLpgSQL_checkstate *cstate, PLpgSQL_datum *datum)
 	return result;
 }
 
+#if PG_VERSION_NUM >= 180000
+
+/*
+ * cfunc_hash: hash function for cfunc hash table (copy from funccache.c)
+ *
+ * We need special hash and match functions to deal with the optional
+ * presence of a TupleDesc in the hash keys.  As long as we have to do
+ * that, we might as well also be smart about not comparing unused
+ * elements of the argtypes arrays.
+ */
+static uint32
+cfunc_hash(const void *key, Size keysize)
+{
+	const CachedFunctionHashKey *k = (const CachedFunctionHashKey *) key;
+	uint32		h;
+
+	Assert(keysize == sizeof(CachedFunctionHashKey));
+	/* Hash all the fixed fields except callResultType */
+	h = DatumGetUInt32(hash_any((const unsigned char *) k,
+								offsetof(CachedFunctionHashKey, callResultType)));
+	/* Incorporate input argument types */
+	if (k->nargs > 0)
+		h = hash_combine(h,
+						 DatumGetUInt32(hash_any((const unsigned char *) k->argtypes,
+												 k->nargs * sizeof(Oid))));
+	/* Incorporate callResultType if present */
+	if (k->callResultType)
+		h = hash_combine(h, hashRowType(k->callResultType));
+	return h;
+}
+
+/*
+ * cfunc_match: match function to use with cfunc_hash
+ */
+static int
+cfunc_match(const void *key1, const void *key2, Size keysize)
+{
+	const CachedFunctionHashKey *k1 = (const CachedFunctionHashKey *) key1;
+	const CachedFunctionHashKey *k2 = (const CachedFunctionHashKey *) key2;
+
+	Assert(keysize == sizeof(CachedFunctionHashKey));
+	/* Compare all the fixed fields except callResultType */
+	if (memcmp(k1, k2, offsetof(CachedFunctionHashKey, callResultType)) != 0)
+		return 1;				/* not equal */
+	/* Compare input argument types (we just verified that nargs matches) */
+	if (k1->nargs > 0 &&
+		memcmp(k1->argtypes, k2->argtypes, k1->nargs * sizeof(Oid)) != 0)
+		return 1;				/* not equal */
+	/* Compare callResultType */
+	if (k1->callResultType)
+	{
+		if (k2->callResultType)
+		{
+			if (!equalRowTypes(k1->callResultType, k2->callResultType))
+				return 1;		/* not equal */
+		}
+		else
+			return 1;			/* not equal */
+	}
+	else
+	{
+		if (k2->callResultType)
+			return 1;			/* not equal */
+	}
+	return 0;					/* equal */
+}
+
+#endif
+
 void
 plpgsql_check_HashTableInit(void)
 {
@@ -1366,18 +1443,24 @@ plpgsql_check_HashTableInit(void)
 #if PG_VERSION_NUM >= 180000
 
 	ctl.keysize = sizeof(CachedFunctionHashKey);
+	ctl.entrysize = sizeof(plpgsql_check_HashEnt);
+	ctl.hash = cfunc_hash;
+	ctl.match = cfunc_match;
+	plpgsql_check_HashTable = hash_create("plpgsql_check function cache",
+										  FUNCS_PER_USER,
+										  &ctl,
+										  HASH_ELEM | HASH_FUNCTION | HASH_COMPARE);
 
 #else
 
 	ctl.keysize = sizeof(PLpgSQL_func_hashkey);
-
-#endif
-
 	ctl.entrysize = sizeof(plpgsql_check_HashEnt);
 	plpgsql_check_HashTable = hash_create("plpgsql_check function cache",
 										  FUNCS_PER_USER,
 										  &ctl,
 										  HASH_ELEM | HASH_BLOBS);
+#endif
+
 }
 
 /*
@@ -1456,6 +1539,7 @@ plpgsql_check_mark_as_checked(PLpgSQL_function *func)
 		hentry->fn_tid = func->fn_tid;
 
 #endif
+
 		hentry->is_checked = true;
 	}
 }
