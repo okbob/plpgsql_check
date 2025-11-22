@@ -1282,6 +1282,28 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 
 			node = plpgsql_check_expr_get_node(cstate, expr, false);
 
+			if (node && exprType((Node *) node) != expected_typoid)
+			{
+				char	   *str;
+
+				/* When expr is constant string, try it cast to target type */
+				str = plpgsql_check_get_const_string(cstate, node, NULL);
+
+				if (str)
+				{
+					Oid		infunc;
+					Oid		intypeioparam;
+					Oid		typeid;
+
+					typeid = use_element_type ? get_array_type(expected_typoid) : expected_typoid;
+
+					getTypeInputInfo(typeid, &infunc, &intypeioparam);
+					(void) OidInputFunctionCall(infunc, str, intypeioparam, -1);
+
+					pfree(str);
+				}
+			}
+
 			if (bms_is_member(target_dno, expr->paramnos))
 			{
 				/*
