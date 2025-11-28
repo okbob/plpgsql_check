@@ -1299,8 +1299,6 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 
 					getTypeInputInfo(typeid, &infunc, &intypeioparam);
 					(void) OidInputFunctionCall(infunc, str, intypeioparam, -1);
-
-					pfree(str);
 				}
 			}
 

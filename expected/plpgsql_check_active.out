@@ -9544,3 +9544,28 @@ select * from plpgsql_check_function('test_proc_composite');
 drop function test_proc_composite;
 drop procedure proc_composite;
 drop type ct;
+create or replace function double_usage_of_const_str()
+returns void
+as $$
+declare
+  p_id_arr integer[];
+  r_id integer;
+begin
+  p_id_arr := '{1,2,3}'::integer[];
+  foreach r_id in array p_id_arr
+  loop
+    raise notice 'id: %', r_id;
+  end loop;
+  --the following loop causes an error
+  foreach r_id in array p_id_arr
+  loop
+    raise notice 'id: %', r_id;
+  end loop;
+end;
+$$ language plpgsql;
+-- should not to raise false alarm #195
+select * from plpgsql_check_function('double_usage_of_const_str');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
