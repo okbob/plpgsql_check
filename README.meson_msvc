@@ -14,7 +14,7 @@ Build on Microsoft Windows with Microsoft Visual Studio and meson
 4. execute in plpgsql_check source directory (buildtype should be release or plain,
    attention - the release buildtype inject dependency on vc_redist.x64.exe)
 
-   meson setup --wipe --buildtype release plain
+   meson setup --wipe --buildtype release build
    cd build
    ninja
    sudo ninja install (on linux)
