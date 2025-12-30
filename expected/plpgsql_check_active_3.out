@@ -9129,12 +9129,12 @@ NOTICE:  tracer verbosity is verbose
  t
 (1 row)
 
-create role plpgsql_check_test_role;
+create role regress_plpgsql_check_test_role;
 DO $$
 begin
   begin
     -- should to fail
-    create role plpgsql_check_test_role;
+    create role regress_plpgsql_check_test_role;
   exception
     when duplicate_object then
       -- Role already exists
@@ -9145,12 +9145,12 @@ $$;
 NOTICE:  #0            ->> start of block inline_code_block (oid=0, tnl=1)
 NOTICE:  #0.1       2    --> start of statement block (tnl=1)
 NOTICE:  #0.2       3      --> start of statement block (tnl=1)
-NOTICE:  #0.3       5        --> start of SQL statement (query='create role plpgsql_check_test ..') (tnl=2)
+NOTICE:  #0.3       5        --> start of SQL statement (query='create role regress_plpgsql_ch ..') (tnl=2)
 NOTICE:  #0.1                <-- end of SQL statement (elapsed time=0.010 ms) aborted
 NOTICE:  #0.2              <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0.3            <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0            <<- end of block (elapsed time=0.010 ms)
-drop role plpgsql_check_test_role;
+drop role regress_plpgsql_check_test_role;
 set plpgsql_check.enable_tracer to off;
 select plpgsql_check_tracer(false);
 NOTICE:  tracer is not active

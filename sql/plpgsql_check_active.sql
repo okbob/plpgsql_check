@@ -5317,13 +5317,13 @@ drop function fx1;
 set plpgsql_check.enable_tracer to on;
 select plpgsql_check_tracer(true);
 
-create role plpgsql_check_test_role;
+create role regress_plpgsql_check_test_role;
 
 DO $$
 begin
   begin
     -- should to fail
-    create role plpgsql_check_test_role;
+    create role regress_plpgsql_check_test_role;
   exception
     when duplicate_object then
       -- Role already exists
@@ -5332,7 +5332,7 @@ begin
 end;
 $$;
 
-drop role plpgsql_check_test_role;
+drop role regress_plpgsql_check_test_role;
 
 set plpgsql_check.enable_tracer to off;
 select plpgsql_check_tracer(false);
