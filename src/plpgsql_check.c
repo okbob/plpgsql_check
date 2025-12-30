@@ -42,8 +42,18 @@
 
 #endif
 
-#ifdef PG_MODULE_MAGIC
+
+#ifdef PG_MODULE_MAGIC_EXT
+
+PG_MODULE_MAGIC_EXT(
+  .name = "plpgsql_check",
+  .version = "2.8.5"
+);
+
+#else
+
 PG_MODULE_MAGIC;
+
 #endif
 
 PLpgSQL_plugin **plpgsql_check_plugin_var_ptr;
