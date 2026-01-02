@@ -5,7 +5,7 @@
  *			  parse function signature
  *			  parse identifier, and type name
  *
- * by Pavel Stehule 2013-2025
+ * by Pavel Stehule 2013-2026
  *
  *-------------------------------------------------------------------------
  */

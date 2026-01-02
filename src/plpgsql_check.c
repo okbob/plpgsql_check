@@ -4,7 +4,7 @@
  *
  *			  enhanced checks for plpgsql functions
  *
- * by Pavel Stehule 2013-2025
+ * by Pavel Stehule 2013-2026
  *
  *-------------------------------------------------------------------------
  *

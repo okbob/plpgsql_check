@@ -4,7 +4,7 @@
  *
  *			  detection unclosed cursors code
  *
- * by Pavel Stehule 2013-2025
+ * by Pavel Stehule 2013-2026
  *
  *-------------------------------------------------------------------------
  */
