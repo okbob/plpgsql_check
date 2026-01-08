@@ -1123,7 +1123,7 @@ pldbgapi2_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	if (OidIsValid(estate->func->fn_oid))
 	{
 		if (fcache_plpgsql->funcid != estate->func->fn_oid)
-			elog(ERROR, "fcache is mismatched (created for \"%s\" instead for \"s\")",
+			elog(ERROR, "fcache is mismatched (created for \"%s\" instead for \"%s\")",
 					format_procedure(fcache_plpgsql->funcid),
 					format_procedure(estate->func->fn_oid));
 	}
