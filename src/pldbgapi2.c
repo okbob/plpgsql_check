@@ -32,6 +32,7 @@
 #include "commands/proclang.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
+#include "utils/regproc.h"
 #include "utils/syscache.h"
 #include "utils/palloc.h"
 
@@ -1110,18 +1111,27 @@ pldbgapi2_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 	fcache_plpgsql = plugin_info->fcache_plpgsql;
 
-	Assert(fcache_plpgsql);
-	Assert(fcache_plpgsql->magic == FMGR_CACHE_MAGIC);
-	Assert(fcache_plpgsql->is_plpgsql);
+	if (!fcache_plpgsql ||
+		fcache_plpgsql->magic != FMGR_CACHE_MAGIC ||
+		!fcache_plpgsql->is_plpgsql)
+		elog(ERROR, "broken fcache_plpgsql");
 
-#ifdef USE_ASSERT_CHECKING
-
-	if (fcache_plpgsql->funcid != PLpgSQLinlineFunc)
-		Assert(fcache_plpgsql->funcid == estate->func->fn_oid);
+	/*
+	 * Raise an error, when assigned fcache is not for current function.
+	 * This can signalize an issue in fmgr hook handler.
+	 */
+	if (OidIsValid(estate->func->fn_oid))
+	{
+		if (fcache_plpgsql->funcid != estate->func->fn_oid)
+			elog(ERROR, "fcache is mismatched (created for \"%s\" instead for \"s\")",
+					format_procedure(fcache_plpgsql->funcid),
+					format_procedure(estate->func->fn_oid));
+	}
 	else
-		Assert(!OidIsValid(estate->func->fn_oid));
-
-#endif
+	{
+		if (fcache_plpgsql->funcid != PLpgSQLinlineFunc)
+			elog(ERROR, "fcache for anonymous block has assigned funcid");
+	}
 
 	current_fmgr_plpgsql_cache = fcache_plpgsql;
 
