@@ -4733,7 +4733,6 @@ begin
 end;
 $$ language plpgsql;
 
--- should to raise an error
 select * from plpgsql_check_function('test_function');
 
 create or replace function test_function()
@@ -5713,3 +5712,103 @@ $$ language plpgsql;
 
 -- should not to raise false alarm #195
 select * from plpgsql_check_function('double_usage_of_const_str');
+
+-- Tests for branch-aware temp table tracking
+
+-- Test 1: Basic temp table - created and used in same scope - should pass
+create or replace function test_temp_table_basic()
+returns void as $$
+begin
+  create temp table temp_basic(id int, val text);
+  insert into temp_basic values (1, 'test');
+  perform * from temp_basic;
+  drop table temp_basic;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('test_temp_table_basic');
+drop function test_temp_table_basic();
+
+-- Test 2: Temp table in IF branch, used outside - should raise error
+create or replace function test_temp_table_if_branch()
+returns void as $$
+declare v int := 1;
+begin
+  if v > 0 then
+    create temp table temp_in_branch(id int);
+  end if;
+  -- This should error - table only exists in branch
+  insert into temp_in_branch values (1);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('test_temp_table_if_branch');
+drop function test_temp_table_if_branch();
+
+-- Test 3: Temp table created in both IF and ELSE branches - used outside should error
+create or replace function test_temp_table_both_branches()
+returns void as $$
+declare v int := 1;
+begin
+  if v > 0 then
+    create temp table temp_either(id int);
+  else
+    create temp table temp_either(id int);
+  end if;
+  -- Should error - table created in branches, not visible outside
+  insert into temp_either values (1);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('test_temp_table_both_branches');
+drop function test_temp_table_both_branches();
+
+-- Test 4: Temp table in loop - should be cleaned up each iteration
+create or replace function test_temp_table_loop()
+returns void as $$
+begin
+  for i in 1..3 loop
+    create temp table temp_loop(id int);
+    insert into temp_loop values (i);
+    drop table temp_loop;
+  end loop;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('test_temp_table_loop');
+drop function test_temp_table_loop();
+
+-- Test 5: Nested IF - temp table in inner branch
+create or replace function test_temp_table_nested()
+returns void as $$
+declare v int := 1;
+begin
+  if v > 0 then
+    if v > 0 then
+      create temp table temp_nested(id int);
+    end if;
+    -- Should error - table only in inner branch
+    insert into temp_nested values (1);
+  end if;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('test_temp_table_nested');
+drop function test_temp_table_nested();
+
+-- Test 6: Temp table created before IF, used inside - should pass
+create or replace function test_temp_table_before_if()
+returns void as $$
+declare v int := 1;
+begin
+  create temp table temp_before(id int);
+  if v > 0 then
+    insert into temp_before values (1);
+  end if;
+  perform * from temp_before;
+  drop table temp_before;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('test_temp_table_before_if');
+drop function test_temp_table_before_if();

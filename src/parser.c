@@ -15,6 +15,8 @@
 #include <string.h>
 
 #include "catalog/namespace.h"
+#include "nodes/parsenodes.h"
+#include "parser/parser.h"
 #include "parser/scansup.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
@@ -1372,6 +1374,126 @@ plpgsql_check_pragma_sequence(PLpgSQL_checkstate *cstate, const char *str, int l
 				(errmsg("Pragma \"sequence\" on line %d is not processed.", lineno),
 				 errdetail("%s", edata->message)));
 
+		result = false;
+	}
+	PG_END_TRY();
+
+	return result;
+}
+
+/*
+ * Execute a CREATE TEMP TABLE statement and extract the table name.
+ * This is used for auto-detecting temp tables in the code.
+ *
+ * Returns true if the statement was successfully executed, false otherwise.
+ * If successful, *relname is set to the table name (caller must pfree).
+ */
+bool
+plpgsql_check_execute_create_temp_table(PLpgSQL_checkstate *cstate,
+										const char *query_str,
+										int lineno,
+										char **relname)
+{
+	MemoryContext oldCxt;
+	ResourceOwner oldowner;
+	volatile bool result = true;
+	List	   *parsetree_list;
+	RawStmt	   *raw_stmt;
+	Node	   *stmt;
+
+	*relname = NULL;
+
+	if (!cstate)
+		return false;
+
+	/* First, parse the query to check if it's a CREATE TEMP TABLE and get table name */
+	PG_TRY();
+	{
+		parsetree_list = raw_parser(query_str, RAW_PARSE_DEFAULT);
+	}
+	PG_CATCH();
+	{
+		FlushErrorState();
+		return false;
+	}
+	PG_END_TRY();
+
+	if (list_length(parsetree_list) != 1)
+		return false;
+
+	raw_stmt = linitial_node(RawStmt, parsetree_list);
+	stmt = raw_stmt->stmt;
+
+	/* Check for CreateStmt (CREATE TABLE) */
+	if (IsA(stmt, CreateStmt))
+	{
+		CreateStmt *create_stmt = (CreateStmt *) stmt;
+
+		if (create_stmt->relation->relpersistence != RELPERSISTENCE_TEMP)
+			return false;
+
+		*relname = pstrdup(create_stmt->relation->relname);
+	}
+	/* Check for CreateTableAsStmt (CREATE TABLE ... AS SELECT) */
+	else if (IsA(stmt, CreateTableAsStmt))
+	{
+		CreateTableAsStmt *ctas_stmt = (CreateTableAsStmt *) stmt;
+
+		if (!ctas_stmt->into || !ctas_stmt->into->rel ||
+			ctas_stmt->into->rel->relpersistence != RELPERSISTENCE_TEMP)
+			return false;
+
+		*relname = pstrdup(ctas_stmt->into->rel->relname);
+	}
+	else
+	{
+		/* Not a CREATE TABLE statement */
+		return false;
+	}
+
+	/* Now execute the statement in a subtransaction */
+	oldCxt = CurrentMemoryContext;
+	oldowner = CurrentResourceOwner;
+	BeginInternalSubTransaction(NULL);
+	MemoryContextSwitchTo(cstate->check_cxt);
+
+	PG_TRY();
+	{
+		if (SPI_execute(query_str, false, 0) != SPI_OK_UTILITY)
+		{
+			elog(NOTICE, "Cannot create temporary table");
+			result = false;
+		}
+
+		/* Commit the subtransaction so the table persists */
+		ReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldCxt);
+		CurrentResourceOwner = oldowner;
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		MemoryContextSwitchTo(cstate->check_cxt);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		MemoryContextSwitchTo(oldCxt);
+		FlushErrorState();
+
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldCxt);
+		CurrentResourceOwner = oldowner;
+
+		ereport(WARNING,
+				(errmsg("Cannot create temp table on line %d", lineno),
+				 errdetail("%s", edata->message)));
+
+		if (*relname)
+		{
+			pfree(*relname);
+			*relname = NULL;
+		}
 		result = false;
 	}
 	PG_END_TRY();

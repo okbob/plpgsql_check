@@ -589,8 +589,11 @@ function_check(PLpgSQL_function *func, PLpgSQL_checkstate *cstate)
 
 	/*
 	 * Now check the toplevel block of statements
+	 * Push initial temp table scope for the function body
 	 */
+	plpgsql_check_push_temp_table_scope(cstate);
 	plpgsql_check_stmt(cstate, (PLpgSQL_stmt *) func->action, &closing, &exceptions);
+	plpgsql_check_pop_temp_table_scope(cstate);
 
 	/* clean state values - next errors are not related to any command */
 	cstate->estate->err_stmt = NULL;
@@ -675,8 +678,11 @@ trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate)
 
 	/*
 	 * Now check the toplevel block of statements
+	 * Push initial temp table scope for the trigger body
 	 */
+	plpgsql_check_push_temp_table_scope(cstate);
 	plpgsql_check_stmt(cstate, (PLpgSQL_stmt *) func->action, &closing, &exceptions);
+	plpgsql_check_pop_temp_table_scope(cstate);
 
 	/* clean state values - next errors are not related to any command */
 	cstate->estate->err_stmt = NULL;
@@ -1188,6 +1194,9 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 
 	/* for simple string constants tracing */
 	cstate->strconstvars = NULL;
+
+	/* initialize temp table scope tracking */
+	cstate->temp_table_scope = NULL;
 }
 
 /*

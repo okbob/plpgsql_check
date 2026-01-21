@@ -8221,14 +8221,11 @@ begin
   select * from foo into r;
 end;
 $$ language plpgsql;
--- should to raise an error
 select * from plpgsql_check_function('test_function');
-                  plpgsql_check_function                   
------------------------------------------------------------
- error:42P01:5:SQL statement:relation "foo" does not exist
- Query: select * from foo
- --                   ^
-(3 rows)
+                plpgsql_check_function                 
+-------------------------------------------------------
+ warning extra:00000:2:DECLARE:never read variable "r"
+(1 row)
 
 create or replace function test_function()
 returns void as $$
@@ -8242,6 +8239,7 @@ end;
 $$ language plpgsql;
 -- should be ok
 select * from plpgsql_check_function('test_function');
+WARNING:  Pragma "table" on line 5 is not processed.
  plpgsql_check_function 
 ------------------------
 (0 rows)
@@ -9569,3 +9567,123 @@ select * from plpgsql_check_function('double_usage_of_const_str');
 ------------------------
 (0 rows)
 
+-- Tests for branch-aware temp table tracking
+-- Test 1: Basic temp table - created and used in same scope - should pass
+create or replace function test_temp_table_basic()
+returns void as $$
+begin
+  create temp table temp_basic(id int, val text);
+  insert into temp_basic values (1, 'test');
+  perform * from temp_basic;
+  drop table temp_basic;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('test_temp_table_basic');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function test_temp_table_basic();
+-- Test 2: Temp table in IF branch, used outside - should raise error
+create or replace function test_temp_table_if_branch()
+returns void as $$
+declare v int := 1;
+begin
+  if v > 0 then
+    create temp table temp_in_branch(id int);
+  end if;
+  -- This should error - table only exists in branch
+  insert into temp_in_branch values (1);
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('test_temp_table_if_branch');
+                        plpgsql_check_function                        
+----------------------------------------------------------------------
+ error:42P01:8:SQL statement:relation "temp_in_branch" does not exist
+ Query: insert into temp_in_branch values (1)
+ --                 ^
+(3 rows)
+
+drop function test_temp_table_if_branch();
+-- Test 3: Temp table created in both IF and ELSE branches - used outside should error
+create or replace function test_temp_table_both_branches()
+returns void as $$
+declare v int := 1;
+begin
+  if v > 0 then
+    create temp table temp_either(id int);
+  else
+    create temp table temp_either(id int);
+  end if;
+  -- Should error - table created in branches, not visible outside
+  insert into temp_either values (1);
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('test_temp_table_both_branches');
+                       plpgsql_check_function                       
+--------------------------------------------------------------------
+ error:42P01:10:SQL statement:relation "temp_either" does not exist
+ Query: insert into temp_either values (1)
+ --                 ^
+(3 rows)
+
+drop function test_temp_table_both_branches();
+-- Test 4: Temp table in loop - should be cleaned up each iteration
+create or replace function test_temp_table_loop()
+returns void as $$
+begin
+  for i in 1..3 loop
+    create temp table temp_loop(id int);
+    insert into temp_loop values (i);
+    drop table temp_loop;
+  end loop;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('test_temp_table_loop');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function test_temp_table_loop();
+-- Test 5: Nested IF - temp table in inner branch
+create or replace function test_temp_table_nested()
+returns void as $$
+declare v int := 1;
+begin
+  if v > 0 then
+    if v > 0 then
+      create temp table temp_nested(id int);
+    end if;
+    -- Should error - table only in inner branch
+    insert into temp_nested values (1);
+  end if;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('test_temp_table_nested');
+                      plpgsql_check_function                       
+-------------------------------------------------------------------
+ error:42P01:9:SQL statement:relation "temp_nested" does not exist
+ Query: insert into temp_nested values (1)
+ --                 ^
+(3 rows)
+
+drop function test_temp_table_nested();
+-- Test 6: Temp table created before IF, used inside - should pass
+create or replace function test_temp_table_before_if()
+returns void as $$
+declare v int := 1;
+begin
+  create temp table temp_before(id int);
+  if v > 0 then
+    insert into temp_before values (1);
+  end if;
+  perform * from temp_before;
+  drop table temp_before;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('test_temp_table_before_if');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function test_temp_table_before_if();

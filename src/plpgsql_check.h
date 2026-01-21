@@ -87,6 +87,16 @@ typedef struct PLpgSQL_statements
 	Bitmapset  *invalidate_strconstvars;
 } PLpgSQL_statements;
 
+/*
+ * Tracks temp tables created during checking, per scope.
+ * Used to properly handle temp tables in control flow branches.
+ */
+typedef struct TempTableScope
+{
+	List	   *table_names;		/* List of char* - tables created in this scope */
+	struct TempTableScope *outer;	/* Parent scope */
+} TempTableScope;
+
 typedef struct plpgsql_check_result_info
 {
 	int			format;			/* produced / expected format */
@@ -194,6 +204,7 @@ typedef struct PLpgSQL_checkstate
 	char	  **strconstvars;	/* the values of string variables where the
 								 * value is constant */
 	PLpgSQL_statements *top_stmts;	/* pointer to current statement group */
+	TempTableScope *temp_table_scope;	/* tracks temp tables per control flow scope */
 } PLpgSQL_checkstate;
 
 typedef struct coverage_state
@@ -343,6 +354,9 @@ extern bool plpgsql_check_is_internal_variable(PLpgSQL_checkstate *cstate, PLpgS
  */
 extern bool plpgsql_check_is_reserved_keyword(char *name);
 extern void plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **exceptions);
+extern void plpgsql_check_push_temp_table_scope(PLpgSQL_checkstate *cstate);
+extern void plpgsql_check_pop_temp_table_scope(PLpgSQL_checkstate *cstate);
+extern void plpgsql_check_record_temp_table(PLpgSQL_checkstate *cstate, const char *relname);
 
 /*
  * functions from typdesc.c
@@ -359,6 +373,10 @@ extern Oid	plpgsql_check_parse_name_or_signature(char *name_or_signature);
 extern bool plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate, const char *str, PLpgSQL_nsitem *ns, int lineno);
 extern bool plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int lineno);
 extern bool plpgsql_check_pragma_sequence(PLpgSQL_checkstate *cstate, const char *str, int lineno);
+extern bool plpgsql_check_execute_create_temp_table(PLpgSQL_checkstate *cstate,
+													const char *query_str,
+													int lineno,
+													char **relname);
 extern bool plpgsql_check_pragma_assert(PLpgSQL_checkstate *cstate, PragmaAssertType pat, const char *str,
 										PLpgSQL_nsitem *ns, int lineno);
 extern void plpgsql_check_search_comment_options(plpgsql_check_info *cinfo);

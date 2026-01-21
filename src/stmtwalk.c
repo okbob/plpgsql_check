@@ -20,6 +20,7 @@
 #include "parser/parse_node.h"
 #include "parser/parser.h"
 #include "common/keywords.h"
+#include "utils/builtins.h"
 
 static void check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **exceptions);
 static PLpgSQL_stmt_stack_item *push_stmt_to_stmt_stack(PLpgSQL_checkstate *cstate);
@@ -34,6 +35,83 @@ static bool exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *con
 static bool found_shadowed_variable(char *varname, PLpgSQL_stmt_stack_item *current, PLpgSQL_checkstate *cstate);
 static void check_dynamic_sql(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, PLpgSQL_expr *query, bool into, PLpgSQL_variable *target, List *params);
 static bool is_inside_protected_block(PLpgSQL_stmt_stack_item *current);
+
+/*
+ * Push a new temp table scope onto the stack.
+ * Called when entering a branch (IF THEN, ELSE, LOOP body, etc.)
+ */
+void
+plpgsql_check_push_temp_table_scope(PLpgSQL_checkstate *cstate)
+{
+	TempTableScope *scope;
+
+	scope = palloc0(sizeof(TempTableScope));
+	scope->table_names = NIL;
+	scope->outer = cstate->temp_table_scope;
+	cstate->temp_table_scope = scope;
+}
+
+/*
+ * Pop a temp table scope from the stack.
+ * Drops all temp tables created in this scope.
+ * Called when exiting a branch.
+ */
+void
+plpgsql_check_pop_temp_table_scope(PLpgSQL_checkstate *cstate)
+{
+	TempTableScope *scope = cstate->temp_table_scope;
+	ListCell   *lc;
+
+	if (scope == NULL)
+		return;
+
+	/* DROP all temp tables created in this scope */
+	foreach(lc, scope->table_names)
+	{
+		char	   *relname = (char *) lfirst(lc);
+		StringInfoData cmd;
+
+		initStringInfo(&cmd);
+		appendStringInfo(&cmd, "DROP TABLE IF EXISTS pg_temp.%s",
+						 quote_identifier(relname));
+
+		/* Execute in a subtransaction to handle errors gracefully */
+		PG_TRY();
+		{
+			SPI_execute(cmd.data, false, 0);
+		}
+		PG_CATCH();
+		{
+			/* Ignore errors from DROP - table might already be gone */
+			FlushErrorState();
+		}
+		PG_END_TRY();
+
+		pfree(cmd.data);
+	}
+
+	/* Restore parent scope */
+	cstate->temp_table_scope = scope->outer;
+	list_free_deep(scope->table_names);
+	pfree(scope);
+}
+
+/*
+ * Record that a temp table was created in the current scope.
+ */
+void
+plpgsql_check_record_temp_table(PLpgSQL_checkstate *cstate, const char *relname)
+{
+	MemoryContext oldcxt;
+
+	if (cstate->temp_table_scope == NULL)
+		return;
+
+	oldcxt = MemoryContextSwitchTo(cstate->check_cxt);
+	cstate->temp_table_scope->table_names =
+		lappend(cstate->temp_table_scope->table_names, pstrdup(relname));
+	MemoryContextSwitchTo(oldcxt);
+}
 
 static void
 check_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var)
@@ -291,8 +369,11 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 								 * RETURN in exception handler ~ is possible
 								 * closing
 								 */
+								/* Exception handler - push/pop temp table scope */
+								plpgsql_check_push_temp_table_scope(cstate);
 								check_stmts(cstate, exception->action,
 											&closing_local, &exceptions_local);
+								plpgsql_check_pop_temp_table_scope(cstate);
 
 								if (*exceptions != NIL)
 								{
@@ -341,8 +422,11 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 								 * RETURN in exception handler ~ it is
 								 * possible closing only
 								 */
+								/* Exception handler - push/pop temp table scope */
+								plpgsql_check_push_temp_table_scope(cstate);
 								check_stmts(cstate, exception->action,
 											&closing_local, &exceptions_local);
+								plpgsql_check_pop_temp_table_scope(cstate);
 
 								closing_handlers = merge_closing(closing_handlers, closing_local,
 																 &exceptions_transformed, exceptions_local,
@@ -412,8 +496,11 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					plpgsql_check_expr_with_scalar_type(cstate,
 														stmt_if->cond, BOOLOID, true);
 
+					/* THEN branch - push/pop temp table scope */
+					plpgsql_check_push_temp_table_scope(cstate);
 					check_stmts(cstate, stmt_if->then_body, &closing_local,
 								&exceptions_local);
+					plpgsql_check_pop_temp_table_scope(cstate);
 					closing_all_paths = merge_closing(closing_all_paths,
 													  closing_local,
 													  exceptions,
@@ -426,8 +513,12 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 						plpgsql_check_expr_with_scalar_type(cstate,
 															elif->cond, BOOLOID, true);
+
+						/* ELSIF branch - push/pop temp table scope */
+						plpgsql_check_push_temp_table_scope(cstate);
 						check_stmts(cstate, elif->stmts, &closing_local,
 									&exceptions_local);
+						plpgsql_check_pop_temp_table_scope(cstate);
 						closing_all_paths = merge_closing(closing_all_paths,
 														  closing_local,
 														  exceptions,
@@ -435,8 +526,11 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 														  -1);
 					}
 
+					/* ELSE branch - push/pop temp table scope */
+					plpgsql_check_push_temp_table_scope(cstate);
 					check_stmts(cstate, stmt_if->else_body, &closing_local,
 								&exceptions_local);
+					plpgsql_check_pop_temp_table_scope(cstate);
 					closing_all_paths = merge_closing(closing_all_paths,
 													  closing_local,
 													  exceptions,
@@ -503,7 +597,11 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						PLpgSQL_case_when *cwt = (PLpgSQL_case_when *) lfirst(l);
 
 						plpgsql_check_expr(cstate, cwt->expr);
+
+						/* WHEN branch - push/pop temp table scope */
+						plpgsql_check_push_temp_table_scope(cstate);
 						check_stmts(cstate, cwt->stmts, &closing_local, &exceptions_local);
+						plpgsql_check_pop_temp_table_scope(cstate);
 						closing_all_paths = merge_closing(closing_all_paths,
 														  closing_local,
 														  exceptions,
@@ -513,7 +611,10 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 					if (stmt_case->else_stmts)
 					{
+						/* ELSE branch - push/pop temp table scope */
+						plpgsql_check_push_temp_table_scope(cstate);
 						check_stmts(cstate, stmt_case->else_stmts, &closing_local, &exceptions_local);
+						plpgsql_check_pop_temp_table_scope(cstate);
 						*closing = merge_closing(closing_all_paths,
 												 closing_local,
 												 exceptions,
@@ -527,7 +628,10 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				break;
 
 			case PLPGSQL_STMT_LOOP:
+				/* LOOP body - push/pop temp table scope */
+				plpgsql_check_push_temp_table_scope(cstate);
 				check_stmts(cstate, ((PLpgSQL_stmt_loop *) stmt)->body, closing, exceptions);
+				plpgsql_check_pop_temp_table_scope(cstate);
 				break;
 
 			case PLPGSQL_STMT_WHILE:
@@ -545,7 +649,10 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					 * When is not guaranteed execution (possible zero loops),
 					 * then ignore closing info from body.
 					 */
+					/* WHILE body - push/pop temp table scope */
+					plpgsql_check_push_temp_table_scope(cstate);
 					check_stmts(cstate, stmt_while->body, &closing_local, &exceptions_local);
+					plpgsql_check_pop_temp_table_scope(cstate);
 					*closing = possibly_closed(closing_local);
 				}
 				break;
@@ -570,7 +677,10 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 					check_variable_name(cstate, outer_stmt_stack, dno);
 
+					/* FOR body - push/pop temp table scope */
+					plpgsql_check_push_temp_table_scope(cstate);
 					check_stmts(cstate, stmt_fori->body, &closing_local, &exceptions_local);
+					plpgsql_check_pop_temp_table_scope(cstate);
 					*closing = possibly_closed(closing_local);
 				}
 				break;
@@ -587,7 +697,10 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					plpgsql_check_assignment_to_variable(cstate, stmt_fors->query,
 														 stmt_fors->var, -1);
 
+					/* FOR SELECT body - push/pop temp table scope */
+					plpgsql_check_push_temp_table_scope(cstate);
 					check_stmts(cstate, stmt_fors->body, &closing_local, &exceptions_local);
+					plpgsql_check_pop_temp_table_scope(cstate);
 					*closing = possibly_closed(closing_local);
 				}
 				break;
@@ -606,7 +719,10 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						plpgsql_check_assignment_to_variable(cstate, var->cursor_explicit_expr,
 															 stmt_forc->var, -1);
 
+					/* FOR cursor body - push/pop temp table scope */
+					plpgsql_check_push_temp_table_scope(cstate);
 					check_stmts(cstate, stmt_forc->body, &closing_local, &exceptions_local);
+					plpgsql_check_pop_temp_table_scope(cstate);
 					*closing = possibly_closed(closing_local);
 
 					cstate->used_variables = bms_add_member(cstate->used_variables,
@@ -627,7 +743,10 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 									  stmt_dynfors->var,
 									  stmt_dynfors->params);
 
+					/* FOR EXECUTE body - push/pop temp table scope */
+					plpgsql_check_push_temp_table_scope(cstate);
 					check_stmts(cstate, stmt_dynfors->body, &closing_local, &exceptions_local);
+					plpgsql_check_pop_temp_table_scope(cstate);
 					*closing = possibly_closed(closing_local);
 				}
 				break;
@@ -653,7 +772,10 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 																  stmt_foreach_a->varno,
 																  use_element_type);
 
+					/* FOREACH body - push/pop temp table scope */
+					plpgsql_check_push_temp_table_scope(cstate);
 					check_stmts(cstate, stmt_foreach_a->body, &closing_local, &exceptions_local);
+					plpgsql_check_pop_temp_table_scope(cstate);
 					*closing = possibly_closed(closing_local);
 				}
 				break;
@@ -1032,8 +1154,25 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 			case PLPGSQL_STMT_EXECSQL:
 				{
 					PLpgSQL_stmt_execsql *stmt_execsql = (PLpgSQL_stmt_execsql *) stmt;
+					char	   *temp_table_name = NULL;
 
-					if (stmt_execsql->into)
+					/*
+					 * Check if this is a CREATE TEMP TABLE statement.
+					 * If so, execute it and record the table name in the current scope.
+					 */
+					if (plpgsql_check_execute_create_temp_table(cstate,
+																stmt_execsql->sqlstmt->query,
+																stmt->lineno,
+																&temp_table_name))
+					{
+						/* Table was created successfully, record it in current scope */
+						if (temp_table_name)
+						{
+							plpgsql_check_record_temp_table(cstate, temp_table_name);
+							pfree(temp_table_name);
+						}
+					}
+					else if (stmt_execsql->into)
 					{
 						check_variable(cstate, stmt_execsql->target);
 						plpgsql_check_assignment_to_variable(cstate, stmt_execsql->sqlstmt,
