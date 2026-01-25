@@ -88,6 +88,8 @@ typedef struct fmgr_plpgsql_cache
 	bool		is_late;
 	Datum		arg;
 
+	PLpgSQL_execstate *estate;
+
 	void	   *plugin2_info[MAX_PLDBGAPI2_PLUGINS];
 
 	MemoryContext fn_mcxt;
@@ -883,6 +885,7 @@ pldbgapi2_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	func_info->use_count++;
 
 	fcache_plpgsql->func_info = func_info;
+	fcache_plpgsql->estate = estate;
 
 	estate->plugin_info = plugin_info;
 
@@ -980,6 +983,7 @@ pldbgapi2_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	if (fcache_plpgsql->funcid != PLpgSQLinlineFunc)
 	{
 		Assert(fcache_plpgsql->funcid == func->fn_oid);
+		Assert(fcache_plpgsql->estate = estate);
 		Assert(fcache_plpgsql->funcid == estate->func->fn_oid);
 	}
 	else
@@ -1049,6 +1053,7 @@ pldbgapi2_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	if (fcache_plpgsql->funcid != PLpgSQLinlineFunc)
 	{
 		Assert(fcache_plpgsql->funcid == func->fn_oid);
+		Assert(fcache_plpgsql->estate = estate);
 		Assert(fcache_plpgsql->funcid == estate->func->fn_oid);
 	}
 	else
@@ -1113,7 +1118,8 @@ pldbgapi2_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 	if (!fcache_plpgsql ||
 		fcache_plpgsql->magic != FMGR_CACHE_MAGIC ||
-		!fcache_plpgsql->is_plpgsql)
+		!fcache_plpgsql->is_plpgsql ||
+		fcache_plpgsql->estate != estate)
 		elog(ERROR, "broken fcache_plpgsql");
 
 	/*
@@ -1234,6 +1240,7 @@ pldbgapi2_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 	if (fcache_plpgsql->funcid != PLpgSQLinlineFunc)
 		Assert(fcache_plpgsql->funcid == estate->func->fn_oid);
+		Assert(fcache_plpgsql->estate = estate);
 	else
 		Assert(!OidIsValid(estate->func->fn_oid));
 
