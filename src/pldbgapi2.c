@@ -1239,8 +1239,10 @@ pldbgapi2_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 #ifdef USE_ASSERT_CHECKING
 
 	if (fcache_plpgsql->funcid != PLpgSQLinlineFunc)
+	{
 		Assert(fcache_plpgsql->funcid == estate->func->fn_oid);
 		Assert(fcache_plpgsql->estate = estate);
+	}
 	else
 		Assert(!OidIsValid(estate->func->fn_oid));
 
