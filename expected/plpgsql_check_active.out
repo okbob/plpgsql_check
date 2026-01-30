@@ -9464,7 +9464,11 @@ $$ language plpgsql;
 \c
 -- should not to crash
 select trace_test(3);
-ERROR:  too late initialization of fmgr_plpgsql_cache
+ trace_test 
+------------
+          3
+(1 row)
+
 create table testtable_pure_expr(a int);
 -- detection of not pure expressions
 create or replace function pure_expr()
@@ -9569,3 +9573,20 @@ select * from plpgsql_check_function('double_usage_of_const_str');
 ------------------------
 (0 rows)
 
+-- using reserved world for names is bad
+create or replace function test_bad_label()
+returns int as $$
+<<outer>>
+declare x int = 10;
+begin
+  return x;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('test_bad_label');
+                          plpgsql_check_function                           
+---------------------------------------------------------------------------
+ warning:00000:4:statement block:name of label "outer" is reserved keyword
+ Detail: The reserved keyword was used as label name.
+(2 rows)
+
+drop function test_bad_label;
