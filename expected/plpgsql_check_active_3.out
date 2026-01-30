@@ -1406,12 +1406,27 @@ select * from plpgsql_check_function('f1()', performance_warnings := true);
  Detail: cast "date" value to "integer" type
  Hint: There are no possible explicit coercion between those types, possibly bug!
  Context: at assignment to variable "intval" declared on line 3
+ performance:00000:11:SQL statement:detected "SELECT expr INTO variable"
+ Query: select 1
+ --     ^
+ Detail: This obsolete syntax of assigning can be slow.
+ Hint: Use syntax "variable := expr" instead.
+ performance:00000:12:SQL statement:detected "SELECT expr INTO variable"
+ Query: select '1'
+ --     ^
+ Detail: This obsolete syntax of assigning can be slow.
+ Hint: Use syntax "variable := expr" instead.
  warning:42804:12:SQL statement:target type is different type than source type
  Query: select '1'
  --     ^
  Detail: cast "text" value to "integer" type
  Hint: The input expression type does not have an assignment cast to the target type.
  Context: at SQL statement to variable "intval" declared on line 3
+ performance:00000:13:SQL statement:detected "SELECT expr INTO variable"
+ Query: select text '1'
+ --     ^
+ Detail: This obsolete syntax of assigning can be slow.
+ Hint: Use syntax "variable := expr" instead.
  warning:42804:13:SQL statement:target type is different type than source type
  Query: select text '1'
  --     ^
@@ -1419,7 +1434,7 @@ select * from plpgsql_check_function('f1()', performance_warnings := true);
  Hint: The input expression type does not have an assignment cast to the target type.
  Context: at SQL statement to variable "intval" declared on line 3
  warning extra:00000:3:DECLARE:never read variable "intval"
-(19 rows)
+(34 rows)
 
 drop function f1();
 create or replace function f1()
@@ -9586,3 +9601,23 @@ select * from plpgsql_check_function('test_bad_label');
 (2 rows)
 
 drop function test_bad_label;
+-- using slow legacy syntax for assignment
+create or replace function test_bad_assign()
+returns int as $$
+declare x int;
+begin
+  select 0 into x;
+  return x;
+end;
+$$ language plpgsql immutable;
+select * from plpgsql_check_function('test_bad_assign()', all_warnings=>true);
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ performance:00000:4:SQL statement:detected "SELECT expr INTO variable"
+ Query: select 0
+ --     ^
+ Detail: This obsolete syntax of assigning can be slow.
+ Hint: Use syntax "variable := expr" instead.
+(5 rows)
+
+drop function test_bad_assign;

@@ -5727,3 +5727,17 @@ $$ language plpgsql;
 select * from plpgsql_check_function('test_bad_label');
 
 drop function test_bad_label;
+
+-- using slow legacy syntax for assignment
+create or replace function test_bad_assign()
+returns int as $$
+declare x int;
+begin
+  select 0 into x;
+  return x;
+end;
+$$ language plpgsql immutable;
+
+select * from plpgsql_check_function('test_bad_assign()', all_warnings=>true);
+
+drop function test_bad_assign;

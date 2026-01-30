@@ -40,6 +40,7 @@ static void check_fishy_qual(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char
 static Const *expr_get_const(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 static bool is_const_null_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 static void force_plan_checks(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
+static bool is_pure_expr(PLpgSQL_checkstate *cstate, Query *query);
 
 static int	RowGetValidFields(PLpgSQL_row *row);
 static int	TupleDescNVatts(TupleDesc tupdesc);
@@ -248,7 +249,7 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 			 int cursorOptions,
 			 ParserSetupHook parser_setup,
 			 void *arg,
-			 bool pure_expr_check)
+			 bool is_expression)
 {
 	Query	   *query;
 	CachedPlanSource *plansource = NULL;
@@ -273,8 +274,47 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 	collect_volatility(cstate, query);
 	plpgsql_check_detect_dependency(cstate, query);
 
-	if (pure_expr_check)
+	if (is_expression)
 		check_pure_expr(cstate, query, expr->query);
+	else
+	{
+		if (cstate->estate && cstate->cinfo->performance_warnings)
+		{
+			PLpgSQL_stmt *stmt = cstate->estate->err_stmt;
+
+			if (stmt)
+			{
+				bool	have_into = false;
+				PLpgSQL_variable *target;
+
+				if (stmt->cmd_type == PLPGSQL_STMT_EXECSQL)
+				{
+					have_into = ((PLpgSQL_stmt_execsql *) stmt)->into;
+					target = ((PLpgSQL_stmt_execsql *) stmt)->target;
+
+					if (have_into && target->dtype == PLPGSQL_DTYPE_ROW)
+					{
+						PLpgSQL_row *row = (PLpgSQL_row *) target;
+
+						if (row->nfields == 1 &&
+							plpgsql_check_is_internal_variable(cstate, target))
+						{
+							if (is_pure_expr(cstate, query))
+							{
+								plpgsql_check_put_error(cstate,
+														0, 0,
+														"detected \"SELECT expr INTO variable\"",
+														"This obsolete syntax of assigning can be slow.",
+														"Use syntax \"variable := expr\" instead.",
+														PLPGSQL_CHECK_WARNING_PERFORMANCE,
+														0, expr->query, NULL);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 /*
