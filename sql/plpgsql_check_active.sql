@@ -5713,3 +5713,17 @@ $$ language plpgsql;
 
 -- should not to raise false alarm #195
 select * from plpgsql_check_function('double_usage_of_const_str');
+
+-- using reserved world for names is bad
+create or replace function test_bad_label()
+returns int as $$
+<<outer>>
+declare x int = 10;
+begin
+  return x;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('test_bad_label');
+
+drop function test_bad_label;

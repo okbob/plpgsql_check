@@ -83,7 +83,8 @@ plpgsql_check_is_reserved_keyword(char *name)
 
 	for (i = 0; i < ScanKeywords.num_keywords; i++)
 	{
-		if (ScanKeywordCategories[i] == RESERVED_KEYWORD)
+		if (ScanKeywordCategories[i] == RESERVED_KEYWORD ||
+			ScanKeywordCategories[i] == TYPE_FUNC_NAME_KEYWORD)
 		{
 			char	   *value;
 
@@ -1365,6 +1366,31 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 }
 
 /*
+ * Using reserved world as label is bad practice
+ */
+static void
+check_label(PLpgSQL_checkstate *cstate, char *label)
+{
+	if (plpgsql_check_is_reserved_keyword(label))
+	{
+		StringInfoData str;
+
+		initStringInfo(&str);
+		appendStringInfo(&str, "name of label \"%s\" is reserved keyword",
+						 label);
+
+		plpgsql_check_put_error(cstate,
+								0, 0,
+								str.data,
+								"The reserved keyword was used as label name.",
+								NULL,
+								PLPGSQL_CHECK_WARNING_OTHERS,
+								0, NULL, NULL);
+		pfree(str.data);
+	}
+}
+
+/*
  * Add label to stack of labels
  */
 static PLpgSQL_stmt_stack_item *
@@ -1418,6 +1444,9 @@ push_stmt_to_stmt_stack(PLpgSQL_checkstate *cstate)
 		default:
 			stmt_stack_item->label = NULL;
 	}
+
+	if (stmt_stack_item->label)
+		check_label(cstate, stmt_stack_item->label);
 
 	stmt_stack_item->outer = current;
 	cstate->top_stmt_stack = stmt_stack_item;
