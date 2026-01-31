@@ -49,6 +49,7 @@ sources = files(
   'src/profiler.c',
   'src/stmtwalk.c',
   'src/tracer.c',
+  'src/fextra_cache.c',
 )
 
 data = [ module_name + '.control',

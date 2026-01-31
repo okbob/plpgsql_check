@@ -501,6 +501,49 @@ extern int	plpgsql_check_cursors_leaks_level;
 extern void plpgsql_check_cursors_leaks_init(void);
 
 /*
+ * functions and structures from fextra_cache.c
+ */
+typedef struct
+{
+	Oid			fn_oid;
+	TransactionId fn_xmin;
+	ItemPointerData fn_tid;
+} plch_fextra_hk;
+
+
+typedef struct
+{
+	plch_fextra_hk hk;
+	uint32		hashValue;
+
+	Oid			fn_oid;
+	char	   *fn_signature;
+	char	   *fn_name;
+	char	   *fn_namespacename;
+
+	MemoryContext mcxt;
+
+	int		   *parentids;
+	int		   *naturalids;
+	int		   *levels;
+	bool	   *containers;
+	int			max_deep;
+	int			nstatements;
+
+	int			use_count;
+	bool		is_valid;
+} plch_fextra;
+
+plch_fextra *plch_get_fextra(PLpgSQL_function *func);
+void plch_release_fextra(plch_fextra *fextra);
+
+#if PG_VERSION_NUM < 150000
+
+void plch_fextra_deinit();
+
+#endif
+
+/*
  * functions from plpgsql_check.c
  */
 
