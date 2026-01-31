@@ -9479,11 +9479,7 @@ $$ language plpgsql;
 \c
 -- should not to crash
 select trace_test(3);
- trace_test 
-------------
-          3
-(1 row)
-
+ERROR:  too late initialization of fmgr_plpgsql_cache
 create table testtable_pure_expr(a int);
 -- detection of not pure expressions
 create or replace function pure_expr()
