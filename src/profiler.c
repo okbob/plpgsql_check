@@ -622,7 +622,7 @@ profiler_stmt_walker(profiler_info *pinfo,
 		 * iterator returns 0 stmtid.
 		 */
 		Assert(!opts->pi->current_chunk ||
-			   (opts->stmtid_map[opts->pi->current_statement_no] - 1) == stmtid);
+			   (opts->fextra->natural_to_ids[opts->pi->current_statement_no]) == stmtid + 1);
 
 		/*
 		 * Get persistent statement info stored in shared memory or in session
@@ -2154,7 +2154,7 @@ profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fext
 }
 
 static void
-_profiler_func_end(profiler_info *pinfo, Oid fn_oid, bool is_aborted)
+_profiler_func_end(profiler_info *pinfo, Oid fn_oid, bool is_aborted, plch_fextra *fextra)
 {
 	int			entry_stmtid;
 	instr_time	end_time;
@@ -2183,7 +2183,7 @@ _profiler_func_end(profiler_info *pinfo, Oid fn_oid, bool is_aborted)
 		pinfo->stmts[entry_stmtid].us_max = elapsed;
 	}
 
-	stmtid_map = plpgsql_check_get_current_stmtid_map();
+	stmtid_map = fextra->natural_to_ids;
 
 	/* finalize profile - get result profile */
 	profiler_stmt_walker(pinfo, PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME,
@@ -2204,7 +2204,7 @@ profiler_func_end(PLpgSQL_execstate *estate,
 	if (!pinfo)
 		return;
 
-	_profiler_func_end(pinfo, func->fn_oid, false);
+	_profiler_func_end(pinfo, func->fn_oid, false, fextra);
 }
 
 static void
@@ -2217,7 +2217,7 @@ profiler_func_abort(PLpgSQL_execstate *estate,
 	if (!pinfo)
 		return;
 
-	_profiler_func_end(pinfo, func->fn_oid, true);
+	_profiler_func_end(pinfo, func->fn_oid, true, fextra);
 }
 
 static void

@@ -1007,7 +1007,7 @@ tracer_func_abort(PLpgSQL_execstate *estate,
 	if (!tinfo)
 		return;
 
-	Assert(tinfo->fn_oid == fn_oid);
+	Assert(tinfo->fn_oid == func->fn_oid);
 
 	_tracer_func_end(tinfo, true);
 }
@@ -1243,7 +1243,6 @@ _tracer_stmt_end(tracer_info *tinfo,
 	const char *aborted = is_aborted ? " aborted" : "";
 
 	Assert(tinfo);
-	Assert(sinfo);
 
 	/* don't trace invisible statements */
 	if (fextra->invisible[stmtid])

@@ -518,6 +518,8 @@ extern void plpgsql_check_finish_pldbgapi2(void);
 
 #endif
 
+extern void simple_plugin_init(void);
+
 /*
  * functions from cursors_leaks.c
  */

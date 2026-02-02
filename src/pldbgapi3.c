@@ -135,12 +135,15 @@ plugin_info_reset(void *arg)
 {
 	plpgsql_plugin_info *plugin_info = (plpgsql_plugin_info*) arg;
 	MemoryContext exec_mcxt = CurrentMemoryContext;
+	int			stmts_stack_size = plugin_info->stmts_stack_size;
 	int			i;
+
+	plugin_info->stmts_stack_size = 0;
 
 	PG_TRY();
 	{
 		abort_statements(plugin_info->stmts_stack,
-						 plugin_info->stmts_stack_size,
+						 stmts_stack_size,
 						 plugin_info, true);
 
 		for (i = 0; i < nplugins; i++)
@@ -192,13 +195,6 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 			if (!plugin_info->fextra)
 				plugin_info->fextra = plch_get_fextra(func);
 
-
-			plugin_info->er_mcb.func = plugin_info_reset;
-			plugin_info->er_mcb.arg = plugin_info;
-
-			MemoryContextRegisterResetCallback(CurrentMemoryContext,
-											   &plugin_info->er_mcb);
-
 			plugin_info->stmts_stack = palloc((plugin_info->fextra->max_deep + 1) * sizeof(PLpgSQL_stmt *));
 			plugin_info->stmts_buf = palloc((plugin_info->fextra->max_deep + 1) * sizeof(PLpgSQL_stmt *));
 		}
@@ -216,6 +212,15 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 #endif
 
+	}
+
+	if (plugin_info->fextra)
+	{
+		plugin_info->er_mcb.func = plugin_info_reset;
+		plugin_info->er_mcb.arg = plugin_info;
+
+		MemoryContextRegisterResetCallback(CurrentMemoryContext,
+								   &plugin_info->er_mcb);
 	}
 
 	if (prev_plpgsql_plugin)
@@ -321,7 +326,7 @@ func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 {
 	plpgsql_plugin_info *plugin_info = estate->plugin_info;
 	MemoryContext exec_mcxt = CurrentMemoryContext;
-	int			naborted_stmts = plugin_info->stmts_stack_size;
+	int			naborted_stmts;
 	int			i;
 
 	if (!plugin_info || plugin_info->magic != PLUGIN_INFO_MAGIC)
@@ -334,6 +339,7 @@ func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	if (!plugin_info->fextra)
 		return;
 
+	naborted_stmts = plugin_info->stmts_stack_size;
 	plugin_info->stmts_stack_size = 0;
 
 	PG_TRY();
@@ -365,10 +371,13 @@ func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	{
 		estate->plugin_info = plugin_info;
 
-		MemoryContextUnregisterResetCallback(CurrentMemoryContext,
-										   &plugin_info->er_mcb);
+		if (plugin_info->fextra)
+		{
+			MemoryContextUnregisterResetCallback(CurrentMemoryContext,
+											   &plugin_info->er_mcb);
 
-		plch_release_fextra(plugin_info->fextra);
+			plch_release_fextra(plugin_info->fextra);
+		}
 
 		PG_RE_THROW();
 	}
@@ -376,10 +385,13 @@ func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 	estate->plugin_info = plugin_info;
 
-	MemoryContextUnregisterResetCallback(CurrentMemoryContext,
-									   &plugin_info->er_mcb);
+	if (plugin_info->fextra)
+	{
+		MemoryContextUnregisterResetCallback(CurrentMemoryContext,
+										   &plugin_info->er_mcb);
 
-	plch_release_fextra(plugin_info->fextra);
+		plch_release_fextra(plugin_info->fextra);
+	}
 }
 
 static void
@@ -394,8 +406,8 @@ stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		return;
 
 	Assert(plugin_info->estate == estate);
-	Assert(plugin_info->fn_oid == func->fn_oid);
-	Assert(plugin_info->use_count == func->cfunc.use_count);
+	Assert(plugin_info->fn_oid == estate->func->fn_oid);
+	Assert(plugin_info->use_count == estate->func->cfunc.use_count);
 
 	if (!plugin_info->fextra)
 		return;
@@ -468,8 +480,8 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		return;
 
 	Assert(plugin_info->estate == estate);
-	Assert(plugin_info->fn_oid == func->fn_oid);
-	Assert(plugin_info->use_count == func->cfunc.use_count);
+	Assert(plugin_info->fn_oid == estate->func->fn_oid);
+	Assert(plugin_info->use_count == estate->func->cfunc.use_count);
 
 	if (!plugin_info->fextra)
 		return;
@@ -487,7 +499,7 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	}
 
 	Assert(plugin_info->stmts_stack_size > 0);
-	Assert(plugin_info->stmts_stack[plugin_info->stmts_stack_size - 1].stmtid == stmt->stmtid);
+	Assert(plugin_info->stmts_stack[plugin_info->stmts_stack_size - 1]->stmtid == stmt->stmtid);
 
 	plugin_info->stmts_stack_size--;
 

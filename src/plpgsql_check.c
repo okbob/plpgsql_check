@@ -449,6 +449,8 @@ _PG_init(void)
 	}
 
 	plch_init_plugin();
+	//simple_plugin_init();
+
 
 	plpgsql_check_passive_check_init();
 	plpgsql_check_profiler_init();

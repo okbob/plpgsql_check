@@ -61,7 +61,7 @@ init_fextra_stmt(plch_fextra *fextra,
 	fextra->levels[stmtid] = level;
 	fextra->containers[stmtid] = true;
 
-	fextra->natural_to_ids[fextra->naturalids[stmtid]] = stmtid;
+	fextra->natural_to_ids[fextra->naturalids[stmtid] - 1] = stmtid;
 	fextra->stmt_typenames[stmtid] = plpgsql_check__stmt_typename_p(stmt);
 	fextra->invisible[stmtid] = stmt->lineno < 1;
 
@@ -69,13 +69,13 @@ init_fextra_stmt(plch_fextra *fextra,
 	 * When this statement is visible, then nested
 	 * statements will be in higher levels.
 	 */
-	if (stmt->lineno < 1)
-		level++;
+
 
 	if (cur_deep > fextra->max_deep)
 		fextra->max_deep = cur_deep;
 
 	cur_deep++;
+	level++;
 
 	switch (stmt->cmd_type)
 	{
@@ -297,7 +297,8 @@ plch_get_fextra(PLpgSQL_function *func)
 		MemoryContext oldcxt;
 		char	   *fn_name = NULL;
 		char	   *fn_namespacename = NULL;
-		int			naturalid;
+		int			naturalid = 0;
+		int			i;
 
 		if (func->fn_oid)
 		{
@@ -316,17 +317,21 @@ plch_get_fextra(PLpgSQL_function *func)
 		fextra->fn_signature = func->fn_signature ? pstrdup(func->fn_signature) : NULL;
 		fextra->nstatements = func->nstatements;
 
+
 		fextra->parentids = palloc(sizeof(int) * (func->nstatements + 1));
 		fextra->invisible = palloc(sizeof(bool) * (func->nstatements + 1));
 		fextra->naturalids = palloc(sizeof(int) * (func->nstatements + 1));
-		fextra->natural_to_ids = palloc(sizeof(int) * (func->nstatements + 1));
+
+		fextra->natural_to_ids = palloc0(sizeof(int) * (func->nstatements + 1));
+
 		fextra->stmt_typenames = palloc(sizeof(char *) * (func->nstatements + 1));
 		fextra->levels = palloc(sizeof(int) * (func->nstatements + 1));
 		fextra->containers = palloc(sizeof(bool) * (func->nstatements + 1));
 
 		MemoryContextSwitchTo(oldcxt);
 
-		init_fextra_stmt(fextra, 0, &naturalid, 0, 0, (PLpgSQL_stmt *) func->action);
+		fextra->max_deep = 0;
+		init_fextra_stmt(fextra, 0, &naturalid, 1, 0, (PLpgSQL_stmt *) func->action);
 
 		fextra->is_valid = true;
 	}
