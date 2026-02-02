@@ -140,6 +140,14 @@ plugin_info_reset(void *arg)
 
 	plugin_info->stmts_stack_size = 0;
 
+	/*
+	 * PostgreSQL 19 can reset this callback. But we need to support
+	 * previous releases, so when fextra is already released, then
+	 * do nothing here.
+	 */
+	if (!plugin_info->fextra)
+		return;
+
 	PG_TRY();
 	{
 		abort_statements(plugin_info->stmts_stack,
@@ -163,12 +171,14 @@ plugin_info_reset(void *arg)
 	PG_CATCH();
 	{
 		plch_release_fextra(plugin_info->fextra);
+		plugin_info->fextra = NULL;
 
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 
 	plch_release_fextra(plugin_info->fextra);
+	plugin_info->fextra = NULL;
 }
 
 /*
@@ -184,7 +194,17 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	plugin_info->magic = PLUGIN_INFO_MAGIC;
 	plugin_info->fn_oid = func->fn_oid;
 	plugin_info->estate = estate;
+
+
+#if PG_VERSION_NUM >= 180000
+
 	plugin_info->use_count = func->cfunc.use_count;
+
+#else
+
+	plugin_info->use_count = func->use_count;
+
+#endif
 
 	for (i = 0; i < nplugins; i++)
 	{
@@ -283,7 +303,16 @@ func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 	Assert(plugin_info->estate == estate);
 	Assert(plugin_info->fn_oid == func->fn_oid);
+
+#if PG_VERSION_NUM >= 180000
+
 	Assert(plugin_info->use_count == func->cfunc.use_count);
+
+#else
+
+	Assert(plugin_info->use_count == func->use_count);
+
+#endif
 
 	if (!plugin_info->fextra)
 		return;
@@ -334,7 +363,16 @@ func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 	Assert(plugin_info->estate == estate);
 	Assert(plugin_info->fn_oid == func->fn_oid);
+
+#if PG_VERSION_NUM >= 180000
+
 	Assert(plugin_info->use_count == func->cfunc.use_count);
+
+#else
+
+	Assert(plugin_info->use_count == func->use_count);
+
+#endif
 
 	if (!plugin_info->fextra)
 		return;
@@ -373,10 +411,8 @@ func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 		if (plugin_info->fextra)
 		{
-			MemoryContextUnregisterResetCallback(CurrentMemoryContext,
-											   &plugin_info->er_mcb);
-
 			plch_release_fextra(plugin_info->fextra);
+			plugin_info->fextra = NULL;
 		}
 
 		PG_RE_THROW();
@@ -387,10 +423,8 @@ func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 	if (plugin_info->fextra)
 	{
-		MemoryContextUnregisterResetCallback(CurrentMemoryContext,
-										   &plugin_info->er_mcb);
-
 		plch_release_fextra(plugin_info->fextra);
+		plugin_info->fextra = NULL;
 	}
 }
 
@@ -407,7 +441,16 @@ stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 	Assert(plugin_info->estate == estate);
 	Assert(plugin_info->fn_oid == estate->func->fn_oid);
+
+#if PG_VERSION_NUM >= 180000
+
 	Assert(plugin_info->use_count == estate->func->cfunc.use_count);
+
+#else
+
+	Assert(plugin_info->use_count == estate->func->use_count);
+
+#endif
 
 	if (!plugin_info->fextra)
 		return;
@@ -481,7 +524,16 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 	Assert(plugin_info->estate == estate);
 	Assert(plugin_info->fn_oid == estate->func->fn_oid);
+
+#if PG_VERSION_NUM >= 180000
+
 	Assert(plugin_info->use_count == estate->func->cfunc.use_count);
+
+#else
+
+	Assert(plugin_info->use_count == estate->func->use_count);
+
+#endif
 
 	if (!plugin_info->fextra)
 		return;
@@ -567,7 +619,7 @@ plch_init_plugin(void)
 #if PG_VERSION_NUM < 150000
 
 void
-plxh_finish_plugin(void)
+plch_finish_plugin(void)
 {
 	PLpgSQL_plugin **plugin_ptr;
 

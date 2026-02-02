@@ -298,7 +298,6 @@ plch_get_fextra(PLpgSQL_function *func)
 		char	   *fn_name = NULL;
 		char	   *fn_namespacename = NULL;
 		int			naturalid = 0;
-		int			i;
 
 		if (func->fn_oid)
 		{

@@ -464,7 +464,7 @@ void plch_release_fextra(plch_fextra *fextra);
 
 #if PG_VERSION_NUM < 150000
 
-void plch_fextra_deinit();
+extern void plch_fextra_deinit(void);
 
 #endif
 
@@ -504,17 +504,9 @@ typedef struct plch_plugin
 extern void plch_init_plugin(void);
 extern void plch_register_plugin(plch_plugin *plugin);
 
-
-extern int *plpgsql_check_get_current_stmtid_map(void);
-extern int *plpgsql_check_get_stmtid_map(PLpgSQL_function *func);
-
-extern char *plpgsql_check_get_current_func_info_name(void);
-extern char *plpgsql_check_get_current_func_info_signature(void);
-extern MemoryContext plpgsql_check_get_current_fn_mcxt(void);
-
 #if PG_VERSION_NUM < 150000
 
-extern void plpgsql_check_finish_pldbgapi2(void);
+extern void plch_finish_plugin(void);
 
 #endif
 
