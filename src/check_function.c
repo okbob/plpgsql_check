@@ -74,10 +74,12 @@ static void setup_estate(PLpgSQL_execstate *estate, PLpgSQL_function *func, Retu
 static void setup_cstate(PLpgSQL_checkstate *cstate, plpgsql_check_result_info *result_info,
 						 plpgsql_check_info *cinfo, bool is_active_mode, bool fake_rtd);
 
-static void passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
+static void passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fextra *fextra);
+static bool is_active(PLpgSQL_execstate *estate, PLpgSQL_function *func);
 
-static plpgsql_check_plugin2 check_plugin2 =
+static plch_plugin check_plugin =
 {
+	is_active,
 	NULL,
 	passive_check_func_beg, NULL, NULL,
 	NULL, NULL, NULL,
@@ -336,6 +338,13 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 		elog(ERROR, "SPI_finish failed: %s", SPI_result_code_string(rc));
 }
 
+static bool
+is_active(PLpgSQL_execstate *estate, PLpgSQL_function *func)
+{
+	return plpgsql_check_mode == PLPGSQL_CHECK_MODE_FRESH_START ||
+		   plpgsql_check_mode == PLPGSQL_CHECK_MODE_EVERY_START;
+}
+
 /*
  * plpgsql_check_on_func_beg - passive mode
  *
@@ -344,7 +353,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
  *
  */
 static void
-passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info)
+passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fextra *fextra)
 {
 	const char *err_text = estate->err_text;
 	int			closing;
@@ -529,7 +538,7 @@ passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, void *
 void
 plpgsql_check_passive_check_init(void)
 {
-	plpgsql_check_register_pldbgapi2_plugin(&check_plugin2);
+	plch_register_plugin(&check_plugin);
 }
 
 /*

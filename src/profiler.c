@@ -164,8 +164,7 @@ typedef struct profiler_stmt_walker_options
 	int64		nested_exec_count;
 	profiler_iterator *pi;
 	coverage_state *cs;
-	int		   *stmtid_map;
-	plpgsql_check_plugin2_stmt_info *stmts_info;
+	plch_fextra *fextra;
 } profiler_stmt_walker_options;
 
 enum
@@ -199,19 +198,20 @@ static void stmts_walker(profiler_info *pinfo, profiler_stmt_walker_mode, List *
 static void profiler_stmt_walker(profiler_info *pinfo, profiler_stmt_walker_mode mode, PLpgSQL_stmt *stmt,
 								 PLpgSQL_stmt *parent_stmt, const char *description, int stmt_block_num, profiler_stmt_walker_options *opts);
 
-static void profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
-static void profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
-static void profiler_func_end_aborted(Oid fn_oid, void **plugin2_info);
-static void profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info);
-static void profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info);
-static void profiler_stmt_end_aborted(Oid fn_oid, int stmtid, void **plugin2_info);
+static bool profiler_is_active(PLpgSQL_execstate *estate, PLpgSQL_function *func);
+static void profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fextra *fextra);
+static void profiler_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fextra *fextra);
+static void profiler_func_abort(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fextra *fextra);
+static void profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra);
+static void profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra);
+static void profiler_stmt_abort(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra);
 
-
-static plpgsql_check_plugin2 profiler_plugin2 =
+static plch_plugin profiler_plugin =
 {
+	profiler_is_active,
 	profiler_func_setup,
-	NULL, profiler_func_end, profiler_func_end_aborted,
-	profiler_stmt_beg, profiler_stmt_end, profiler_stmt_end_aborted,
+	NULL, profiler_func_end, profiler_func_abort,
+	profiler_stmt_beg, profiler_stmt_end, profiler_stmt_abort,
 	NULL, NULL, NULL, NULL, NULL
 };
 
@@ -632,15 +632,15 @@ profiler_stmt_walker(profiler_info *pinfo,
 
 		if (prepare_result_mode && opts->pi->ri)
 		{
-			plpgsql_check_plugin2_stmt_info *sinfo;
 			int			parent_natural_stmtid = -1;
+			int			naturalid = opts->fextra->naturalids[stmt->stmtid];
+			const char *typname = opts->fextra->stmt_typenames[stmt->stmtid];
 
-			parent_natural_stmtid = parent_stmt ? opts->stmts_info[parent_stmt->stmtid - 1].natural_id : -1;
-			sinfo = &opts->stmts_info[stmt->stmtid - 1];
+			parent_natural_stmtid = parent_stmt ? opts->fextra->naturalids[parent_stmt->stmtid] : -1;
 
 			plpgsql_check_put_profile_statement(opts->pi->ri,
 												ppstmt ? ppstmt->queryid : NOQUERYID,
-												sinfo->natural_id,
+												naturalid,
 												parent_natural_stmtid,
 												description,
 												stmt_block_num,
@@ -650,7 +650,7 @@ profiler_stmt_walker(profiler_info *pinfo,
 												ppstmt ? ppstmt->us_total : 0.0,
 												ppstmt ? ppstmt->us_max : 0.0,
 												ppstmt ? ppstmt->rows : 0,
-												(char *) sinfo->typname);
+												(char *) typname);
 		}
 		else if (collect_coverage_mode)
 		{
@@ -1640,7 +1640,7 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, query_pa
 	oldcxt = MemoryContextSwitchTo(profiler_queryid_mcxt);
 	MemoryContextSwitchTo(oldcxt);
 
-	profiler_plugin2.assign_expr(estate, (PLpgSQL_datum *) &result, expr);
+	profiler_plugin.assign_expr(estate, (PLpgSQL_datum *) &result, expr);
 
 	query_string = TextDatumGetCString(result.value);
 
@@ -1886,8 +1886,7 @@ plpgsql_check_iterate_over_profile(plpgsql_check_info *cinfo,
 
 		func = plpgsql_check__compile_p(fake_fcinfo, false);
 
-		opts.stmtid_map = plpgsql_check_get_stmtid_map(func);
-		opts.stmts_info = plpgsql_check_get_stmts_info(func);
+		opts.fextra = plch_get_fextra(func);
 
 		opts.pi = &pi;
 		opts.cs = cs;
@@ -1898,14 +1897,15 @@ plpgsql_check_iterate_over_profile(plpgsql_check_info *cinfo,
 
 		profiler_stmt_walker(&pinfo, mode, (PLpgSQL_stmt *) func->action, NULL, NULL, 1, &opts);
 
-		pfree(opts.stmtid_map);
-		pfree(opts.stmts_info);
+		plch_release_fextra(opts.fextra);
 
 	}
 	PG_CATCH();
 	{
 		if (unlock_mutex)
 			SpinLockRelease(&first_chunk->mutex);
+
+		plch_release_fextra(opts.fextra);
 
 		PG_RE_THROW();
 	}
@@ -2124,14 +2124,21 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 		LWLockRelease(profiler_ss->lock);
 }
 
+static bool
+profiler_is_active(PLpgSQL_execstate *estate, PLpgSQL_function *func)
+{
+	return plpgsql_check_profiler;
+}
+
+
 /*
  * Try to search profile pattern for function. Creates profile pattern when
  * it doesn't exists.
  */
 static void
-profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info)
+profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fextra *fextra)
 {
-	if (plpgsql_check_profiler && OidIsValid(func->fn_oid))
+	if (OidIsValid(func->fn_oid))
 	{
 		profiler_info *pinfo;
 
@@ -2142,8 +2149,7 @@ profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **pl
 		INSTR_TIME_SET_CURRENT(pinfo->start_time);
 
 		pinfo->func = func;
-
-		*plugin2_info = pinfo;
+		estate->plugin_info = pinfo;
 	}
 }
 
@@ -2179,9 +2185,6 @@ _profiler_func_end(profiler_info *pinfo, Oid fn_oid, bool is_aborted)
 
 	stmtid_map = plpgsql_check_get_current_stmtid_map();
 
-	opts.stmts_info = plpgsql_check_get_current_stmts_info();
-	opts.stmtid_map = stmtid_map;
-
 	/* finalize profile - get result profile */
 	profiler_stmt_walker(pinfo, PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME,
 						 (PLpgSQL_stmt *) pinfo->func->action, NULL, NULL, 1,
@@ -2194,35 +2197,35 @@ _profiler_func_end(profiler_info *pinfo, Oid fn_oid, bool is_aborted)
 static void
 profiler_func_end(PLpgSQL_execstate *estate,
 				  PLpgSQL_function *func,
-				  void **plugin2_info)
+				  plch_fextra *fextra)
 {
-	profiler_info *pinfo = *plugin2_info;
+	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 
 	if (!pinfo)
 		return;
-
-	Assert(pinfo->func == func);
 
 	_profiler_func_end(pinfo, func->fn_oid, false);
 }
 
 static void
-profiler_func_end_aborted(Oid fn_oid, void **plugin2_info)
+profiler_func_abort(PLpgSQL_execstate *estate,
+				  PLpgSQL_function *func,
+				  plch_fextra *fextra)
 {
-	profiler_info *pinfo = *plugin2_info;
+	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 
 	if (!pinfo)
 		return;
 
-	_profiler_func_end(pinfo, fn_oid, true);
+	_profiler_func_end(pinfo, func->fn_oid, true);
 }
 
 static void
 profiler_stmt_beg(PLpgSQL_execstate *estate,
 				  PLpgSQL_stmt *stmt,
-				  void **plugin2_info)
+				  plch_fextra *fextra)
 {
-	profiler_info *pinfo = (profiler_info *) *plugin2_info;
+	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 
 	if (pinfo)
 	{
@@ -2259,9 +2262,9 @@ _profiler_stmt_end(profiler_stmt *pstmt, bool is_aborted)
 static void
 profiler_stmt_end(PLpgSQL_execstate *estate,
 				  PLpgSQL_stmt *stmt,
-				  void **plugin2_info)
+				  plch_fextra *fextra)
 {
-	profiler_info *pinfo = *plugin2_info;
+	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 
 	if (pinfo)
 	{
@@ -2281,13 +2284,15 @@ profiler_stmt_end(PLpgSQL_execstate *estate,
 }
 
 static void
-profiler_stmt_end_aborted(Oid fn_oid, int stmtid, void **plugin2_info)
+profiler_stmt_abort(PLpgSQL_execstate *estate,
+					PLpgSQL_stmt *stmt,
+					plch_fextra *fextra)
 {
-	profiler_info *pinfo = *plugin2_info;
+	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 
 	if (pinfo)
 	{
-		profiler_stmt *pstmt = &pinfo->stmts[stmtid - 1];
+		profiler_stmt *pstmt = &pinfo->stmts[stmt->stmtid - 1];
 
 		_profiler_stmt_end(pstmt, true);
 	}
@@ -2381,5 +2386,5 @@ plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 void
 plpgsql_check_profiler_init(void)
 {
-	plpgsql_check_register_pldbgapi2_plugin(&profiler_plugin2);
+	plch_register_plugin(&profiler_plugin);
 }

@@ -448,7 +448,8 @@ _PG_init(void)
 		shmem_startup_hook = plpgsql_check_profiler_shmem_startup;
 	}
 
-	plpgsql_check_init_pldbgapi2();
+	plch_init_plugin();
+
 	plpgsql_check_passive_check_init();
 	plpgsql_check_profiler_init();
 	plpgsql_check_tracer_init();

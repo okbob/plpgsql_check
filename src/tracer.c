@@ -62,19 +62,21 @@ typedef struct tracer_info
 
 static void trace_assert(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, tracer_info *tinfo);
 
-static void tracer_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
-static void tracer_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
-static void tracer_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
-static void tracer_func_end_aborted(Oid fn_oid, void **plugin2_info);
-static void tracer_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info);
-static void tracer_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info);
-static void tracer_stmt_end_aborted(Oid fn_oid, int stmtid, void **plugin2_info);
+static bool tracer_is_active(PLpgSQL_execstate *estate, PLpgSQL_function *func);
+static void tracer_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fextra *fextra);
+static void tracer_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fextra *fextra);
+static void tracer_func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fextra *fextra);
+static void tracer_func_abort(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fextra *fextra);
+static void tracer_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra);
+static void tracer_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra);
+static void tracer_stmt_abort(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra);
 
-static plpgsql_check_plugin2 tracer_plugin2 =
+static plch_plugin tracer_plugin =
 {
+	tracer_is_active,
 	tracer_func_setup,
-	tracer_func_beg, tracer_func_end, tracer_func_end_aborted,
-	tracer_stmt_beg, tracer_stmt_end, tracer_stmt_end_aborted,
+	tracer_func_beg, tracer_func_end, tracer_func_abort,
+	tracer_stmt_beg, tracer_stmt_end, tracer_stmt_abort,
 	NULL, NULL, NULL, NULL, NULL
 };
 
@@ -772,8 +774,14 @@ print_datum(PLpgSQL_execstate *estate, PLpgSQL_datum *dtm, char *frame, int leve
 		pfree(str);
 }
 
+static bool
+tracer_is_active(PLpgSQL_execstate *estate, PLpgSQL_function *func)
+{
+	return plpgsql_check_enable_tracer;
+}
+
 static void
-tracer_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info)
+tracer_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fextra *fextra)
 {
 	tracer_info *tinfo = NULL;
 
@@ -786,13 +794,13 @@ tracer_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plug
 
 		tinfo->fn_oid = func->fn_oid;
 
-		tinfo->fn_name = plpgsql_check_get_current_func_info_name();
-		tinfo->fn_signature = plpgsql_check_get_current_func_info_signature();
+		tinfo->fn_name = fextra->fn_name;
+		tinfo->fn_signature = fextra->fn_signature;
 
 		INSTR_TIME_SET_CURRENT(tinfo->start_time);
 	}
 
-	*plugin2_info = tinfo;
+	estate->plugin_info = tinfo;
 }
 
 /*
@@ -843,9 +851,9 @@ get_outer_info(char **errcontextstr, int *frame_num)
 static void
 tracer_func_beg(PLpgSQL_execstate *estate,
 				PLpgSQL_function *func,
-				void **plugin2_info)
+				plch_fextra *fextra)
 {
-	tracer_info *tinfo = *plugin2_info;
+	tracer_info *tinfo = (tracer_info *) estate->plugin_info;
 	char	   *caller_errcontext = NULL;
 	Oid			fn_oid;
 	int			indent;
@@ -977,9 +985,9 @@ _tracer_func_end(tracer_info *tinfo, bool is_aborted)
 static void
 tracer_func_end(PLpgSQL_execstate *estate,
 				PLpgSQL_function *func,
-				void **plugin2_info)
+				plch_fextra *fextra)
 {
-	tracer_info *tinfo = *plugin2_info;
+	tracer_info *tinfo = (tracer_info *) estate->plugin_info;
 
 	if (!tinfo)
 		return;
@@ -990,9 +998,11 @@ tracer_func_end(PLpgSQL_execstate *estate,
 }
 
 static void
-tracer_func_end_aborted(Oid fn_oid, void **plugin2_info)
+tracer_func_abort(PLpgSQL_execstate *estate,
+				PLpgSQL_function *func,
+				plch_fextra *fextra)
 {
-	tracer_info *tinfo = *plugin2_info;
+	tracer_info *tinfo = (tracer_info *) estate->plugin_info;
 
 	if (!tinfo)
 		return;
@@ -1031,29 +1041,26 @@ copy_string_part(char *dest, char *src, int n)
 static void
 tracer_stmt_beg(PLpgSQL_execstate *estate,
 				PLpgSQL_stmt *stmt,
-				void **plugin2_info)
+				plch_fextra *fextra)
 {
-	tracer_info *tinfo = *plugin2_info;
-	plpgsql_check_plugin2_stmt_info *sinfo;
+	tracer_info *tinfo = (tracer_info *) estate->plugin_info;
 	int			total_level;
 	char		buffer[20];
 
 	if (!tinfo)
 		return;
 
-	sinfo = plpgsql_check_get_current_stmt_info(stmt->stmtid);
-
 	/* save current tracer state (enabled | disabled) */
 	tinfo->stmts_tracer_state[stmt->stmtid - 1] = plpgsql_check_tracer;
 
 	/* don't trace invisible statements */
-	if (sinfo->is_invisible || !plpgsql_check_tracer)
+	if (fextra->invisible[stmt->stmtid] || !plpgsql_check_tracer)
 		return;
 
 	if (stmt->cmd_type == PLPGSQL_STMT_ASSERT && plpgsql_check_trace_assert)
 		trace_assert(estate, stmt, tinfo);
 
-	total_level = tinfo->frame_num + sinfo->level;
+	total_level = tinfo->frame_num + fextra->levels[stmt->stmtid];
 
 	if (plpgsql_check_tracer_show_nsubxids)
 	{
@@ -1070,7 +1077,7 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 
 	if (plpgsql_check_tracer_verbosity == PGERROR_VERBOSE)
 	{
-		int			indent = (tinfo->frame_num + sinfo->level) * 2;
+		int			indent = (tinfo->frame_num + fextra->levels[stmt->stmtid]) * 2;
 		int			frame_width = 6;
 		char		printbuf[20];
 		char		exprbuf[200];
@@ -1136,7 +1143,7 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 
 		INSTR_TIME_SET_CURRENT(tinfo->stmts_start_time[stmt->stmtid - 1]);
 
-		snprintf(printbuf, 20, "%d.%d", tinfo->frame_num, sinfo->natural_id);
+		snprintf(printbuf, 20, "%d.%d", tinfo->frame_num, fextra->naturalids[stmt->stmtid]);
 
 		if (expr)
 		{
@@ -1229,7 +1236,7 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 
 static void
 _tracer_stmt_end(tracer_info *tinfo,
-				 plpgsql_check_plugin2_stmt_info * sinfo,
+				 plch_fextra *fextra,
 				 int stmtid,
 				 bool is_aborted)
 {
@@ -1239,9 +1246,9 @@ _tracer_stmt_end(tracer_info *tinfo,
 	Assert(sinfo);
 
 	/* don't trace invisible statements */
-	if (sinfo->is_invisible)
+	if (fextra->invisible[stmtid])
 	{
-		if (sinfo->is_container)
+		if (fextra->containers[stmtid])
 			/* restore tracer state (enabled | disabled) */
 			plpgsql_check_tracer = tinfo->stmts_tracer_state[stmtid - 1];
 
@@ -1251,7 +1258,7 @@ _tracer_stmt_end(tracer_info *tinfo,
 	if (tinfo->stmts_tracer_state[stmtid - 1] &&
 		plpgsql_check_tracer_verbosity == PGERROR_VERBOSE)
 	{
-		int			indent = (tinfo->frame_num + sinfo->level) * 2;
+		int			indent = (tinfo->frame_num + fextra->levels[stmtid]) * 2;
 		int			frame_width = 6;
 		char		printbuf[20];
 		uint64		elapsed = 0;
@@ -1274,65 +1281,60 @@ _tracer_stmt_end(tracer_info *tinfo,
 			 "#%-*s      %*s <-- end of %s (elapsed time=%.3f ms)%s",
 			 frame_width, printbuf,
 			 indent, "",
-			 sinfo->typname,
+			 fextra->stmt_typenames[stmtid],
 			 elapsed / 1000.0,
 			 aborted);
 	}
 
-	if (sinfo->is_container)
+	if (fextra->containers[stmtid])
 	{
 		/* restore tracer state (enabled | disabled) */
 		plpgsql_check_tracer = tinfo->stmts_tracer_state[stmtid - 1];
 	}
-
 }
 
 
 static void
 tracer_stmt_end(PLpgSQL_execstate *estate,
 				PLpgSQL_stmt *stmt,
-				void **plugin2_info)
+				plch_fextra *fextra)
 {
-	tracer_info *tinfo = *plugin2_info;
-	plpgsql_check_plugin2_stmt_info *sinfo;
+	tracer_info *tinfo = (tracer_info *) estate->plugin_info;
 
 	if (!tinfo)
 		return;
 
-	sinfo = plpgsql_check_get_current_stmt_info(stmt->stmtid);
-
-	_tracer_stmt_end(tinfo, sinfo, stmt->stmtid, false);
+	_tracer_stmt_end(tinfo, fextra, stmt->stmtid, false);
 
 	if (!plpgsql_check_tracer)
 		return;
 
 	if (plpgsql_check_tracer_verbosity == PGERROR_VERBOSE &&
 		stmt->cmd_type == PLPGSQL_STMT_ASSIGN &&
-		!sinfo->is_invisible)
+		!fextra->invisible[stmt->stmtid])
 	{
 		char		printbuf[20];
 
-		snprintf(printbuf, 20, "%d.%d", tinfo->frame_num, sinfo->natural_id);
+		snprintf(printbuf, 20, "%d.%d", tinfo->frame_num, fextra->naturalids[stmt->stmtid]);
 
 		print_datum(estate,
 					estate->datums[((PLpgSQL_stmt_assign *) stmt)->varno],
 					printbuf,
-					tinfo->frame_num + sinfo->level);
+					tinfo->frame_num + fextra->levels[stmt->stmtid]);
 	}
 }
 
 static void
-tracer_stmt_end_aborted(Oid fn_oid, int stmtid, void **plugin2_info)
+tracer_stmt_abort(PLpgSQL_execstate *estate,
+				 PLpgSQL_stmt *stmt,
+				 plch_fextra *fextra)
 {
-	tracer_info *tinfo = *plugin2_info;
-	plpgsql_check_plugin2_stmt_info *sinfo;
+	tracer_info *tinfo = (tracer_info *) estate->plugin_info;
 
 	if (!tinfo)
 		return;
 
-	sinfo = plpgsql_check_get_current_stmt_info(stmtid);
-
-	_tracer_stmt_end(tinfo, sinfo, stmtid, true);
+	_tracer_stmt_end(tinfo, fextra, stmt->stmtid, true);
 }
 
 static void
@@ -1357,7 +1359,7 @@ trace_assert(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, tracer_info *tinfo)
 	typ.typbyval = true;
 	typ.typtype = 'b';
 
-	tracer_plugin2.assign_expr(estate, (PLpgSQL_datum *) &result, stmt_assert->cond);
+	tracer_plugin.assign_expr(estate, (PLpgSQL_datum *) &result, stmt_assert->cond);
 
 	if ((bool) result.value)
 	{
@@ -1426,7 +1428,7 @@ trace_assert(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, tracer_info *tinfo)
 void
 plpgsql_check_tracer_init(void)
 {
-	plpgsql_check_register_pldbgapi2_plugin(&tracer_plugin2);
+	plch_register_plugin(&tracer_plugin);
 }
 
 /*

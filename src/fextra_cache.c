@@ -61,6 +61,10 @@ init_fextra_stmt(plch_fextra *fextra,
 	fextra->levels[stmtid] = level;
 	fextra->containers[stmtid] = true;
 
+	fextra->natural_to_ids[fextra->naturalids[stmtid]] = stmtid;
+	fextra->stmt_typenames[stmtid] = plpgsql_check__stmt_typename_p(stmt);
+	fextra->invisible[stmtid] = stmt->lineno < 1;
+
 	/*
 	 * When this statement is visible, then nested
 	 * statements will be in higher levels.
@@ -313,7 +317,10 @@ plch_get_fextra(PLpgSQL_function *func)
 		fextra->nstatements = func->nstatements;
 
 		fextra->parentids = palloc(sizeof(int) * (func->nstatements + 1));
+		fextra->invisible = palloc(sizeof(bool) * (func->nstatements + 1));
 		fextra->naturalids = palloc(sizeof(int) * (func->nstatements + 1));
+		fextra->natural_to_ids = palloc(sizeof(int) * (func->nstatements + 1));
+		fextra->stmt_typenames = palloc(sizeof(char *) * (func->nstatements + 1));
 		fextra->levels = palloc(sizeof(int) * (func->nstatements + 1));
 		fextra->containers = palloc(sizeof(bool) * (func->nstatements + 1));
 

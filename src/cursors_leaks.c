@@ -62,12 +62,14 @@ static LocalTransactionId traces_lxid = InvalidLocalTransactionId;
 static HTAB *traces = NULL;
 static MemoryContext traces_mcxt = NULL;
 
-static void func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
-static void func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info);
-static void stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info);
+static bool is_active(PLpgSQL_execstate *estate, PLpgSQL_function *func);
+static void func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fextra *fextra);
+static void func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fextra *fextra);
+static void stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra);
 
-static plpgsql_check_plugin2 cursors_leaks_plugin2 =
+static plch_plugin cursors_leaks_plugin =
 {
+	is_active,
 	func_setup, NULL, func_end, NULL,
 	NULL, stmt_end, NULL, NULL, NULL, NULL, NULL, NULL
 };
@@ -149,33 +151,34 @@ get_function_trace(PLpgSQL_function *func)
 	return ftrace;
 }
 
+static bool
+is_active(PLpgSQL_execstate *estate, PLpgSQL_function *func)
+{
+	return plpgsql_check_cursors_leaks;
+}
 
 static void
-func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, void **plugin2_info)
+func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fextra *fextra)
 {
 	if (plpgsql_check_cursors_leaks)
 	{
 		CursorLeaksPlugin2Info *pinfo;
-		MemoryContext fn_mcxt;
 
-		fn_mcxt = plpgsql_check_get_current_fn_mcxt();
-		pinfo = MemoryContextAlloc(fn_mcxt, sizeof(CursorLeaksPlugin2Info));
+		pinfo = palloc(sizeof(CursorLeaksPlugin2Info));
 
 		pinfo->ftrace = get_function_trace(func);
 		pinfo->lxid = CURRENT_LXID;
 
-		*plugin2_info = pinfo;
+		estate->plugin_info = pinfo;
 	}
-	else
-		*plugin2_info = NULL;
 }
 
 static void
 func_end(PLpgSQL_execstate *estate,
 		 PLpgSQL_function *func,
-		 void **plugin2_info)
+		 plch_fextra *fextra)
 {
-	CursorLeaksPlugin2Info *pinfo = *plugin2_info;
+	CursorLeaksPlugin2Info *pinfo = (CursorLeaksPlugin2Info *) estate->plugin_info;
 	FunctionTrace *ftrace;
 	int			i;
 
@@ -233,9 +236,9 @@ func_end(PLpgSQL_execstate *estate,
 }
 
 static void
-stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info)
+stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra)
 {
-	CursorLeaksPlugin2Info *pinfo = *plugin2_info;
+	CursorLeaksPlugin2Info *pinfo = (CursorLeaksPlugin2Info *) estate->plugin_info;
 	FunctionTrace *ftrace;
 
 	if (!pinfo)
@@ -381,5 +384,5 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, void **plugin2_info)
 void
 plpgsql_check_cursors_leaks_init(void)
 {
-	plpgsql_check_register_pldbgapi2_plugin(&cursors_leaks_plugin2);
+	plch_register_plugin(&cursors_leaks_plugin);
 }
