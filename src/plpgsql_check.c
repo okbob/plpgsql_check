@@ -183,6 +183,29 @@ plpgsql_check_check_ext_version(Oid fn_oid)
 	}
 }
 
+#if PG_VERSION_NUM >= 190000
+
+	StaticAssertVariableIsOfType(&plpgsql_build_datatype, plpgsql_check__build_datatype_t);
+	StaticAssertVariableIsOfType(&plpgsql_compile, plpgsql_check__compile_t);
+	StaticAssertVariableIsOfType(&plpgsql_parser_setup, plpgsql_check__parser_setup_t);
+	StaticAssertVariableIsOfType(&plpgsql_stmt_typename, plpgsql_check__stmt_typename_t);
+	StaticAssertVariableIsOfType(&plpgsql_exec_get_datum_type, plpgsql_check__exec_get_datum_type_t);
+	StaticAssertVariableIsOfType(&plpgsql_recognize_err_condition, plpgsql_check__recognize_err_condition_t);
+	StaticAssertVariableIsOfType(&plpgsql_ns_lookup, plpgsql_check__ns_lookup_t);
+
+#else
+
+	AssertVariableIsOfType(&plpgsql_build_datatype, plpgsql_check__build_datatype_t);
+	AssertVariableIsOfType(&plpgsql_compile, plpgsql_check__compile_t);
+	AssertVariableIsOfType(&plpgsql_parser_setup, plpgsql_check__parser_setup_t);
+	AssertVariableIsOfType(&plpgsql_stmt_typename, plpgsql_check__stmt_typename_t);
+	AssertVariableIsOfType(&plpgsql_exec_get_datum_type, plpgsql_check__exec_get_datum_type_t);
+	AssertVariableIsOfType(&plpgsql_recognize_err_condition, plpgsql_check__recognize_err_condition_t);
+	AssertVariableIsOfType(&plpgsql_ns_lookup, plpgsql_check__ns_lookup_t);
+
+#endif
+
+
 /*
  * Module initialization
  *
@@ -201,31 +224,24 @@ _PG_init(void)
 
 	pg_bindtextdomain(TEXTDOMAIN);
 
-	AssertVariableIsOfType(&plpgsql_build_datatype, plpgsql_check__build_datatype_t);
 	plpgsql_check__build_datatype_p = (plpgsql_check__build_datatype_t)
 		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_build_datatype");
 
-	AssertVariableIsOfType(&plpgsql_compile, plpgsql_check__compile_t);
 	plpgsql_check__compile_p = (plpgsql_check__compile_t)
 		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_compile");
 
-	AssertVariableIsOfType(&plpgsql_parser_setup, plpgsql_check__parser_setup_t);
 	plpgsql_check__parser_setup_p = (plpgsql_check__parser_setup_t)
 		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_parser_setup");
 
-	AssertVariableIsOfType(&plpgsql_stmt_typename, plpgsql_check__stmt_typename_t);
 	plpgsql_check__stmt_typename_p = (plpgsql_check__stmt_typename_t)
 		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_stmt_typename");
 
-	AssertVariableIsOfType(&plpgsql_exec_get_datum_type, plpgsql_check__exec_get_datum_type_t);
 	plpgsql_check__exec_get_datum_type_p = (plpgsql_check__exec_get_datum_type_t)
 		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_exec_get_datum_type");
 
-	AssertVariableIsOfType(&plpgsql_recognize_err_condition, plpgsql_check__recognize_err_condition_t);
 	plpgsql_check__recognize_err_condition_p = (plpgsql_check__recognize_err_condition_t)
 		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_recognize_err_condition");
 
-	AssertVariableIsOfType(&plpgsql_ns_lookup, plpgsql_check__ns_lookup_t);
 	plpgsql_check__ns_lookup_p = (plpgsql_check__ns_lookup_t)
 		LOAD_EXTERNAL_FUNCTION("$libdir/plpgsql", "plpgsql_ns_lookup");
 
