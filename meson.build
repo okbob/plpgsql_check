@@ -36,7 +36,7 @@ sources = files(
   'src/cursors_leaks.c',
   'src/format.c',
   'src/check_function.c',
-  'src/pldbgapi2.c',
+  'src/pldbgapi3.c',
   'src/pragma.c',
   'src/report.c',
   'src/tablefunc.c',
