@@ -334,7 +334,7 @@ func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 		if (prev_plpgsql_plugin && prev_plpgsql_plugin->func_beg)
 		{
-			estate->plugin_info = NULL;
+			estate->plugin_info = plugin_info->prev_plugin_info;
 			(prev_plpgsql_plugin->func_beg) (estate, func);
 			plugin_info->prev_plugin_info = estate->plugin_info;
 		}
