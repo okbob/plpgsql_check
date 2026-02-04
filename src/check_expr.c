@@ -317,45 +317,123 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 	}
 }
 
+static const char *
+volatility_to_string(const char volatility)
+{
+	switch (volatility)
+	{
+		case PROVOLATILE_VOLATILE:
+			return "VOLATILE";
+
+		case PROVOLATILE_STABLE:
+			return "STABLE";
+
+		case PROVOLATILE_IMMUTABLE:
+			return "IMMUTABLE";
+
+		default:
+			elog(ERROR, "unknown volatility '%c'", volatility);
+	}
+}
+
 /*
  * Update function's volatility flag by query
  */
 static void
 collect_volatility(PLpgSQL_checkstate *cstate, Query *query)
 {
-	if (cstate->skip_volatility_check ||
-		cstate->volatility == PROVOLATILE_VOLATILE ||
-		!cstate->cinfo->performance_warnings)
+	bool	nowarning = false;
+
+	if (cstate->skip_volatility_check)
 		return;
 
-	if (query->commandType == CMD_SELECT)
+	if ((cstate->cinfo->performance_warnings &&
+		 cstate->volatility != PROVOLATILE_VOLATILE) ||
+		 (cstate->cinfo->other_warnings))
 	{
-		if (!query->hasModifyingCTE && !query->hasForUpdate)
+		char		curr_volatility;
+
+		if (query->commandType == CMD_SELECT)
 		{
-			/* there is chance so query will be immutable */
-			if (plpgsql_check_contain_volatile_functions((Node *) query, cstate))
-				cstate->volatility = PROVOLATILE_VOLATILE;
-			else if (!plpgsql_check_contain_mutable_functions((Node *) query, cstate))
+			if (!query->hasModifyingCTE && !query->hasForUpdate)
 			{
-				/*
-				 * when level is still immutable, check if there are not
-				 * reference to tables.
-				 */
-				if (cstate->volatility == PROVOLATILE_IMMUTABLE)
+				/* there is chance so query will be immutable */
+				if (plpgsql_check_contain_volatile_functions((Node *) query, cstate))
+					curr_volatility = PROVOLATILE_VOLATILE;
+				else if (!plpgsql_check_contain_mutable_functions((Node *) query, cstate))
 				{
 					if (plpgsql_check_has_rtable(query))
-						cstate->volatility = PROVOLATILE_STABLE;
+						curr_volatility = PROVOLATILE_STABLE;
+					else
+						curr_volatility = PROVOLATILE_IMMUTABLE;
 				}
+				else
+					curr_volatility = PROVOLATILE_STABLE;
 			}
 			else
-				cstate->volatility = PROVOLATILE_STABLE;
+			{
+				curr_volatility = PROVOLATILE_VOLATILE;
+			}
 		}
 		else
-			cstate->volatility = PROVOLATILE_VOLATILE;
+		{
+			/* not read only statements requare VOLATILE flag */
+			curr_volatility = PROVOLATILE_VOLATILE;
+
+			/*
+			 * In this case the error will be raised when function is not volatile,
+			 * so we don't want to raise redundant warning.
+			 */
+			nowarning = true;
+		}
+
+		if (cstate->cinfo->other_warnings && !nowarning)
+		{
+			const char *volatility_name = NULL;
+			const char *func_volatility_name = NULL;
+
+			if (curr_volatility != PROVOLATILE_IMMUTABLE &&
+				cstate->decl_volatility == PROVOLATILE_IMMUTABLE)
+			{
+				volatility_name = volatility_to_string(curr_volatility);
+				func_volatility_name = "IMMUTABLE";
+			}
+			else if (curr_volatility == PROVOLATILE_VOLATILE &&
+					 cstate->decl_volatility == PROVOLATILE_STABLE)
+			{
+				volatility_name = "VOLATILE";
+				func_volatility_name = "STABLE";
+			}
+
+			if (volatility_name)
+			{
+				StringInfoData message;
+
+				initStringInfo(&message);
+
+				appendStringInfo(&message, "routine is marked as %s, but expression is %s",
+								 func_volatility_name,
+								 volatility_name);
+
+				plpgsql_check_put_error(cstate,
+										0, -1,
+										message.data,
+										"there is a risk of unwanted behave",
+										"When you fix this issue, please, recheck other functions that uses this function.",
+										PLPGSQL_CHECK_WARNING_OTHERS,
+										0, NULL, NULL);
+
+				pfree(message.data);
+				message.data = NULL;
+			}
+		}
+
+		if (cstate->volatility == PROVOLATILE_IMMUTABLE)
+			cstate->volatility = curr_volatility;
+		else if (cstate->volatility == PROVOLATILE_STABLE &&
+				 curr_volatility == PROVOLATILE_VOLATILE)
+			cstate->volatility = curr_volatility;
 	}
-	else
-		/* not read only statements requare VOLATILE flag */
-		cstate->volatility = PROVOLATILE_VOLATILE;
 }
 
 /*

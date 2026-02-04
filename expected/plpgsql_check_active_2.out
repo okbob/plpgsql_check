@@ -9624,3 +9624,70 @@ select * from plpgsql_check_function('test_bad_assign()', all_warnings=>true);
 (5 rows)
 
 drop function test_bad_assign;
+create or replace function volatility_check()
+returns int as $$
+begin
+  return (select count(*) from pg_class);
+end;
+$$ language plpgsql volatile;
+-- should be ok
+select * from plpgsql_check_function('volatility_check()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function volatility_check()
+returns int as $$
+begin
+  return (select count(*) from pg_class);
+end;
+$$ language plpgsql stable;
+-- should be ok
+select * from plpgsql_check_function('volatility_check()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function volatility_check()
+returns int as $$
+begin
+  return (select count(*) from pg_class);
+end;
+$$ language plpgsql immutable;
+-- warning
+select * from plpgsql_check_function('volatility_check()');
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ warning:00000:3:RETURN:routine is marked as IMMUTABLE, but expression is STABLE
+ Detail: there is a risk of unwanted behave
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(3 rows)
+
+create or replace function volatility_check()
+returns int as $$
+begin
+  return random()*1000;
+end;
+$$ language plpgsql volatile;
+-- should be ok
+select * from plpgsql_check_function('volatility_check()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function volatility_check()
+returns int as $$
+begin
+  return random()*1000;
+end;
+$$ language plpgsql stable;
+-- warning
+select * from plpgsql_check_function('volatility_check()');
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ warning:00000:3:RETURN:routine is marked as STABLE, but expression is VOLATILE
+ Detail: there is a risk of unwanted behave
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(3 rows)
+
+drop function volatility_check();

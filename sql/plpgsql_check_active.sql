@@ -5741,3 +5741,55 @@ $$ language plpgsql immutable;
 select * from plpgsql_check_function('test_bad_assign()', all_warnings=>true);
 
 drop function test_bad_assign;
+
+create or replace function volatility_check()
+returns int as $$
+begin
+  return (select count(*) from pg_class);
+end;
+$$ language plpgsql volatile;
+
+-- should be ok
+select * from plpgsql_check_function('volatility_check()');
+
+create or replace function volatility_check()
+returns int as $$
+begin
+  return (select count(*) from pg_class);
+end;
+$$ language plpgsql stable;
+
+-- should be ok
+select * from plpgsql_check_function('volatility_check()');
+
+create or replace function volatility_check()
+returns int as $$
+begin
+  return (select count(*) from pg_class);
+end;
+$$ language plpgsql immutable;
+
+-- warning
+select * from plpgsql_check_function('volatility_check()');
+
+create or replace function volatility_check()
+returns int as $$
+begin
+  return random()*1000;
+end;
+$$ language plpgsql volatile;
+
+-- should be ok
+select * from plpgsql_check_function('volatility_check()');
+
+create or replace function volatility_check()
+returns int as $$
+begin
+  return random()*1000;
+end;
+$$ language plpgsql stable;
+
+-- warning
+select * from plpgsql_check_function('volatility_check()');
+
+drop function volatility_check();
