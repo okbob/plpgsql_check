@@ -1291,8 +1291,6 @@ _tracer_stmt_end(tracer_info *tinfo,
 		char		printbuf[20];
 		uint64		elapsed = 0;
 
-
-
 		if (!INSTR_TIME_IS_ZERO(tinfo->stmts_start_time[stmtid - 1]))
 		{
 			instr_time	end_time;
@@ -1311,7 +1309,7 @@ _tracer_stmt_end(tracer_info *tinfo,
 			 "#%-*s      %*s <-- end of %s (elapsed time=%.3f ms)%s",
 			 frame_width, printbuf,
 			 indent, "",
-			 fextra->stmt_typenames[stmtid],
+			 plpgsql_check__stmt_typename_p(stmt),
 			 elapsed / 1000.0,
 			 aborted);
 	}

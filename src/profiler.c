@@ -634,7 +634,7 @@ profiler_stmt_walker(profiler_info *pinfo,
 		{
 			int			parent_natural_stmtid = -1;
 			int			naturalid = opts->fextra->naturalids[stmt->stmtid];
-			const char *typname = opts->fextra->stmt_typenames[stmt->stmtid];
+			const char *typname = plpgsql_check__stmt_typename_p(stmt);
 
 			parent_natural_stmtid = parent_stmt ? opts->fextra->naturalids[parent_stmt->stmtid] : -1;
 

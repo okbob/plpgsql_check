@@ -449,7 +449,6 @@ typedef struct
 	int		   *naturalids;
 	int		   *natural_to_ids;
 	int		   *levels;
-	const char **stmt_typenames;
 	int			max_deep;
 	int			nstatements;
 
