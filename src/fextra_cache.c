@@ -321,6 +321,17 @@ plch_get_fextra(PLpgSQL_function *func)
 	}
 
 	fextra->use_count++;
+	fextra->func = func;
+
+#if PG_VERSION_NUM >= 180000
+
+	func->cfunc.use_count++;
+
+#else
+
+	func->use_count++;
+
+#endif
 
 	return fextra;
 }
@@ -330,7 +341,21 @@ plch_release_fextra(plch_fextra *fextra)
 {
 	Assert(fextra->use_count > 0);
 
+	/* until now, referenced PLpgSQL_function should be still valid */
+	Assert(fextra->hk.fn_oid == fextra->func->fn_oid);
+
 	fextra->use_count--;
+
+#if PG_VERSION_NUM >= 180000
+
+	fextra->func->cfunc.use_count--;
+
+#else
+
+	fextra->func->use_count--;
+
+#endif
+
 }
 
 

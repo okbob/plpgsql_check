@@ -44,7 +44,6 @@ typedef struct plpgsql_plugin_info
 	/* for assertations */
 	Oid			fn_oid;
 	PLpgSQL_execstate *estate;
-	int			use_count;
 
 	plch_fextra *fextra;
 
@@ -160,8 +159,11 @@ plugin_info_reset(void *arg)
 {
 	plpgsql_plugin_info *plugin_info = (plpgsql_plugin_info*) arg;
 	MemoryContext exec_mcxt = CurrentMemoryContext;
-	int			stmts_stack_size = plugin_info->stmts_stack_size;
+	int			stmts_stack_size;
 	int			i;
+
+	/* The memory should not be corrupted! */
+	Assert(plugin_info->magic == PLUGIN_INFO_MAGIC);
 
 	/*
 	 * PostgreSQL 19 can remove this callback. But we need to support
@@ -171,6 +173,7 @@ plugin_info_reset(void *arg)
 	if (!plugin_info->fextra)
 		return;
 
+	stmts_stack_size = plugin_info->stmts_stack_size;
 	plugin_info->stmts_stack_size = 0;
 
 	PG_TRY();
@@ -220,17 +223,6 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	plugin_info->magic = PLUGIN_INFO_MAGIC;
 	plugin_info->fn_oid = func->fn_oid;
 	plugin_info->estate = estate;
-
-
-#if PG_VERSION_NUM >= 180000
-
-	plugin_info->use_count = func->cfunc.use_count;
-
-#else
-
-	plugin_info->use_count = func->use_count;
-
-#endif
 
 	for (i = 0; i < nplugins; i++)
 	{
@@ -333,16 +325,6 @@ func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	Assert(plugin_info->estate == estate);
 	Assert(plugin_info->fn_oid == func->fn_oid);
 
-#if PG_VERSION_NUM >= 180000
-
-	Assert(plugin_info->use_count == func->cfunc.use_count);
-
-#else
-
-	Assert(plugin_info->use_count == func->use_count);
-
-#endif
-
 	PG_TRY();
 	{
 		if (plugin_info->fextra)
@@ -396,16 +378,6 @@ func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 	Assert(plugin_info->estate == estate);
 	Assert(plugin_info->fn_oid == func->fn_oid);
-
-#if PG_VERSION_NUM >= 180000
-
-	Assert(plugin_info->use_count == func->cfunc.use_count);
-
-#else
-
-	Assert(plugin_info->use_count == func->use_count);
-
-#endif
 
 	PG_TRY();
 	{
@@ -480,16 +452,6 @@ stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 	Assert(plugin_info->estate == estate);
 	Assert(plugin_info->fn_oid == estate->func->fn_oid);
-
-#if PG_VERSION_NUM >= 180000
-
-	Assert(plugin_info->use_count == estate->func->cfunc.use_count);
-
-#else
-
-	Assert(plugin_info->use_count == estate->func->use_count);
-
-#endif
 
 	if (plugin_info->fextra)
 	{
@@ -571,16 +533,6 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 	Assert(plugin_info->estate == estate);
 	Assert(plugin_info->fn_oid == estate->func->fn_oid);
-
-#if PG_VERSION_NUM >= 180000
-
-	Assert(plugin_info->use_count == estate->func->cfunc.use_count);
-
-#else
-
-	Assert(plugin_info->use_count == estate->func->use_count);
-
-#endif
 
 	if (plugin_info->fextra)
 	{

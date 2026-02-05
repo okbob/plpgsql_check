@@ -33,7 +33,7 @@ int			plpgsql_check_cursors_leaks_level = WARNING;
 typedef struct CursorTrace
 {
 	int			stmtid;
-	int			rec_level;
+	PLpgSQL_execstate *estate;
 	char	   *curname;
 } CursorTrace;
 
@@ -195,16 +195,7 @@ func_end(PLpgSQL_execstate *estate,
 		 * Iterate over traced cursors. Remove slots for tracing immediately,
 		 * when traced cursor is closed already.
 		 */
-#if PG_VERSION_NUM >= 180000
-
-		if (ct->curname && ct->rec_level == func->cfunc.use_count)
-
-#else
-
-		if (ct->curname && ct->rec_level == func->use_count)
-
-#endif
-
+		if (ct->curname && ct->estate == estate)
 		{
 			if (SPI_cursor_find(ct->curname))
 			{
@@ -286,16 +277,7 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra)
 
 				if (SPI_cursor_find(ct->curname))
 				{
-#if PG_VERSION_NUM >= 180000
-
-					if (estate->func->cfunc.use_count == 1 && !plpgsql_check_cursors_leaks_strict)
-
-#else
-
-					if (estate->func->use_count == 1 && !plpgsql_check_cursors_leaks_strict)
-
-#endif
-
+					if (!plpgsql_check_cursors_leaks_strict)
 					{
 						char	   *context;
 
@@ -362,16 +344,7 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra)
 
 			ct->stmtid = stmt->stmtid;
 
-#if PG_VERSION_NUM >= 180000
-
-			ct->rec_level = estate->func->cfunc.use_count;
-
-#else
-
-			ct->rec_level = estate->func->use_count;
-
-#endif
-
+			ct->estate = estate;
 			ct->curname = pstrdup(curname);
 
 			MemoryContextSwitchTo(oldcxt);

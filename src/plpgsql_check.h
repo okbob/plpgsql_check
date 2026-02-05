@@ -437,6 +437,7 @@ typedef struct
 {
 	plch_fextra_hk hk;
 	uint32		hashValue;
+	PLpgSQL_function *func;
 
 	Oid			fn_oid;
 	char	   *fn_signature;
