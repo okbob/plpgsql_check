@@ -347,6 +347,8 @@ func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	{
 		if (plugin_info->fextra)
 		{
+			Assert(plugin_info->fextra->fn_oid == plugin_info->fn_oid);
+
 			for (i = 0; i < nplugins; i++)
 			{
 				if (plugin_info->is_active[i] && plugins[i]->func_beg)
@@ -387,7 +389,6 @@ func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 {
 	plpgsql_plugin_info *plugin_info = estate->plugin_info;
 	MemoryContext exec_mcxt = CurrentMemoryContext;
-	int			naborted_stmts;
 	int			i;
 
 	if (!plugin_info || plugin_info->magic != PLUGIN_INFO_MAGIC)
@@ -410,7 +411,10 @@ func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	{
 		if (plugin_info->fextra)
 		{
-			naborted_stmts = plugin_info->stmts_stack_size;
+			int naborted_stmts = plugin_info->stmts_stack_size;
+
+			Assert(plugin_info->fextra->fn_oid == plugin_info->fn_oid);
+
 			plugin_info->stmts_stack_size = 0;
 
 			abort_statements(plugin_info->stmts_stack,
@@ -514,6 +518,8 @@ stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	{
 		if (plugin_info->fextra)
 		{
+			Assert(plugin_info->fextra->fn_oid == plugin_info->fn_oid);
+
 			abort_statements(plugin_info->stmts_buf,
 							 naborted_stmts,
 							 plugin_info, false);
@@ -600,6 +606,8 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	{
 		if (plugin_info->fextra)
 		{
+			Assert(plugin_info->fextra->fn_oid == plugin_info->fn_oid);
+
 			abort_statements(plugin_info->stmts_buf,
 							 naborted_stmts,
 							 plugin_info, false);
