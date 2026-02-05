@@ -447,10 +447,8 @@ typedef struct
 
 	int		   *parentids;
 	int		   *naturalids;
-	bool	   *invisible;
 	int		   *natural_to_ids;
 	int		   *levels;
-	bool	   *containers;
 	const char **stmt_typenames;
 	int			max_deep;
 	int			nstatements;

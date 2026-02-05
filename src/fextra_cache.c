@@ -59,17 +59,9 @@ init_fextra_stmt(plch_fextra *fextra,
 	fextra->parentids[stmtid] = parentid;
 	fextra->naturalids[stmtid] = ++(*naturalid);
 	fextra->levels[stmtid] = level;
-	fextra->containers[stmtid] = true;
 
 	fextra->natural_to_ids[fextra->naturalids[stmtid] - 1] = stmtid;
 	fextra->stmt_typenames[stmtid] = plpgsql_check__stmt_typename_p(stmt);
-	fextra->invisible[stmtid] = stmt->lineno < 1;
-
-	/*
-	 * When this statement is visible, then nested
-	 * statements will be in higher levels.
-	 */
-
 
 	if (cur_deep > fextra->max_deep)
 		fextra->max_deep = cur_deep;
@@ -171,7 +163,6 @@ init_fextra_stmt(plch_fextra *fextra,
 
 		default:
 			/* all container statements are handled up */
-			fextra->containers[stmtid] = false;
 			break;
 	}
 }
@@ -316,16 +307,13 @@ plch_get_fextra(PLpgSQL_function *func)
 		fextra->fn_signature = func->fn_signature ? pstrdup(func->fn_signature) : NULL;
 		fextra->nstatements = func->nstatements;
 
-
 		fextra->parentids = palloc(sizeof(int) * (func->nstatements + 1));
-		fextra->invisible = palloc(sizeof(bool) * (func->nstatements + 1));
 		fextra->naturalids = palloc(sizeof(int) * (func->nstatements + 1));
 
 		fextra->natural_to_ids = palloc0(sizeof(int) * (func->nstatements + 1));
 
 		fextra->stmt_typenames = palloc(sizeof(char *) * (func->nstatements + 1));
 		fextra->levels = palloc(sizeof(int) * (func->nstatements + 1));
-		fextra->containers = palloc(sizeof(bool) * (func->nstatements + 1));
 
 		MemoryContextSwitchTo(oldcxt);
 

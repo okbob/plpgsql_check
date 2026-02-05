@@ -1045,6 +1045,7 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 {
 	tracer_info *tinfo = (tracer_info *) estate->plugin_info;
 	int			total_level;
+	bool		invisible = stmt->lineno < 1;
 	char		buffer[20];
 
 	if (!tinfo)
@@ -1054,7 +1055,7 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 	tinfo->stmts_tracer_state[stmt->stmtid - 1] = plpgsql_check_tracer;
 
 	/* don't trace invisible statements */
-	if (fextra->invisible[stmt->stmtid] || !plpgsql_check_tracer)
+	if (invisible || !plpgsql_check_tracer)
 		return;
 
 	if (stmt->cmd_type == PLPGSQL_STMT_ASSERT && plpgsql_check_trace_assert)
@@ -1234,23 +1235,51 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 	}
 }
 
+/*
+ * Returns true when statement can contains another statements
+ */
+static bool
+stmt_is_container(PLpgSQL_stmt *stmt)
+{
+	switch (stmt->cmd_type)
+	{
+		case PLPGSQL_STMT_BLOCK:
+		case PLPGSQL_STMT_IF:
+		case PLPGSQL_STMT_CASE:
+		case PLPGSQL_STMT_LOOP:
+		case PLPGSQL_STMT_FORI:
+		case PLPGSQL_STMT_FORS:
+		case PLPGSQL_STMT_FORC:
+		case PLPGSQL_STMT_DYNFORS:
+		case PLPGSQL_STMT_FOREACH_A:
+		case PLPGSQL_STMT_WHILE:
+			return true;
+		default:
+			return false;
+	}
+}
+
 static void
 _tracer_stmt_end(tracer_info *tinfo,
 				 plch_fextra *fextra,
-				 int stmtid,
+				 PLpgSQL_stmt *stmt,
 				 bool is_aborted)
 {
 	const char *aborted = is_aborted ? " aborted" : "";
+	int			stmtid = stmt->stmtid;
+	bool		is_container = stmt_is_container(stmt);
+	bool		invisible = stmt->lineno < 1;
 
 	Assert(tinfo);
 
 	/* don't trace invisible statements */
-	if (fextra->invisible[stmtid])
+	if (invisible)
 	{
-		if (fextra->containers[stmtid])
+		if (is_container)
+		{
 			/* restore tracer state (enabled | disabled) */
 			plpgsql_check_tracer = tinfo->stmts_tracer_state[stmtid - 1];
-
+		}
 		return;
 	}
 
@@ -1261,6 +1290,8 @@ _tracer_stmt_end(tracer_info *tinfo,
 		int			frame_width = 6;
 		char		printbuf[20];
 		uint64		elapsed = 0;
+
+
 
 		if (!INSTR_TIME_IS_ZERO(tinfo->stmts_start_time[stmtid - 1]))
 		{
@@ -1285,7 +1316,7 @@ _tracer_stmt_end(tracer_info *tinfo,
 			 aborted);
 	}
 
-	if (fextra->containers[stmtid])
+	if (is_container)
 	{
 		/* restore tracer state (enabled | disabled) */
 		plpgsql_check_tracer = tinfo->stmts_tracer_state[stmtid - 1];
@@ -1299,18 +1330,19 @@ tracer_stmt_end(PLpgSQL_execstate *estate,
 				plch_fextra *fextra)
 {
 	tracer_info *tinfo = (tracer_info *) estate->plugin_info;
+	bool		invisible = stmt->lineno < 1;
 
 	if (!tinfo)
 		return;
 
-	_tracer_stmt_end(tinfo, fextra, stmt->stmtid, false);
+	_tracer_stmt_end(tinfo, fextra, stmt, false);
 
 	if (!plpgsql_check_tracer)
 		return;
 
 	if (plpgsql_check_tracer_verbosity == PGERROR_VERBOSE &&
 		stmt->cmd_type == PLPGSQL_STMT_ASSIGN &&
-		!fextra->invisible[stmt->stmtid])
+		!invisible)
 	{
 		char		printbuf[20];
 
@@ -1333,7 +1365,7 @@ tracer_stmt_abort(PLpgSQL_execstate *estate,
 	if (!tinfo)
 		return;
 
-	_tracer_stmt_end(tinfo, fextra, stmt->stmtid, true);
+	_tracer_stmt_end(tinfo, fextra, stmt, true);
 }
 
 static void
