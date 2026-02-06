@@ -33,7 +33,7 @@ int			plpgsql_check_cursors_leaks_level = WARNING;
 typedef struct CursorTrace
 {
 	int			stmtid;
-	PLpgSQL_execstate *estate;
+	void		*plugin_info;
 	char	   *curname;
 } CursorTrace;
 
@@ -195,7 +195,7 @@ func_end(PLpgSQL_execstate *estate,
 		 * Iterate over traced cursors. Remove slots for tracing immediately,
 		 * when traced cursor is closed already.
 		 */
-		if (ct->curname && ct->estate == estate)
+		if (ct->curname && ct->plugin_info == estate->plugin_info)
 		{
 			if (SPI_cursor_find(ct->curname))
 			{
@@ -344,7 +344,7 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra)
 
 			ct->stmtid = stmt->stmtid;
 
-			ct->estate = estate;
+			ct->plugin_info = estate->plugin_info;
 			ct->curname = pstrdup(curname);
 
 			MemoryContextSwitchTo(oldcxt);

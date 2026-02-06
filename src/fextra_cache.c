@@ -187,6 +187,7 @@ fextra_init_hk(plch_fextra_hk *hk, PLpgSQL_function *func)
 
 }
 
+
 static void
 fextra_CacheObjectCallback(Datum arg, int cacheid, uint32 hashValue)
 {
@@ -206,6 +207,17 @@ fextra_CacheObjectCallback(Datum arg, int cacheid, uint32 hashValue)
 
 		if (!fextra->is_valid && fextra->use_count == 0)
 		{
+
+#if PG_VERSION_NUM >= 180000
+
+			fextra->func->cfunc.use_count--;
+
+#else
+
+			fextra->func->use_count--;
+
+#endif
+
 			MemoryContextDelete(fextra->mcxt);
 			if (hash_search(fextra_ht,
 							&fextra->hk,
@@ -257,6 +269,17 @@ plch_get_fextra(PLpgSQL_function *func)
 
 		if (found && !fextra->is_valid && fextra->use_count == 0)
 		{
+
+#if PG_VERSION_NUM >= 180000
+
+			fextra->func->cfunc.use_count--;
+
+#else
+
+			fextra->func->use_count--;
+
+#endif
+
 			MemoryContextReset(fextra->mcxt);
 		}
 
@@ -317,21 +340,22 @@ plch_get_fextra(PLpgSQL_function *func)
 		fextra->max_deep = 0;
 		init_fextra_stmt(fextra, 0, &naturalid, 1, 0, (PLpgSQL_stmt *) func->action);
 
+#if PG_VERSION_NUM >= 180000
+
+		func->cfunc.use_count++;
+
+#else
+
+		func->use_count++;
+
+#endif
+
+		fextra->func = func;
+
 		fextra->is_valid = true;
 	}
 
 	fextra->use_count++;
-	fextra->func = func;
-
-#if PG_VERSION_NUM >= 180000
-
-	func->cfunc.use_count++;
-
-#else
-
-	func->use_count++;
-
-#endif
 
 	return fextra;
 }
