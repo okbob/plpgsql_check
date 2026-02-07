@@ -182,6 +182,19 @@ plugin_info_reset(void *arg)
 	 * Inside abort methods, the estate fields should not be referenced!
 	 */
 	memset(&loc_estate, 0, sizeof(PLpgSQL_execstate));
+
+#if PG_VERSION_NUM >= 180000
+
+	Assert(plugin_info->fextra->use_count > 0);
+	Assert(plugin_info->fextra->func->cfunc.use_count > 0);
+
+#else
+
+	Assert(plugin_info->fextra->use_count > 0);
+	Assert(plugin_info->fextra->func->use_count > 0);
+
+#endif
+
 	loc_estate.func = plugin_info->fextra->func;
 
 	old_cur_estate = loc_estate.func->cur_estate;
