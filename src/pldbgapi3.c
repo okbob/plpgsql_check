@@ -217,11 +217,6 @@ plugin_info_reset(void *arg)
 				plugin_info->estate->plugin_info = plugin_info->plugin_info[i];
 
 				MemoryContextSwitchTo(exec_mcxt);
-
-				/*
-				 * In this moment, the estate content can be corrupted.
-				 * Inside abort methods, the estate fields should not be referenced!
-				 */
 				plugins[i]->func_abort(plugin_info->estate,
 									   plugin_info->estate->func,
 									   plugin_info->fextra);
