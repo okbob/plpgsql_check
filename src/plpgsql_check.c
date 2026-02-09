@@ -193,16 +193,6 @@ plpgsql_check_check_ext_version(Oid fn_oid)
 	StaticAssertVariableIsOfType(&plpgsql_recognize_err_condition, plpgsql_check__recognize_err_condition_t);
 	StaticAssertVariableIsOfType(&plpgsql_ns_lookup, plpgsql_check__ns_lookup_t);
 
-#else
-
-//	AssertVariableIsOfType(&plpgsql_build_datatype, plpgsql_check__build_datatype_t);
-//	AssertVariableIsOfType(&plpgsql_compile, plpgsql_check__compile_t);
-//	AssertVariableIsOfType(&plpgsql_parser_setup, plpgsql_check__parser_setup_t);
-//	AssertVariableIsOfType(&plpgsql_stmt_typename, plpgsql_check__stmt_typename_t);
-//	AssertVariableIsOfType(&plpgsql_exec_get_datum_type, plpgsql_check__exec_get_datum_type_t);
-//	AssertVariableIsOfType(&plpgsql_recognize_err_condition, plpgsql_check__recognize_err_condition_t);
-//	AssertVariableIsOfType(&plpgsql_ns_lookup, plpgsql_check__ns_lookup_t);
-
 #endif
 
 
