@@ -58,7 +58,7 @@ init_fextra_stmt(plch_fextra *fextra,
 	 */
 	fextra->parentids[stmtid] = parentid;
 	fextra->naturalids[stmtid] = ++(*naturalid);
-	fextra->levels[stmtid] = level;
+	fextra->levels[stmtid] = level++;
 
 	fextra->natural_to_ids[fextra->naturalids[stmtid] - 1] = stmtid;
 
@@ -66,7 +66,6 @@ init_fextra_stmt(plch_fextra *fextra,
 		fextra->max_deep = cur_deep;
 
 	cur_deep++;
-	level++;
 
 	switch (stmt->cmd_type)
 	{
