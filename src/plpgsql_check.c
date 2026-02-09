@@ -205,7 +205,6 @@ plpgsql_check_check_ext_version(Oid fn_oid)
 void
 _PG_init(void)
 {
-
 	/* Be sure we do initialization only once (should be redundant now) */
 	static bool inited = false;
 
@@ -451,7 +450,6 @@ _PG_init(void)
 	/* Use shared memory when we can register more for self */
 	if (process_shared_preload_libraries_in_progress)
 	{
-
 		DefineCustomIntVariable("plpgsql_check.profiler_max_shared_chunks",
 								"maximum numbers of statements chunks in shared memory",
 								NULL,
@@ -489,17 +487,15 @@ _PG_init(void)
 	}
 
 	plch_init_plugin();
-	//simple_plugin_init();
-
 
 	plpgsql_check_passive_check_init();
 	plpgsql_check_profiler_init();
 	plpgsql_check_tracer_init();
 	plpgsql_check_cursors_leaks_init();
 
-
 #if PG_VERSION_NUM >= 180000
 
+	/* used for checking expected version of SQL interface (extension) */
 	CacheRegisterSyscacheCallback(EXTENSIONOID,
 								  pg_extension_cache_callback,
 								  (Datum) 0);
