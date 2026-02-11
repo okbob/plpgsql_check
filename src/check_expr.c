@@ -1308,7 +1308,6 @@ free_string_constant(PLpgSQL_checkstate *cstate, PLpgSQL_row *row)
 	}
 }
 
-
 /*
  * Check expression as rvalue - on right in assign statement. It is used for
  * only expression check too - when target is unknown.
@@ -1406,17 +1405,21 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 
 				/* When expr is constant string, try it cast to target type */
 				str = plpgsql_check_get_const_string(cstate, node, NULL);
-
 				if (str)
 				{
-					Oid		infunc;
-					Oid		intypeioparam;
-					Oid		typeid;
+					Oid			expr_typoid = exprType((Node *) node);
 
-					typeid = use_element_type ? get_array_type(expected_typoid) : expected_typoid;
+					if (!type_is_rowtype(expr_typoid) && !type_is_rowtype(expected_typoid))
+					{
+						Oid		infunc;
+						Oid		intypeioparam;
+						Oid		typeid;
 
-					getTypeInputInfo(typeid, &infunc, &intypeioparam);
-					(void) OidInputFunctionCall(infunc, str, intypeioparam, -1);
+						typeid = use_element_type ? get_array_type(expected_typoid) : expected_typoid;
+
+						getTypeInputInfo(typeid, &infunc, &intypeioparam);
+						(void) OidInputFunctionCall(infunc, str, intypeioparam, -1);
+					}
 				}
 			}
 

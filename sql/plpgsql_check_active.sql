@@ -5793,3 +5793,22 @@ $$ language plpgsql stable;
 select * from plpgsql_check_function('volatility_check()');
 
 drop function volatility_check();
+
+-- issue #201 - should not to raise false error, when composite
+-- constant is used and assigned to composite with more fields
+create type t_retcode as (retcode varchar, errmsg varchar, id int);
+
+create or replace function test_retcode_bad()
+returns void as $$
+declare
+  rc t_retcode := row('MO_REG_ERROR');
+begin
+  raise notice '%', rc.retcode;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('test_retcode_bad');
+
+drop function test_retcode_bad;
+drop type t_retcode;
+
