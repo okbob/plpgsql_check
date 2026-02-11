@@ -992,11 +992,13 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 	}
 	else if (!IsPolymorphicType(cinfo->rettype))
 	{
-		if (get_typtype(cinfo->rettype) == TYPTYPE_COMPOSITE)
-			resultTupleDesc = lookup_rowtype_tupdesc_copy(cinfo->rettype, -1);
+		Oid		rettype = getBaseType(cinfo->rettype);
+
+		if (get_typtype(rettype) == TYPTYPE_COMPOSITE)
+			resultTupleDesc = lookup_rowtype_tupdesc_copy(rettype, -1);
 		else
 		{
-			*fake_rtd = cinfo->rettype == RECORDOID;
+			*fake_rtd = rettype == RECORDOID;
 
 			resultTupleDesc = CreateTemplateTupleDesc(1);
 
