@@ -9691,3 +9691,23 @@ select * from plpgsql_check_function('volatility_check()');
 (3 rows)
 
 drop function volatility_check();
+-- issue #201 - should not to raise false error, when composite
+-- constant is used and assigned to composite with more fields
+create type t_retcode as (retcode varchar, errmsg varchar, id int);
+create or replace function test_retcode_bad()
+returns void as $$
+declare
+  rc t_retcode := row('MO_REG_ERROR');
+begin
+  raise notice '%', rc.retcode;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('test_retcode_bad');
+                            plpgsql_check_function                            
+------------------------------------------------------------------------------
+ warning:00000:4:statement block:too few attributes for composite variable
+ Context: during statement block local variable "rc" initialization on line 3
+(2 rows)
+
+drop function test_retcode_bad;
+drop type t_retcode;
