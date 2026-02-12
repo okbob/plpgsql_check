@@ -5810,5 +5810,20 @@ $$ language plpgsql;
 select * from plpgsql_check_function('test_retcode_bad');
 
 drop function test_retcode_bad;
-drop type t_retcode;
 
+-- test usage domain of composite in output #202
+create domain t_retcode_domain as t_retcode;
+
+create or replace function test_retcode_bad(INOUT x1 t_retcode_domain, INOUT x2 int)
+as $$
+begin
+  x1.retcode = concat(x1.retcode, 'xxx');
+  x2 := x2 + 10;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('test_retcode_bad');
+
+drop function test_retcode_bad;
+
+drop type t_retcode cascade;

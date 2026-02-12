@@ -992,19 +992,19 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 	}
 	else if (!IsPolymorphicType(cinfo->rettype))
 	{
-		Oid		rettype = getBaseType(cinfo->rettype);
+		Oid		result_rettype = getBaseType(cinfo->rettype);
 
-		if (get_typtype(rettype) == TYPTYPE_COMPOSITE)
-			resultTupleDesc = lookup_rowtype_tupdesc_copy(rettype, -1);
+		if (get_typtype(result_rettype) == TYPTYPE_COMPOSITE)
+			resultTupleDesc = lookup_rowtype_tupdesc_copy(result_rettype, -1);
 		else
 		{
-			*fake_rtd = rettype == RECORDOID;
+			*fake_rtd = result_rettype == RECORDOID;
 
 			resultTupleDesc = CreateTemplateTupleDesc(1);
 
 			TupleDescInitEntry(resultTupleDesc,
 							   (AttrNumber) 1, "__result__",
-							   cinfo->rettype, -1, 0);
+							   result_rettype, -1, 0);
 			resultTupleDesc = BlessTupleDesc(resultTupleDesc);
 		}
 	}
