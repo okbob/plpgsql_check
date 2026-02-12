@@ -42,12 +42,11 @@
 
 #endif
 
-
 #ifdef PG_MODULE_MAGIC_EXT
 
 PG_MODULE_MAGIC_EXT(
   .name = "plpgsql_check",
-  .version = "2.8.8"
+  .version = "2.8.9"
 );
 
 #else
