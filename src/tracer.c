@@ -647,7 +647,7 @@ print_all_variables(PLpgSQL_execstate *estate)
 {
 	int			dno;
 	StringInfoData ds;
-	bool		indent = 1;
+	int			indent = 1;
 
 	initStringInfo(&ds);
 
