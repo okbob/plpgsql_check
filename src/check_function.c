@@ -824,10 +824,10 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 	*fake_rtd = false;
 
 	/* clean structures */
-	MemSet(fcinfo, 0, SizeForFunctionCallInfo(0));
+	memset(fcinfo, 0, SizeForFunctionCallInfo(0));
 
-	MemSet(flinfo, 0, sizeof(FmgrInfo));
-	MemSet(rsinfo, 0, sizeof(ReturnSetInfo));
+	memset(flinfo, 0, sizeof(FmgrInfo));
+	memset(rsinfo, 0, sizeof(ReturnSetInfo));
 
 	fcinfo->flinfo = flinfo;
 	flinfo->fn_oid = cinfo->fn_oid;
@@ -839,8 +839,8 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 	{
 		Assert(trigdata != NULL);
 
-		MemSet(trigdata, 0, sizeof(TriggerData));
-		MemSet(tg_trigger, 0, sizeof(Trigger));
+		memset(trigdata, 0, sizeof(TriggerData));
+		memset(tg_trigger, 0, sizeof(Trigger));
 
 		trigdata->type = T_TriggerData;
 		trigdata->tg_trigger = tg_trigger;
@@ -852,7 +852,7 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 	}
 	else if (cinfo->trigtype == PLPGSQL_EVENT_TRIGGER)
 	{
-		MemSet(etrigdata, 0, sizeof(EventTriggerData));
+		memset(etrigdata, 0, sizeof(EventTriggerData));
 		etrigdata->type = T_EventTriggerData;
 		fcinfo->context = (Node *) etrigdata;
 	}
