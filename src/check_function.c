@@ -852,7 +852,7 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 	}
 	else if (cinfo->trigtype == PLPGSQL_EVENT_TRIGGER)
 	{
-		MemSet(etrigdata, 0, sizeof(etrigdata));
+		MemSet(etrigdata, 0, sizeof(EventTriggerData));
 		etrigdata->type = T_EventTriggerData;
 		fcinfo->context = (Node *) etrigdata;
 	}
