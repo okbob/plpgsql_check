@@ -371,12 +371,13 @@ plpgsql_check_prepare_err_text_with_target_vardecl(PLpgSQL_checkstate *cstate, P
 				{
 					/* try to enumerate fields */
 					PLpgSQL_row *row = (PLpgSQL_row *) var;
-					PLpgSQL_datum *d2;
 					int			fnum;
 					bool		is_first = true;
 
 					for (fnum = 0; fnum < row->nfields; fnum++)
 					{
+						PLpgSQL_datum *d2;
+
 						/* skip dropped columns */
 						if (row->varnos[fnum] < 0)
 							continue;
@@ -396,7 +397,7 @@ plpgsql_check_prepare_err_text_with_target_vardecl(PLpgSQL_checkstate *cstate, P
 						{
 							appendStringInfo(&str, "%s", ((PLpgSQL_variable *) d2)->refname);
 						}
-						else if (d->dtype == PLPGSQL_DTYPE_RECFIELD)
+						else if (d2->dtype == PLPGSQL_DTYPE_RECFIELD)
 						{
 							PLpgSQL_recfield *recfield = (PLpgSQL_recfield *) d2;
 							PLpgSQL_variable *var2 = (PLpgSQL_variable *) cstate->estate->datums[recfield->recparentno];
