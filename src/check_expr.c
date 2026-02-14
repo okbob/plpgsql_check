@@ -1616,42 +1616,56 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 		}
 		else if (cstate->cinfo->constants_tracing && targetdno != -1)
 		{
-			char	   *str;
+			PLpgSQL_var *var = (PLpgSQL_var *) cstate->estate->datums[targetdno];
 
-			str = plpgsql_check_expr_get_string(cstate, expr, NULL);
-			if (str)
+			/*
+			 * Trace constants only when target is really scalar.
+			 * The scalar types allows simple IO casting, but composites with different
+			 * number of fields doesn't allow it. There are difference between PL/pgSQL
+			 * assignment, that is not sensitive on different numbers of fields between
+			 * composite target and composite source, and common composite casts (that
+			 * doesn't allow to cast composites when source and target has different
+			 * natts.
+			 */
+			if (var->dtype == PLPGSQL_DTYPE_VAR && var->datatype->ttype == PLPGSQL_TTYPE_SCALAR)
 			{
-				PLpgSQL_stmt_stack_item *current = cstate->top_stmt_stack;
-				MemoryContext oldcxt = MemoryContextSwitchTo(cstate->check_cxt);
-				char	   *prev_val;
+				char	   *str;
 
-				Assert(cstate->top_stmt_stack);
-
-				if (!cstate->strconstvars)
-					cstate->strconstvars = palloc0(sizeof(char *) * cstate->estate->ndatums);
-
-				/*
-				 * We need to do copy string first. There is an possibility to
-				 * self reference, and then we need to first copy, and after
-				 * that free.
-				 */
-				prev_val = cstate->strconstvars[targetdno];
-				cstate->strconstvars[targetdno] = pstrdup(str);
-
-				if (prev_val)
-					pfree(prev_val);
-
-				current->invalidate_strconstvars = bms_add_member(current->invalidate_strconstvars, targetdno);
-
-				MemoryContextSwitchTo(oldcxt);
-			}
-			else
-			{
-				/* the assigned value is not constant, reset current */
-				if (cstate->strconstvars && cstate->strconstvars[targetdno])
+				str = plpgsql_check_expr_get_string(cstate, expr, NULL);
+				if (str)
 				{
-					pfree(cstate->strconstvars[targetdno]);
-					cstate->strconstvars[targetdno] = NULL;
+					PLpgSQL_stmt_stack_item *current = cstate->top_stmt_stack;
+					MemoryContext oldcxt = MemoryContextSwitchTo(cstate->check_cxt);
+					char	   *prev_val;
+
+					Assert(cstate->top_stmt_stack);
+
+					if (!cstate->strconstvars)
+						cstate->strconstvars = palloc0(sizeof(char *) * cstate->estate->ndatums);
+
+					/*
+					 * We need to do copy string first. There is an possibility to
+					 * self reference, and then we need to first copy, and after
+					 * that free.
+					 */
+					prev_val = cstate->strconstvars[targetdno];
+					cstate->strconstvars[targetdno] = pstrdup(str);
+
+					if (prev_val)
+						pfree(prev_val);
+
+					current->invalidate_strconstvars = bms_add_member(current->invalidate_strconstvars, targetdno);
+
+					MemoryContextSwitchTo(oldcxt);
+				}
+				else
+				{
+					/* the assigned value is not constant, reset current */
+					if (cstate->strconstvars && cstate->strconstvars[targetdno])
+					{
+						pfree(cstate->strconstvars[targetdno]);
+						cstate->strconstvars[targetdno] = NULL;
+					}
 				}
 			}
 		}

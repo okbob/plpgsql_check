@@ -1722,6 +1722,27 @@ declare
   arr date[];
   el int;
 begin
+  -- expression is not constant (else this check fails due tracking constant)
+  arr := array['2014-01-01','2015-01-01','2016-01-01', current_date]::date[];
+  foreach el in array arr loop
+    raise notice '%', el;
+  end loop;
+end;
+$body$
+language 'plpgsql' stable;
+select * from plpgsql_check_function_tb('foreach_array_loop()', performance_warnings := true);
+     functionid     | lineno |     statement      | sqlstate |                    message                     |               detail                |                                    hint                                    |  level  | position | query |        context        
+--------------------+--------+--------------------+----------+------------------------------------------------+-------------------------------------+----------------------------------------------------------------------------+---------+----------+-------+-----------------------
+ foreach_array_loop |      8 | FOREACH over array | 42804    | target type is different type than source type | cast "date" value to "integer" type | There are no possible explicit coercion between those types, possibly bug! | warning |          |       | at FOREACH over array
+(1 row)
+
+create or replace function foreach_array_loop()
+returns void as
+$body$
+declare
+  arr date[];
+  el int;
+begin
   arr := array['2014-01-01','2015-01-01','2016-01-01']::date[];
   foreach el in array arr loop
     raise notice '%', el;
