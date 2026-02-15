@@ -1105,9 +1105,7 @@ plpgsql_profiler_install_fake_queryid_hook(PG_FUNCTION_ARGS)
 	if (post_parse_analyze_hook == profiler_fake_queryid_hook)
 		PG_RETURN_VOID();
 
-	if (post_parse_analyze_hook == NULL)
-		prev_post_parse_analyze_hook = post_parse_analyze_hook;
-
+	prev_post_parse_analyze_hook = post_parse_analyze_hook;
 	post_parse_analyze_hook = profiler_fake_queryid_hook;
 
 	PG_RETURN_VOID();
