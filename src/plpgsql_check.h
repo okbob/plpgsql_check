@@ -7,6 +7,10 @@
 #include "access/tupdesc.h"
 #include "storage/ipc.h"
 
+#if PG_VERSION_NUM >= 190000
+#include "portability/instr_time.h"
+#endif
+
 typedef uint64 pc_queryid;
 #define NOQUERYID				(UINT64CONST(0))
 

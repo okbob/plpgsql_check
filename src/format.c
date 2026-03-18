@@ -21,6 +21,10 @@
 #include "utils/json.h"
 #include "utils/xml.h"
 
+#if PG_VERSION_NUM >= 190000
+#include "utils/tuplestore.h"
+#endif
+
 static void put_text_line(plpgsql_check_result_info *ri, const char *message, int len);
 static const char *error_level_str(int level);
 static void init_tag(plpgsql_check_result_info *ri, Oid fn_oid);

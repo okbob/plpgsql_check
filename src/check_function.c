@@ -1005,6 +1005,11 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 			TupleDescInitEntry(resultTupleDesc,
 							   (AttrNumber) 1, "__result__",
 							   result_rettype, -1, 0);
+
+#if PG_VERSION_NUM >= 190000
+			TupleDescFinalize(resultTupleDesc);
+#endif
+
 			resultTupleDesc = BlessTupleDesc(resultTupleDesc);
 		}
 	}

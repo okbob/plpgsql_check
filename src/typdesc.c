@@ -432,6 +432,10 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 
 			TupleDescInitEntry(rettupdesc, 1, "__array_element__", elemtype, -1, 0);
 
+#if PG_VERSION_NUM >= 190000
+			TupleDescFinalize(rettupdesc);
+#endif
+
 			FreeTupleDesc(tupdesc);
 			BlessTupleDesc(rettupdesc);
 
@@ -579,6 +583,10 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 												   0);
 								i++;
 							}
+
+#if PG_VERSION_NUM >= 190000
+							TupleDescFinalize(rettupdesc);
+#endif
 
 							FreeTupleDesc(tupdesc);
 							BlessTupleDesc(rettupdesc);
