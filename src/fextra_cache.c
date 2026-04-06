@@ -12,6 +12,12 @@
 #include "plpgsql.h"
 #include "plpgsql_check.h"
 
+#if PG_VERSION_NUM >= 190000
+
+#include "utils/hsearch.h"
+
+#endif
+
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"

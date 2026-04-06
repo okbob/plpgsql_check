@@ -374,21 +374,43 @@ plpgsql_check_profiler_shmem_startup(void)
 	info.keysize = sizeof(profiler_hashkey);
 	info.entrysize = sizeof(profiler_stmt_chunk);
 
+#if PG_VERSION_NUM >= 190000
+
+	shared_profiler_chunks_HashTable = ShmemInitHash("plpgsql_check profiler chunks",
+													 plpgsql_check_profiler_max_shared_chunks,
+													 &info,
+													 HASH_ELEM | HASH_BLOBS);
+
+#else
+
 	shared_profiler_chunks_HashTable = ShmemInitHash("plpgsql_check profiler chunks",
 													 plpgsql_check_profiler_max_shared_chunks,
 													 plpgsql_check_profiler_max_shared_chunks,
 													 &info,
 													 HASH_ELEM | HASH_BLOBS);
 
+#endif
+
 	memset(&info, 0, sizeof(info));
 	info.keysize = sizeof(fstats_hashkey);
 	info.entrysize = sizeof(fstats);
+
+#if PG_VERSION_NUM >= 190000
+
+	shared_fstats_HashTable = ShmemInitHash("plpgsql_check fstats",
+											1000,
+											&info,
+											HASH_ELEM | HASH_BLOBS);
+
+#else
 
 	shared_fstats_HashTable = ShmemInitHash("plpgsql_check fstats",
 											500,
 											1000,
 											&info,
 											HASH_ELEM | HASH_BLOBS);
+
+#endif
 
 	LWLockRelease(AddinShmemInitLock);
 }
