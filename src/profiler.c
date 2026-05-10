@@ -75,17 +75,18 @@ typedef struct fstats
  * This is used as cache for types of expressions of USING clause
  * (EXECUTE like statements).
  */
-typedef struct query_params
+typedef struct QParams
 {
 	int			nparams;
 	Oid			paramtypes[FLEXIBLE_ARRAY_MEMBER];
-} query_params;
+} QParams;
 
 /*
+ * PLpgSQL statement instrumentation
  * Attention - the commands that can contains nestested commands
  * has attached own time and nested statements time too.
  */
-typedef struct profiler_stmt
+typedef struct StmtInstr
 {
 	int			lineno;
 	pc_queryid	queryid;
@@ -97,10 +98,10 @@ typedef struct profiler_stmt
 	instr_time	start_time;
 	instr_time	total;
 	bool		has_queryid;
-	query_params *qparams;
-} profiler_stmt;
+	QParams *qparams;
+} StmtInstr;
 
-typedef struct profiler_stmt_reduced
+typedef struct StmtStats
 {
 	int			lineno;
 	pc_queryid	queryid;
@@ -110,7 +111,7 @@ typedef struct profiler_stmt_reduced
 	uint64		exec_count;
 	uint64		exec_count_err;
 	bool		has_queryid;
-} profiler_stmt_reduced;
+} StmtStats;
 
 #define		STATEMENTS_PER_CHUNK		30
 
@@ -121,7 +122,7 @@ typedef struct profiler_stmt_chunk
 {
 	profiler_hashkey key;
 	slock_t		mutex;			/* only first chunk require mutex */
-	profiler_stmt_reduced stmts[STATEMENTS_PER_CHUNK];
+	StmtStats stmts[STATEMENTS_PER_CHUNK];
 } profiler_stmt_chunk;
 
 typedef struct profiler_shared_state
@@ -135,7 +136,7 @@ typedef struct profiler_shared_state
  */
 typedef struct profiler_info
 {
-	profiler_stmt *stmts;
+	StmtInstr *stmts;
 	int			nstatements;
 	instr_time	start_time;
 	PLpgSQL_function *func;
@@ -190,7 +191,7 @@ PG_FUNCTION_INFO_V1(plpgsql_profiler_install_fake_queryid_hook);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_remove_fake_queryid_hook);
 
 static void update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func, const int *stmtid_map);
-static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, bool *has_queryid, query_params **qparams);
+static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, bool *has_queryid, QParams **qparams);
 
 #if PG_VERSION_NUM >= 190000
 
@@ -274,7 +275,7 @@ eval_stddev_accum(uint64 *_N, uint64 *_Sx, float8 *_Sxx, uint64 newval)
 	*_Sxx = Sxx;
 }
 
-static profiler_stmt_reduced *
+static StmtStats *
 get_stmt_profile_next(profiler_iterator *pi)
 {
 	if (pi->current_chunk)
@@ -559,7 +560,7 @@ profiler_stmt_walker(profiler_info *pinfo,
 					 int stmt_block_num,
 					 profiler_stmt_walker_options *opts)
 {
-	profiler_stmt *pstmt = NULL;
+	StmtInstr *pstmt = NULL;
 	bool		count_exec_time_mode = mode == PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME;
 	bool		prepare_result_mode = mode == PLPGSQL_CHECK_STMT_WALKER_PREPARE_RESULT;
 	bool		collect_coverage_mode = mode == PLPGSQL_CHECK_STMT_WALKER_COLLECT_COVERAGE;
@@ -586,7 +587,7 @@ profiler_stmt_walker(profiler_info *pinfo,
 	}
 	else
 	{
-		profiler_stmt_reduced *ppstmt = NULL;
+		StmtStats *ppstmt = NULL;
 
 		Assert(opts->pi);
 
@@ -1245,8 +1246,8 @@ update_persistent_profile(profiler_info *pinfo,
 
 		for (i = 0; i < func->nstatements; i++)
 		{
-			volatile profiler_stmt_reduced *prstmt;
-			profiler_stmt *pstmt;
+			volatile StmtStats *prstmt;
+			StmtInstr *pstmt;
 
 			/*
 			 * We need to store statement statistics to chunks in natural
@@ -1340,8 +1341,8 @@ update_persistent_profile(profiler_info *pinfo,
 		/* there is a profiler chunk already */
 		for (i = 0; i < func->nstatements; i++)
 		{
-			volatile profiler_stmt_reduced *prstmt;
-			profiler_stmt *pstmt;
+			volatile StmtStats *prstmt;
+			StmtInstr *pstmt;
 
 			/*
 			 * We need to store statement statistics to chunks in natural
@@ -1457,7 +1458,7 @@ stmts_walker(profiler_info *pinfo,
 }
 
 static pc_queryid
-profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, query_params *qparams)
+profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, QParams *qparams)
 {
 	MemoryContext oldcxt;
 	Query	   *query;
@@ -1592,7 +1593,7 @@ get_expr_type(PLpgSQL_expr *expr, Oid *result_type)
 /* Return the first queryid found in the given PLpgSQL_stmt, if any. */
 static pc_queryid
 profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
-					 bool *has_queryid, query_params **qparams)
+					 bool *has_queryid, QParams **qparams)
 {
 	PLpgSQL_expr *expr;
 	bool		dynamic;
@@ -1612,7 +1613,7 @@ profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
 
 		if (params && !*qparams)
 		{
-			query_params *qps = NULL;
+			QParams *qps = NULL;
 			int			nparams = list_length(params);
 			int			paramno = 0;
 			MemoryContext oldcxt;
@@ -1620,7 +1621,7 @@ profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
 
 			/* build array of Oid used like dynamic query parameters */
 			oldcxt = MemoryContextSwitchTo(profiler_mcxt);
-			qps = (query_params *) palloc(sizeof(Oid) * nparams + sizeof(int));
+			qps = (QParams *) palloc(sizeof(Oid) * nparams + sizeof(int));
 			MemoryContextSwitchTo(oldcxt);
 
 			foreach(lc, params)
@@ -1926,7 +1927,7 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 					}
 					else if (chunk->stmts[current_statement].lineno == lineno)
 					{
-						profiler_stmt_reduced *prstmt = &chunk->stmts[current_statement];
+						StmtStats *prstmt = &chunk->stmts[current_statement];
 
 						us_total += prstmt->us_total;
 						exec_count += prstmt->exec_count;
@@ -2024,7 +2025,7 @@ profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fext
 
 		pinfo = palloc0(sizeof(profiler_info));
 		pinfo->nstatements = func->nstatements;
-		pinfo->stmts = palloc0(func->nstatements * sizeof(profiler_stmt));
+		pinfo->stmts = palloc0(func->nstatements * sizeof(StmtInstr));
 
 		INSTR_TIME_SET_CURRENT(pinfo->start_time);
 
@@ -2114,7 +2115,7 @@ profiler_stmt_beg(PLpgSQL_execstate *estate,
 }
 
 static void
-_profiler_stmt_end(profiler_stmt *pstmt, bool is_aborted)
+_profiler_stmt_end(StmtInstr *pstmt, bool is_aborted)
 {
 	instr_time	end_time;
 	uint64		elapsed;
@@ -2148,7 +2149,7 @@ profiler_stmt_end(PLpgSQL_execstate *estate,
 
 	if (pinfo)
 	{
-		profiler_stmt *pstmt = &pinfo->stmts[stmt->stmtid - 1];
+		StmtInstr *pstmt = &pinfo->stmts[stmt->stmtid - 1];
 
 		/*
 		 * We can get query id only if stmt_end is not executed in cleaning
@@ -2172,7 +2173,7 @@ profiler_stmt_abort(PLpgSQL_execstate *estate,
 
 	if (pinfo)
 	{
-		profiler_stmt *pstmt = &pinfo->stmts[stmt->stmtid - 1];
+		StmtInstr *pstmt = &pinfo->stmts[stmt->stmtid - 1];
 
 		_profiler_stmt_end(pstmt, true);
 	}
