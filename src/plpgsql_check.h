@@ -63,7 +63,6 @@ enum
 
 typedef enum profiler_stmt_walker_mode
 {
-	PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME,
 	PLPGSQL_CHECK_STMT_WALKER_PREPARE_RESULT,
 	PLPGSQL_CHECK_STMT_WALKER_COLLECT_COVERAGE
 } profiler_stmt_walker_mode;

@@ -88,7 +88,7 @@ typedef struct QParams
  */
 typedef struct StmtInstr
 {
-	int			lineno;
+	bool		has_queryid;
 	pc_queryid	queryid;
 	uint64		us_max;
 	uint64		us_total;
@@ -97,20 +97,19 @@ typedef struct StmtInstr
 	uint64		exec_count_err;
 	instr_time	start_time;
 	instr_time	total;
-	bool		has_queryid;
 	QParams *qparams;
 } StmtInstr;
 
 typedef struct StmtStats
 {
 	int			lineno;
+	bool		has_queryid;
 	pc_queryid	queryid;
 	uint64		us_max;
 	uint64		us_total;
 	uint64		rows;
 	uint64		exec_count;
 	uint64		exec_count_err;
-	bool		has_queryid;
 } StmtStats;
 
 #define		STATEMENTS_PER_CHUNK		30
@@ -136,7 +135,8 @@ typedef struct profiler_shared_state
  */
 typedef struct profiler_info
 {
-	StmtInstr *stmts;
+	StmtInstr *sinstrs;
+	StmtStats *sstats;
 	int			nstatements;
 	instr_time	start_time;
 	PLpgSQL_function *func;
@@ -524,6 +524,42 @@ plpgsql_check_profiler_init_hash_tables(void)
 	fstats_HashTableInit();
 }
 
+
+typedef struct count_stmt_exec_time_context
+{
+	StmtInstr  *sinstrs;
+	StmtStats  *sstats;
+	int64		nested_us_time;
+} count_stmt_exec_time_context;
+
+static void
+count_stmt_exec_time_walker(PLpgSQL_stmt *stmt, count_stmt_exec_time_context *context)
+{
+	count_stmt_exec_time_context loccontext;
+
+	int			stmtid_0 = stmt->stmtid - 1;
+	StmtInstr  *sinstr = &context->sinstrs[stmtid_0];
+	StmtStats  *sstats = &context->sstats[stmtid_0];
+
+	loccontext.sinstrs = context->sinstrs;
+	loccontext.sstats = context->sstats;
+	loccontext.nested_us_time = 0;
+
+	plch_statement_tree_walker(stmt, count_stmt_exec_time_walker, NULL, &loccontext);
+
+	context->nested_us_time += sinstr->us_total;
+
+	sstats->lineno = stmt->lineno;
+	sstats->has_queryid = sinstr->has_queryid;
+	sstats->queryid = sinstr->queryid;
+	sstats->us_max = sinstr->us_max;
+	sstats->us_total = sinstr->us_total - loccontext.nested_us_time;
+	sstats->rows = sinstr->rows;
+	sstats->exec_count = sinstr->exec_count;
+	sstats->exec_count_err = sinstr->exec_count_err;
+}
+
+
 /*
  * Increase a branch couter - used for branch coverage
  */
@@ -544,11 +580,9 @@ increment_branch_counter(coverage_state *cs, int64 executed)
  *
  * This function is designed for three different purposes:
  *
- *   a) iterate over all commends and finalize total time
- *      as measured total time substract child total time.
- *   b) iterate over all commands and prepare result for
+ *   a) iterate over all commands and prepare result for
  *      plpgsql_profiler_function_statements_tb function.
- *   c) iterate over all commands to collect code coverage
+ *   b) iterate over all commands to collect code coverage
  *      metrics
  */
 static void
@@ -560,87 +594,72 @@ profiler_stmt_walker(profiler_info *pinfo,
 					 int stmt_block_num,
 					 profiler_stmt_walker_options *opts)
 {
-	StmtInstr *pstmt = NULL;
-	bool		count_exec_time_mode = mode == PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME;
 	bool		prepare_result_mode = mode == PLPGSQL_CHECK_STMT_WALKER_PREPARE_RESULT;
 	bool		collect_coverage_mode = mode == PLPGSQL_CHECK_STMT_WALKER_COLLECT_COVERAGE;
-
-	int64		nested_us_time = 0;
 	int64		exec_count = 0;
-
 	int			stmtid = -1;
-
 	char		strbuf[100];
 	int			n = 0;
 	List	   *stmts;
 	ListCell   *lc;
 
+	StmtStats  *ppstmt;
+
 	stmtid = stmt->stmtid - 1;
 
-	if (count_exec_time_mode)
+
+	Assert(opts->pi);
+
+	/*
+	 * When iterator is used, then id of iterator's current statement have
+	 * to be same like stmtid of stmt. When function was not executed in
+	 * active profile mode, then we have not any stored chunk, and
+	 * iterator returns 0 stmtid.
+	 */
+	Assert(!opts->pi->current_chunk ||
+		   (opts->fextra->natural_to_ids[opts->pi->current_statement_no]) == stmtid + 1);
+
+	/*
+	 * Get persistent statement info stored in shared memory or in session
+	 * memory by iterator.
+	 */
+	ppstmt = get_stmt_profile_next(opts->pi);
+
+	if (prepare_result_mode && opts->pi->ri)
 	{
-		/*
-		 * Get statement info from function execution context by statement id.
-		 */
-		pstmt = &pinfo->stmts[stmtid];
-		pstmt->lineno = stmt->lineno;
+		int			parent_natural_stmtid = -1;
+		int			naturalid = opts->fextra->naturalids[stmt->stmtid];
+		const char *typname = plpgsql_check__stmt_typename_p(stmt);
+
+		parent_natural_stmtid = parent_stmt ? opts->fextra->naturalids[parent_stmt->stmtid] : -1;
+
+		plpgsql_check_put_profile_statement(opts->pi->ri,
+											ppstmt ? ppstmt->queryid : NOQUERYID,
+											naturalid,
+											parent_natural_stmtid,
+											description,
+											stmt_block_num,
+											stmt->lineno,
+											ppstmt ? ppstmt->exec_count : 0,
+											ppstmt ? ppstmt->exec_count_err : 0,
+											ppstmt ? ppstmt->us_total : 0.0,
+											ppstmt ? ppstmt->us_max : 0.0,
+											ppstmt ? ppstmt->rows : 0,
+											(char *) typname);
 	}
-	else
+	else if (collect_coverage_mode)
 	{
-		StmtStats *ppstmt = NULL;
+		/* save statement exec count */
+		exec_count = ppstmt ? ppstmt->exec_count : 0;
 
-		Assert(opts->pi);
-
-		/*
-		 * When iterator is used, then id of iterator's current statement have
-		 * to be same like stmtid of stmt. When function was not executed in
-		 * active profile mode, then we have not any stored chunk, and
-		 * iterator returns 0 stmtid.
-		 */
-		Assert(!opts->pi->current_chunk ||
-			   (opts->fextra->natural_to_ids[opts->pi->current_statement_no]) == stmtid + 1);
-
-		/*
-		 * Get persistent statement info stored in shared memory or in session
-		 * memory by iterator.
-		 */
-		ppstmt = get_stmt_profile_next(opts->pi);
-
-		if (prepare_result_mode && opts->pi->ri)
+		/* ignore invisible BLOCK */
+		if (stmt->lineno != -1)
 		{
-			int			parent_natural_stmtid = -1;
-			int			naturalid = opts->fextra->naturalids[stmt->stmtid];
-			const char *typname = plpgsql_check__stmt_typename_p(stmt);
-
-			parent_natural_stmtid = parent_stmt ? opts->fextra->naturalids[parent_stmt->stmtid] : -1;
-
-			plpgsql_check_put_profile_statement(opts->pi->ri,
-												ppstmt ? ppstmt->queryid : NOQUERYID,
-												naturalid,
-												parent_natural_stmtid,
-												description,
-												stmt_block_num,
-												stmt->lineno,
-												ppstmt ? ppstmt->exec_count : 0,
-												ppstmt ? ppstmt->exec_count_err : 0,
-												ppstmt ? ppstmt->us_total : 0.0,
-												ppstmt ? ppstmt->us_max : 0.0,
-												ppstmt ? ppstmt->rows : 0,
-												(char *) typname);
-		}
-		else if (collect_coverage_mode)
-		{
-			/* save statement exec count */
-			exec_count = ppstmt ? ppstmt->exec_count : 0;
-
-			/* ignore invisible BLOCK */
-			if (stmt->lineno != -1)
-			{
-				opts->cs->statements += 1;
-				opts->cs->executed_statements += exec_count > 0 ? 1 : 0;
-			}
+			opts->cs->statements += 1;
+			opts->cs->executed_statements += exec_count > 0 ? 1 : 0;
 		}
 	}
+
 
 	if (plch_statement_is_loop(stmt))
 	{
@@ -670,11 +689,7 @@ profiler_stmt_walker(profiler_info *pinfo,
 					 stmt_if->then_body, stmt, "then body",
 					 opts);
 
-		if (count_exec_time_mode)
-		{
-			nested_us_time = opts->nested_us_time;
-		}
-		else if (collect_coverage_mode)
+		if (collect_coverage_mode)
 		{
 			increment_branch_counter(opts->cs,
 									 opts->nested_exec_count);
@@ -692,10 +707,7 @@ profiler_stmt_walker(profiler_info *pinfo,
 						 stmts, stmt, strbuf,
 						 opts);
 
-			if (count_exec_time_mode)
-				nested_us_time += opts->nested_us_time;
-
-			else if (collect_coverage_mode)
+			if (collect_coverage_mode)
 			{
 				increment_branch_counter(opts->cs,
 										 opts->nested_exec_count);
@@ -710,10 +722,7 @@ profiler_stmt_walker(profiler_info *pinfo,
 						 stmt_if->else_body, stmt, "else body",
 						 opts);
 
-			if (count_exec_time_mode)
-				nested_us_time += opts->nested_us_time;
-
-			else if (collect_coverage_mode)
+			if (collect_coverage_mode)
 				increment_branch_counter(opts->cs,
 										 opts->nested_exec_count);
 		}
@@ -743,10 +752,7 @@ profiler_stmt_walker(profiler_info *pinfo,
 						 stmts, stmt, strbuf,
 						 opts);
 
-			if (count_exec_time_mode)
-				nested_us_time = opts->nested_us_time;
-
-			else if (collect_coverage_mode)
+			if (collect_coverage_mode)
 				increment_branch_counter(opts->cs,
 										 opts->nested_exec_count);
 		}
@@ -755,10 +761,7 @@ profiler_stmt_walker(profiler_info *pinfo,
 					 stmt_case->else_stmts, stmt, "case else",
 					 opts);
 
-		if (count_exec_time_mode)
-			nested_us_time = opts->nested_us_time;
-
-		else if (collect_coverage_mode)
+		if (collect_coverage_mode)
 			increment_branch_counter(opts->cs,
 									 opts->nested_exec_count);
 	}
@@ -769,9 +772,6 @@ profiler_stmt_walker(profiler_info *pinfo,
 		stmts_walker(pinfo, mode,
 					 stmt_block->body, stmt, "body",
 					 opts);
-
-		if (count_exec_time_mode)
-			nested_us_time = opts->nested_us_time;
 
 		if (stmt_block->exceptions)
 		{
@@ -789,30 +789,14 @@ profiler_stmt_walker(profiler_info *pinfo,
 							 stmts, stmt, strbuf,
 							 opts);
 
-				if (count_exec_time_mode)
-					nested_us_time += opts->nested_us_time;
-				else if (collect_coverage_mode)
+				if (collect_coverage_mode)
 					increment_branch_counter(opts->cs,
 											 opts->nested_exec_count);
 			}
 		}
 	}
 
-	if (count_exec_time_mode)
-	{
-		Assert(pstmt);
-
-		opts->nested_us_time = pstmt->us_total;
-		pstmt->us_total -= nested_us_time;
-
-		/*
-		 * When max time is unknown, but statement was executed only only
-		 * once, we can se max time.
-		 */
-		if (pstmt->exec_count == 1 && pstmt->us_max == 1)
-			pstmt->us_max = pstmt->us_total;
-	}
-	else if (collect_coverage_mode)
+	if (collect_coverage_mode)
 	{
 		opts->nested_exec_count = exec_count;
 	}
@@ -1103,7 +1087,8 @@ plpgsql_profiler_remove_fake_queryid_hook(PG_FUNCTION_ARGS)
 
 static void
 update_persistent_fstats(PLpgSQL_function *func,
-						 uint64 elapsed)
+						 uint64 elapsed,
+						 bool aborted)
 {
 	HTAB	   *fstats_ht;
 	bool		htab_is_shared;
@@ -1181,6 +1166,9 @@ update_persistent_fstats(PLpgSQL_function *func,
 					  &fstats_item->total_time_xx,
 					  elapsed);
 
+	if (aborted)
+		fstats_item->exec_count_err += 1;
+
 	if (use_spinlock)
 		SpinLockRelease(&fstats_item->mutex);
 
@@ -1246,8 +1234,8 @@ update_persistent_profile(profiler_info *pinfo,
 
 		for (i = 0; i < func->nstatements; i++)
 		{
-			volatile StmtStats *prstmt;
-			StmtInstr *pstmt;
+			volatile StmtStats *persist_sstats;
+			StmtStats *sstats;
 
 			/*
 			 * We need to store statement statistics to chunks in natural
@@ -1263,7 +1251,7 @@ update_persistent_profile(profiler_info *pinfo,
 			if (n == -1)
 				continue;
 
-			pstmt = &pinfo->stmts[n];
+			sstats = &pinfo->sstats[n];
 
 			if (hk.chunk_num == 0 || stmt_counter >= STATEMENTS_PER_CHUNK)
 			{
@@ -1283,16 +1271,20 @@ update_persistent_profile(profiler_info *pinfo,
 				stmt_counter = 0;
 			}
 
-			prstmt = &chunk->stmts[stmt_counter++];
+			persist_sstats = &chunk->stmts[stmt_counter++];
 
-			prstmt->lineno = pstmt->lineno;
-			prstmt->queryid = pstmt->queryid;
-			prstmt->has_queryid = pstmt->has_queryid;
-			prstmt->us_max = pstmt->us_max;
-			prstmt->us_total = pstmt->us_total;
-			prstmt->rows = pstmt->rows;
-			prstmt->exec_count = pstmt->exec_count;
-			prstmt->exec_count_err = pstmt->exec_count_err;
+			persist_sstats->lineno = sstats->lineno;
+
+			persist_sstats->queryid = sstats->queryid;
+			persist_sstats->has_queryid = sstats->has_queryid;
+
+			if (persist_sstats->us_max < sstats->us_max)
+				persist_sstats->us_max = sstats->us_max;
+
+			persist_sstats->us_total = sstats->us_total;
+			persist_sstats->rows = sstats->rows;
+			persist_sstats->exec_count = sstats->exec_count;
+			persist_sstats->exec_count_err = sstats->exec_count_err;
 		}
 
 		/* clean unused stmts in chunk */
@@ -1341,8 +1333,8 @@ update_persistent_profile(profiler_info *pinfo,
 		/* there is a profiler chunk already */
 		for (i = 0; i < func->nstatements; i++)
 		{
-			volatile StmtStats *prstmt;
-			StmtInstr *pstmt;
+			volatile StmtStats *persist_sstats;
+			StmtStats *sstats;
 
 			/*
 			 * We need to store statement statistics to chunks in natural
@@ -1356,7 +1348,7 @@ update_persistent_profile(profiler_info *pinfo,
 			if (n == -1)
 				continue;
 
-			pstmt = &pinfo->stmts[n];
+			sstats = &pinfo->sstats[n];
 
 			if (stmt_counter >= STATEMENTS_PER_CHUNK)
 			{
@@ -1373,18 +1365,18 @@ update_persistent_profile(profiler_info *pinfo,
 				stmt_counter = 0;
 			}
 
-			prstmt = &_chunk->stmts[stmt_counter++];
+			persist_sstats = &_chunk->stmts[stmt_counter++];
 
-			if (prstmt->lineno != pstmt->lineno)
-				elog(ERROR, "broken consistency of plpgsql_check profiler chunks %d %d", prstmt->lineno, pstmt->lineno);
+			if (persist_sstats->lineno != sstats->lineno)
+				elog(ERROR, "broken consistency of plpgsql_check profiler chunks %d %d", persist_sstats->lineno, sstats->lineno);
 
-			if (prstmt->us_max < pstmt->us_max)
-				prstmt->us_max = pstmt->us_max;
+			if (persist_sstats->us_max < sstats->us_max)
+				persist_sstats->us_max = sstats->us_max;
 
-			prstmt->us_total += pstmt->us_total;
-			prstmt->rows += pstmt->rows;
-			prstmt->exec_count += pstmt->exec_count;
-			prstmt->exec_count_err += pstmt->exec_count_err;
+			persist_sstats->us_total += sstats->us_total;
+			persist_sstats->rows += sstats->rows;
+			persist_sstats->exec_count += sstats->exec_count;
+			persist_sstats->exec_count_err += sstats->exec_count_err;
 		}
 	}
 	PG_CATCH();
@@ -1413,10 +1405,7 @@ stmts_walker(profiler_info *pinfo,
 			 const char *description,
 			 profiler_stmt_walker_options *opts)
 {
-	bool		count_exec_time = mode == PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME;
 	bool		collect_coverage = mode == PLPGSQL_CHECK_STMT_WALKER_COLLECT_COVERAGE;
-
-	int64		nested_us_time = 0;
 	int64		nested_exec_count = 0;
 
 	int			stmt_block_num = 1;
@@ -1432,10 +1421,6 @@ stmts_walker(profiler_info *pinfo,
 							 stmt_block_num,
 							 opts);
 
-		/* add stmt execution time to total execution time */
-		if (count_exec_time)
-			nested_us_time += opts->nested_us_time;
-
 		/*
 		 * For calculation of coverage we need a numbers of nested statements
 		 * execution. Usually or statements in list has same number of
@@ -1449,9 +1434,6 @@ stmts_walker(profiler_info *pinfo,
 
 		stmt_block_num += 1;
 	}
-
-	if (count_exec_time)
-		opts->nested_us_time = nested_us_time;
 
 	if (collect_coverage)
 		opts->nested_exec_count = nested_exec_count;
@@ -1774,7 +1756,8 @@ plpgsql_check_iterate_over_profile(plpgsql_check_info *cinfo,
 
 		pinfo.func = func;
 		pinfo.nstatements = 0;
-		pinfo.stmts = NULL;
+		pinfo.sinstrs = NULL;
+		pinfo.sstats = NULL;
 
 		profiler_stmt_walker(&pinfo, mode, (PLpgSQL_stmt *) func->action, NULL, NULL, 1, &opts);
 
@@ -2025,7 +2008,8 @@ profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fext
 
 		pinfo = palloc0(sizeof(profiler_info));
 		pinfo->nstatements = func->nstatements;
-		pinfo->stmts = palloc0(func->nstatements * sizeof(StmtInstr));
+		pinfo->sinstrs = palloc0(func->nstatements * sizeof(StmtInstr));
+		pinfo->sstats = palloc0(func->nstatements * sizeof(StmtStats));
 
 		INSTR_TIME_SET_CURRENT(pinfo->start_time);
 
@@ -2037,42 +2021,31 @@ profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fext
 static void
 _profiler_func_end(profiler_info *pinfo, Oid fn_oid, bool is_aborted, plch_fextra *fextra)
 {
-	int			entry_stmtid;
 	instr_time	end_time;
 	uint64		elapsed;
-	profiler_stmt_walker_options opts;
 	int		   *stmtid_map;
+	count_stmt_exec_time_context loccontext;
 
 	Assert(pinfo);
 	Assert(pinfo->func);
 	Assert(pinfo->func->fn_oid == fn_oid);
-
-	entry_stmtid = pinfo->func->action->stmtid - 1;
-
-	memset(&opts, 0, sizeof(profiler_stmt_walker_options));
 
 	INSTR_TIME_SET_CURRENT(end_time);
 	INSTR_TIME_SUBTRACT(end_time, pinfo->start_time);
 
 	elapsed = INSTR_TIME_GET_MICROSEC(end_time);
 
-	if (pinfo->stmts[entry_stmtid].exec_count == 0)
-	{
-		pinfo->stmts[entry_stmtid].exec_count = 1;
-		pinfo->stmts[entry_stmtid].exec_count_err = is_aborted ? 1 : 0;
-		pinfo->stmts[entry_stmtid].us_total = elapsed;
-		pinfo->stmts[entry_stmtid].us_max = elapsed;
-	}
-
 	stmtid_map = fextra->natural_to_ids;
 
 	/* finalize profile - get result profile */
-	profiler_stmt_walker(pinfo, PLPGSQL_CHECK_STMT_WALKER_COUNT_EXEC_TIME,
-						 (PLpgSQL_stmt *) pinfo->func->action, NULL, NULL, 1,
-						 &opts);
+	loccontext.sinstrs = pinfo->sinstrs;
+	loccontext.sstats = pinfo->sstats;
+	loccontext.nested_us_time = 0;
+
+	count_stmt_exec_time_walker((PLpgSQL_stmt *) pinfo->func->action, &loccontext);
 
 	update_persistent_profile(pinfo, pinfo->func, stmtid_map);
-	update_persistent_fstats(pinfo->func, elapsed);
+	update_persistent_fstats(pinfo->func, elapsed, is_aborted);
 }
 
 static void
@@ -2110,12 +2083,14 @@ profiler_stmt_beg(PLpgSQL_execstate *estate,
 
 	if (pinfo)
 	{
-		INSTR_TIME_SET_CURRENT(pinfo->stmts[stmt->stmtid - 1].start_time);
+		StmtInstr *sinstr = &pinfo->sinstrs[stmt->stmtid - 1];
+
+		INSTR_TIME_SET_CURRENT(sinstr->start_time);
 	}
 }
 
 static void
-_profiler_stmt_end(StmtInstr *pstmt, bool is_aborted)
+_profiler_stmt_end(StmtInstr *sinstr, bool is_aborted)
 {
 	instr_time	end_time;
 	uint64		elapsed;
@@ -2123,17 +2098,17 @@ _profiler_stmt_end(StmtInstr *pstmt, bool is_aborted)
 
 	INSTR_TIME_SET_CURRENT(end_time);
 	end_time2 = end_time;
-	INSTR_TIME_ACCUM_DIFF(pstmt->total, end_time, pstmt->start_time);
+	INSTR_TIME_ACCUM_DIFF(sinstr->total, end_time, sinstr->start_time);
 
-	INSTR_TIME_SUBTRACT(end_time2, pstmt->start_time);
+	INSTR_TIME_SUBTRACT(end_time2, sinstr->start_time);
 	elapsed = INSTR_TIME_GET_MICROSEC(end_time2);
 
-	if (elapsed > pstmt->us_max)
-		pstmt->us_max = elapsed;
+	if (elapsed > sinstr->us_max)
+		sinstr->us_max = elapsed;
 
-	pstmt->us_total = INSTR_TIME_GET_MICROSEC(pstmt->total);
-	pstmt->exec_count_err += is_aborted ? 1 : 0;
-	pstmt->exec_count++;
+	sinstr->us_total = INSTR_TIME_GET_MICROSEC(sinstr->total);
+	sinstr->exec_count_err += is_aborted ? 1 : 0;
+	sinstr->exec_count++;
 }
 
 
@@ -2149,18 +2124,18 @@ profiler_stmt_end(PLpgSQL_execstate *estate,
 
 	if (pinfo)
 	{
-		StmtInstr *pstmt = &pinfo->stmts[stmt->stmtid - 1];
+		StmtInstr *sinstr = &pinfo->sinstrs[stmt->stmtid - 1];
 
 		/*
 		 * We can get query id only if stmt_end is not executed in cleaning
 		 * mode, because we need to execute expression
 		 */
-		if (pstmt->queryid == NOQUERYID)
-			pstmt->queryid = profiler_get_queryid(estate, stmt,
-												  &pstmt->has_queryid,
-												  &pstmt->qparams);
+		if (sinstr->queryid == NOQUERYID)
+			sinstr->queryid = profiler_get_queryid(estate, stmt,
+												  &sinstr->has_queryid,
+												  &sinstr->qparams);
 
-		_profiler_stmt_end(pstmt, false);
+		_profiler_stmt_end(sinstr, false);
 	}
 }
 
@@ -2173,9 +2148,9 @@ profiler_stmt_abort(PLpgSQL_execstate *estate,
 
 	if (pinfo)
 	{
-		StmtInstr *pstmt = &pinfo->stmts[stmt->stmtid - 1];
+		StmtInstr *sinstr = &pinfo->sinstrs[stmt->stmtid - 1];
 
-		_profiler_stmt_end(pstmt, true);
+		_profiler_stmt_end(sinstr, true);
 	}
 }
 
