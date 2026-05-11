@@ -12,6 +12,7 @@
 #include "plpgsql_check_builtins.h"
 
 #include "access/htup_details.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "nodes/pg_list.h"
@@ -30,38 +31,21 @@
 #include <math.h>
 
 /*
- * Any instance of plpgsql function will have a own profile.
- * When function will be dropped, then related profile should
- * be removed from shared memory.
- *
- * The local profile is created when function is initialized,
- * and it is stored in plugin_info field. When function is finished,
- * data from local profile is merged to shared profile.
+ * It is unique for any version of function with same oid.
+ * It ensure strong relation between runtime data and source code
+ * (pg_proc tuple).
  */
-typedef struct profiler_hashkey
+typedef struct func_identity_hashkey
 {
 	Oid			fn_oid;
 	Oid			db_oid;
 	TransactionId fn_xmin;
 	ItemPointerData fn_tid;
-	int16		chunk_num;
-} profiler_hashkey;
+} func_identity_hashkey;
 
-/*
- * We want to collect data about execution on function level. The
- * possible issue can be more different profiles. On this level
- * the version of function is not important, so the hash key is
- * composed only from fn_oid and db_oid
- */
-typedef struct fstats_hashkey
+typedef struct FuncStats
 {
-	Oid			fn_oid;
-	Oid			db_oid;
-} fstats_hashkey;
-
-typedef struct fstats
-{
-	fstats_hashkey key;
+	func_identity_hashkey key;
 	slock_t		mutex;
 	uint64		exec_count;
 	uint64		exec_count_err;
@@ -69,7 +53,7 @@ typedef struct fstats
 	double		total_time_xx;
 	uint64		min_time;
 	uint64		max_time;
-} fstats;
+} FuncStats;
 
 /*
  * This is used as cache for types of expressions of USING clause
@@ -102,7 +86,6 @@ typedef struct StmtInstr
 
 typedef struct StmtStats
 {
-	int			lineno;
 	bool		has_queryid;
 	pc_queryid	queryid;
 	uint64		us_max;
@@ -114,21 +97,11 @@ typedef struct StmtStats
 
 #define		STATEMENTS_PER_CHUNK		30
 
-/*
- * The shared profile will be stored as set of chunks
- */
-typedef struct profiler_stmt_chunk
+typedef struct FuncStmtsStats
 {
-	profiler_hashkey key;
-	slock_t		mutex;			/* only first chunk require mutex */
-	StmtStats stmts[STATEMENTS_PER_CHUNK];
-} profiler_stmt_chunk;
-
-typedef struct profiler_shared_state
-{
-	LWLock	   *lock;
-	LWLock	   *fstats_lock;
-} profiler_shared_state;
+	func_identity_hashkey key;
+	StmtStats  *sstats;
+} FuncStmtsStats;
 
 /*
  * This structure is used as plpgsql extension parameter
@@ -142,28 +115,11 @@ typedef struct profiler_info
 	PLpgSQL_function *func;
 } profiler_info;
 
-typedef struct profiler_iterator
-{
-	profiler_hashkey key;
-	plpgsql_check_result_info *ri;
-	HTAB	   *chunks;
-	profiler_stmt_chunk *current_chunk;
-	int			current_statement;
-
-#ifdef USE_ASSERT_CHECKING
-
-	int			current_statement_no;
-
-#endif
-
-} profiler_iterator;
-
 typedef struct profiler_stmt_walker_options
 {
 	int			stmtid;
 	int64		nested_us_time;
 	int64		nested_exec_count;
-	profiler_iterator *pi;
 	coverage_state *cs;
 	plch_fextra *fextra;
 } profiler_stmt_walker_options;
@@ -190,7 +146,7 @@ PG_FUNCTION_INFO_V1(plpgsql_coverage_branches_name);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_install_fake_queryid_hook);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_remove_fake_queryid_hook);
 
-static void update_persistent_profile(profiler_info *pinfo, PLpgSQL_function *func, const int *stmtid_map);
+static void update_persistent_stmts_stats(profiler_info *pinfo);
 static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, bool *has_queryid, QParams **qparams);
 
 #if PG_VERSION_NUM >= 190000
@@ -202,11 +158,6 @@ static void profiler_fake_queryid_hook(ParseState *pstate, Query *query, const J
 static void profiler_fake_queryid_hook(ParseState *pstate, Query *query, JumbleState *jstate);
 
 #endif
-
-static void stmts_walker(profiler_info *pinfo, profiler_stmt_walker_mode, List *stmts, PLpgSQL_stmt *parent_stmt,
-						 const char *description, profiler_stmt_walker_options *opts);
-static void profiler_stmt_walker(profiler_info *pinfo, profiler_stmt_walker_mode mode, PLpgSQL_stmt *stmt,
-								 PLpgSQL_stmt *parent_stmt, const char *description, int stmt_block_num, profiler_stmt_walker_options *opts);
 
 static bool profiler_is_active(PLpgSQL_execstate *estate, PLpgSQL_function *func);
 static void profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fextra *fextra);
@@ -225,89 +176,36 @@ static plch_plugin profiler_plugin =
 	NULL, NULL, NULL, NULL, NULL
 };
 
-static HTAB *profiler_HashTable = NULL;
-static HTAB *shared_profiler_chunks_HashTable = NULL;
-static HTAB *profiler_chunks_HashTable = NULL;
+static void plfunction_init_function_identity_hashkey(func_identity_hashkey *hk, PLpgSQL_function *func);
+static void proctuple_init_function_identity_hashkey(func_identity_hashkey *hk, HeapTuple procTuple);
+
+static pc_queryid profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, QParams *qparams);
+static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
+									   bool *has_queryid, QParams **qparams);
+
+static void eval_stddev_accum(uint64 *_N, uint64 *_Sx, float8 *_Sxx, uint64 newval);
+static PLpgSQL_function *cinfo_get_function(plpgsql_check_info *cinfo);
+static bool get_plpgsql_expr_type(PLpgSQL_expr *expr, Oid *result_type);
+static char *cutline(char *str, char **line);
+
 static HTAB *fstats_HashTable = NULL;
 static HTAB *shared_fstats_HashTable = NULL;
+static HTAB *func_stmts_stats_HashTable = NULL;
 
-static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
-
-static profiler_shared_state *profiler_ss = NULL;
 static MemoryContext profiler_mcxt = NULL;
 static MemoryContext profiler_queryid_mcxt = NULL;
 
+static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
+
 bool		plpgsql_check_profiler = false;
 
-/*
- * Use the Youngs-Cramer algorithm to incorporate the new value into the
- * transition values.
+
+/***************************************
+ *
+ * Profiler initialization
+ *
+ ***************************************
  */
-static void
-eval_stddev_accum(uint64 *_N, uint64 *_Sx, float8 *_Sxx, uint64 newval)
-{
-	uint64		N = *_N;
-	uint64		Sx = *_Sx;
-	float8		Sxx = *_Sxx;
-	float8		tmp;
-
-	/*
-	 * Use the Youngs-Cramer algorithm to incorporate the new value into the
-	 * transition values.
-	 */
-	N += 1;
-	Sx += newval;
-
-	if (N > 1)
-	{
-		tmp = ((float8) newval) * ((float8) N) - ((float8) Sx);
-
-		Sxx += tmp * tmp / (N * (N - 1));
-
-		if (isinf(Sxx))
-			Sxx = get_float8_nan();
-	}
-	else
-		Sxx = 0.0;
-
-	*_N = N;
-	*_Sx = Sx;
-	*_Sxx = Sxx;
-}
-
-static StmtStats *
-get_stmt_profile_next(profiler_iterator *pi)
-{
-	if (pi->current_chunk)
-	{
-		if (pi->current_statement >= STATEMENTS_PER_CHUNK)
-		{
-			bool		found;
-
-			pi->key.chunk_num += 1;
-
-			pi->current_chunk = (profiler_stmt_chunk *) hash_search(pi->chunks,
-																	(void *) &pi->key,
-																	HASH_FIND,
-																	&found);
-
-			if (!found)
-				elog(ERROR, "broken consistency of plpgsql_check profiler chunks");
-
-			pi->current_statement = 0;
-		}
-
-#ifdef USE_ASSERT_CHECKING
-
-		pi->current_statement_no += 1;
-
-#endif
-
-		return &pi->current_chunk->stmts[pi->current_statement++];
-	}
-
-	return NULL;
-}
 
 /*
  * Calculate required size of shared memory for chunks
@@ -318,10 +216,7 @@ plpgsql_check_shmem_size(void)
 {
 	Size		num_bytes = 0;
 
-	num_bytes = MAXALIGN(sizeof(profiler_shared_state));
-	num_bytes = add_size(num_bytes,
-						 hash_estimate_size(plpgsql_check_profiler_max_shared_chunks,
-											sizeof(profiler_stmt_chunk)));
+	num_bytes = 200000;
 
 	return num_bytes;
 }
@@ -356,10 +251,9 @@ plpgsql_check_profiler_shmem_request(void)
 void
 plpgsql_check_profiler_shmem_startup(void)
 {
-	bool		found;
+//	bool		found;
 	HASHCTL		info;
 
-	shared_profiler_chunks_HashTable = NULL;
 	shared_fstats_HashTable = NULL;
 
 	if (plpgsql_check_prev_shmem_startup_hook)
@@ -370,20 +264,21 @@ plpgsql_check_profiler_shmem_startup(void)
 	 */
 	LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
 
-	profiler_ss = ShmemInitStruct("plpgsql_check profiler state",
-								  sizeof(profiler_shared_state),
-								  &found);
+//	profiler_ss = ShmemInitStruct("plpgsql_check profiler state",
+//								  sizeof(profiler_shared_state),
+//								  &found);
 
-	if (!found)
-	{
-		profiler_ss->lock = &(GetNamedLWLockTranche("plpgsql_check profiler"))->lock;
-		profiler_ss->fstats_lock = &(GetNamedLWLockTranche("plpgsql_check fstats"))->lock;
-	}
+//	if (!found)
+//	{
+//		profiler_ss->lock = &(GetNamedLWLockTranche("plpgsql_check profiler"))->lock;
+//		profiler_ss->fstats_lock = &(GetNamedLWLockTranche("plpgsql_check fstats"))->lock;
+//	}
 
 	memset(&info, 0, sizeof(info));
-	info.keysize = sizeof(profiler_hashkey);
-	info.entrysize = sizeof(profiler_stmt_chunk);
+	//info.keysize = sizeof(profiler_hashkey);
+	//info.entrysize = sizeof(profiler_stmt_chunk);
 
+/*
 #if PG_VERSION_NUM >= 190000
 
 	shared_profiler_chunks_HashTable = ShmemInitHash("plpgsql_check profiler chunks",
@@ -400,10 +295,12 @@ plpgsql_check_profiler_shmem_startup(void)
 													 HASH_ELEM | HASH_BLOBS);
 
 #endif
-
+*/
 	memset(&info, 0, sizeof(info));
-	info.keysize = sizeof(fstats_hashkey);
-	info.entrysize = sizeof(fstats);
+	info.keysize = sizeof(func_identity_hashkey);
+	info.entrysize = sizeof(FuncStats);
+
+/*
 
 #if PG_VERSION_NUM >= 190000
 
@@ -423,384 +320,26 @@ plpgsql_check_profiler_shmem_startup(void)
 #endif
 
 	LWLockRelease(AddinShmemInitLock);
+	
+	*/
 }
 
 /*
- * Profiler implementation
+ * Register plpgsql plugin2 for profiler
  */
-
-static void
-profiler_init_hashkey(profiler_hashkey *hk, PLpgSQL_function *func)
-{
-	memset(hk, 0, sizeof(profiler_hashkey));
-
-	hk->db_oid = MyDatabaseId;
-	hk->fn_oid = func->fn_oid;
-
-#if PG_VERSION_NUM >= 180000
-
-	hk->fn_xmin = func->cfunc.fn_xmin;
-	hk->fn_tid = func->cfunc.fn_tid;
-
-#else
-
-	hk->fn_xmin = func->fn_xmin;
-	hk->fn_tid = func->fn_tid;
-
-#endif
-
-	hk->chunk_num = 1;
-}
-
-/*
- * Hash table for local function profiles. When shared memory is not available
- * because plpgsql_check was not loaded by shared_proload_libraries, then function
- * profiles is stored in local profile chunks. A format is same for shared profiles.
- */
-static void
-profiler_chunks_HashTableInit(void)
-{
-	HASHCTL		ctl;
-
-	Assert(profiler_chunks_HashTable == NULL);
-
-	memset(&ctl, 0, sizeof(ctl));
-	ctl.keysize = sizeof(profiler_hashkey);
-	ctl.entrysize = sizeof(profiler_stmt_chunk);
-	ctl.hcxt = profiler_mcxt;
-	profiler_chunks_HashTable = hash_create("plpgsql_check function profiler local chunks",
-											FUNCS_PER_USER,
-											&ctl,
-											HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
-}
-
-static void
-fstats_init_hashkey(fstats_hashkey *fhk, Oid fn_oid)
-{
-	memset(fhk, 0, sizeof(fstats_hashkey));
-
-	fhk->db_oid = MyDatabaseId;
-	fhk->fn_oid = fn_oid;
-}
-
-static void
-fstats_HashTableInit(void)
-{
-	HASHCTL		ctl;
-
-	Assert(fstats_HashTable == NULL);
-
-	memset(&ctl, 0, sizeof(ctl));
-	ctl.keysize = sizeof(fstats_hashkey);
-	ctl.entrysize = sizeof(fstats);
-	ctl.hcxt = profiler_mcxt;
-	fstats_HashTable = hash_create("plpgsql_check function execution statistics",
-								   FUNCS_PER_USER,
-								   &ctl,
-								   HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
-}
-
 void
-plpgsql_check_profiler_init_hash_tables(void)
+plpgsql_check_profiler_init(void)
 {
-	if (profiler_mcxt)
-	{
-		MemoryContextReset(profiler_mcxt);
-
-		profiler_HashTable = NULL;
-		profiler_chunks_HashTable = NULL;
-		fstats_HashTable = NULL;
-	}
-	else
-	{
-		profiler_mcxt = AllocSetContextCreate(TopMemoryContext,
-											  "plpgsql_check - profiler context",
-											  ALLOCSET_DEFAULT_MINSIZE,
-											  ALLOCSET_DEFAULT_INITSIZE,
-											  ALLOCSET_DEFAULT_MAXSIZE);
-	}
-
-	profiler_chunks_HashTableInit();
-	fstats_HashTableInit();
+	plch_register_plugin(&profiler_plugin);
 }
 
 
-typedef struct count_stmt_exec_time_context
-{
-	StmtInstr  *sinstrs;
-	StmtStats  *sstats;
-	int64		nested_us_time;
-} count_stmt_exec_time_context;
-
-static void
-count_stmt_exec_time_walker(PLpgSQL_stmt *stmt, count_stmt_exec_time_context *context)
-{
-	count_stmt_exec_time_context loccontext;
-
-	int			stmtid_0 = stmt->stmtid - 1;
-	StmtInstr  *sinstr = &context->sinstrs[stmtid_0];
-	StmtStats  *sstats = &context->sstats[stmtid_0];
-
-	loccontext.sinstrs = context->sinstrs;
-	loccontext.sstats = context->sstats;
-	loccontext.nested_us_time = 0;
-
-	plch_statement_tree_walker(stmt, count_stmt_exec_time_walker, NULL, &loccontext);
-
-	context->nested_us_time += sinstr->us_total;
-
-	sstats->lineno = stmt->lineno;
-	sstats->has_queryid = sinstr->has_queryid;
-	sstats->queryid = sinstr->queryid;
-	sstats->us_max = sinstr->us_max;
-	sstats->us_total = sinstr->us_total - loccontext.nested_us_time;
-	sstats->rows = sinstr->rows;
-	sstats->exec_count = sinstr->exec_count;
-	sstats->exec_count_err = sinstr->exec_count_err;
-}
-
-
-/*
- * Increase a branch couter - used for branch coverage
- */
-static void
-increment_branch_counter(coverage_state *cs, int64 executed)
-{
-	Assert(cs);
-
-	cs->branches += 1;
-	cs->executed_branches += executed > 0 ? 1 : 0;
-}
-
-#define IS_PLPGSQL_STMT(stmt, typ)		(stmt->cmd_type == typ)
-
-
-/*
- * profiler_stmt_walker - iterator over plpgsql statements.
+/***************************************
  *
- * This function is designed for three different purposes:
+ * Profiler controlling
  *
- *   a) iterate over all commands and prepare result for
- *      plpgsql_profiler_function_statements_tb function.
- *   b) iterate over all commands to collect code coverage
- *      metrics
+ ***************************************
  */
-static void
-profiler_stmt_walker(profiler_info *pinfo,
-					 profiler_stmt_walker_mode mode,
-					 PLpgSQL_stmt *stmt,
-					 PLpgSQL_stmt *parent_stmt,
-					 const char *description,
-					 int stmt_block_num,
-					 profiler_stmt_walker_options *opts)
-{
-	bool		prepare_result_mode = mode == PLPGSQL_CHECK_STMT_WALKER_PREPARE_RESULT;
-	bool		collect_coverage_mode = mode == PLPGSQL_CHECK_STMT_WALKER_COLLECT_COVERAGE;
-	int64		exec_count = 0;
-	int			stmtid = -1;
-	char		strbuf[100];
-	int			n = 0;
-	List	   *stmts;
-	ListCell   *lc;
-
-	StmtStats  *ppstmt;
-
-	stmtid = stmt->stmtid - 1;
-
-
-	Assert(opts->pi);
-
-	/*
-	 * When iterator is used, then id of iterator's current statement have
-	 * to be same like stmtid of stmt. When function was not executed in
-	 * active profile mode, then we have not any stored chunk, and
-	 * iterator returns 0 stmtid.
-	 */
-	Assert(!opts->pi->current_chunk ||
-		   (opts->fextra->natural_to_ids[opts->pi->current_statement_no]) == stmtid + 1);
-
-	/*
-	 * Get persistent statement info stored in shared memory or in session
-	 * memory by iterator.
-	 */
-	ppstmt = get_stmt_profile_next(opts->pi);
-
-	if (prepare_result_mode && opts->pi->ri)
-	{
-		int			parent_natural_stmtid = -1;
-		int			naturalid = opts->fextra->naturalids[stmt->stmtid];
-		const char *typname = plpgsql_check__stmt_typename_p(stmt);
-
-		parent_natural_stmtid = parent_stmt ? opts->fextra->naturalids[parent_stmt->stmtid] : -1;
-
-		plpgsql_check_put_profile_statement(opts->pi->ri,
-											ppstmt ? ppstmt->queryid : NOQUERYID,
-											naturalid,
-											parent_natural_stmtid,
-											description,
-											stmt_block_num,
-											stmt->lineno,
-											ppstmt ? ppstmt->exec_count : 0,
-											ppstmt ? ppstmt->exec_count_err : 0,
-											ppstmt ? ppstmt->us_total : 0.0,
-											ppstmt ? ppstmt->us_max : 0.0,
-											ppstmt ? ppstmt->rows : 0,
-											(char *) typname);
-	}
-	else if (collect_coverage_mode)
-	{
-		/* save statement exec count */
-		exec_count = ppstmt ? ppstmt->exec_count : 0;
-
-		/* ignore invisible BLOCK */
-		if (stmt->lineno != -1)
-		{
-			opts->cs->statements += 1;
-			opts->cs->executed_statements += exec_count > 0 ? 1 : 0;
-		}
-	}
-
-
-	if (plch_statement_is_loop(stmt))
-	{
-		stmts = plch_statement_get_loop_body(stmt);
-
-		stmts_walker(pinfo, mode,
-					 stmts, stmt, "loop body",
-					 opts);
-
-		if (collect_coverage_mode)
-			increment_branch_counter(opts->cs,
-									 opts->nested_exec_count);
-	}
-	else if (IS_PLPGSQL_STMT(stmt, PLPGSQL_STMT_IF))
-	{
-		PLpgSQL_stmt_if *stmt_if = (PLpgSQL_stmt_if *) stmt;
-		int64		all_nested_branches_exec_count = 0;
-
-		/*
-		 * Note: when if statement has not else path, then we have to
-		 * calculate deduce number of execution of implicit else path
-		 * manually. We know number of execution of IF statement and we can
-		 * subtract an number of execution of nested paths.
-		 */
-
-		stmts_walker(pinfo, mode,
-					 stmt_if->then_body, stmt, "then body",
-					 opts);
-
-		if (collect_coverage_mode)
-		{
-			increment_branch_counter(opts->cs,
-									 opts->nested_exec_count);
-
-			all_nested_branches_exec_count += opts->nested_exec_count;
-		}
-
-		foreach(lc, stmt_if->elsif_list)
-		{
-			stmts = ((PLpgSQL_if_elsif *) lfirst(lc))->stmts;
-
-			sprintf(strbuf, "elsif %d", ++n);
-
-			stmts_walker(pinfo, mode,
-						 stmts, stmt, strbuf,
-						 opts);
-
-			if (collect_coverage_mode)
-			{
-				increment_branch_counter(opts->cs,
-										 opts->nested_exec_count);
-
-				all_nested_branches_exec_count += opts->nested_exec_count;
-			}
-		}
-
-		if (stmt_if->else_body)
-		{
-			stmts_walker(pinfo, mode,
-						 stmt_if->else_body, stmt, "else body",
-						 opts);
-
-			if (collect_coverage_mode)
-				increment_branch_counter(opts->cs,
-										 opts->nested_exec_count);
-		}
-		else
-		{
-			/* calculate exec_count for implicit else path */
-			if (collect_coverage_mode)
-			{
-				int64		else_exec_count = exec_count - all_nested_branches_exec_count;
-
-				increment_branch_counter(opts->cs,
-										 else_exec_count);
-			}
-		}
-	}
-	else if (IS_PLPGSQL_STMT(stmt, PLPGSQL_STMT_CASE))
-	{
-		PLpgSQL_stmt_case *stmt_case = (PLpgSQL_stmt_case *) stmt;
-
-		foreach(lc, stmt_case->case_when_list)
-		{
-			stmts = ((PLpgSQL_case_when *) lfirst(lc))->stmts;
-
-			sprintf(strbuf, "case when %d", ++n);
-
-			stmts_walker(pinfo, mode,
-						 stmts, stmt, strbuf,
-						 opts);
-
-			if (collect_coverage_mode)
-				increment_branch_counter(opts->cs,
-										 opts->nested_exec_count);
-		}
-
-		stmts_walker(pinfo, mode,
-					 stmt_case->else_stmts, stmt, "case else",
-					 opts);
-
-		if (collect_coverage_mode)
-			increment_branch_counter(opts->cs,
-									 opts->nested_exec_count);
-	}
-	else if (IS_PLPGSQL_STMT(stmt, PLPGSQL_STMT_BLOCK))
-	{
-		PLpgSQL_stmt_block *stmt_block = (PLpgSQL_stmt_block *) stmt;
-
-		stmts_walker(pinfo, mode,
-					 stmt_block->body, stmt, "body",
-					 opts);
-
-		if (stmt_block->exceptions)
-		{
-			if (collect_coverage_mode)
-				increment_branch_counter(opts->cs,
-										 opts->nested_exec_count);
-
-			foreach(lc, stmt_block->exceptions->exc_list)
-			{
-				stmts = ((PLpgSQL_exception *) lfirst(lc))->action;
-
-				sprintf(strbuf, "exception %d", ++n);
-
-				stmts_walker(pinfo, mode,
-							 stmts, stmt, strbuf,
-							 opts);
-
-				if (collect_coverage_mode)
-					increment_branch_counter(opts->cs,
-											 opts->nested_exec_count);
-			}
-		}
-	}
-
-	if (collect_coverage_mode)
-	{
-		opts->nested_exec_count = exec_count;
-	}
-}
 
 /*
  * Enable, disable, show state profiler
@@ -848,43 +387,6 @@ plpgsql_profiler_reset_all(PG_FUNCTION_ARGS)
 	/* be compiler quite */
 	(void) fcinfo;
 
-	if (shared_profiler_chunks_HashTable)
-	{
-		HASH_SEQ_STATUS hash_seq;
-		profiler_stmt_chunk *chunk;
-		fstats	   *fstats_entry;
-
-		LWLockAcquire(profiler_ss->lock, LW_EXCLUSIVE);
-
-		hash_seq_init(&hash_seq, shared_profiler_chunks_HashTable);
-
-		while ((chunk = hash_seq_search(&hash_seq)) != NULL)
-		{
-			hash_search(shared_profiler_chunks_HashTable,
-						&(chunk->key),
-						HASH_REMOVE,
-						NULL);
-		}
-
-		LWLockRelease(profiler_ss->lock);
-
-		Assert(shared_fstats_HashTable);
-
-		LWLockAcquire(profiler_ss->fstats_lock, LW_EXCLUSIVE);
-
-		hash_seq_init(&hash_seq, shared_fstats_HashTable);
-
-		while ((fstats_entry = hash_seq_search(&hash_seq)) != NULL)
-		{
-			hash_search(shared_fstats_HashTable,
-						&(fstats_entry->key),
-						HASH_REMOVE,
-						NULL);
-		}
-
-		LWLockRelease(profiler_ss->fstats_lock);
-	}
-
 	plpgsql_check_profiler_init_hash_tables();
 
 	PG_RETURN_VOID();
@@ -897,164 +399,21 @@ Datum
 plpgsql_profiler_reset(PG_FUNCTION_ARGS)
 {
 	Oid			funcoid = PG_GETARG_OID(0);
-	profiler_hashkey hk;
-	fstats_hashkey fhk;
-	HTAB	   *chunks;
+	func_identity_hashkey hk;
 	HeapTuple	procTuple;
-	bool		found;
-	bool		shared_chunks;
 
 	procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcoid));
 	if (!HeapTupleIsValid(procTuple))
 		elog(ERROR, "cache lookup failed for function %u", funcoid);
 
-	/* ensure correct complete content of hash key */
-	memset(&hk, 0, sizeof(profiler_hashkey));
-	hk.fn_oid = funcoid;
-	hk.db_oid = MyDatabaseId;
-	hk.fn_xmin = HeapTupleHeaderGetRawXmin(procTuple->t_data);
-	hk.fn_tid = procTuple->t_self;
-	hk.chunk_num = 1;
+	proctuple_init_function_identity_hashkey(&hk, procTuple);
+
+	hash_search(fstats_HashTable, (void *) &hk, HASH_REMOVE, NULL);
+	hash_search(func_stmts_stats_HashTable, (void *) &hk, HASH_REMOVE, NULL);
 
 	ReleaseSysCache(procTuple);
 
-	if (shared_profiler_chunks_HashTable)
-	{
-		LWLockAcquire(profiler_ss->lock, LW_EXCLUSIVE);
-		chunks = shared_profiler_chunks_HashTable;
-		shared_chunks = true;
-	}
-	else
-	{
-		chunks = profiler_chunks_HashTable;
-		shared_chunks = false;
-	}
-
-	for (;;)
-	{
-		hash_search(chunks, (void *) &hk, HASH_REMOVE, &found);
-		if (!found)
-			break;
-		hk.chunk_num += 1;
-	}
-
-	if (shared_chunks)
-		LWLockRelease(profiler_ss->lock);
-
-	fstats_init_hashkey(&fhk, funcoid);
-
-	if (shared_fstats_HashTable)
-	{
-		LWLockAcquire(profiler_ss->fstats_lock, LW_EXCLUSIVE);
-
-		hash_search(shared_fstats_HashTable, (void *) &fhk, HASH_REMOVE, NULL);
-
-		LWLockRelease(profiler_ss->fstats_lock);
-	}
-	else
-		hash_search(fstats_HashTable, (void *) &fhk, HASH_REMOVE, NULL);
-
 	PG_RETURN_VOID();
-}
-
-/*
- * Prepare environment for reading profile and calculation of coverage metric
- */
-static double
-coverage_internal(Oid fnoid, int coverage_type)
-{
-	plpgsql_check_info cinfo;
-	coverage_state cs;
-
-	memset(&cs, 0, sizeof(cs));
-
-	plpgsql_check_info_init(&cinfo, fnoid);
-	cinfo.show_profile = true;
-
-	cinfo.proctuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(cinfo.fn_oid));
-	if (!HeapTupleIsValid(cinfo.proctuple))
-		elog(ERROR, "cache lookup failed for function %u", cinfo.fn_oid);
-
-	plpgsql_check_get_function_info(&cinfo);
-
-	plpgsql_check_precheck_conditions(&cinfo);
-
-	plpgsql_check_iterate_over_profile(&cinfo,
-									   PLPGSQL_CHECK_STMT_WALKER_COLLECT_COVERAGE,
-									   NULL, &cs);
-
-	ReleaseSysCache(cinfo.proctuple);
-
-	if (coverage_type == COVERAGE_STATEMENTS)
-	{
-		if (cs.statements > 0)
-			return (double) cs.executed_statements / (double) cs.statements;
-		else
-			return (double) 1.0;
-	}
-	else
-	{
-		if (cs.branches > 0)
-			return (double) cs.executed_branches / (double) cs.branches;
-		else
-			return (double) 1.0;
-	}
-}
-
-Datum
-plpgsql_coverage_statements_name(PG_FUNCTION_ARGS)
-{
-	Oid			fnoid;
-	char	   *name_or_signature;
-
-	if (PG_ARGISNULL(0))
-		elog(ERROR, "the first argument should not be null");
-
-	name_or_signature = text_to_cstring(PG_GETARG_TEXT_PP(0));
-	fnoid = plpgsql_check_parse_name_or_signature(name_or_signature);
-
-	PG_RETURN_FLOAT8(coverage_internal(fnoid, COVERAGE_STATEMENTS));
-}
-
-Datum
-plpgsql_coverage_branches_name(PG_FUNCTION_ARGS)
-{
-	Oid			fnoid;
-	char	   *name_or_signature;
-
-	if (PG_ARGISNULL(0))
-		elog(ERROR, "the first argument should not be null");
-
-	name_or_signature = text_to_cstring(PG_GETARG_TEXT_PP(0));
-	fnoid = plpgsql_check_parse_name_or_signature(name_or_signature);
-
-	PG_RETURN_FLOAT8(coverage_internal(fnoid, COVERAGE_BRANCHES));
-}
-
-Datum
-plpgsql_coverage_statements(PG_FUNCTION_ARGS)
-{
-	Oid			fnoid;
-
-	if (PG_ARGISNULL(0))
-		elog(ERROR, "the first argument should not be null");
-
-	fnoid = PG_GETARG_OID(0);
-
-	PG_RETURN_FLOAT8(coverage_internal(fnoid, COVERAGE_STATEMENTS));
-}
-
-Datum
-plpgsql_coverage_branches(PG_FUNCTION_ARGS)
-{
-	Oid			fnoid;
-
-	if (PG_ARGISNULL(0))
-		elog(ERROR, "the first argument should not be null");
-
-	fnoid = PG_GETARG_OID(0);
-
-	PG_RETURN_FLOAT8(coverage_internal(fnoid, COVERAGE_BRANCHES));
 }
 
 Datum
@@ -1085,6 +444,151 @@ plpgsql_profiler_remove_fake_queryid_hook(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
+/*
+ * Generate simple queryid  for testing purpose.
+ * DO NOT USE IN PRODUCTION.
+ */
+#if PG_VERSION_NUM >= 190000
+
+static void
+profiler_fake_queryid_hook(ParseState *pstate, Query *query, const JumbleState *jstate)
+
+#else
+
+static void
+profiler_fake_queryid_hook(ParseState *pstate, Query *query, JumbleState *jstate)
+
+#endif
+
+{
+	if (prev_post_parse_analyze_hook)
+		prev_post_parse_analyze_hook(pstate, query, jstate);
+
+	/*
+	 * force fake queryid
+	 *
+	 * profiler_fake_queryid_hook is active only for one plpgsql_check
+	 * regress test. For this case, we can force fake queryid, althought
+	 * is possible, so real queryid (computed by pg_stat_statements) is
+	 * already computed.
+	 *
+	 * Because this fake queryid hook is designed only for one test,
+	 * I don't check this possibility, and I don't raise any warning (because
+	 * it breaks stability of plpgsql_check regress tests - in dependency
+	 * on active (or non active) pg_stat_statements).
+	 */
+	query->queryId = query->commandType;
+}
+
+
+/***************************************
+ *
+ * Profiler hash tables
+ *
+ ***************************************
+ */
+
+static void
+fstats_HashTableInit(void)
+{
+	HASHCTL		ctl;
+
+	Assert(fstats_HashTable == NULL);
+
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.keysize = sizeof(func_identity_hashkey);
+	ctl.entrysize = sizeof(FuncStats);
+	ctl.hcxt = profiler_mcxt;
+	fstats_HashTable = hash_create("plpgsql_check function execution statistics",
+								   FUNCS_PER_USER,
+								   &ctl,
+								   HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+}
+
+static void
+plfunction_init_function_identity_hashkey(func_identity_hashkey *hk, PLpgSQL_function *func)
+{
+	memset(hk, 0, sizeof(func_identity_hashkey));
+
+	hk->db_oid = MyDatabaseId;
+	hk->fn_oid = func->fn_oid;
+
+#if PG_VERSION_NUM >= 180000
+
+	hk->fn_xmin = func->cfunc.fn_xmin;
+	hk->fn_tid = func->cfunc.fn_tid;
+
+#else
+
+	hk->fn_xmin = func->fn_xmin;
+	hk->fn_tid = func->fn_tid;
+
+#endif
+}
+
+static void
+proctuple_init_function_identity_hashkey(func_identity_hashkey *hk, HeapTuple procTuple)
+{
+	Form_pg_proc proc = (Form_pg_proc) GETSTRUCT(procTuple);
+
+	memset(hk, 0, sizeof(func_identity_hashkey));
+
+	hk->db_oid = MyDatabaseId;
+	hk->fn_oid = proc->oid;
+
+	hk->fn_xmin = HeapTupleHeaderGetRawXmin(procTuple->t_data);
+	hk->fn_tid = procTuple->t_self;
+}
+
+static void
+func_stmts_stats_HashTableInit(void)
+{
+	HASHCTL		ctl;
+
+	Assert(func_stmts_stats_HashTable == NULL);
+
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.keysize = sizeof(func_identity_hashkey);
+	ctl.entrysize = sizeof(FuncStmtsStats);
+	ctl.hcxt = profiler_mcxt;
+	func_stmts_stats_HashTable = hash_create("plpgsql_check function execution statistics",
+											 FUNCS_PER_USER,
+											 &ctl,
+											 HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+
+}
+
+void
+plpgsql_check_profiler_init_hash_tables(void)
+{
+	if (profiler_mcxt)
+	{
+		MemoryContextReset(profiler_mcxt);
+
+		fstats_HashTable = NULL;
+		func_stmts_stats_HashTable = NULL;
+	}
+	else
+	{
+		profiler_mcxt = AllocSetContextCreate(TopMemoryContext,
+											  "plpgsql_check - profiler context",
+											  ALLOCSET_DEFAULT_MINSIZE,
+											  ALLOCSET_DEFAULT_INITSIZE,
+											  ALLOCSET_DEFAULT_MAXSIZE);
+	}
+
+	fstats_HashTableInit();
+	func_stmts_stats_HashTableInit();
+}
+
+
+/***************************************
+ *
+ * Merging statistics to persistent memory
+ *
+ ***************************************
+ */
+
 static void
 update_persistent_fstats(PLpgSQL_function *func,
 						 uint64 elapsed,
@@ -1092,17 +596,17 @@ update_persistent_fstats(PLpgSQL_function *func,
 {
 	HTAB	   *fstats_ht;
 	bool		htab_is_shared;
-	fstats_hashkey fhk;
-	fstats	   *fstats_item;
+	func_identity_hashkey hk;
+	FuncStats	   *fstats_item;
 	bool		found;
 	bool		use_spinlock = false;
 
-	fstats_init_hashkey(&fhk, func->fn_oid);
+	plfunction_init_function_identity_hashkey(&hk, func);
 
 	/* try to find first chunk in shared (or local) memory */
 	if (shared_fstats_HashTable)
 	{
-		LWLockAcquire(profiler_ss->fstats_lock, LW_SHARED);
+		//LWLockAcquire(profiler_ss->fstats_lock, LW_SHARED);
 		fstats_ht = shared_fstats_HashTable;
 		htab_is_shared = true;
 	}
@@ -1112,21 +616,21 @@ update_persistent_fstats(PLpgSQL_function *func,
 		htab_is_shared = false;
 	}
 
-	fstats_item = (fstats *) hash_search(fstats_ht,
-										 (void *) &fhk,
+	fstats_item = (FuncStats *) hash_search(fstats_ht,
+										 (void *) &hk,
 										 HASH_FIND,
 										 &found);
 
 	if (!found)
 	{
-		if (htab_is_shared)
-		{
-			LWLockRelease(profiler_ss->fstats_lock);
-			LWLockAcquire(profiler_ss->fstats_lock, LW_EXCLUSIVE);
-		}
+//		if (htab_is_shared)
+//		{
+//			LWLockRelease(profiler_ss->fstats_lock);
+//			LWLockAcquire(profiler_ss->fstats_lock, LW_EXCLUSIVE);
+//		}
 
-		fstats_item = (fstats *) hash_search(fstats_ht,
-											 (void *) &fhk,
+		fstats_item = (FuncStats *) hash_search(fstats_ht,
+											 (void *) &hk,
 											 HASH_ENTER,
 											 &found);
 	}
@@ -1172,833 +676,115 @@ update_persistent_fstats(PLpgSQL_function *func,
 	if (use_spinlock)
 		SpinLockRelease(&fstats_item->mutex);
 
-	if (htab_is_shared)
-		LWLockRelease(profiler_ss->fstats_lock);
+	//if (htab_is_shared)
+	//	LWLockRelease(profiler_ss->fstats_lock);
 }
 
 static void
-update_persistent_profile(profiler_info *pinfo,
-						  PLpgSQL_function *func,
-						  const int *stmtid_map)
+update_persistent_stmts_stats(profiler_info *pinfo)
 {
-	profiler_hashkey hk;
-	profiler_stmt_chunk *chunk = NULL;
+	func_identity_hashkey hk;
+	FuncStmtsStats *func_stmts_stats;
 	bool		found;
-	HTAB	   *chunks;
-	bool		shared_chunks;
+	int			i;
 
-	volatile profiler_stmt_chunk *chunk_with_mutex = NULL;
-
-	if (shared_profiler_chunks_HashTable)
-	{
-		chunks = shared_profiler_chunks_HashTable;
-		LWLockAcquire(profiler_ss->lock, LW_SHARED);
-		shared_chunks = true;
-	}
-	else
-	{
-		chunks = profiler_chunks_HashTable;
-		shared_chunks = false;
-	}
-
-	profiler_init_hashkey(&hk, func);
+	plfunction_init_function_identity_hashkey(&hk, pinfo->func);
 
 	/* don't need too strong lock for reading shared memory */
-	chunk = (profiler_stmt_chunk *) hash_search(chunks,
-												(void *) &hk,
-												HASH_FIND,
-												&found);
-
-	/* We need exclusive lock, when we want to add new chunk */
-	if (!found && shared_chunks)
-	{
-		LWLockRelease(profiler_ss->lock);
-		LWLockAcquire(profiler_ss->lock, LW_EXCLUSIVE);
-
-		/* repeat searching under exclusive lock */
-		chunk = (profiler_stmt_chunk *) hash_search(chunks,
-													(void *) &hk,
-													HASH_FIND,
-													&found);
-	}
+	func_stmts_stats = (FuncStmtsStats *) hash_search(func_stmts_stats_HashTable,
+													 (void *) &hk,
+													 HASH_ENTER,
+													 &found);
 
 	if (!found)
 	{
-		int			stmt_counter = 0;
-		int			i;
+		MemoryContext oldcxt;
 
-		/* aftre increment first chunk will be created with chunk number 1 */
-		hk.chunk_num = 0;
+		oldcxt = MemoryContextSwitchTo(profiler_mcxt);
+		func_stmts_stats->sstats = palloc(pinfo->func->nstatements * sizeof(StmtStats));
+		MemoryContextSwitchTo(oldcxt);
 
-		/* we should to enter empty chunks first */
-
-		for (i = 0; i < func->nstatements; i++)
-		{
-			volatile StmtStats *persist_sstats;
-			StmtStats *sstats;
-
-			/*
-			 * We need to store statement statistics to chunks in natural
-			 * order next statistics should be related to statement on same or
-			 * higher line. Unfortunately buildin stmtid has inverse order
-			 * based on bison parser processing statement should to be on same
-			 * or higher line)
-			 *
-			 */
-			int			n = stmtid_map[i] - 1;
-
-			/* Skip gaps in reorder map */
-			if (n == -1)
-				continue;
-
-			sstats = &pinfo->sstats[n];
-
-			if (hk.chunk_num == 0 || stmt_counter >= STATEMENTS_PER_CHUNK)
-			{
-				hk.chunk_num += 1;
-
-				chunk = (profiler_stmt_chunk *) hash_search(chunks,
-															(void *) &hk,
-															HASH_ENTER,
-															&found);
-
-				if (found)
-					elog(ERROR, "broken consistency of plpgsql_check profiler chunks");
-
-				if (hk.chunk_num == 1 && shared_chunks)
-					SpinLockInit(&chunk->mutex);
-
-				stmt_counter = 0;
-			}
-
-			persist_sstats = &chunk->stmts[stmt_counter++];
-
-			persist_sstats->lineno = sstats->lineno;
-
-			persist_sstats->queryid = sstats->queryid;
-			persist_sstats->has_queryid = sstats->has_queryid;
-
-			if (persist_sstats->us_max < sstats->us_max)
-				persist_sstats->us_max = sstats->us_max;
-
-			persist_sstats->us_total = sstats->us_total;
-			persist_sstats->rows = sstats->rows;
-			persist_sstats->exec_count = sstats->exec_count;
-			persist_sstats->exec_count_err = sstats->exec_count_err;
-		}
-
-		/* clean unused stmts in chunk */
-		while (stmt_counter < STATEMENTS_PER_CHUNK)
-			chunk->stmts[stmt_counter++].lineno = -1;
-
-		if (shared_chunks)
-			LWLockRelease(profiler_ss->lock);
+		memcpy(func_stmts_stats->sstats,
+			   pinfo->sstats,
+			   pinfo->func->nstatements * sizeof(StmtStats));
 
 		return;
 	}
 
-	/*
-	 * Now we know, so there is already profile, and we have all necessary
-	 * locks. Teoreticaly, we can reuse existing chunk, but inside PG_TRY
-	 * block is better to take this value again to fix warning - "might be
-	 * clobbered by 'longjmp"
-	 */
-	PG_TRY();
+	/* merge new statistics with persistent statistics */
+	for (i = 0; i < pinfo->func->nstatements; i++)
 	{
-		profiler_stmt_chunk *_chunk = NULL;
-		HTAB	   *_chunks;
-		int			stmt_counter = 0;
-		int			i = 0;
+		StmtStats  *persist_sstats = &func_stmts_stats->sstats[i];
+		StmtStats  *sstats = &pinfo->sstats[i];
 
-		_chunks = shared_chunks ? shared_profiler_chunks_HashTable : profiler_chunks_HashTable;
-		profiler_init_hashkey(&hk, func);
+		persist_sstats->queryid = sstats->queryid;
+		persist_sstats->has_queryid = sstats->has_queryid;
 
-		/* search chunk again */
-		_chunk = (profiler_stmt_chunk *) hash_search(_chunks,
-													 (void *) &hk,
-													 HASH_FIND,
-													 &found);
+		if (persist_sstats->us_max < sstats->us_max)
+			persist_sstats->us_max = sstats->us_max;
 
-		if (shared_chunks)
-		{
-			chunk_with_mutex = _chunk;
-			SpinLockAcquire(&chunk_with_mutex->mutex);
-		}
-		else
-			chunk_with_mutex = NULL;
-
-		hk.chunk_num = 1;
-		stmt_counter = 0;
-
-		/* there is a profiler chunk already */
-		for (i = 0; i < func->nstatements; i++)
-		{
-			volatile StmtStats *persist_sstats;
-			StmtStats *sstats;
-
-			/*
-			 * We need to store statement statistics to chunks in natural
-			 * order (next statistics should be related to statement on same
-			 * or higher line). Unfortunately buildin stmtid has inverse order
-			 * based on bison parser processing statement.
-			 */
-			int			n = stmtid_map[i] - 1;
-
-			/* Skip gaps in reorder map */
-			if (n == -1)
-				continue;
-
-			sstats = &pinfo->sstats[n];
-
-			if (stmt_counter >= STATEMENTS_PER_CHUNK)
-			{
-				hk.chunk_num += 1;
-
-				_chunk = (profiler_stmt_chunk *) hash_search(_chunks,
-															 (void *) &hk,
-															 HASH_FIND,
-															 &found);
-
-				if (!found)
-					elog(ERROR, "broken consistency of plpgsql_check profiler chunks");
-
-				stmt_counter = 0;
-			}
-
-			persist_sstats = &_chunk->stmts[stmt_counter++];
-
-			if (persist_sstats->lineno != sstats->lineno)
-				elog(ERROR, "broken consistency of plpgsql_check profiler chunks %d %d", persist_sstats->lineno, sstats->lineno);
-
-			if (persist_sstats->us_max < sstats->us_max)
-				persist_sstats->us_max = sstats->us_max;
-
-			persist_sstats->us_total += sstats->us_total;
-			persist_sstats->rows += sstats->rows;
-			persist_sstats->exec_count += sstats->exec_count;
-			persist_sstats->exec_count_err += sstats->exec_count_err;
-		}
+		persist_sstats->us_total += sstats->us_total;
+		persist_sstats->rows += sstats->rows;
+		persist_sstats->exec_count += sstats->exec_count;
+		persist_sstats->exec_count_err += sstats->exec_count_err;
 	}
-	PG_CATCH();
-	{
-		if (chunk_with_mutex)
-			SpinLockRelease(&chunk_with_mutex->mutex);
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-
-	if (chunk_with_mutex)
-		SpinLockRelease(&chunk_with_mutex->mutex);
-
-	if (shared_chunks)
-		LWLockRelease(profiler_ss->lock);
 }
 
 /*
- * Iterate over list of statements
+ * Calculate statement statistics from statement instrumentation.
+ * statement exec time is calculated as statement total exec time
+ * minus total exec time of nestated statements.
  */
-static void
-stmts_walker(profiler_info *pinfo,
-			 profiler_stmt_walker_mode mode,
-			 List *stmts,
-			 PLpgSQL_stmt *parent_stmt,
-			 const char *description,
-			 profiler_stmt_walker_options *opts)
+typedef struct count_stmt_exec_time_context
 {
-	bool		collect_coverage = mode == PLPGSQL_CHECK_STMT_WALKER_COLLECT_COVERAGE;
-	int64		nested_exec_count = 0;
-
-	int			stmt_block_num = 1;
-
-	ListCell   *lc;
-
-	foreach(lc, stmts)
-	{
-		PLpgSQL_stmt *stmt = (PLpgSQL_stmt *) lfirst(lc);
-
-		profiler_stmt_walker(pinfo, mode,
-							 stmt, parent_stmt, description,
-							 stmt_block_num,
-							 opts);
-
-		/*
-		 * For calculation of coverage we need a numbers of nested statements
-		 * execution. Usually or statements in list has same number of
-		 * execution. But it should not be true for some reasons (after RETURN
-		 * or some exception). I am not sure if following simplification is
-		 * accurate, but maybe. I use number of execution of first statement
-		 * in block like number of execution all statements in list.
-		 */
-		if (collect_coverage && stmt_block_num == 1)
-			nested_exec_count = opts->nested_exec_count;
-
-		stmt_block_num += 1;
-	}
-
-	if (collect_coverage)
-		opts->nested_exec_count = nested_exec_count;
-}
-
-static pc_queryid
-profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, QParams *qparams)
-{
-	MemoryContext oldcxt;
-	Query	   *query;
-	RawStmt    *parsetree;
-	bool		snapshot_set;
-	List	   *parsetree_list;
-	PLpgSQL_var result;
-	PLpgSQL_type typ;
-	char	   *query_string = NULL;
-	Oid		   *paramtypes = NULL;
-	int			nparams = 0;
-
-	if (qparams)
-	{
-		paramtypes = qparams->paramtypes;
-		nparams = qparams->nparams;
-	}
-
-	memset(&result, 0, sizeof(result));
-	memset(&typ, 0, sizeof(typ));
-
-	result.dtype = PLPGSQL_DTYPE_VAR;
-	result.refname = "*auxstorage*";
-	result.datatype = &typ;
-
-	typ.typoid = TEXTOID;
-	typ.ttype = PLPGSQL_TTYPE_SCALAR;
-	typ.typlen = -1;
-	typ.typbyval = false;
-	typ.typtype = 'b';
-
-	if (profiler_queryid_mcxt == NULL)
-		profiler_queryid_mcxt = AllocSetContextCreate(TopMemoryContext,
-													  "plpgsql_check - profiler queryid context",
-													  ALLOCSET_DEFAULT_MINSIZE,
-													  ALLOCSET_DEFAULT_INITSIZE,
-													  ALLOCSET_DEFAULT_MAXSIZE);
-
-	oldcxt = MemoryContextSwitchTo(profiler_queryid_mcxt);
-	MemoryContextSwitchTo(oldcxt);
-
-	profiler_plugin.assign_expr(estate, (PLpgSQL_datum *) &result, expr);
-
-	query_string = TextDatumGetCString(result.value);
-
-	/*
-	 * Do basic parsing of the query or queries (this should be safe even if
-	 * we are in aborted transaction state!)
-	 */
-	parsetree_list = pg_parse_query(query_string);
-
-
-	/* The query can be empty. Returns NOQUERYID is this case. */
-	if (!parsetree_list)
-	{
-		MemoryContextSwitchTo(oldcxt);
-		MemoryContextReset(profiler_queryid_mcxt);
-		return NOQUERYID;
-	}
-
-	/*
-	 * There should not be more than one query, silently ignore rather than
-	 * error out in that case.
-	 */
-	if (list_length(parsetree_list) > 1)
-	{
-		MemoryContextSwitchTo(oldcxt);
-		MemoryContextReset(profiler_queryid_mcxt);
-		return NOQUERYID;
-	}
-
-	/* Run through the raw parsetree and process it. */
-	parsetree = (RawStmt *) linitial(parsetree_list);
-	snapshot_set = false;
-
-	/*
-	 * Set up a snapshot if parse analysis/planning will need one.
-	 */
-	if (analyze_requires_snapshot(parsetree))
-	{
-		PushActiveSnapshot(GetTransactionSnapshot());
-		snapshot_set = true;
-	}
-
-	query = parse_analyze_fixedparams(parsetree, query_string, paramtypes, nparams, NULL);
-
-	if (snapshot_set)
-		PopActiveSnapshot();
-
-	MemoryContextSwitchTo(oldcxt);
-	MemoryContextReset(profiler_queryid_mcxt);
-
-	return query->queryId;
-}
-
-/*
- * Returns result type of already executed (has assigned plan) expression
- */
-static bool
-get_expr_type(PLpgSQL_expr *expr, Oid *result_type)
-{
-	if (expr)
-	{
-		SPIPlanPtr	ptr = expr->plan;
-
-		if (ptr)
-		{
-			List	   *plan_sources = SPI_plan_get_plan_sources(ptr);
-
-			if (plan_sources && list_length(plan_sources) == 1)
-			{
-				CachedPlanSource *plan_source;
-				TupleDesc	tupdesc;
-
-				plan_source = (CachedPlanSource *) linitial(plan_sources);
-				tupdesc = plan_source->resultDesc;
-
-				if (tupdesc->natts == 1)
-				{
-					*result_type = TupleDescAttr(tupdesc, 0)->atttypid;
-
-					return true;
-				}
-			}
-		}
-	}
-
-	return false;
-}
-
-
-/* Return the first queryid found in the given PLpgSQL_stmt, if any. */
-static pc_queryid
-profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
-					 bool *has_queryid, QParams **qparams)
-{
-	PLpgSQL_expr *expr;
-	bool		dynamic;
-	List	   *params;
-	List	   *plan_sources;
-
-	expr = plch_statement_get_expr(stmt, &dynamic, &params, NULL);
-	*has_queryid = (expr != NULL);
-
-	/* fast leaving, when expression has not assigned plan */
-	if (!expr || !expr->plan)
-		return NOQUERYID;
-
-	if (dynamic)
-	{
-		Assert(expr);
-
-		if (params && !*qparams)
-		{
-			QParams *qps = NULL;
-			int			nparams = list_length(params);
-			int			paramno = 0;
-			MemoryContext oldcxt;
-			ListCell   *lc;
-
-			/* build array of Oid used like dynamic query parameters */
-			oldcxt = MemoryContextSwitchTo(profiler_mcxt);
-			qps = (QParams *) palloc(sizeof(Oid) * nparams + sizeof(int));
-			MemoryContextSwitchTo(oldcxt);
-
-			foreach(lc, params)
-			{
-				PLpgSQL_expr *param_expr = (PLpgSQL_expr *) lfirst(lc);
-
-				if (!get_expr_type(param_expr, &qps->paramtypes[paramno++]))
-				{
-					free(qps);
-					return NOQUERYID;
-				}
-			}
-
-			qps->nparams = nparams;
-			*qparams = qps;
-		}
-
-		return profiler_get_dyn_queryid(estate, expr, *qparams);
-	}
-
-	plan_sources = SPI_plan_get_plan_sources(expr->plan);
-
-	if (plan_sources)
-	{
-		CachedPlanSource *plan_source = (CachedPlanSource *) linitial(plan_sources);
-
-		if (plan_source->query_list)
-		{
-			Query	   *q = linitial_node(Query, plan_source->query_list);
-
-			return q->queryId;
-		}
-	}
-
-	return NOQUERYID;
-}
-
-/*
- * Generate simple queryid  for testing purpose.
- * DO NOT USE IN PRODUCTION.
- */
-#if PG_VERSION_NUM >= 190000
+	StmtInstr  *sinstrs;
+	StmtStats  *sstats;
+	int64		nested_us_time;
+} count_stmt_exec_time_context;
 
 static void
-profiler_fake_queryid_hook(ParseState *pstate, Query *query, const JumbleState *jstate)
-
-#else
-
-static void
-profiler_fake_queryid_hook(ParseState *pstate, Query *query, JumbleState *jstate)
-
-#endif
-
+count_stmt_exec_time_walker(PLpgSQL_stmt *stmt, count_stmt_exec_time_context *context)
 {
-	if (prev_post_parse_analyze_hook)
-		prev_post_parse_analyze_hook(pstate, query, jstate);
+	count_stmt_exec_time_context loccontext;
 
-	/*
-	 * force fake queryid
-	 *
-	 * profiler_fake_queryid_hook is active only for one plpgsql_check
-	 * regress test. For this case, we can force fake queryid, althought
-	 * is possible, so real queryid (computed by pg_stat_statements) is
-	 * already computed.
-	 *
-	 * Because this fake queryid hook is designed only for one test,
-	 * I don't check this possibility, and I don't raise any warning (because
-	 * it breaks stability of plpgsql_check regress tests - in dependency
-	 * on active (or non active) pg_stat_statements).
-	 */
-	query->queryId = query->commandType;
+	int			stmtid_0 = stmt->stmtid - 1;
+	StmtInstr  *sinstr = &context->sinstrs[stmtid_0];
+	StmtStats  *sstats = &context->sstats[stmtid_0];
+
+	loccontext.sinstrs = context->sinstrs;
+	loccontext.sstats = context->sstats;
+	loccontext.nested_us_time = 0;
+
+	plch_statement_tree_walker(stmt, count_stmt_exec_time_walker, NULL, &loccontext);
+
+	context->nested_us_time += sinstr->us_total;
+
+	sstats->has_queryid = sinstr->has_queryid;
+	sstats->queryid = sinstr->queryid;
+	sstats->us_max = sinstr->us_max;
+	sstats->us_total = sinstr->us_total - loccontext.nested_us_time;
+	sstats->rows = sinstr->rows;
+	sstats->exec_count = sinstr->exec_count;
+	sstats->exec_count_err = sinstr->exec_count_err;
 }
 
+/***************************************
+ *
+ * Profiler pldbg3 api plugin
+ *
+ ***************************************
+ */
+
 /*
- * Prepare tuplestore with function profile
+ * pldebug3 methods
  *
  */
-void
-plpgsql_check_iterate_over_profile(plpgsql_check_info *cinfo,
-								   profiler_stmt_walker_mode mode,
-								   plpgsql_check_result_info *ri,
-								   coverage_state *cs)
-{
-	LOCAL_FCINFO(fake_fcinfo, 0);
-	PLpgSQL_function *func;
-	FmgrInfo	flinfo;
-	TriggerData trigdata;
-	EventTriggerData etrigdata;
-	Trigger		tg_trigger;
-	ReturnSetInfo rsinfo;
-	bool		fake_rtd;
-	profiler_info pinfo;
-	profiler_stmt_chunk *first_chunk = NULL;
-	profiler_iterator pi;
-	volatile bool unlock_mutex = false;
-	bool		shared_chunks;
-	profiler_stmt_walker_options opts;
-
-	memset(&opts, 0, sizeof(profiler_stmt_walker_options));
-
-	memset(&pi, 0, sizeof(profiler_iterator));
-	pi.key.fn_oid = cinfo->fn_oid;
-	pi.key.db_oid = MyDatabaseId;
-	pi.key.fn_xmin = HeapTupleHeaderGetRawXmin(cinfo->proctuple->t_data);
-	pi.key.fn_tid = cinfo->proctuple->t_self;
-	pi.key.chunk_num = 1;
-	pi.ri = ri;
-
-	/* try to find first chunk in shared (or local) memory */
-	if (shared_profiler_chunks_HashTable)
-	{
-		LWLockAcquire(profiler_ss->lock, LW_SHARED);
-		pi.chunks = shared_profiler_chunks_HashTable;
-		shared_chunks = true;
-	}
-	else
-	{
-		pi.chunks = profiler_chunks_HashTable;
-		shared_chunks = false;
-	}
-
-	pi.current_chunk = first_chunk = (profiler_stmt_chunk *) hash_search(pi.chunks,
-																		 (void *) &pi.key,
-																		 HASH_FIND,
-																		 NULL);
-
-	PG_TRY();
-	{
-		if (shared_chunks && first_chunk)
-		{
-			SpinLockAcquire(&first_chunk->mutex);
-			unlock_mutex = true;
-		}
-
-		plpgsql_check_setup_fcinfo(cinfo,
-								   &flinfo,
-								   fake_fcinfo,
-								   &rsinfo,
-								   &trigdata,
-								   &etrigdata,
-								   &tg_trigger,
-								   &fake_rtd);
-
-		func = plpgsql_check__compile_p(fake_fcinfo, false);
-
-		opts.fextra = plch_get_fextra(func);
-
-		opts.pi = &pi;
-		opts.cs = cs;
-
-		pinfo.func = func;
-		pinfo.nstatements = 0;
-		pinfo.sinstrs = NULL;
-		pinfo.sstats = NULL;
-
-		profiler_stmt_walker(&pinfo, mode, (PLpgSQL_stmt *) func->action, NULL, NULL, 1, &opts);
-
-		plch_release_fextra(opts.fextra);
-
-	}
-	PG_CATCH();
-	{
-		if (unlock_mutex)
-			SpinLockRelease(&first_chunk->mutex);
-
-		plch_release_fextra(opts.fextra);
-
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-
-	if (unlock_mutex)
-		SpinLockRelease(&first_chunk->mutex);
-
-	if (shared_chunks)
-		LWLockRelease(profiler_ss->lock);
-}
-
-/*
- * Prepare tuplestore with function profile
- *
- */
-void
-plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
-									plpgsql_check_info *cinfo)
-{
-	profiler_hashkey hk;
-	bool		found;
-	HTAB	   *chunks;
-	bool		shared_chunks;
-	volatile profiler_stmt_chunk *first_chunk = NULL;
-	volatile bool unlock_mutex = false;
-
-	/* ensure correct complete content of hash key */
-	memset(&hk, 0, sizeof(profiler_hashkey));
-	hk.fn_oid = cinfo->fn_oid;
-	hk.db_oid = MyDatabaseId;
-	hk.fn_xmin = HeapTupleHeaderGetRawXmin(cinfo->proctuple->t_data);
-	hk.fn_tid = cinfo->proctuple->t_self;
-	hk.chunk_num = 1;
-
-	/* try to find first chunk in shared (or local) memory */
-	if (shared_profiler_chunks_HashTable)
-	{
-		LWLockAcquire(profiler_ss->lock, LW_SHARED);
-		chunks = shared_profiler_chunks_HashTable;
-		shared_chunks = true;
-	}
-	else
-	{
-		chunks = profiler_chunks_HashTable;
-		shared_chunks = false;
-	}
-
-	PG_TRY();
-	{
-		char	   *prosrc = cinfo->src;
-		profiler_stmt_chunk *chunk = NULL;
-		int			lineno = 1;
-		int			current_statement = 0;
-
-		chunk = (profiler_stmt_chunk *) hash_search(chunks,
-													(void *) &hk,
-													HASH_FIND,
-													&found);
-
-		if (shared_chunks && chunk)
-		{
-			first_chunk = chunk;
-			SpinLockAcquire(&first_chunk->mutex);
-			unlock_mutex = true;
-		}
-
-		/* iterate over source code rows */
-		while (*prosrc)
-		{
-			char	   *lineend = NULL;
-			char	   *linebeg = NULL;
-
-			int			stmt_lineno = -1;
-			int64		us_total = 0;
-			int64		exec_count = 0;
-			int64		exec_count_err = 0;
-			Datum		queryids_array = (Datum) 0;
-			Datum		max_time_array = (Datum) 0;
-			Datum		processed_rows_array = (Datum) 0;
-			int			cmds_on_row = 0;
-
-			lineend = prosrc;
-			linebeg = prosrc;
-
-			/* find lineend */
-			while (*lineend != '\0' && *lineend != '\n')
-				lineend += 1;
-
-			if (*lineend == '\n')
-			{
-				*lineend = '\0';
-				prosrc = lineend + 1;
-			}
-			else
-				prosrc = lineend;
-
-			if (chunk)
-			{
-				ArrayBuildState *queryids_abs = NULL;
-				ArrayBuildState *max_time_abs = NULL;
-				ArrayBuildState *processed_rows_abs = NULL;
-				int			queryids_on_row = 0;
-
-				queryids_abs = initArrayResult(INT8OID, CurrentMemoryContext, true);
-				max_time_abs = initArrayResult(FLOAT8OID, CurrentMemoryContext, true);
-				processed_rows_abs = initArrayResult(INT8OID, CurrentMemoryContext, true);
-
-				/* process all statements on this line */
-				for (;;)
-				{
-					/* ensure so  access to chunks is correct */
-					if (current_statement >= STATEMENTS_PER_CHUNK)
-					{
-						hk.chunk_num += 1;
-
-						chunk = (profiler_stmt_chunk *) hash_search(chunks,
-																	(void *) &hk,
-																	HASH_FIND,
-																	&found);
-
-						if (!found)
-						{
-							chunk = NULL;
-							break;
-						}
-
-						current_statement = 0;
-					}
-
-					Assert(chunk != NULL);
-
-					/* skip invisible statements if any */
-					if (chunk->stmts[current_statement].lineno < lineno)
-					{
-						current_statement += 1;
-						continue;
-					}
-					else if (chunk->stmts[current_statement].lineno == lineno)
-					{
-						StmtStats *prstmt = &chunk->stmts[current_statement];
-
-						us_total += prstmt->us_total;
-						exec_count += prstmt->exec_count;
-						exec_count_err += prstmt->exec_count_err;
-
-						stmt_lineno = lineno;
-
-						if (prstmt->has_queryid)
-						{
-							if (prstmt->queryid != NOQUERYID)
-							{
-								queryids_abs = accumArrayResult(queryids_abs,
-																Int64GetDatum((int64) prstmt->queryid),
-																prstmt->queryid == NOQUERYID,
-																INT8OID,
-																CurrentMemoryContext);
-								queryids_on_row += 1;
-							}
-						}
-
-						max_time_abs = accumArrayResult(max_time_abs,
-														Float8GetDatum(prstmt->us_max / 1000.0), false,
-														FLOAT8OID,
-														CurrentMemoryContext);
-
-						processed_rows_abs = accumArrayResult(processed_rows_abs,
-															  Int64GetDatum(prstmt->rows), false,
-															  INT8OID,
-															  CurrentMemoryContext);
-						cmds_on_row += 1;
-						current_statement += 1;
-						continue;
-					}
-					else
-						break;
-				}
-
-				if (queryids_on_row > 0)
-					queryids_array = makeArrayResult(queryids_abs, CurrentMemoryContext);
-
-				if (cmds_on_row > 0)
-				{
-					max_time_array = makeArrayResult(max_time_abs, CurrentMemoryContext);
-					processed_rows_array = makeArrayResult(processed_rows_abs, CurrentMemoryContext);
-				}
-			}
-
-			plpgsql_check_put_profile(ri,
-									  queryids_array,
-									  lineno,
-									  stmt_lineno,
-									  cmds_on_row,
-									  exec_count,
-									  exec_count_err,
-									  us_total,
-									  max_time_array,
-									  processed_rows_array,
-									  (char *) linebeg);
-
-			lineno += 1;
-		}
-	}
-	PG_CATCH();
-	{
-		if (unlock_mutex)
-			SpinLockRelease(&first_chunk->mutex);
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-
-	if (unlock_mutex)
-		SpinLockRelease(&first_chunk->mutex);
-
-	if (shared_chunks)
-		LWLockRelease(profiler_ss->lock);
-}
-
 static bool
 profiler_is_active(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 {
 	return plpgsql_check_profiler;
 }
 
-
-/*
- * Try to search profile pattern for function. Creates profile pattern when
- * it doesn't exists.
- */
 static void
 profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fextra *fextra)
 {
@@ -2023,7 +809,6 @@ _profiler_func_end(profiler_info *pinfo, Oid fn_oid, bool is_aborted, plch_fextr
 {
 	instr_time	end_time;
 	uint64		elapsed;
-	int		   *stmtid_map;
 	count_stmt_exec_time_context loccontext;
 
 	Assert(pinfo);
@@ -2035,8 +820,6 @@ _profiler_func_end(profiler_info *pinfo, Oid fn_oid, bool is_aborted, plch_fextr
 
 	elapsed = INSTR_TIME_GET_MICROSEC(end_time);
 
-	stmtid_map = fextra->natural_to_ids;
-
 	/* finalize profile - get result profile */
 	loccontext.sinstrs = pinfo->sinstrs;
 	loccontext.sstats = pinfo->sstats;
@@ -2044,7 +827,7 @@ _profiler_func_end(profiler_info *pinfo, Oid fn_oid, bool is_aborted, plch_fextr
 
 	count_stmt_exec_time_walker((PLpgSQL_stmt *) pinfo->func->action, &loccontext);
 
-	update_persistent_profile(pinfo, pinfo->func, stmtid_map);
+	update_persistent_stmts_stats(pinfo);
 	update_persistent_fstats(pinfo->func, elapsed, is_aborted);
 }
 
@@ -2111,7 +894,6 @@ _profiler_stmt_end(StmtInstr *sinstr, bool is_aborted)
 	sinstr->exec_count++;
 }
 
-
 /*
  * Cleaning mode is used for closing unfinished statements after an exception.
  */
@@ -2154,11 +936,195 @@ profiler_stmt_abort(PLpgSQL_execstate *estate,
 	}
 }
 
+/***************************************
+ *
+ * queryid and fake queryid functions
+ *
+ ***************************************
+ */
+
+
+/* Return the first queryid found in the given PLpgSQL_stmt, if any. */
+static pc_queryid
+profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
+					 bool *has_queryid, QParams **qparams)
+{
+	PLpgSQL_expr *expr;
+	bool		dynamic;
+	List	   *params;
+	List	   *plan_sources;
+
+	expr = plch_statement_get_expr(stmt, &dynamic, &params, NULL);
+	*has_queryid = (expr != NULL);
+
+	/* fast leaving, when expression has not assigned plan */
+	if (!expr || !expr->plan)
+		return NOQUERYID;
+
+	if (dynamic)
+	{
+		Assert(expr);
+
+		if (params && !*qparams)
+		{
+			QParams *qps = NULL;
+			int			nparams = list_length(params);
+			int			paramno = 0;
+			MemoryContext oldcxt;
+			ListCell   *lc;
+
+			/* build array of Oid used like dynamic query parameters */
+			oldcxt = MemoryContextSwitchTo(profiler_mcxt);
+			qps = (QParams *) palloc(sizeof(Oid) * nparams + sizeof(int));
+			MemoryContextSwitchTo(oldcxt);
+
+			foreach(lc, params)
+			{
+				PLpgSQL_expr *param_expr = (PLpgSQL_expr *) lfirst(lc);
+
+				if (!get_plpgsql_expr_type(param_expr, &qps->paramtypes[paramno++]))
+				{
+					free(qps);
+					return NOQUERYID;
+				}
+			}
+
+			qps->nparams = nparams;
+			*qparams = qps;
+		}
+
+		return profiler_get_dyn_queryid(estate, expr, *qparams);
+	}
+
+	plan_sources = SPI_plan_get_plan_sources(expr->plan);
+
+	if (plan_sources)
+	{
+		CachedPlanSource *plan_source = (CachedPlanSource *) linitial(plan_sources);
+
+		if (plan_source->query_list)
+		{
+			Query	   *q = linitial_node(Query, plan_source->query_list);
+
+			return q->queryId;
+		}
+	}
+
+	return NOQUERYID;
+}
+
+static pc_queryid
+profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, QParams *qparams)
+{
+	MemoryContext oldcxt;
+	Query	   *query;
+	RawStmt    *parsetree;
+	bool		snapshot_set;
+	List	   *parsetree_list;
+	PLpgSQL_var result;
+	PLpgSQL_type typ;
+	char	   *query_string = NULL;
+	Oid		   *paramtypes = NULL;
+	int			nparams = 0;
+
+	if (qparams)
+	{
+		paramtypes = qparams->paramtypes;
+		nparams = qparams->nparams;
+	}
+
+	memset(&result, 0, sizeof(result));
+	memset(&typ, 0, sizeof(typ));
+
+	result.dtype = PLPGSQL_DTYPE_VAR;
+	result.refname = "*auxstorage*";
+	result.datatype = &typ;
+
+	typ.typoid = TEXTOID;
+	typ.ttype = PLPGSQL_TTYPE_SCALAR;
+	typ.typlen = -1;
+	typ.typbyval = false;
+	typ.typtype = 'b';
+
+	if (profiler_queryid_mcxt == NULL)
+		profiler_queryid_mcxt = AllocSetContextCreate(TopMemoryContext,
+													  "plpgsql_check - profiler queryid context",
+													  ALLOCSET_DEFAULT_MINSIZE,
+													  ALLOCSET_DEFAULT_INITSIZE,
+													  ALLOCSET_DEFAULT_MAXSIZE);
+
+	oldcxt = MemoryContextSwitchTo(profiler_queryid_mcxt);
+	MemoryContextSwitchTo(oldcxt);
+
+	profiler_plugin.assign_expr(estate, (PLpgSQL_datum *) &result, expr);
+
+	query_string = TextDatumGetCString(result.value);
+
+	/*
+	 * Do basic parsing of the query or queries (this should be safe even if
+	 * we are in aborted transaction state!)
+	 */
+	parsetree_list = pg_parse_query(query_string);
+
+	/* The query can be empty. Returns NOQUERYID is this case. */
+	if (!parsetree_list)
+	{
+		MemoryContextSwitchTo(oldcxt);
+		MemoryContextReset(profiler_queryid_mcxt);
+		return NOQUERYID;
+	}
+
+	/*
+	 * There should not be more than one query, silently ignore rather than
+	 * error out in that case.
+	 */
+	if (list_length(parsetree_list) > 1)
+	{
+		MemoryContextSwitchTo(oldcxt);
+		MemoryContextReset(profiler_queryid_mcxt);
+		return NOQUERYID;
+	}
+
+	/* Run through the raw parsetree and process it. */
+	parsetree = (RawStmt *) linitial(parsetree_list);
+	snapshot_set = false;
+
+	/*
+	 * Set up a snapshot if parse analysis/planning will need one.
+	 */
+	if (analyze_requires_snapshot(parsetree))
+	{
+		PushActiveSnapshot(GetTransactionSnapshot());
+		snapshot_set = true;
+	}
+
+	query = parse_analyze_fixedparams(parsetree, query_string, paramtypes, nparams, NULL);
+
+	if (snapshot_set)
+		PopActiveSnapshot();
+
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextReset(profiler_queryid_mcxt);
+
+	return query->queryId;
+}
+
+
+/***************************************
+ *
+ * Reporting
+ *
+ ***************************************
+ */
+
+/*
+ * Reports all persistent function's statistics
+ */
 void
 plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 {
 	HASH_SEQ_STATUS seqstatus;
-	fstats	   *fstats_item;
+	FuncStats	   *fstats_item;
 
 	HTAB	   *fstats_ht;
 	bool		htab_is_shared;
@@ -2166,7 +1132,7 @@ plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 	/* try to find first chunk in shared (or local) memory */
 	if (shared_fstats_HashTable)
 	{
-		LWLockAcquire(profiler_ss->fstats_lock, LW_SHARED);
+		//LWLockAcquire(profiler_ss->fstats_lock, LW_SHARED);
 		fstats_ht = shared_fstats_HashTable;
 		htab_is_shared = true;
 	}
@@ -2178,7 +1144,7 @@ plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 
 	hash_seq_init(&seqstatus, fstats_ht);
 
-	while ((fstats_item = (fstats *) hash_seq_search(&seqstatus)) != NULL)
+	while ((fstats_item = (FuncStats *) hash_seq_search(&seqstatus)) != NULL)
 	{
 		Oid			fn_oid,
 					db_oid;
@@ -2232,15 +1198,749 @@ plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 													(double) max_time);
 	}
 
-	if (htab_is_shared)
-		LWLockRelease(profiler_ss->fstats_lock);
+//	if (htab_is_shared)
+//		LWLockRelease(profiler_ss->fstats_lock);
+}
+
+
+/*
+ * Working horse for  plch_statements_stats_report.
+ * Wrapped by SQL  plpgsql_profiler_function_statements_tb function
+ *
+ * Iterate over statement tree and fill tuplestore
+ *
+ * naturalid is calculated from scratch, because we want to remove
+ * naturalid from fextra
+ */
+typedef struct statement_stats_report_context
+{
+	plpgsql_check_result_info *ri;
+	plch_fextra *fextra;
+	StmtStats  *sstats;
+	PLpgSQL_stmt *parent_stmt;
+	int			stmt_counter;		/* used for block_num */
+} statement_stats_report_context;
+
+static void
+statement_stats_report_walker(PLpgSQL_stmt *stmt, statement_stats_report_context *context)
+{
+	statement_stats_report_context loccontext;
+	StmtStats  *sstats = &context->sstats[stmt->stmtid - 1];
+	int		   *naturalids = context->fextra->naturalids;
+
+	if (stmt->lineno > 0)
+	{
+		int			parent_natural_stmtid = -1;
+
+		if (context->parent_stmt && context->parent_stmt->lineno > 0)
+			parent_natural_stmtid = naturalids[context->parent_stmt->stmtid];
+		else
+			parent_natural_stmtid = -1;
+
+		plpgsql_check_put_profile_statement(context->ri,
+										    sstats->queryid,
+										    naturalids[stmt->stmtid],
+										    parent_natural_stmtid,
+										    context->stmt_counter++,
+										    stmt->lineno,
+										    sstats->exec_count,
+										    sstats->exec_count_err,
+										    sstats->us_total,
+										    sstats->us_max,
+										    sstats->rows,
+										    plpgsql_check__stmt_typename_p(stmt));
+	}
+
+	loccontext.ri = context->ri;
+	loccontext.fextra = context->fextra;
+	loccontext.sstats = context->sstats;
+	loccontext.parent_stmt = stmt;
+	loccontext.stmt_counter = 1;
+
+	plch_statement_tree_walker(stmt, statement_stats_report_walker, NULL, &loccontext);
 }
 
 /*
- * Register plpgsql plugin2 for profiler
+ * Build simple statement statistics report (statement profile)
+ *
+ * This is simple report - one statement, one line (and then there is not any
+ * cummulation per lines).
  */
 void
-plpgsql_check_profiler_init(void)
+plch_statements_stats_report(plpgsql_check_info *cinfo,
+							 plpgsql_check_result_info *ri)
 {
-	plch_register_plugin(&profiler_plugin);
+	statement_stats_report_context loccontext;
+	func_identity_hashkey hk;
+	bool		found;
+	FuncStmtsStats *func_stmts_stats;
+	PLpgSQL_function *func;
+
+	func = cinfo_get_function(cinfo);
+	plfunction_init_function_identity_hashkey(&hk, func);
+
+	/* don't need too strong lock for reading shared memory */
+	func_stmts_stats = (FuncStmtsStats *) hash_search(func_stmts_stats_HashTable,
+													  (void *) &hk,
+													  HASH_FIND,
+													  &found);
+
+	/* there are not statistic for function */
+	if (!found)
+		return;
+
+	loccontext.ri = ri;
+	loccontext.fextra = plch_get_fextra(func);
+	loccontext.sstats = func_stmts_stats->sstats;
+	loccontext.parent_stmt = NULL;
+	loccontext.stmt_counter = 1;
+
+	PG_TRY();
+	{
+		statement_stats_report_walker((PLpgSQL_stmt *) func->action, &loccontext);
+	}
+	PG_CATCH();
+	{
+		plch_release_fextra(loccontext.fextra);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	plch_release_fextra(loccontext.fextra);
+}
+
+/*
+ * Profiler report is more terrible becase maps statements to lines, and because
+ * more statements can be placed on one line, then some stats are merged in an arrays.
+ * Next complication is synchronization reported stats with function source code.
+ */
+typedef struct profiler_report_context
+{
+	plpgsql_check_result_info *ri;
+	StmtStats  *sstats;
+	MemoryContext tmp_cxt;
+	ArrayBuildState *queryids_abs;
+	ArrayBuildState *exec_count_abs;
+	ArrayBuildState *exec_count_err_abs;
+	ArrayBuildState *total_time_abs;
+	ArrayBuildState *avg_time_abs;
+	ArrayBuildState *max_time_abs;
+	ArrayBuildState *processed_rows_abs;
+	bool		queryid_on_row;
+	int			buffered_stmt_lineno;
+	int			lineno;
+	int			cmds_on_row;
+	char	   *src;
+} profiler_report_context;
+
+/*
+ * Makes arrays from builders, push row and cleans context
+ */
+static void
+put_profiler_report_row(profiler_report_context *context)
+{
+	char	   *srcrow = NULL;
+
+	if (context->buffered_stmt_lineno < 0)
+		return;
+
+
+	while (context->lineno < context->buffered_stmt_lineno)
+	{
+		context->src = cutline(context->src, &srcrow);
+		context->lineno++;
+
+		if (context->lineno < context->buffered_stmt_lineno)
+		{
+			plpgsql_check_put_profile(context->ri,
+									  (Datum) 0, context->lineno, -1, -1, (Datum) 0, (Datum) 0,
+									  (Datum) 0, (Datum) 0, (Datum) 0, (Datum) 0, srcrow);
+		}
+	}
+
+#define NullableArray(context, abs) \
+	(((context)->abs) ? makeArrayResult((context)->abs, (context)->tmp_cxt) : (Datum) 0)
+
+	if (context->cmds_on_row > 0)
+	{
+		plpgsql_check_put_profile(context->ri,
+								  NullableArray(context, queryids_abs),
+								  context->lineno,
+								  context->buffered_stmt_lineno,
+								  context->cmds_on_row,
+								  NullableArray(context, exec_count_abs),
+								  NullableArray(context, exec_count_err_abs),
+								  NullableArray(context, total_time_abs),
+								  NullableArray(context, avg_time_abs),
+								  NullableArray(context, max_time_abs),
+								  NullableArray(context, processed_rows_abs),
+								  srcrow);
+
+		MemoryContextReset(context->tmp_cxt);
+
+		context->queryids_abs = NULL;
+		context->exec_count_abs = NULL;
+		context->exec_count_err_abs = NULL;
+		context->total_time_abs = NULL;
+		context->avg_time_abs = NULL;
+		context->max_time_abs = NULL;
+		context->processed_rows_abs = NULL;
+		context->buffered_stmt_lineno = -1;
+		context->cmds_on_row = 0;
+	}
+	else
+	{
+		plpgsql_check_put_profile(context->ri,
+								  (Datum) 0, context->lineno, -1, -1, (Datum) 0, (Datum) 0,
+								  (Datum) 0, (Datum) 0, (Datum) 0, (Datum) 0, srcrow);
+	}
+}
+
+static void
+profiler_report_walker(PLpgSQL_stmt *stmt, profiler_report_context *context)
+{
+	if (stmt->lineno > 0 && stmt->lineno != context->buffered_stmt_lineno)
+	{
+		put_profiler_report_row(context);
+		context->buffered_stmt_lineno = stmt->lineno;
+	}
+
+#define accum_int64(context, abs, value)	accumArrayResult(context->abs, \
+															 Int64GetDatum((int64) (value)), \
+															 false, \
+															 INT8OID, \
+															 context->tmp_cxt)
+
+#define accum_float8(context, abs, value)	accumArrayResult(context->abs, \
+															 Float8GetDatum((value)), \
+															 false, \
+															 FLOAT8OID, \
+															 context->tmp_cxt)
+
+	if (stmt->lineno > 0)
+	{
+		context->cmds_on_row += 1;
+
+		if (context->sstats)
+		{
+			StmtStats  *sstats = &context->sstats[stmt->stmtid-1];
+			uint64		total_exec_count;
+			float8		avg_time_us;
+
+			if (sstats->has_queryid)
+				context->queryids_abs = accumArrayResult(context->queryids_abs,
+														 Int64GetDatum((int64) sstats->queryid),
+														 sstats->queryid == NOQUERYID,
+														 INT8OID,
+														 context->tmp_cxt);
+
+			context->exec_count_abs = accum_int64(context, exec_count_abs, sstats->exec_count);
+			context->exec_count_err_abs = accum_int64(context, exec_count_err_abs, sstats->exec_count_err);
+
+			context->total_time_abs = accum_float8(context, total_time_abs, sstats->us_total / 1000.0);
+
+			total_exec_count = sstats->exec_count + sstats->exec_count_err;
+			if (total_exec_count > 0)
+				avg_time_us = ceil(((float8) sstats->us_total) / total_exec_count);
+			else
+				avg_time_us = 0.0;
+
+			context->avg_time_abs = accum_float8(context, avg_time_abs, avg_time_us / 1000.0);
+			context->max_time_abs = accum_float8(context, max_time_abs, sstats->us_max / 1000.0);
+			context->processed_rows_abs = accum_int64(context, processed_rows_abs, sstats->rows);
+		}
+	}
+
+	plch_statement_tree_walker(stmt, profiler_report_walker, NULL, context);
+}
+
+/*
+ * Prepare tuplestore with function profile
+ *
+ */
+void
+plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
+									plpgsql_check_info *cinfo)
+{
+	profiler_report_context loccontext;
+	func_identity_hashkey hk;
+	bool		found;
+	FuncStmtsStats *func_stmts_stats;
+	PLpgSQL_function *func;
+
+	memset(&loccontext, 0, sizeof(profiler_report_context));
+
+	loccontext.ri = ri;
+	loccontext.tmp_cxt = AllocSetContextCreate(CurrentMemoryContext,
+												"profiler report temporary cxt",
+												ALLOCSET_DEFAULT_SIZES);
+
+	func = cinfo_get_function(cinfo);
+	plfunction_init_function_identity_hashkey(&hk, func);
+
+	/* don't need too strong lock for reading shared memory */
+	func_stmts_stats = (FuncStmtsStats *) hash_search(func_stmts_stats_HashTable,
+													  (void *) &hk,
+													  HASH_FIND,
+													  &found);
+
+	if (found)
+		loccontext.sstats = func_stmts_stats->sstats;
+
+	loccontext.buffered_stmt_lineno = -1;
+
+	/* attention cinfo->src will be modified */
+	loccontext.src = cinfo->src;
+
+	profiler_report_walker((PLpgSQL_stmt *) func->action, &loccontext);
+
+	/* send unsent buffered statistics */
+	put_profiler_report_row(&loccontext);
+
+	/* send unprocessed source code rows */
+	if (loccontext.src)
+	{
+		char	   *srcrow;
+
+		while (loccontext.src)
+		{
+			loccontext.src = cutline(loccontext.src, &srcrow);
+			loccontext.lineno++;
+			plpgsql_check_put_profile(loccontext.ri,
+									  (Datum) 0, loccontext.lineno, -1, -1, (Datum) 0, (Datum) 0,
+									  (Datum) 0, (Datum) 0, (Datum) 0, (Datum) 0, srcrow);
+		}
+	}
+
+	MemoryContextDelete(loccontext.tmp_cxt);
+}
+
+
+/***************************************
+ 
+ * Coverage calculation
+ *
+ ***************************************
+ */
+typedef struct coverage_statements_context
+{
+	int			nstatements;
+	int			nexecuted_statements;
+	StmtStats  *sstats;
+} coverage_statements_context;
+
+/*
+ * Coverage statement metric is simple, just count statements and executed
+ * statements.
+ */
+static void
+coverage_statements_walker(PLpgSQL_stmt *stmt, coverage_statements_context *context)
+{
+	/* calculate only visible statements */
+	if (stmt->lineno > 0)
+	{
+		context->nstatements += 1;
+
+		if (context->sstats && context->sstats[stmt->stmtid -1].exec_count > 0)
+			context->nexecuted_statements += 1;
+	}
+
+	plch_statement_tree_walker(stmt, coverage_statements_walker, NULL, context);
+}
+
+/*
+ * Coverage branches is more difficult, becase we have not branch walker.
+ * Any branch is a list of statements, and we can check of number of execution
+ * of first statement in the list.
+ */
+typedef struct coverage_branches_context
+{
+	int			nbranches;
+	int			nexecuted_branches;
+	StmtStats *sstats;
+} coverage_branches_context;
+
+static void
+increment_branch_counters(coverage_branches_context *context, List *stmts,
+						  int64 *sum_exec_count)
+{
+	context->nbranches += 1;
+
+	if (stmts && context->sstats)
+	{
+		PLpgSQL_stmt *stmt = (PLpgSQL_stmt *) linitial(stmts);
+		int64 exec_count = context->sstats[stmt->stmtid - 1].exec_count;
+
+		if (exec_count > 0)
+			context->nexecuted_branches += 1;
+
+		if (sum_exec_count)
+			*sum_exec_count += exec_count;
+	}
+}
+
+static void
+coverage_branches_walker(PLpgSQL_stmt *stmt, coverage_branches_context *context)
+{
+	List	   *stmts;
+	ListCell   *lc;
+
+#define IS_PLPGSQL_STMT(stmt, typ)		(stmt->cmd_type == typ)
+
+	if (plch_statement_is_loop(stmt))
+	{
+		stmts = plch_statement_get_loop_body(stmt);
+		increment_branch_counters(context, stmts, NULL);
+	}
+	else if (IS_PLPGSQL_STMT(stmt, PLPGSQL_STMT_IF))
+	{
+		PLpgSQL_stmt_if *stmt_if = (PLpgSQL_stmt_if *) stmt;
+		int64		sum_exec_count = 0;
+
+		increment_branch_counters(context, stmt_if->then_body, &sum_exec_count);
+
+		foreach(lc, stmt_if->elsif_list)
+		{
+			stmts = ((PLpgSQL_if_elsif *) lfirst(lc))->stmts;
+
+			increment_branch_counters(context, stmts, &sum_exec_count);
+		}
+
+		if (stmt_if->else_body)
+		{
+			increment_branch_counters(context, stmt_if->else_body, NULL);
+		}
+		else
+		{
+			context->nbranches += 1;
+
+			/*
+			 * When IF has not ELSE branch, we have to calculate it with
+			 * hypothetical else branch. In this case we have a little problem
+			 * how to detect if this branch was executed. We can derived it
+			 * from IF statements execution and all real branch execution.
+			 */
+			if (context->sstats)
+			{
+				int64		hyp_exec_count;
+
+				hyp_exec_count = context->sstats[stmt->stmtid - 1].exec_count - sum_exec_count;
+
+				if (hyp_exec_count > 0)
+					context->nexecuted_branches += 1;
+			}
+		}
+	}
+	else if (IS_PLPGSQL_STMT(stmt, PLPGSQL_STMT_CASE))
+	{
+		PLpgSQL_stmt_case *stmt_case = (PLpgSQL_stmt_case *) stmt;
+
+		foreach(lc, stmt_case->case_when_list)
+		{
+			stmts = ((PLpgSQL_case_when *) lfirst(lc))->stmts;
+			increment_branch_counters(context, stmts, NULL);
+		}
+
+		increment_branch_counters(context, stmt_case->else_stmts, NULL);
+
+		/*
+		 * CASE has not hypothetical else branch. In this case
+		 * an exception is raised.
+		 */
+	}
+	else if (IS_PLPGSQL_STMT(stmt, PLPGSQL_STMT_BLOCK))
+	{
+		PLpgSQL_stmt_block *stmt_block = (PLpgSQL_stmt_block *) stmt;
+
+		if (stmt_block->exceptions)
+		{
+			/*
+			 * block without exception handling doesn't make branches,
+			 * in this case the check of execution of first statement
+			 * from the list is maybe not accurate - but it is consistent
+			 * with the variant without the exception handling. We check
+			 * only first statement.
+			 */
+			increment_branch_counters(context, stmt_block->body, NULL);
+
+			foreach(lc, stmt_block->exceptions->exc_list)
+			{
+				stmts = ((PLpgSQL_exception *) lfirst(lc))->action;
+				increment_branch_counters(context, stmts, NULL);
+			}
+		}
+	}
+
+	plch_statement_tree_walker(stmt, coverage_branches_walker, NULL, context);
+}
+
+/*
+ * Prepare environment for reading profile and calculation of coverage metric
+ */
+static double
+coverage_internal(Oid fnoid, int coverage_type)
+{
+	plpgsql_check_info cinfo;
+	PLpgSQL_function *func;
+	func_identity_hashkey hk;
+	bool		found;
+	FuncStmtsStats *func_stmts_stats;
+
+	plpgsql_check_info_init(&cinfo, fnoid);
+
+	cinfo.proctuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(cinfo.fn_oid));
+	if (!HeapTupleIsValid(cinfo.proctuple))
+		elog(ERROR, "cache lookup failed for function %u", cinfo.fn_oid);
+
+	plpgsql_check_get_function_info(&cinfo);
+	plpgsql_check_precheck_conditions(&cinfo);
+
+	func = cinfo_get_function(&cinfo);
+
+	ReleaseSysCache(cinfo.proctuple);
+
+	plfunction_init_function_identity_hashkey(&hk, func);
+
+	/* don't need too strong lock for reading shared memory */
+	func_stmts_stats = (FuncStmtsStats *) hash_search(func_stmts_stats_HashTable,
+													  (void *) &hk,
+													  HASH_FIND,
+													  &found);
+
+	if (coverage_type == COVERAGE_STATEMENTS)
+	{
+		coverage_statements_context loccontext;
+
+		loccontext.nstatements = 0;
+		loccontext.nexecuted_statements = 0;
+		loccontext.sstats = found ? func_stmts_stats->sstats : NULL;
+
+		coverage_statements_walker((PLpgSQL_stmt *) func->action, &loccontext);
+
+		if (loccontext.nstatements > 0)
+			return (double) loccontext.nexecuted_statements / (double) loccontext.nstatements;
+		else
+			return (double) 1.0;
+	}
+	else
+	{
+		coverage_branches_context loccontext;
+
+		loccontext.nbranches = 0;
+		loccontext.nexecuted_branches = 0;
+		loccontext.sstats = found ? func_stmts_stats->sstats : NULL;
+
+		coverage_branches_walker((PLpgSQL_stmt *) func->action, &loccontext);
+
+		if (loccontext.nbranches > 0)
+			return (double) loccontext.nexecuted_branches / (double) loccontext.nbranches;
+		else
+			return (double) 1.0;
+	}
+}
+
+Datum
+plpgsql_coverage_statements_name(PG_FUNCTION_ARGS)
+{
+	Oid			fnoid;
+	char	   *name_or_signature;
+
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "the first argument should not be null");
+
+	name_or_signature = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	fnoid = plpgsql_check_parse_name_or_signature(name_or_signature);
+
+	PG_RETURN_FLOAT8(coverage_internal(fnoid, COVERAGE_STATEMENTS));
+}
+
+Datum
+plpgsql_coverage_branches_name(PG_FUNCTION_ARGS)
+{
+	Oid			fnoid;
+	char	   *name_or_signature;
+
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "the first argument should not be null");
+
+	name_or_signature = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	fnoid = plpgsql_check_parse_name_or_signature(name_or_signature);
+
+	PG_RETURN_FLOAT8(coverage_internal(fnoid, COVERAGE_BRANCHES));
+}
+
+Datum
+plpgsql_coverage_statements(PG_FUNCTION_ARGS)
+{
+	Oid			fnoid;
+
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "the first argument should not be null");
+
+	fnoid = PG_GETARG_OID(0);
+
+	PG_RETURN_FLOAT8(coverage_internal(fnoid, COVERAGE_STATEMENTS));
+}
+
+Datum
+plpgsql_coverage_branches(PG_FUNCTION_ARGS)
+{
+	Oid			fnoid;
+
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "the first argument should not be null");
+
+	fnoid = PG_GETARG_OID(0);
+
+	PG_RETURN_FLOAT8(coverage_internal(fnoid, COVERAGE_BRANCHES));
+}
+
+/***************************************
+ *
+ * Helper functionality
+ *
+ ***************************************
+ */
+
+/*
+ * Use the Youngs-Cramer algorithm to incorporate the new value into the
+ * transition values.
+ */
+static void
+eval_stddev_accum(uint64 *_N, uint64 *_Sx, float8 *_Sxx, uint64 newval)
+{
+	uint64		N = *_N;
+	uint64		Sx = *_Sx;
+	float8		Sxx = *_Sxx;
+	float8		tmp;
+
+	/*
+	 * Use the Youngs-Cramer algorithm to incorporate the new value into the
+	 * transition values.
+	 */
+	N += 1;
+	Sx += newval;
+
+	if (N > 1)
+	{
+		tmp = ((float8) newval) * ((float8) N) - ((float8) Sx);
+
+		Sxx += tmp * tmp / (N * (N - 1));
+
+		if (isinf(Sxx))
+			Sxx = get_float8_nan();
+	}
+	else
+		Sxx = 0.0;
+
+	*_N = N;
+	*_Sx = Sx;
+	*_Sxx = Sxx;
+}
+
+/*
+ * helper function that returns compiled statement tree
+ */
+static PLpgSQL_function *
+cinfo_get_function(plpgsql_check_info *cinfo)
+{
+	LOCAL_FCINFO(fake_fcinfo, 0);
+	FmgrInfo	flinfo;
+	TriggerData trigdata;
+	EventTriggerData etrigdata;
+	Trigger		tg_trigger;
+	ReturnSetInfo rsinfo;
+	bool		fake_rtd;
+
+	plpgsql_check_setup_fcinfo(cinfo,
+							   &flinfo,
+							   fake_fcinfo,
+							   &rsinfo,
+							   &trigdata,
+							   &etrigdata,
+							   &tg_trigger,
+							   &fake_rtd);
+
+	return plpgsql_check__compile_p(fake_fcinfo, false);
+}
+
+/*
+ * Assigned result type of already executed (has assigned plan) expression.
+ *
+ * Returns false when expression was not executed or when plpgsql expression
+ * is not an expression (has more plans or returns more columns).
+ */
+static bool
+get_plpgsql_expr_type(PLpgSQL_expr *expr, Oid *result_type)
+{
+	if (expr)
+	{
+		SPIPlanPtr	ptr = expr->plan;
+
+		if (ptr)
+		{
+			List	   *plan_sources = SPI_plan_get_plan_sources(ptr);
+
+			if (plan_sources && list_length(plan_sources) == 1)
+			{
+				CachedPlanSource *plan_source;
+				TupleDesc	tupdesc;
+
+				plan_source = (CachedPlanSource *) linitial(plan_sources);
+				tupdesc = plan_source->resultDesc;
+
+				if (tupdesc->natts == 1)
+				{
+					*result_type = TupleDescAttr(tupdesc, 0)->atttypid;
+
+					return true;
+				}
+			}
+		}
+	}
+
+	return false;
+}
+
+/*
+ * returns pointer in to next line in text or null, when there is not next line.
+ * It modify input text.
+ */
+static char *
+cutline(char *str, char **line)
+{
+	if (!str)
+	{
+		*line = NULL;
+
+		return NULL;
+	}
+
+	*line = str;
+
+	if (*str)
+	{
+		char	   *ptr = str;
+
+		while (*ptr != '\0' && *ptr != '\n')
+			ptr++;
+
+		if (*ptr == '\n')
+		{
+			*ptr++ = '\0';
+
+			/*
+			 * ignore last empty rows, reduce garbage row. We cannot
+			 * to skip first usuall empty row, because we don't want
+			 * to break relation between lineno and statement's lineno.
+			 * Last empty line we can throw without any impact.
+			 */
+			if (*ptr == '\0')
+				return NULL;
+
+			return ptr;
+		}
+	}
+
+	return NULL;
 }

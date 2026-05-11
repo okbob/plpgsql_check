@@ -94,21 +94,20 @@ static void put_error_tabular(plpgsql_check_result_info *ri, PLpgSQL_execstate *
  * columns of plpgsql_profiler_function_statements_tb result
  *
  */
-#define Natts_profiler_statements					13
+#define Natts_profiler_statements					12
 
 #define Anum_profiler_statements_stmtid				0
 #define Anum_profiler_statements_parent_stmtid		1
-#define Anum_profiler_statements_parent_note		2
-#define Anum_profiler_statements_block_num			3
-#define Anum_profiler_statements_lineno				4
-#define Anum_profiler_statements_queryid			5
-#define Anum_profiler_statements_exec_stmts			6
-#define Anum_profiler_statements_exec_stmts_err		7
-#define Anum_profiler_statements_total_time			8
-#define Anum_profiler_statements_avg_time			9
-#define Anum_profiler_statements_max_time			10
-#define Anum_profiler_statements_processed_rows		11
-#define Anum_profiler_statements_stmtname			12
+#define Anum_profiler_statements_block_num			2
+#define Anum_profiler_statements_lineno				3
+#define Anum_profiler_statements_queryid			4
+#define Anum_profiler_statements_exec_stmts			5
+#define Anum_profiler_statements_exec_stmts_err		6
+#define Anum_profiler_statements_total_time			7
+#define Anum_profiler_statements_avg_time			8
+#define Anum_profiler_statements_max_time			9
+#define Anum_profiler_statements_processed_rows		10
+#define Anum_profiler_statements_stmtname			11
 
 /*
  * columns of plpgsql_profiler_functions_all_tb result
@@ -138,7 +137,7 @@ static void put_error_tabular(plpgsql_check_result_info *ri, PLpgSQL_execstate *
 		nulls[(anum)] = false; \
 	} while(0)
 
-#define SET_RESULT_TEXT(anum, str) \
+#define SET_RESULT_NULLABLE_CSTR_TO_TEXT(anum, str) \
 	do { \
 		if (str != NULL) \
 		{ \
@@ -147,6 +146,18 @@ static void put_error_tabular(plpgsql_check_result_info *ri, PLpgSQL_execstate *
 		else \
 		{ \
 			SET_RESULT_NULL(anum); \
+		} \
+	} while (0)
+
+#define SET_RESULT_NULLABLE(anum, ptr) \
+	do { \
+		if (ptr != (Datum) 0) \
+		{ \
+			SET_RESULT((anum), (ptr)); \
+		} \
+		else \
+		{ \
+			SET_RESULT_NULL((anum)); \
 		} \
 	} while (0)
 
@@ -1022,7 +1033,7 @@ put_error_tabular(plpgsql_check_result_info *ri,
 	{
 		/* use lineno based on err_stmt */
 		SET_RESULT_INT32(Anum_result_lineno, estate->err_stmt->lineno);
-		SET_RESULT_TEXT(Anum_result_statement, plpgsql_check__stmt_typename_p(estate->err_stmt));
+		SET_RESULT_NULLABLE_CSTR_TO_TEXT(Anum_result_statement, plpgsql_check__stmt_typename_p(estate->err_stmt));
 	}
 	else if (strncmp(message, UNUSED_VARIABLE_TEXT, UNUSED_VARIABLE_TEXT_CHECK_LENGTH) == 0)
 	{
@@ -1041,19 +1052,19 @@ put_error_tabular(plpgsql_check_result_info *ri,
 		SET_RESULT_NULL(Anum_result_statement);
 	}
 
-	SET_RESULT_TEXT(Anum_result_sqlstate, unpack_sql_state(sqlerrcode));
-	SET_RESULT_TEXT(Anum_result_message, message);
-	SET_RESULT_TEXT(Anum_result_detail, detail);
-	SET_RESULT_TEXT(Anum_result_hint, hint);
-	SET_RESULT_TEXT(Anum_result_level, error_level_str(level));
+	SET_RESULT_NULLABLE_CSTR_TO_TEXT(Anum_result_sqlstate, unpack_sql_state(sqlerrcode));
+	SET_RESULT_NULLABLE_CSTR_TO_TEXT(Anum_result_message, message);
+	SET_RESULT_NULLABLE_CSTR_TO_TEXT(Anum_result_detail, detail);
+	SET_RESULT_NULLABLE_CSTR_TO_TEXT(Anum_result_hint, hint);
+	SET_RESULT_NULLABLE_CSTR_TO_TEXT(Anum_result_level, error_level_str(level));
 
 	if (position != 0)
 		SET_RESULT_INT32(Anum_result_position, position);
 	else
 		SET_RESULT_NULL(Anum_result_position);
 
-	SET_RESULT_TEXT(Anum_result_query, query);
-	SET_RESULT_TEXT(Anum_result_context, context);
+	SET_RESULT_NULLABLE_CSTR_TO_TEXT(Anum_result_query, query);
+	SET_RESULT_NULLABLE_CSTR_TO_TEXT(Anum_result_context, context);
 
 	tuplestore_putvalues(ri->tuple_store, ri->tupdesc, values, nulls);
 }
@@ -1076,11 +1087,11 @@ plpgsql_check_put_dependency(plpgsql_check_result_info *ri,
 	Assert(ri->tuple_store);
 	Assert(ri->tupdesc);
 
-	SET_RESULT_TEXT(Anum_dependency_type, type);
+	SET_RESULT_NULLABLE_CSTR_TO_TEXT(Anum_dependency_type, type);
 	SET_RESULT_OID(Anum_dependency_oid, oid);
-	SET_RESULT_TEXT(Anum_dependency_schema, schema);
-	SET_RESULT_TEXT(Anum_dependency_name, name);
-	SET_RESULT_TEXT(Anum_dependency_params, params);
+	SET_RESULT_NULLABLE_CSTR_TO_TEXT(Anum_dependency_schema, schema);
+	SET_RESULT_NULLABLE_CSTR_TO_TEXT(Anum_dependency_name, name);
+	SET_RESULT_NULLABLE_CSTR_TO_TEXT(Anum_dependency_params, params);
 
 	tuplestore_putvalues(ri->tuple_store, ri->tupdesc, values, nulls);
 }
@@ -1095,9 +1106,10 @@ plpgsql_check_put_profile(plpgsql_check_result_info *ri,
 						  int lineno,
 						  int stmt_lineno,
 						  int cmds_on_row,
-						  int64 exec_count,
-						  int64 exec_count_err,
-						  int64 us_total,
+						  Datum exec_count_array,
+						  Datum exec_count_err_array,
+						  Datum total_time_array,
+						  Datum avg_time_array,
 						  Datum max_time_array,
 						  Datum processed_rows_array,
 						  char *source_row)
@@ -1108,33 +1120,26 @@ plpgsql_check_put_profile(plpgsql_check_result_info *ri,
 	Assert(ri->tuple_store);
 	Assert(ri->tupdesc);
 
-	SET_RESULT_NULL(Anum_profiler_stmt_lineno);
-	SET_RESULT_NULL(Anum_profiler_queryid);
-	SET_RESULT_NULL(Anum_profiler_exec_count);
-	SET_RESULT_NULL(Anum_profiler_exec_count_err);
-	SET_RESULT_NULL(Anum_profiler_total_time);
-	SET_RESULT_NULL(Anum_profiler_avg_time);
-	SET_RESULT_NULL(Anum_profiler_max_time);
-	SET_RESULT_NULL(Anum_profiler_processed_rows);
-	SET_RESULT_NULL(Anum_profiler_source);
-	SET_RESULT_NULL(Anum_profiler_cmds_on_row);
-
-	SET_RESULT_INT32(Anum_profiler_lineno, lineno);
-	SET_RESULT_TEXT(Anum_profiler_source, source_row);
-
 	if (stmt_lineno > 0)
 	{
 		SET_RESULT_INT32(Anum_profiler_stmt_lineno, stmt_lineno);
-		if (queryids_array != (Datum) 0)
-			SET_RESULT(Anum_profiler_queryid, queryids_array);
 		SET_RESULT_INT32(Anum_profiler_cmds_on_row, cmds_on_row);
-		SET_RESULT_INT64(Anum_profiler_exec_count, exec_count);
-		SET_RESULT_INT64(Anum_profiler_exec_count_err, exec_count_err);
-		SET_RESULT_FLOAT8(Anum_profiler_total_time, us_total / 1000.0);
-		SET_RESULT_FLOAT8(Anum_profiler_avg_time, ceil(((float8) us_total) / exec_count) / 1000.0);
-		SET_RESULT(Anum_profiler_max_time, max_time_array);
-		SET_RESULT(Anum_profiler_processed_rows, processed_rows_array);
 	}
+	else
+	{
+		SET_RESULT_NULL(Anum_profiler_stmt_lineno);
+		SET_RESULT_NULL(Anum_profiler_cmds_on_row);
+	}
+
+	SET_RESULT_INT32(Anum_profiler_lineno, lineno);
+	SET_RESULT_NULLABLE(Anum_profiler_queryid, queryids_array);
+	SET_RESULT_NULLABLE(Anum_profiler_exec_count, exec_count_array);
+	SET_RESULT_NULLABLE(Anum_profiler_exec_count_err, exec_count_err_array);
+	SET_RESULT_NULLABLE(Anum_profiler_total_time, total_time_array);
+	SET_RESULT_NULLABLE(Anum_profiler_avg_time, avg_time_array);
+	SET_RESULT_NULLABLE(Anum_profiler_max_time, max_time_array);
+	SET_RESULT_NULLABLE(Anum_profiler_processed_rows, processed_rows_array);
+	SET_RESULT_NULLABLE_CSTR_TO_TEXT(Anum_profiler_source, source_row);
 
 	tuplestore_putvalues(ri->tuple_store, ri->tupdesc, values, nulls);
 }
@@ -1149,7 +1154,6 @@ plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri,
 									pc_queryid queryid,
 									int stmtid,
 									int parent_stmtid,
-									const char *parent_note,
 									int block_num,
 									int lineno,
 									int64 exec_stmts,
@@ -1157,7 +1161,7 @@ plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri,
 									double total_time,
 									double max_time,
 									int64 processed_rows,
-									char *stmtname)
+									const char *stmtname)
 {
 	Datum		values[Natts_profiler_statements];
 	bool		nulls[Natts_profiler_statements];
@@ -1184,12 +1188,7 @@ plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri,
 	SET_RESULT_FLOAT8(Anum_profiler_statements_total_time, total_time / 1000.0);
 	SET_RESULT_FLOAT8(Anum_profiler_statements_total_time, total_time / 1000.0);
 	SET_RESULT_FLOAT8(Anum_profiler_statements_max_time, max_time / 1000.0);
-	SET_RESULT_TEXT(Anum_profiler_statements_stmtname, stmtname);
-
-	if (parent_note)
-		SET_RESULT_TEXT(Anum_profiler_statements_parent_note, parent_note);
-	else
-		SET_RESULT_NULL(Anum_profiler_statements_parent_note);
+	SET_RESULT_NULLABLE_CSTR_TO_TEXT(Anum_profiler_statements_stmtname, stmtname);
 
 	/* set nullable field */
 	if (parent_stmtid == -1)
@@ -1197,8 +1196,8 @@ plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri,
 	else
 		SET_RESULT_INT32(Anum_profiler_statements_parent_stmtid, parent_stmtid);
 
-	if (exec_stmts > 0)
-		SET_RESULT_FLOAT8(Anum_profiler_statements_avg_time, ceil(((float8) total_time) / exec_stmts) / 1000.0);
+	if ((exec_stmts + exec_stmts_err) > 0)
+		SET_RESULT_FLOAT8(Anum_profiler_statements_avg_time, ceil(((float8) total_time) / (exec_stmts + exec_stmts_err)) / 1000.0);
 	else
 		SET_RESULT_NULL(Anum_profiler_statements_avg_time);
 

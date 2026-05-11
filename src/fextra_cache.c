@@ -48,8 +48,6 @@ init_fextra_stmt_walker(PLpgSQL_stmt *stmt, fextra_init_context *context)
 	fextra->naturalids[stmtid] = ++(*context->naturalid);
 	fextra->levels[stmtid] = context->current_deep + 1;
 
-	fextra->natural_to_ids[fextra->naturalids[stmtid] - 1] = stmtid;
-
 	if (context->current_deep > fextra->max_deep)
 		fextra->max_deep = context->current_deep;
 
@@ -234,8 +232,6 @@ plch_get_fextra(PLpgSQL_function *func)
 		fextra->parentids = palloc(sizeof(int) * (func->nstatements + 1));
 		fextra->naturalids = palloc(sizeof(int) * (func->nstatements + 1));
 		fextra->levels = palloc(sizeof(int) * (func->nstatements + 1));
-
-		fextra->natural_to_ids = palloc0(sizeof(int) * (func->nstatements + 1));
 
 		MemoryContextSwitchTo(oldcxt);
 

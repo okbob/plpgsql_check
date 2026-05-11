@@ -511,9 +511,7 @@ profiler_function_statements_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 
 	plpgsql_check_init_ri(&ri, PLPGSQL_SHOW_PROFILE_STATEMENTS_TABULAR, rsinfo);
 
-	plpgsql_check_iterate_over_profile(&cinfo,
-									   PLPGSQL_CHECK_STMT_WALKER_PREPARE_RESULT,
-									   &ri, NULL);
+	plch_statements_stats_report(&cinfo, &ri);
 
 	plpgsql_check_finalize_ri(&ri);
 

@@ -234,10 +234,12 @@ extern void plpgsql_check_put_error(PLpgSQL_checkstate *cstate, int sqlerrcode, 
 									const char *message, const char *detail, const char *hint, int level, int position, const char *query, const char *context);
 extern void plpgsql_check_put_error_edata(PLpgSQL_checkstate *cstate, ErrorData *edata);
 extern void plpgsql_check_put_dependency(plpgsql_check_result_info *ri, char *type, Oid oid, char *schema, char *name, char *params);
+
 extern void plpgsql_check_put_profile(plpgsql_check_result_info *ri, Datum queryids_array, int lineno, int stmt_lineno,
-									  int cmds_on_row, int64 exec_count, int64 exec_count_err, int64 us_total, Datum max_time_array, Datum processed_rows_array, char *source_row);
-extern void plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri, pc_queryid queryid, int stmtid, int parent_stmtid, const char *parent_note, int block_num, int lineno,
-												int64 exec_stmts, int64 exec_count_err, double total_time, double max_time, int64 processed_rows, char *stmtname);
+									  int cmds_on_row, Datum exec_count_array, Datum exec_count_err_array, Datum total_time_array,
+									  Datum avg_time_array, Datum max_time_array, Datum processed_rows_array, char *source_row);
+extern void plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri, pc_queryid queryid, int stmtid, int parent_stmtid, int block_num, int lineno,
+												int64 exec_stmts, int64 exec_count_err, double total_time, double max_time, int64 processed_rows, const char *stmtname);
 extern void plpgsql_check_put_profiler_functions_all_tb(plpgsql_check_result_info *ri, Oid funcoid, int64 exec_count, int64 exec_count_err,
 														double total_time, double avg_time, double stddev_time, double min_time, double max_time);
 extern char *plpgsql_check_prepare_err_text_with_target_vardecl(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int varno);
@@ -398,6 +400,9 @@ extern bool *plpgsql_check_get_disable_tracer_on_stack(PLpgSQL_execstate *estate
 
 extern void plpgsql_check_profiler_init(void);
 
+extern void plch_statements_stats_report(plpgsql_check_info *cinfo, plpgsql_check_result_info *ri);
+
+
 /*
  * functions and variables from tracer.c
  */
@@ -451,7 +456,6 @@ typedef struct
 
 	int		   *parentids;
 	int		   *naturalids;
-	int		   *natural_to_ids;
 	int		   *levels;
 	int			max_deep;
 	int			nstatements;
