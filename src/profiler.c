@@ -31,21 +31,19 @@
 #include <math.h>
 
 /*
- * It is unique for any version of function with same oid.
- * It ensure strong relation between runtime data and source code
- * (pg_proc tuple).
+ * It is unique for function with same oid. For function statistic
+ * We don't want to have multiple stats per every update of any
+ * function.
  */
-typedef struct func_identity_hashkey
+typedef struct func_hashkey
 {
 	Oid			fn_oid;
 	Oid			db_oid;
-	TransactionId fn_xmin;
-	ItemPointerData fn_tid;
-} func_identity_hashkey;
+} func_hashkey;
 
 typedef struct FuncStats
 {
-	func_identity_hashkey key;
+	func_hashkey key;
 	slock_t		mutex;
 	uint64		exec_count;
 	uint64		exec_count_err;
@@ -96,6 +94,19 @@ typedef struct StmtStats
 } StmtStats;
 
 #define		STATEMENTS_PER_CHUNK		30
+
+/*
+ * It is unique for any version of function with same oid.
+ * It ensure strong relation between runtime data and source code
+ * (pg_proc tuple).
+ */
+typedef struct func_identity_hashkey
+{
+	Oid			fn_oid;
+	Oid			db_oid;
+	TransactionId fn_xmin;
+	ItemPointerData fn_tid;
+} func_identity_hashkey;
 
 typedef struct FuncStmtsStats
 {
@@ -176,6 +187,7 @@ static plch_plugin profiler_plugin =
 	NULL, NULL, NULL, NULL, NULL
 };
 
+static void init_func_hashkey(func_hashkey *hk, Oid fn_oid);
 static void plfunction_init_function_identity_hashkey(func_identity_hashkey *hk, PLpgSQL_function *func);
 static void proctuple_init_function_identity_hashkey(func_identity_hashkey *hk, HeapTuple procTuple);
 
@@ -399,16 +411,18 @@ Datum
 plpgsql_profiler_reset(PG_FUNCTION_ARGS)
 {
 	Oid			funcoid = PG_GETARG_OID(0);
+	func_hashkey fhk;
 	func_identity_hashkey hk;
 	HeapTuple	procTuple;
+
+	init_func_hashkey(&fhk, funcoid);
+	hash_search(fstats_HashTable, (void *) &fhk, HASH_REMOVE, NULL);
 
 	procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcoid));
 	if (!HeapTupleIsValid(procTuple))
 		elog(ERROR, "cache lookup failed for function %u", funcoid);
 
 	proctuple_init_function_identity_hashkey(&hk, procTuple);
-
-	hash_search(fstats_HashTable, (void *) &hk, HASH_REMOVE, NULL);
 	hash_search(func_stmts_stats_HashTable, (void *) &hk, HASH_REMOVE, NULL);
 
 	ReleaseSysCache(procTuple);
@@ -487,6 +501,14 @@ profiler_fake_queryid_hook(ParseState *pstate, Query *query, JumbleState *jstate
  *
  ***************************************
  */
+static void
+init_func_hashkey(func_hashkey *hk, Oid fn_oid)
+{
+	memset(hk, 0, sizeof(func_hashkey));
+
+	hk->db_oid = MyDatabaseId;
+	hk->fn_oid = fn_oid;
+}
 
 static void
 fstats_HashTableInit(void)
@@ -496,7 +518,7 @@ fstats_HashTableInit(void)
 	Assert(fstats_HashTable == NULL);
 
 	memset(&ctl, 0, sizeof(ctl));
-	ctl.keysize = sizeof(func_identity_hashkey);
+	ctl.keysize = sizeof(func_hashkey);
 	ctl.entrysize = sizeof(FuncStats);
 	ctl.hcxt = profiler_mcxt;
 	fstats_HashTable = hash_create("plpgsql_check function execution statistics",
@@ -596,12 +618,12 @@ update_persistent_fstats(PLpgSQL_function *func,
 {
 	HTAB	   *fstats_ht;
 	bool		htab_is_shared;
-	func_identity_hashkey hk;
+	func_hashkey hk;
 	FuncStats	   *fstats_item;
 	bool		found;
 	bool		use_spinlock = false;
 
-	plfunction_init_function_identity_hashkey(&hk, func);
+	init_func_hashkey(&hk, func->fn_oid);
 
 	/* try to find first chunk in shared (or local) memory */
 	if (shared_fstats_HashTable)
