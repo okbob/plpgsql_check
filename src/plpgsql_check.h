@@ -373,7 +373,9 @@ extern char *plpgsql_check_process_echo_string(char *str, plpgsql_check_info *ci
  * functions from profiler.c
  */
 extern bool plpgsql_check_profiler;
-extern int	plpgsql_check_profiler_max_shared_chunks;
+extern int plpgsql_check_profiler_max_shared_chunks;
+extern int plch_max_stat_size;
+extern bool plch_use_shared_stats_when_it_possible;
 
 extern needs_fmgr_hook_type plpgsql_check_next_needs_fmgr_hook;
 extern fmgr_hook_type plpgsql_check_next_fmgr_hook;

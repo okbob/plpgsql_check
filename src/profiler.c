@@ -141,12 +141,6 @@ enum
 	COVERAGE_BRANCHES
 };
 
-/*
- * should be enough for project of 300K PLpgSQL rows.
- * It should to take about 24.4MB of shared memory.
- */
-int			plpgsql_check_profiler_max_shared_chunks = 15000;
-
 PG_FUNCTION_INFO_V1(plpgsql_check_profiler_ctrl);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_reset_all);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_reset);
@@ -210,6 +204,11 @@ static MemoryContext profiler_queryid_mcxt = NULL;
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 
 bool		plpgsql_check_profiler = false;
+bool		plch_use_shared_stats_when_it_possible = true;
+int			plch_max_stat_size = 20480;
+
+static int64 local_stats_counter = 0;
+static int64 shared_stats_counter = 0;
 
 
 /***************************************
@@ -601,6 +600,9 @@ plpgsql_check_profiler_init_hash_tables(void)
 
 	fstats_HashTableInit();
 	func_stmts_stats_HashTableInit();
+
+	local_stats_counter = 0;
+	shared_stats_counter = 0;
 }
 
 
@@ -722,6 +724,18 @@ update_persistent_stmts_stats(profiler_info *pinfo)
 	{
 		MemoryContext oldcxt;
 
+		if (((local_stats_counter + pinfo->func->nstatements) * sizeof(StmtStats)) > (plch_max_stat_size * 1024))
+		{
+			ereport(WARNING,
+					(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
+					 errmsg("cannot allocate local memory for profiler statistics"),
+					 errdetail("the used memory exceeds \"plpgsql_check.max_stats_size\" (%dkB)",
+							   plch_max_stat_size),
+					 errdetail("Statistics can be cleaned by calling function \"plpgsql_profiler_reset_all()\".")));
+
+			return;
+		}
+
 		oldcxt = MemoryContextSwitchTo(profiler_mcxt);
 		func_stmts_stats->sstats = palloc(pinfo->func->nstatements * sizeof(StmtStats));
 		MemoryContextSwitchTo(oldcxt);
@@ -729,6 +743,8 @@ update_persistent_stmts_stats(profiler_info *pinfo)
 		memcpy(func_stmts_stats->sstats,
 			   pinfo->sstats,
 			   pinfo->func->nstatements * sizeof(StmtStats));
+
+		local_stats_counter += pinfo->func->nstatements;
 
 		return;
 	}
