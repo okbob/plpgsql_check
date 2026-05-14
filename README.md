@@ -559,20 +559,20 @@ The plpgsql_check should be initialized before any plpgsql function is executed.
 early initialization ensures correct work of profiler and tracer. When you doesn't use
 `shared_preloaded_libraries`, you can use command `load 'plpgsql_check'` instead.
 
-When plpgsql_check is initialized by `shared_preload_libraries`, another GUC is
-available to configure the amount of shared memory used by the profiler:
-`plpgsql_check.profiler_max_shared_chunks`.  This defines the maximum number of
-statements chunk that can be stored in shared memory.  For each plpgsql
-function (or procedure), the whole content is split into chunks of 30
-statements.  If needed, multiple chunks can be used to store the whole content
-of a single function.  A single chunk is 1704 bytes.  The default value for
-this GUC is 15000, which should be enough for big projects containing hundreds
-of thousands of statements in plpgsql, and will consume about 24MB of memory.
-If your project doesn't require that much number of chunks, you can set this
-parameter to a smaller number in order to decrease the memory usage.  The
-minimum value is 50 (which should consume about 83kB of memory), and the
-maximum value is 100000 (which should consume about 163MB of memory).  Changing
-this parameter requires a PostgreSQL restart.
+When plpgsql_check is initialized by `shared_preload_libraries`, the shared memory
+of the size `plpgsq_check.max_stats_size` is allocated. When value of 
+`plpgsql_check.use_shared_stats_when_it_possible` is `on` (default is `on`),
+then the statistics are placed in shared memory. When mentioned option is `off`,
+then statistics are stored in local memory.
+
+The used memory is limited by `plpgsq_check.max_stats_size`. The default value
+is 20MB (min 1MB, max 200MB). After this limit, the memory for new statistics
+are not assigned, and warning is raised. The allocated memory can be released by
+calling function `plpgsql_profiler_reset_all()`. When statistics are stored to
+shared memory, then shared memory of this size is allocated when Postgres is
+started. Without restart, the change of `plpgsq_check.max_stats_size` has not
+any effect on preallocated shared memory. When statistics are stored in local
+memory, this variable can be changed without necessity of restart.
 
 The profiler will also retrieve the query identifier for each instruction that
 contains an expression or optimizable statement.  Note that this requires
