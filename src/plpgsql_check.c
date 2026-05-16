@@ -461,7 +461,7 @@ _PG_init(void)
 	EmitWarningsOnPlaceholders("plpgsql_check");
 
 	plpgsql_check_HashTableInit();
-	plpgsql_check_profiler_init_hash_tables();
+	plch_profiler_init_local_hash_tables();
 
 	/* Use shared memory when we can register more for self */
 	if (process_shared_preload_libraries_in_progress)

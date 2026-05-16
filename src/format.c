@@ -1204,6 +1204,55 @@ plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri,
 	tuplestore_putvalues(ri->tuple_store, ri->tupdesc, values, nulls);
 }
 
+/*
+ * Store one output row of profiler to result tuplestore in statement
+ * oriented format - this variant is used when function was not executed
+ *
+ */
+void
+plpgsql_check_put_profile_statement_no_stats(plpgsql_check_result_info *ri,
+											 int stmtid,
+											 int parent_stmtid,
+											 int block_num,
+											 int lineno,
+											 const char *stmtname)
+{
+	Datum		values[Natts_profiler_statements];
+	bool		nulls[Natts_profiler_statements];
+
+	Assert(ri->tuple_store);
+	Assert(ri->tupdesc);
+
+	/* ignore invisible statements */
+	if (lineno <= 0)
+		return;
+
+	SET_RESULT_INT32(Anum_profiler_statements_stmtid, stmtid);
+	SET_RESULT_INT32(Anum_profiler_statements_block_num, block_num);
+	SET_RESULT_INT32(Anum_profiler_statements_lineno, lineno);
+
+	SET_RESULT_NULL(Anum_profiler_statements_queryid);
+
+	SET_RESULT_NULL(Anum_profiler_statements_exec_stmts);
+	SET_RESULT_NULL(Anum_profiler_statements_exec_stmts_err);
+	SET_RESULT_NULL(Anum_profiler_statements_processed_rows);
+	SET_RESULT_NULL(Anum_profiler_statements_total_time);
+	SET_RESULT_NULL(Anum_profiler_statements_total_time);
+	SET_RESULT_NULL(Anum_profiler_statements_max_time);
+	SET_RESULT_NULLABLE_CSTR_TO_TEXT(Anum_profiler_statements_stmtname, stmtname);
+
+	/* set nullable field */
+	if (parent_stmtid == -1)
+		SET_RESULT_NULL(Anum_profiler_statements_parent_stmtid);
+	else
+		SET_RESULT_INT32(Anum_profiler_statements_parent_stmtid, parent_stmtid);
+
+	SET_RESULT_NULL(Anum_profiler_statements_avg_time);
+
+	tuplestore_putvalues(ri->tuple_store, ri->tupdesc, values, nulls);
+}
+
+
 void
 plpgsql_check_put_profiler_functions_all_tb(plpgsql_check_result_info *ri,
 											Oid funcoid,

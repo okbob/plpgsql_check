@@ -240,6 +240,9 @@ extern void plpgsql_check_put_profile(plpgsql_check_result_info *ri, Datum query
 									  Datum avg_time_array, Datum max_time_array, Datum processed_rows_array, char *source_row);
 extern void plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri, pc_queryid queryid, int stmtid, int parent_stmtid, int block_num, int lineno,
 												int64 exec_stmts, int64 exec_count_err, double total_time, double max_time, int64 processed_rows, const char *stmtname);
+extern void plpgsql_check_put_profile_statement_no_stats(plpgsql_check_result_info *ri, int stmtid, int parent_stmtid,
+														 int block_num, int lineno, const char *stmtname);
+
 extern void plpgsql_check_put_profiler_functions_all_tb(plpgsql_check_result_info *ri, Oid funcoid, int64 exec_count, int64 exec_count_err,
 														double total_time, double avg_time, double stddev_time, double min_time, double max_time);
 extern char *plpgsql_check_prepare_err_text_with_target_vardecl(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int varno);
@@ -386,7 +389,7 @@ extern void plpgsql_check_profiler_shmem_request(void);
 extern void plpgsql_check_profiler_shmem_startup(void);
 
 extern Size plpgsql_check_shmem_size(void);
-extern void plpgsql_check_profiler_init_hash_tables(void);
+extern void plch_profiler_init_local_hash_tables(void);
 
 extern void plpgsql_check_iterate_over_profile(plpgsql_check_info *cinfo, profiler_stmt_walker_mode mode,
 											   plpgsql_check_result_info *ri, coverage_state *cs);
