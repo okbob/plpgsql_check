@@ -372,6 +372,29 @@ plpgsql_check_profiler_ctrl(PG_FUNCTION_ARGS)
 		result = false;
 	};
 
+	if (PG_ARGISNULL(0))
+	{
+		if (result)
+		{
+			if (shared_func_stats_ht)
+			{
+				if (plch_use_shared_stats_when_it_possible)
+					elog(NOTICE, "shared memory is preallocated and used now");
+				else
+					elog(NOTICE, "shared memory is preallocated and not used now");
+			}
+			else
+				elog(NOTICE, "shared memory is not preallocated");
+		}
+		else
+		{
+			if (shared_func_stats_ht)
+				elog(NOTICE, "shared memory is preallocated");
+			else
+				elog(NOTICE, "shared memory is not preallocated");
+		}
+	}
+
 	PG_RETURN_BOOL(result);
 }
 
