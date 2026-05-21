@@ -49,6 +49,9 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/*.control
 
 %changelog
+* Thu May 21 2026 - Pavel Stehule <pavel.stehule@gmail.com> 2.9.0
+- significant profiler refactoring
+
 * Tue Mar 18 2025 - Pavel Stehule <pavel.stehule@gmail.com> 2.8.0
 - remove support for PostgreSQL 12 and 13
 
