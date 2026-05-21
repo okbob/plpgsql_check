@@ -120,3 +120,4 @@ select * from plpgsql_check_function('f1');
 ------------------------
 (0 rows)
 
+drop function f1();

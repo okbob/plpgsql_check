@@ -107,3 +107,5 @@ $$ language plpgsql;
 
 -- should be ok
 select * from plpgsql_check_function('f1');
+
+drop function f1();
