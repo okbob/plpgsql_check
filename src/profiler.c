@@ -242,7 +242,7 @@ plpgsql_check_shmem_size(void)
 
 	num_bytes = MAXALIGN(sizeof(ProfilerSharedState));
 
-	estimated_stmt_stats_count = plch_max_stat_size / sizeof(StmtStats);
+	estimated_stmt_stats_count = (((Size) plch_max_stat_size) * 1024) / sizeof(StmtStats);
 
 	num_bytes = add_size(num_bytes, mul_size(estimated_stmt_stats_count, sizeof(StmtStats)));
 	num_bytes = add_size(num_bytes, hash_estimate_size(20000, sizeof(FuncStmtsStats)));
@@ -393,6 +393,12 @@ plpgsql_check_profiler_ctrl(PG_FUNCTION_ARGS)
 			else
 				elog(NOTICE, "shared memory is not preallocated");
 		}
+
+		if (profiler_ss)
+			elog(NOTICE, "allocated stats: %d (%ldkB), used stats: %d",
+						profiler_ss->stmt_stats_count,
+						(mul_size(sizeof(StmtStats), estimated_stmt_stats_count) / 1024),
+						profiler_ss->used_stmt_stats_count);
 	}
 
 	PG_RETURN_BOOL(result);
@@ -926,7 +932,7 @@ update_shared_persistent_stmts_stats(profiler_info *pinfo)
 
 	if (!found)
 	{
-		if (profiler_ss->used_stmt_stats_count + pinfo->func->nstatements > profiler_ss->used_stmt_stats_count)
+		if (profiler_ss->used_stmt_stats_count + pinfo->func->nstatements > profiler_ss->stmt_stats_count)
 		{
 			/* remove invalid func stmts stats entry */
 			hash_search(shared_func_stmts_stats_ht, (void *) &(fss->key), HASH_REMOVE, NULL);
@@ -936,7 +942,11 @@ update_shared_persistent_stmts_stats(profiler_info *pinfo)
 					 errmsg("cannot use share memory for profiler statistics"),
 					 errdetail("the used memory exceeds \"plpgsql_check.max_stats_size\" (%dkB)",
 							   plch_max_stat_size),
-					 errdetail("Statistics can be cleaned by calling function \"plpgsql_profiler_reset_all()\".")));
+					 errhint("Statistics can be cleaned by calling function \"plpgsql_profiler_reset_all()\".")));
+
+			LWLockRelease(profiler_ss->func_stmts_stats_lock);
+
+			return;
 		}
 
 		SpinLockInit(&fss->mutex);
@@ -1458,9 +1468,10 @@ shared_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 															ceil(sqrt(fs->total_time_xx / fs->exec_count)),
 															(double) fs->min_time,
 															(double) fs->max_time);
+
+				ReleaseSysCache(tp);
 			}
 
-			ReleaseSysCache(tp);
 		}
 		PG_CATCH();
 		{
