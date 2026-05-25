@@ -715,15 +715,6 @@ update_local_persistent_fstats(func_hashkey *hk,
 
 	if (!found)
 	{
-		fs = (FuncStats *) hash_search(func_stats_ht,
-									   (void *) hk,
-									   HASH_ENTER,
-									   &found);
-
-		if (!fs)
-			elog(ERROR,
-				 "cannot to insert new entry to profiler's function statistics");
-
 		fs->exec_count = 0;
 		fs->exec_count_err = 0;
 		fs->total_time = 0;
@@ -771,10 +762,6 @@ update_shared_persistent_fstats(func_hashkey *hk,
 									   (void *) hk,
 									   HASH_ENTER,
 									   &found);
-
-		if (!fs)
-			elog(ERROR,
-				 "cannot to insert new entry to profiler's function statistics");
 	}
 
 	if (found)
@@ -844,8 +831,6 @@ update_local_persistent_stmts_stats(profiler_info *pinfo)
 
 	if (!found)
 	{
-		MemoryContext oldcxt;
-
 		fss->nstatements = pinfo->func->nstatements;
 
 		if (((used_stmt_stats_count + fss->nstatements) * sizeof(StmtStats)) > (plch_max_stat_size * 1024))
@@ -863,9 +848,18 @@ update_local_persistent_stmts_stats(profiler_info *pinfo)
 			return;
 		}
 
-		oldcxt = MemoryContextSwitchTo(profiler_mcxt);
-		fss->sstats = palloc(pinfo->func->nstatements * sizeof(StmtStats));
-		MemoryContextSwitchTo(oldcxt);
+		fss->sstats = MemoryContextAllocExtended(profiler_mcxt,
+												 pinfo->func->nstatements * sizeof(StmtStats),
+												 MCXT_ALLOC_NO_OOM);
+		if (unlikely(fss->sstats == NULL))
+		{
+			/* remove invalid current func_stmts_stats */
+			hash_search(func_stmts_stats_ht, &(fss->key), HASH_REMOVE, NULL);
+
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 errmsg("out of memory")));
+		}
 
 		memcpy(fss->sstats,
 			   pinfo->sstats,
