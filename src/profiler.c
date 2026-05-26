@@ -48,7 +48,8 @@ typedef struct FuncStats
 	uint64		exec_count;
 	uint64		exec_count_err;
 	uint64		total_time;
-	double		total_time_xx;
+	double		total_time_mean;
+	double		total_time_m2;
 	uint64		min_time;
 	uint64		max_time;
 } FuncStats;
@@ -194,7 +195,11 @@ static pc_queryid profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_ex
 static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
 									   bool *has_queryid, QParams **qparams);
 
-static void eval_stddev_accum(uint64 *_N, uint64 *_Sx, float8 *_Sxx, uint64 newval);
+static void WelfordVarianceAdd(uint64 *count, float8 *mean, float8 *m2, float8 x);
+static void WelfordVarianceMerge(uint64 *count, float8 *mean, float8 *m2,
+								 uint64 a_count, float8 a_mean, float8 a_m2,
+								 uint64 b_count, float8 b_mean, float8 b_m2);
+
 static PLpgSQL_function *cinfo_get_function(plpgsql_check_info *cinfo);
 static bool get_plpgsql_expr_type(PLpgSQL_expr *expr, Oid *result_type);
 static char *cutline(char *str, char **line);
@@ -718,7 +723,8 @@ update_local_persistent_fstats(func_hashkey *hk,
 		fs->exec_count = 0;
 		fs->exec_count_err = 0;
 		fs->total_time = 0;
-		fs->total_time_xx = 0.0;
+		fs->total_time_mean = 0.0;
+		fs->total_time_m2 = 0.0;
 		fs->min_time = elapsed;
 		fs->max_time = elapsed;
 	}
@@ -728,10 +734,11 @@ update_local_persistent_fstats(func_hashkey *hk,
 		fs->max_time = fs->max_time > elapsed ? fs->max_time : elapsed;
 	}
 
-	eval_stddev_accum(&fs->exec_count,
-					  &fs->total_time,
-					  &fs->total_time_xx,
-					  elapsed);
+	fs->total_time += elapsed;
+
+	WelfordVarianceAdd(&fs->exec_count,
+					   &fs->total_time_mean, &fs->total_time_m2,
+					   ((float8) elapsed));
 
 	if (aborted)
 		fs->exec_count_err += 1;
@@ -779,15 +786,17 @@ update_shared_persistent_fstats(func_hashkey *hk,
 		fs->exec_count = 0;
 		fs->exec_count_err = 0;
 		fs->total_time = 0;
-		fs->total_time_xx = 0.0;
+		fs->total_time_mean = 0.0;
+		fs->total_time_m2 = 0.0;
 		fs->min_time = elapsed;
 		fs->max_time = elapsed;
 	}
 
-	eval_stddev_accum(&fs->exec_count,
-					  &fs->total_time,
-					  &fs->total_time_xx,
-					  elapsed);
+	fs->total_time += elapsed;
+
+	WelfordVarianceAdd(&fs->exec_count,
+					   &fs->total_time_mean, &fs->total_time_m2,
+					   ((float8) elapsed));
 
 	if (aborted)
 		fs->exec_count_err += 1;
@@ -1416,8 +1425,8 @@ local_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 													fs->exec_count,
 													fs->exec_count_err,
 													(double) fs->total_time,
-													ceil(fs->total_time / ((double) fs->exec_count)),
-													ceil(sqrt(fs->total_time_xx / fs->exec_count)),
+													ceil(fs->total_time_mean),
+													ceil(sqrt(fs->total_time_m2/fs->exec_count-1)),
 													(double) fs->min_time,
 													(double) fs->max_time);
 	}
@@ -1458,8 +1467,8 @@ shared_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 															fs->exec_count,
 															fs->exec_count_err,
 															(double) fs->total_time,
-															ceil(fs->total_time / ((double) fs->exec_count)),
-															ceil(sqrt(fs->total_time_xx / fs->exec_count)),
+															ceil(fs->total_time_mean),
+															ceil(sqrt(fs->total_time_m2 / fs->exec_count)),
 															(double) fs->min_time,
 															(double) fs->max_time);
 
@@ -2282,41 +2291,29 @@ plpgsql_coverage_branches(PG_FUNCTION_ARGS)
  *
  ***************************************
  */
-
-/*
- * Use the Youngs-Cramer algorithm to incorporate the new value into the
- * transition values.
- */
 static void
-eval_stddev_accum(uint64 *_N, uint64 *_Sx, float8 *_Sxx, uint64 newval)
+WelfordVarianceAdd(uint64 *count, float8 *mean, float8 *m2, float8 x)
 {
-	uint64		N = *_N;
-	uint64		Sx = *_Sx;
-	float8		Sxx = *_Sxx;
-	float8		tmp;
+	float8		old_mean = *mean;
 
-	/*
-	 * Use the Youngs-Cramer algorithm to incorporate the new value into the
-	 * transition values.
-	 */
-	N += 1;
-	Sx += newval;
+	*count += 1;
+	*mean += (x - *mean) / ((float8) *count);
+	*m2 += (x - old_mean) * (x - *mean);
 
-	if (N > 1)
-	{
-		tmp = ((float8) newval) * ((float8) N) - ((float8) Sx);
+	if (isinf(*m2))
+		*m2 = get_float8_nan();
+}
 
-		Sxx += tmp * tmp / (N * (N - 1));
+static void
+WelfordVarianceMerge(uint64 *count, float8 *mean, float8 *m2,
+					 uint64 a_count, float8 a_mean, float8 a_m2,
+					 uint64 b_count, float8 b_mean, float8 b_m2)
+{
+	float8		delta = b_mean - a_mean;
 
-		if (isinf(Sxx))
-			Sxx = get_float8_nan();
-	}
-	else
-		Sxx = 0.0;
-
-	*_N = N;
-	*_Sx = Sx;
-	*_Sxx = Sxx;
+	*count = a_count + b_count;
+	*mean = (((float8) a_count) * a_mean + ((float8) b_count) * b_mean) / ((float8) *count);
+	*m2 = a_m2 + b_m2 + delta * delta * ((float8) a_count) * ((float8) b_count) / ((float8) *count);
 }
 
 /*

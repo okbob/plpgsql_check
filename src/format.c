@@ -1275,7 +1275,12 @@ plpgsql_check_put_profiler_functions_all_tb(plpgsql_check_result_info *ri,
 	SET_RESULT_INT64(Anum_profiler_functions_all_exec_count_err, exec_count_err);
 	SET_RESULT_FLOAT8(Anum_profiler_functions_all_total_time, total_time / 1000.0);
 	SET_RESULT_FLOAT8(Anum_profiler_functions_all_avg_time, avg_time / 1000.0);
-	SET_RESULT_FLOAT8(Anum_profiler_functions_all_stddev_time, stddev_time / 1000.0);
+
+	if (isnan(stddev_time))
+		SET_RESULT_NULL(Anum_profiler_functions_all_stddev_time);
+	else
+		SET_RESULT_FLOAT8(Anum_profiler_functions_all_stddev_time, stddev_time / 1000.0);
+
 	SET_RESULT_FLOAT8(Anum_profiler_functions_all_min_time, min_time / 1000.0);
 	SET_RESULT_FLOAT8(Anum_profiler_functions_all_max_time, max_time / 1000.0);
 
