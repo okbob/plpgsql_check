@@ -2529,6 +2529,14 @@ coverage_internal(Oid fnoid, int ct)
 		elog(ERROR, "cache lookup failed for function %u", cinfo.fn_oid);
 
 	plpgsql_check_get_function_info(&cinfo);
+
+	/*
+	 * show_profile on reduces checks - we don't need to specify relations
+	 * for triggers, because we use statements profile without type deduction
+	 * (from expressions).
+	 */
+	cinfo.show_profile = true;
+
 	plpgsql_check_precheck_conditions(&cinfo);
 
 	func = cinfo_get_function(&cinfo);
