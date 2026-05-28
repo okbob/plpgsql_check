@@ -224,21 +224,14 @@ plugin_info_reset(void *arg)
 		}
 	}
 
-	PG_CATCH();
+	PG_FINALLY();
 	{
 		plugin_info->fextra->func->cur_estate = old_cur_estate;
 		plch_release_fextra(plugin_info->fextra);
 		plugin_info->fextra = NULL;
 		plugin_info->estate = NULL;
-
-		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	plugin_info->fextra->func->cur_estate = old_cur_estate;
-	plch_release_fextra(plugin_info->fextra);
-	plugin_info->fextra = NULL;
-	plugin_info->estate = NULL;
 }
 
 /*
@@ -330,15 +323,11 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 			plugin_info->prev_plugin_info = estate->plugin_info;
 		}
 	}
-	PG_CATCH();
+	PG_FINALLY();
 	{
 		estate->plugin_info = plugin_info;
-
-		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	estate->plugin_info = plugin_info;
 }
 
 /*
@@ -384,15 +373,11 @@ func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 			plugin_info->prev_plugin_info = estate->plugin_info;
 		}
 	}
-	PG_CATCH();
+	PG_FINALLY();
 	{
 		estate->plugin_info = plugin_info;
-
-		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	estate->plugin_info = plugin_info;
 }
 
 /*
@@ -445,7 +430,7 @@ func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 			plugin_info->prev_plugin_info = estate->plugin_info;
 		}
 	}
-	PG_CATCH();
+	PG_FINALLY();
 	{
 		estate->plugin_info = plugin_info;
 
@@ -454,18 +439,8 @@ func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 			plch_release_fextra(plugin_info->fextra);
 			plugin_info->fextra = NULL;
 		}
-
-		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	estate->plugin_info = plugin_info;
-
-	if (plugin_info->fextra)
-	{
-		plch_release_fextra(plugin_info->fextra);
-		plugin_info->fextra = NULL;
-	}
 }
 
 /*
@@ -538,15 +513,11 @@ stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 			plugin_info->prev_plugin_info = estate->plugin_info;
 		}
 	}
-	PG_CATCH();
+	PG_FINALLY();
 	{
 		estate->plugin_info = plugin_info;
-
-		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	estate->plugin_info = plugin_info;
 }
 
 /*
@@ -616,15 +587,11 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 			plugin_info->prev_plugin_info = estate->plugin_info;
 		}
 	}
-	PG_CATCH();
+	PG_FINALLY();
 	{
 		estate->plugin_info = plugin_info;
-
-		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	estate->plugin_info = plugin_info;
 }
 
 void

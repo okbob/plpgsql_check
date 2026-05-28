@@ -563,7 +563,12 @@ When plpgsql_check is initialized by `shared_preload_libraries`, the shared memo
 of the size `plpgsq_check.max_stats_size` is allocated. When value of 
 `plpgsql_check.use_shared_stats_when_it_possible` is `on` (default is `on`),
 then the statistics are placed in shared memory. When mentioned option is `off`,
-then statistics are stored in local memory.
+then statistics are stored in local memory. By default the shared statistics are
+updated immediately after function is completed. When small number of very short functions
+are executed massively in more sessions, then waiting on lock or spinlock, that
+protects statistics against race condition, can do performance problems. In this
+case you can try set `plpgsql_check.use_lxcache` to `on` (default is `off`). With
+lxcache, the update shared statistics are delayed at end of transaction time.
 
 The used memory is limited by `plpgsq_check.max_stats_size`. The default value
 is 20MB (min 1MB, max 200MB). After this limit, the memory for new statistics

@@ -458,6 +458,14 @@ _PG_init(void)
 							 PGC_USERSET, 0,
 							 NULL, NULL, NULL);
 
+	DefineCustomBoolVariable("plpgsql_check.use_lxcache",
+							 "when is true, then profiler shared statistics are updated at transaction end",
+							 NULL,
+							 &plch_use_lxcache,
+							 true,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
+
 	EmitWarningsOnPlaceholders("plpgsql_check");
 
 	plpgsql_check_HashTableInit();

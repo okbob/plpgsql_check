@@ -19,6 +19,8 @@
 #include "parser/analyze.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
+#include "storage/lock.h"
+#include "storage/proc.h"
 #include "tcop/tcopprot.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
@@ -127,15 +129,35 @@ typedef struct ProfilerSharedState
 } ProfilerSharedState;
 
 /*
+ * local transactional cache - instead update shared stats
+ * after every execution, stats are updated at end of transaction.
+ * Attention - the transactions can be ended inside procedures, so
+ * sometimes transactions are shorter than functions, sometimes are
+ * longer.
+ */
+typedef struct LXCache
+{
+	func_identity_hashkey key;
+	FuncStats	fstats;
+	StmtStats  *sstats;
+	int			nstatements;
+} LXCache;
+
+/*
  * This structure is used as plpgsql extension parameter
  */
 typedef struct profiler_info
 {
-	StmtInstr *sinstrs;
-	StmtStats *sstats;
+	StmtInstr  *sinstrs;
+	StmtStats  *sstats;
 	int			nstatements;
 	instr_time	start_time;
 	PLpgSQL_function *func;
+
+	/* reduce second searching lxcache when se update fstats */
+	LXCache	   *lxcache;
+	LocalTransactionId lxcache_lxid;
+	MemoryContextCallback er_mcb;
 } profiler_info;
 
 enum
@@ -143,6 +165,7 @@ enum
 	COVERAGE_STATEMENTS,
 	COVERAGE_BRANCHES
 };
+
 
 PG_FUNCTION_INFO_V1(plpgsql_check_profiler_ctrl);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_reset_all);
@@ -190,6 +213,7 @@ static plch_plugin profiler_plugin =
 static void init_func_hashkey(func_hashkey *hk, Oid fn_oid);
 static void plfunction_init_function_identity_hashkey(func_identity_hashkey *hk, PLpgSQL_function *func);
 static void proctuple_init_function_identity_hashkey(func_identity_hashkey *hk, HeapTuple procTuple);
+static void init_fstats(FuncStats *fs);
 
 static pc_queryid profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, QParams *qparams);
 static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
@@ -204,26 +228,36 @@ static PLpgSQL_function *cinfo_get_function(plpgsql_check_info *cinfo);
 static bool get_plpgsql_expr_type(PLpgSQL_expr *expr, Oid *result_type);
 static char *cutline(char *str, char **line);
 static HTAB *assign_shared_htab(const char *tabname, Size keysize, Size Entrysize, int nelems);
+static void lxcache_reset_callback(void *arg);
+static void merge_lxcached_shared_stmts_stats(LXCache *lxcache, bool *raise_warning);
+static void merge_lxcached_shared_fstats(LXCache *lxcache);
+static void merge_fstats(FuncStats *a, FuncStats *b);
 
 static HTAB *func_stats_ht = NULL;
 static HTAB *shared_func_stats_ht = NULL;
 static HTAB *func_stmts_stats_ht = NULL;
 static HTAB *shared_func_stmts_stats_ht = NULL;
+static HTAB *lxcache_ht = NULL;
 
 static MemoryContext profiler_mcxt = NULL;
 static MemoryContext profiler_queryid_mcxt = NULL;
+static MemoryContext lxcache_mcxt = NULL;
+static LocalTransactionId lxcache_lxid = InvalidLocalTransactionId;
 
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 
 bool		plpgsql_check_profiler = false;
 bool		plch_use_shared_stats_when_it_possible = true;
+bool		plch_use_lxcache = true;
 int			plch_max_stat_size = 20480;
 
-static int used_stmt_stats_count = 0;
-static int estimated_stmt_stats_count = 0;
+static int	used_stmt_stats_count = 0;
+static int	estimated_stmt_stats_count = 0;
 
 static ProfilerSharedState *profiler_ss = NULL;
 static StmtStats *SharedStmtStatsArray = NULL;
+
+static MemoryContextCallback lxcache_mcb;
 
 #define		USE_SHARED_FUNC_STATS			(shared_func_stats_ht && plch_use_shared_stats_when_it_possible)
 #define		USE_SHARED_FUNC_STMTS_STATS		(shared_func_stmts_stats_ht && plch_use_shared_stats_when_it_possible)
@@ -458,6 +492,16 @@ plpgsql_profiler_reset_all(PG_FUNCTION_ARGS)
 		LWLockRelease(profiler_ss->func_stmts_stats_lock);
 	}
 
+	if (lxcache_ht)
+	{
+		hash_destroy(lxcache_ht);
+		lxcache_ht = NULL;
+
+		MemoryContextDelete(lxcache_mcxt);
+		lxcache_mcxt = NULL;
+		lxcache_lxid = InvalidLocalTransactionId;
+	}
+
 	plch_profiler_init_local_hash_tables();
 
 	PG_RETURN_VOID();
@@ -492,6 +536,8 @@ plpgsql_profiler_reset(PG_FUNCTION_ARGS)
 
 	proctuple_init_function_identity_hashkey(&hk, procTuple);
 
+	ReleaseSysCache(procTuple);
+
 	fss = (FuncStmtsStats *) hash_search(func_stmts_stats_ht,
 										 (void *) &hk,
 										 HASH_FIND,
@@ -516,7 +562,21 @@ plpgsql_profiler_reset(PG_FUNCTION_ARGS)
 		LWLockRelease(profiler_ss->func_stmts_stats_lock);
 	}
 
-	ReleaseSysCache(procTuple);
+	if (lxcache_ht)
+	{
+		LXCache	   *lxcache;
+
+		lxcache = (LXCache *) hash_search(lxcache_ht,
+										  (void *) &hk,
+										  HASH_FIND,
+										  &found);
+
+		if (found)
+		{
+			pfree(lxcache->sstats);
+			hash_search(lxcache_ht, (void *) &hk, HASH_REMOVE, NULL);
+		}
+	}
 
 	PG_RETURN_VOID();
 }
@@ -670,7 +730,6 @@ func_stmts_stats_ht_init(void)
 											 FUNCS_PER_USER,
 											 &ctl,
 											 HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
-
 }
 
 void
@@ -698,6 +757,140 @@ plch_profiler_init_local_hash_tables(void)
 	used_stmt_stats_count = 0;
 }
 
+static void
+lxcache_ht_init(void)
+{
+	HASHCTL		ctl;
+
+#if PG_VERSION_NUM < 170000
+
+	LocalTransactionId thislxid = MyProc->lxid;
+
+#else
+
+	LocalTransactionId thislxid = MyProc->vxid.lxid;
+
+#endif
+
+	Assert(lxcache_mcxt == NULL && lxcache_lxid == InvalidLocalTransactionId);
+
+	lxcache_mcxt = AllocSetContextCreate(TopTransactionContext,
+										 "plpgsql_check - lxcache context",
+										 ALLOCSET_DEFAULT_MINSIZE,
+										 ALLOCSET_DEFAULT_INITSIZE,
+										 ALLOCSET_DEFAULT_MAXSIZE);
+
+	lxcache_lxid = thislxid;
+
+	lxcache_mcb.func = lxcache_reset_callback;
+	lxcache_mcb.arg = NULL;
+
+	MemoryContextRegisterResetCallback(lxcache_mcxt, &lxcache_mcb);
+
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.keysize = sizeof(func_identity_hashkey);
+	ctl.entrysize = sizeof(LXCache);
+
+	/*
+	 * Originally I used lxcache_mcxt for hashtable. Unfortunaly it doesn't
+	 * work, because hashtable creates and uses always own child context, that
+	 * is destroyed before lxcache_mcxt. Becase I need to access lxcache_ht
+	 * at transaction end, then I need to use TopMemoryContext, and then destroy
+	 * hashtab explicitly.
+	 */
+	ctl.hcxt = TopMemoryContext;
+
+	lxcache_ht = hash_create("plpgsql_check function lxcache",
+							 FUNCS_PER_USER,
+							 &ctl,
+							 HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+}
+
+static LXCache *
+get_lxcache(profiler_info *pinfo)
+{
+	bool		found;
+	func_identity_hashkey hk;
+	LXCache	   *lxcache;
+
+#if PG_VERSION_NUM < 170000
+
+	LocalTransactionId thislxid = MyProc->lxid;
+
+#else
+
+	LocalTransactionId thislxid = MyProc->vxid.lxid;
+
+#endif
+
+
+
+	if (pinfo->lxcache && pinfo->lxcache_lxid == thislxid)
+		return pinfo->lxcache;
+
+	if (!lxcache_ht || lxcache_lxid != thislxid)
+		lxcache_ht_init();
+
+	plfunction_init_function_identity_hashkey(&hk, pinfo->func);
+
+	lxcache = (LXCache *) hash_search(lxcache_ht,
+									  (void *) &hk,
+									  HASH_ENTER,
+									  &found);
+
+	if (!found)
+	{
+		init_fstats(&lxcache->fstats);
+		lxcache->nstatements = pinfo->func->nstatements;
+		lxcache->sstats = MemoryContextAlloc(lxcache_mcxt,
+											 lxcache->nstatements * sizeof(StmtStats));
+		memset(lxcache->sstats, 0, lxcache->nstatements * sizeof(StmtStats));
+	}
+
+	pinfo->lxcache = lxcache;
+	pinfo->lxcache_lxid = thislxid;
+
+	return pinfo->lxcache;
+}
+
+/*
+ * This callback is called at transaction end, when Top transaction context
+ * is released. In this time we save lxcache to shared memory.
+ */
+static void
+lxcache_reset_callback(void *arg)
+{
+	HASH_SEQ_STATUS seqstatus;
+	LXCache	   *lxcache;
+	bool		raise_warning = true;
+
+	hash_seq_init(&seqstatus, lxcache_ht);
+
+	LWLockAcquire(profiler_ss->func_stmts_stats_lock, LW_EXCLUSIVE);
+	LWLockAcquire(profiler_ss->func_stats_lock, LW_EXCLUSIVE);
+
+	PG_TRY();
+	{
+		while ((lxcache = (LXCache *) hash_seq_search(&seqstatus)) != NULL)
+		{
+			/* don't repeat warning for every lxcached stats */
+			merge_lxcached_shared_stmts_stats(lxcache, &raise_warning);
+			merge_lxcached_shared_fstats(lxcache);
+		}
+	}
+	PG_FINALLY();
+	{
+		LWLockRelease(profiler_ss->func_stmts_stats_lock);
+		LWLockRelease(profiler_ss->func_stats_lock);
+
+		hash_destroy(lxcache_ht);
+		lxcache_ht = NULL;
+
+		lxcache_mcxt = NULL;
+		lxcache_lxid = InvalidLocalTransactionId;
+	}
+	PG_END_TRY();
+}
 
 /***************************************
  *
@@ -706,57 +899,115 @@ plch_profiler_init_local_hash_tables(void)
  ***************************************
  */
 static void
-update_local_persistent_fstats(func_hashkey *hk,
-							   uint64 elapsed,
-							   bool aborted)
+init_fstats(FuncStats *fs)
 {
-	FuncStats	   *fs;
-	bool		found;
 
-	fs = (FuncStats *) hash_search(func_stats_ht,
-								   (void *) hk,
-								   HASH_ENTER,
-								   &found);
+	SpinLockInit(&fs->mutex);
 
-	if (!found)
-	{
-		fs->exec_count = 0;
-		fs->exec_count_err = 0;
-		fs->total_time = 0;
-		fs->total_time_mean = 0.0;
-		fs->total_time_m2 = 0.0;
-		fs->min_time = elapsed;
-		fs->max_time = elapsed;
-	}
-	else
-	{
-		fs->min_time = fs->min_time < elapsed ? fs->min_time : elapsed;
-		fs->max_time = fs->max_time > elapsed ? fs->max_time : elapsed;
-	}
+	fs->exec_count = 0;
+	fs->exec_count_err = 0;
+	fs->total_time = 0;
+	fs->total_time_mean = 0.0;
+	fs->total_time_m2 = 0.0;
+	fs->min_time = 0;
+	fs->max_time = 0;
+}
 
+static void
+update_fstats(FuncStats *fs, uint64 elapsed, bool aborted)
+{
 	fs->total_time += elapsed;
+
+	if (fs->min_time > 0)
+		fs->min_time = fs->min_time < elapsed ? fs->min_time : elapsed;
+	else
+		fs->min_time = elapsed;
+
+	fs->max_time = fs->max_time > elapsed ? fs->max_time : elapsed;
+
+	if (aborted)
+		fs->exec_count_err += 1;
 
 	WelfordVarianceAdd(&fs->exec_count,
 					   &fs->total_time_mean, &fs->total_time_m2,
 					   ((float8) elapsed));
-
-	if (aborted)
-		fs->exec_count_err += 1;
 }
 
 static void
-update_shared_persistent_fstats(func_hashkey *hk,
+merge_fstats(FuncStats *a, FuncStats *b)
+{
+	uint64		ab_exec_count;
+	float8		ab_total_time_mean;
+	float8		ab_total_time_m2;
+
+	WelfordVarianceMerge(&ab_exec_count, &ab_total_time_mean, &ab_total_time_m2,
+						 a->exec_count, a->total_time_mean, a->total_time_m2,
+						 b->exec_count, b->total_time_mean, b->total_time_m2);
+
+	a->exec_count = ab_exec_count;
+	a->exec_count_err += b->exec_count_err;
+
+	a->total_time += b->total_time;
+	a->total_time_mean = ab_total_time_mean;
+	a->total_time_m2 = ab_total_time_m2;
+
+	if (a->min_time > 0)
+		a->min_time = a->min_time < b->min_time ? a->min_time : b->min_time;
+	else
+		a->min_time = b->min_time;
+
+	a->max_time = a->max_time > b->max_time ? a->max_time : b->max_time;
+}
+
+static void
+update_local_persistent_fstats(profiler_info *pinfo,
 							   uint64 elapsed,
 							   bool aborted)
 {
+	func_hashkey hk;
+	FuncStats	   *fs;
+	bool		found;
+
+	init_func_hashkey(&hk, pinfo->func->fn_oid);
+
+	fs = (FuncStats *) hash_search(func_stats_ht,
+								   (void *) &hk,
+								   HASH_ENTER,
+								   &found);
+
+	if (!found)
+		init_fstats(fs);
+
+	update_fstats(fs, elapsed, aborted);
+}
+
+static void
+update_shared_persistent_fstats(profiler_info *pinfo,
+							   uint64 elapsed,
+							   bool aborted)
+{
+	func_hashkey hk;
 	FuncStats	   *fs;
 	bool		found;
 	bool		unlock_mutex = false;
 
+	/*
+	 * current statistics are buffered inside update_shared_persistent_stmts_stats
+	 */
+	if (plch_use_lxcache)
+	{
+		LXCache *lxcache = get_lxcache(pinfo);
+
+		update_fstats(&lxcache->fstats, elapsed, aborted);
+		return;
+	}
+
+	init_func_hashkey(&hk, pinfo->func->fn_oid);
+
 	LWLockAcquire(profiler_ss->func_stats_lock, LW_SHARED);
 
 	fs = (FuncStats *) hash_search(shared_func_stats_ht,
-								   (void *) hk,
+								   (void *) &hk,
 								   HASH_FIND,
 								   &found);
 
@@ -766,7 +1017,7 @@ update_shared_persistent_fstats(func_hashkey *hk,
 		LWLockAcquire(profiler_ss->func_stats_lock, LW_EXCLUSIVE);
 
 		fs = (FuncStats *) hash_search(shared_func_stats_ht,
-									   (void *) hk,
+									   (void *) &hk,
 									   HASH_ENTER,
 									   &found);
 	}
@@ -775,31 +1026,14 @@ update_shared_persistent_fstats(func_hashkey *hk,
 	{
 		SpinLockAcquire(&fs->mutex);
 		unlock_mutex = true;
-
-		fs->min_time = fs->min_time < elapsed ? fs->min_time : elapsed;
-		fs->max_time = fs->max_time > elapsed ? fs->max_time : elapsed;
 	}
 	else
 	{
+		init_fstats(fs);
 		SpinLockInit(&fs->mutex);
-
-		fs->exec_count = 0;
-		fs->exec_count_err = 0;
-		fs->total_time = 0;
-		fs->total_time_mean = 0.0;
-		fs->total_time_m2 = 0.0;
-		fs->min_time = elapsed;
-		fs->max_time = elapsed;
 	}
 
-	fs->total_time += elapsed;
-
-	WelfordVarianceAdd(&fs->exec_count,
-					   &fs->total_time_mean, &fs->total_time_m2,
-					   ((float8) elapsed));
-
-	if (aborted)
-		fs->exec_count_err += 1;
+	update_fstats(fs, elapsed, aborted);
 
 	if (unlock_mutex)
 		SpinLockRelease(&fs->mutex);
@@ -808,18 +1042,87 @@ update_shared_persistent_fstats(func_hashkey *hk,
 }
 
 static void
-update_persistent_fstats(PLpgSQL_function *func,
+update_persistent_fstats(profiler_info *pinfo,
 						 uint64 elapsed,
 						 bool aborted)
 {
-	func_hashkey hk;
-
-	init_func_hashkey(&hk, func->fn_oid);
-
 	if (USE_SHARED_FUNC_STATS)
-		update_shared_persistent_fstats(&hk, elapsed, aborted);
+		update_shared_persistent_fstats(pinfo, elapsed, aborted);
 	else
-		update_local_persistent_fstats(&hk, elapsed, aborted);
+		update_local_persistent_fstats(pinfo, elapsed, aborted);
+}
+
+/* It is executed under exclusive lock */
+static void
+merge_lxcached_shared_fstats(LXCache *lxcache)
+{
+	func_hashkey hk;
+	FuncStats	   *fs;
+	bool		found;
+
+	init_func_hashkey(&hk, lxcache->key.fn_oid);
+
+	fs = (FuncStats *) hash_search(shared_func_stats_ht,
+								   (void *) &hk,
+								   HASH_ENTER,
+								   &found);
+
+	if (!found)
+		init_fstats(fs);
+
+	merge_fstats(fs, &lxcache->fstats);
+}
+
+/*
+ * Helper function - reduce repeated code
+ */
+static void
+merge_stmts_sstats(StmtStats *persist_ss, StmtStats *sstats, int nstatements)
+{
+	int		i;
+
+	/* merge new statistics with persistent statistics */
+	for (i = 0; i < nstatements; i++)
+	{
+		StmtStats *_t, *_s;
+
+		_t = &persist_ss[i];
+		_s = &sstats[i];
+
+		_t->queryid = _s->queryid;
+		_t->has_queryid = _s->has_queryid;
+
+		if (_t->us_max < _s->us_max)
+			_t->us_max = _s->us_max;
+
+		_t->us_total += _s->us_total;
+		_t->rows += _s->rows;
+		_t->exec_count += _s->exec_count;
+		_t->exec_count_err += _s->exec_count_err;
+	}
+}
+
+static void
+init_stmts_sstats(StmtStats *sstats, int nstatements)
+{
+	int		i;
+
+	/* merge new statistics with persistent statistics */
+	for (i = 0; i < nstatements; i++)
+	{
+		StmtStats *_s;
+
+		_s = &sstats[i];
+
+		_s->queryid = NOQUERYID;
+		_s->has_queryid = false;
+
+		_s->us_max = 0;
+		_s->us_total = 0;
+		_s->rows = 0;
+		_s->exec_count = 0;
+		_s->exec_count_err = 0;
+	}
 }
 
 static void
@@ -828,7 +1131,6 @@ update_local_persistent_stmts_stats(profiler_info *pinfo)
 	func_identity_hashkey hk;
 	FuncStmtsStats *fss;
 	bool		found;
-	int			i;
 
 	plfunction_init_function_identity_hashkey(&hk, pinfo->func);
 
@@ -881,24 +1183,9 @@ update_local_persistent_stmts_stats(profiler_info *pinfo)
 		return;
 	}
 
-	/* merge new statistics with persistent statistics */
-	for (i = 0; i < fss->nstatements; i++)
-	{
-		StmtStats  *persist_sstats = &fss->sstats[i];
-		StmtStats  *sstats = &pinfo->sstats[i];
-
-		persist_sstats->queryid = sstats->queryid;
-		persist_sstats->has_queryid = sstats->has_queryid;
-
-		if (persist_sstats->us_max < sstats->us_max)
-			persist_sstats->us_max = sstats->us_max;
-
-		persist_sstats->us_total += sstats->us_total;
-		persist_sstats->rows += sstats->rows;
-		persist_sstats->exec_count += sstats->exec_count;
-		persist_sstats->exec_count_err += sstats->exec_count_err;
-	}
+	merge_stmts_sstats(fss->sstats, pinfo->sstats, fss->nstatements);
 }
+
 
 static void
 update_shared_persistent_stmts_stats(profiler_info *pinfo)
@@ -906,7 +1193,14 @@ update_shared_persistent_stmts_stats(profiler_info *pinfo)
 	func_identity_hashkey hk;
 	FuncStmtsStats *fss;
 	bool		found;
-	int			i;
+
+	if (plch_use_lxcache)
+	{
+		LXCache *lxcache = get_lxcache(pinfo);
+
+		merge_stmts_sstats(lxcache->sstats, pinfo->sstats, lxcache->nstatements);
+		return;
+	}
 
 	plfunction_init_function_identity_hashkey(&hk, pinfo->func);
 
@@ -960,44 +1254,20 @@ update_shared_persistent_stmts_stats(profiler_info *pinfo)
 
 		profiler_ss->used_stmt_stats_count += fss->nstatements;
 
-		for (i = 0; i < fss->nstatements; i++)
-		{
-			int			offset = fss->shared_sstats_offset + i;
+		init_stmts_sstats(&SharedStmtStatsArray[fss->shared_sstats_offset],
+						  fss->nstatements);
 
-			StmtStats  *persist_sstats = &SharedStmtStatsArray[offset];
-			StmtStats  *sstats = &pinfo->sstats[i];
-
-			persist_sstats->queryid = sstats->queryid;
-			persist_sstats->has_queryid = sstats->has_queryid;
-			persist_sstats->us_max = sstats->us_max;
-			persist_sstats->us_total = sstats->us_total;
-			persist_sstats->rows = sstats->rows;
-			persist_sstats->exec_count = sstats->exec_count;
-			persist_sstats->exec_count_err = sstats->exec_count_err;
-		}
+		merge_stmts_sstats(&SharedStmtStatsArray[fss->shared_sstats_offset],
+						   pinfo->sstats,
+						   fss->nstatements);
 	}
 	else
 	{
 		SpinLockAcquire(&fss->mutex);
 
-		for (i = 0; i < fss->nstatements; i++)
-		{
-			int			offset = fss->shared_sstats_offset + i;
-
-			StmtStats  *persist_sstats = &SharedStmtStatsArray[offset];
-			StmtStats  *sstats = &pinfo->sstats[i];
-
-			persist_sstats->queryid = sstats->queryid;
-			persist_sstats->has_queryid = sstats->has_queryid;
-
-			if (persist_sstats->us_max < sstats->us_max)
-				persist_sstats->us_max = sstats->us_max;
-
-			persist_sstats->us_total += sstats->us_total;
-			persist_sstats->rows += sstats->rows;
-			persist_sstats->exec_count += sstats->exec_count;
-			persist_sstats->exec_count_err += sstats->exec_count_err;
-		}
+		merge_stmts_sstats(&SharedStmtStatsArray[fss->shared_sstats_offset],
+						   pinfo->sstats,
+						   fss->nstatements);
 
 		SpinLockRelease(&fss->mutex);
 	}
@@ -1012,6 +1282,56 @@ update_persistent_stmts_stats(profiler_info *pinfo)
 		update_shared_persistent_stmts_stats(pinfo);
 	else
 		update_local_persistent_stmts_stats(pinfo);
+}
+
+/*
+ * It is executed under EXCLUSIVE lock
+ */
+static void
+merge_lxcached_shared_stmts_stats(LXCache *lxcache, bool *raise_warning)
+{
+
+	FuncStmtsStats *fss;
+	bool		found;
+
+	fss = (FuncStmtsStats *) hash_search(shared_func_stmts_stats_ht,
+										 (void *) &lxcache->key,
+										 HASH_ENTER,
+										 &found);
+
+	if (!found)
+	{
+		if (profiler_ss->used_stmt_stats_count + lxcache->nstatements > profiler_ss->stmt_stats_count)
+		{
+			/* remove invalid func stmts stats entry */
+			hash_search(shared_func_stmts_stats_ht, (void *) &(fss->key), HASH_REMOVE, NULL);
+
+			if (*raise_warning)
+			{
+				ereport(WARNING,
+						(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
+						 errmsg("cannot use share memory for profiler statistics"),
+						 errdetail("the used memory exceeds \"plpgsql_check.max_stats_size\" (%dkB)",
+								   plch_max_stat_size),
+						 errhint("Statistics can be cleaned by calling function \"plpgsql_profiler_reset_all()\".")));
+
+				*raise_warning = false;
+			}
+		}
+
+		fss->sstats = NULL;
+		fss->nstatements = lxcache->nstatements;
+		fss->shared_sstats_offset = profiler_ss->used_stmt_stats_count;
+
+		init_stmts_sstats(&SharedStmtStatsArray[fss->shared_sstats_offset],
+						  fss->nstatements);
+
+		profiler_ss->used_stmt_stats_count += fss->nstatements;
+	}
+
+	merge_stmts_sstats(&SharedStmtStatsArray[fss->shared_sstats_offset],
+					   lxcache->sstats,
+					   fss->nstatements);
 }
 
 /*
@@ -1113,7 +1433,7 @@ _profiler_func_end(profiler_info *pinfo, Oid fn_oid, bool is_aborted, plch_fextr
 	count_stmt_exec_time_walker((PLpgSQL_stmt *) pinfo->func->action, &loccontext);
 
 	update_persistent_stmts_stats(pinfo);
-	update_persistent_fstats(pinfo->func, elapsed, is_aborted);
+	update_persistent_fstats(pinfo, elapsed, is_aborted);
 }
 
 static void
@@ -1426,7 +1746,7 @@ local_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 													fs->exec_count_err,
 													(double) fs->total_time,
 													ceil(fs->total_time_mean),
-													ceil(sqrt(fs->total_time_m2/fs->exec_count-1)),
+													ceil(sqrt(fs->total_time_m2/fs->exec_count - 1)),
 													(double) fs->min_time,
 													(double) fs->max_time);
 	}
@@ -1468,7 +1788,7 @@ shared_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 															fs->exec_count_err,
 															(double) fs->total_time,
 															ceil(fs->total_time_mean),
-															ceil(sqrt(fs->total_time_m2 / fs->exec_count)),
+															ceil(sqrt(fs->total_time_m2 / fs->exec_count - 1)),
 															(double) fs->min_time,
 															(double) fs->max_time);
 
@@ -1476,14 +1796,11 @@ shared_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 			}
 
 		}
-		PG_CATCH();
+		PG_FINALLY();
 		{
 			SpinLockRelease(&fs->mutex);
-			PG_RE_THROW();
 		}
 		PG_END_TRY();
-
-		SpinLockRelease(&fs->mutex);
 	}
 
 	LWLockRelease(profiler_ss->func_stats_lock);
@@ -1671,14 +1988,11 @@ plch_statements_stats_report(plpgsql_check_info *cinfo,
 		else
 			local_statements_stats_report(&hk, stmt, &loccontext);
 	}
-	PG_CATCH();
+	PG_FINALLY();
 	{
 		plch_release_fextra(loccontext.fextra);
-		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	plch_release_fextra(loccontext.fextra);
 }
 
 /*
