@@ -1276,6 +1276,36 @@ select lineno, exec_stmts, exec_stmts_err, source from plpgsql_profiler_function
 drop function test_function(int);
 drop function test_function1(int);
 
-set plpgsql_check.profiler to off;
-
 drop table t1;
+
+create or replace function test_trg()
+returns trigger as $$
+begin
+  if new.a > 10 then
+    new.a := 10;
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+create table t1(a int);
+create trigger t1_insert before insert on t1 for each row execute function test_trg();
+
+insert into t1 values(0);
+
+select * from plpgsql_coverage_branches('test_trg');
+select * from plpgsql_coverage_statements('test_trg');
+
+insert into t1 values(22);
+
+select * from plpgsql_coverage_branches('test_trg');
+select * from plpgsql_coverage_statements('test_trg');
+
+select stmtid, lineno, exec_stmts, exec_stmts_err from plpgsql_profiler_function_statements_tb('test_trg');
+select stmt_lineno, exec_stmts, exec_stmts_err, source from plpgsql_profiler_function_tb('test_trg');
+
+drop trigger t1_insert on t1;
+drop function test_trg;
+drop table t1;
+
+set plpgsql_check.profiler to off;
