@@ -83,6 +83,21 @@ fextra_init_hk(plch_fextra_hk *hk, PLpgSQL_function *func)
 static void
 pin_func(PLpgSQL_function *func)
 {
+	/*
+	 * We cannot to pin inline block due two reasons:
+	 *
+	 * 1. After error, the Assert(func->cfunc.use_count == 0);
+	 *    is executed before exec memory is released and our
+	 *    abort callback is raised.
+	 *
+	 * 2. There is not any reason, why to do it. inline block
+	 *    uses short life contexts for everything - including
+	 *    fextra, and then fextra cannot be corrupted. Unfortunately
+	 *    inside plpgsql_free_function_memory is free_stmt
+	 *    called before MemoryContextDelete(func->fn_cxt)
+	 */
+	Assert(OidIsValid(func->fn_oid));
+
 #if PG_VERSION_NUM >= 180000
 
 	func->cfunc.use_count++;
@@ -97,6 +112,8 @@ pin_func(PLpgSQL_function *func)
 static void
 unpin_func(PLpgSQL_function *func)
 {
+	Assert(OidIsValid(func->fn_oid));
+
 #if PG_VERSION_NUM >= 180000
 
 	func->cfunc.use_count--;
@@ -249,7 +266,9 @@ plch_get_fextra(PLpgSQL_function *func)
 		fextra->is_valid = true;
 	}
 
-	pin_func(fextra->func);
+	if (OidIsValid(func->fn_oid))
+		pin_func(fextra->func);
+
 	fextra->use_count++;
 
 	return fextra;
@@ -263,7 +282,18 @@ plch_release_fextra(plch_fextra *fextra)
 	/* until now, referenced PLpgSQL_function should be still valid */
 	Assert(fextra->hk.fn_oid == fextra->func->fn_oid);
 
-	unpin_func(fextra->func);
+	if (OidIsValid(fextra->fn_oid))
+	{
+		/*
+		 * until now, referenced PLpgSQL_function should be still valid.
+		 * Attention - it is not true, for inline block. Pointer fextra->func
+		 * when func is inline block is already invalid.
+		 */
+		Assert(fextra->hk.fn_oid == fextra->func->fn_oid);
+
+		unpin_func(fextra->func);
+	}
+
 	fextra->use_count--;
 }
 
