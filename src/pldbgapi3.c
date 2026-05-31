@@ -323,7 +323,7 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 		 * The advantage of using es_query_cxt context instead caller
 		 * context is a fact, so this context is destroyed before
 		 * related PLpgSQL_function is released (including AST). Caller
-		 * cantext is released too late, and access to AST is broken
+		 * context is released too late, and access to AST is broken
 		 * due access to already released memory.
 		 */
 		if (!OidIsValid(func->fn_oid))
