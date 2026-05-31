@@ -2954,6 +2954,50 @@ set plpgsql_check.enable_tracer to on;
 set plpgsql_check.tracer to on;
 set plpgsql_check.tracer_test_mode = true;
 
+-- should not crash
+do $$
+begin
+  raise exception 'raising an exception';
+end;
+$$;
+
+do $$
+begin
+  do $_$
+  begin
+    raise exception 'raising an exception';
+  end
+  $_$;
+end;
+$$;
+
+create function fx_trace(int)
+returns int as $$
+begin
+  if $1 = 0 then
+    raise exception 'arg is zero';
+  else
+    return $1;
+  end if;
+end;
+$$ language plpgsql;
+
+do $$
+declare t int;
+begin
+  t := fx_trace(1);
+end
+$$;
+
+do $$
+declare t int;
+begin
+  t := fx_trace(0);
+end
+$$;
+
+drop function fx_trace;
+
 \set VERBOSITY terse
 
 create or replace function fxo(a int, b int, c date, d numeric)

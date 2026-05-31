@@ -4013,6 +4013,80 @@ drop function distinct_array(anyarray);
 set plpgsql_check.enable_tracer to on;
 set plpgsql_check.tracer to on;
 set plpgsql_check.tracer_test_mode = true;
+-- should not crash
+do $$
+begin
+  raise exception 'raising an exception';
+end;
+$$;
+NOTICE:  #0   ->> start of block inline_code_block (oid=0, tnl=1)
+NOTICE:  #0   <<- end of block (elapsed time=0.010 ms) aborted
+ERROR:  raising an exception
+CONTEXT:  PL/pgSQL function inline_code_block line 3 at RAISE
+do $$
+begin
+  do $_$
+  begin
+    raise exception 'raising an exception';
+  end
+  $_$;
+end;
+$$;
+NOTICE:  #0   ->> start of block inline_code_block (oid=0, tnl=1)
+NOTICE:  #2       ->> start of block inline_code_block (oid=0, tnl=1)
+NOTICE:  #2           context: SQL statement "do $_$
+  begin
+    raise exception 'raising an exception';
+  end
+  $_$"
+NOTICE:  #2       <<- end of block (elapsed time=0.010 ms) aborted
+NOTICE:  #0   <<- end of block (elapsed time=0.010 ms) aborted
+ERROR:  raising an exception
+CONTEXT:  PL/pgSQL function inline_code_block line 3 at RAISE
+SQL statement "do $_$
+  begin
+    raise exception 'raising an exception';
+  end
+  $_$"
+PL/pgSQL function inline_code_block line 3 at DO
+create function fx_trace(int)
+returns int as $$
+begin
+  if $1 = 0 then
+    raise exception 'arg is zero';
+  else
+    return $1;
+  end if;
+end;
+$$ language plpgsql;
+do $$
+declare t int;
+begin
+  t := fx_trace(1);
+end
+$$;
+NOTICE:  #0   ->> start of block inline_code_block (oid=0, tnl=1)
+NOTICE:  #1     ->> start of function fx_trace(integer) (oid=0, tnl=1)
+NOTICE:  #1         context: PL/pgSQL function inline_code_block line 4 at assignment
+NOTICE:  #1         "$1" => '1'
+NOTICE:  #1     <<- end of function fx_trace (elapsed time=0.010 ms)
+NOTICE:  #0   <<- end of block (elapsed time=0.010 ms)
+do $$
+declare t int;
+begin
+  t := fx_trace(0);
+end
+$$;
+NOTICE:  #0   ->> start of block inline_code_block (oid=0, tnl=1)
+NOTICE:  #1     ->> start of function fx_trace(integer) (oid=0, tnl=1)
+NOTICE:  #1         context: PL/pgSQL function inline_code_block line 4 at assignment
+NOTICE:  #1         "$1" => '0'
+NOTICE:  #1     <<- end of function fx_trace (elapsed time=0.010 ms) aborted
+NOTICE:  #0   <<- end of block (elapsed time=0.010 ms) aborted
+ERROR:  arg is zero
+CONTEXT:  PL/pgSQL function fx_trace(integer) line 4 at RAISE
+PL/pgSQL function inline_code_block line 4 at assignment
+drop function fx_trace;
 \set VERBOSITY terse
 create or replace function fxo(a int, b int, c date, d numeric)
 returns void as $$

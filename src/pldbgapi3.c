@@ -65,8 +65,20 @@ typedef struct plpgsql_plugin_info
 	 */
 	PLpgSQL_stmt **stmts_buf;
 
-	MemoryContextCallback er_mcb;
+	MemoryContextCallback mcb;
+
+	/*
+	 * Unfortunately, memory of calling inline block is released
+	 * before memory of called function (after an exception). So
+	 * we need to force execution plugin_info_reset in correct
+	 * order, and then we need to hold sequence of pldbgapi
+	 * plugins info.
+	 */
+	struct plpgsql_plugin_info *prev_pldbgapi_plugin_info;
+
 } plpgsql_plugin_info;
+
+static plpgsql_plugin_info *top_pldbgapi_plugin_info = NULL;
 
 #define PLUGIN_INFO_MAGIC		2026010118
 
@@ -107,6 +119,7 @@ static PLpgSQL_plugin *prev_plpgsql_plugin = NULL;
  * and then it is processed from bottom. In this case, the
  * statement order is inverted when statements are copied from
  * stmts_stack to stmts_buf.
+ *
  */
 static void
 abort_statements(PLpgSQL_stmt **stmts, int nstmts,
@@ -176,6 +189,17 @@ plugin_info_reset(void *arg)
 		return;
 
 	/*
+	 * When current plugin_info is not not top plugin_info, then
+	 * memory is released in unexpected order. But we can fix it,
+	 * by explicit call of plugin_info_reset, so call all
+	 * plugin_info_reset for all nested executed functions.
+	 */
+	while (top_pldbgapi_plugin_info && top_pldbgapi_plugin_info != plugin_info)
+	{
+		plugin_info_reset(top_pldbgapi_plugin_info);
+	}
+
+	/*
 	 * In this moment, the estate content can be corrupted, because
 	 * estate is from stack of already ended function.
 	 *
@@ -230,6 +254,7 @@ plugin_info_reset(void *arg)
 		plch_release_fextra(plugin_info->fextra);
 		plugin_info->fextra = NULL;
 		plugin_info->estate = NULL;
+		top_pldbgapi_plugin_info = plugin_info->prev_pldbgapi_plugin_info;
 	}
 	PG_END_TRY();
 }
@@ -248,6 +273,9 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	plugin_info->magic = PLUGIN_INFO_MAGIC;
 	plugin_info->fn_oid = func->fn_oid;
 	plugin_info->estate = estate;
+
+	plugin_info->prev_pldbgapi_plugin_info = top_pldbgapi_plugin_info;
+	top_pldbgapi_plugin_info = plugin_info;
 
 	for (i = 0; i < nplugins; i++)
 	{
@@ -279,11 +307,35 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 	if (plugin_info->fextra)
 	{
-		plugin_info->er_mcb.func = plugin_info_reset;
-		plugin_info->er_mcb.arg = plugin_info;
+		plugin_info->mcb.func = plugin_info_reset;
+		plugin_info->mcb.arg = plugin_info;
 
-		MemoryContextRegisterResetCallback(CurrentMemoryContext,
-								   &plugin_info->er_mcb);
+		/*
+		 * Unfortunately, the caller context of inline block
+		 * is released in unstable order (after an exception).
+		 * The other memory is cleaned explicitly in plpgsql_inline_handler.
+		 *
+		 * The workaround - using context from simple_eval_estate is
+		 * not nice, because it enforce plugin_reset before final raising
+		 * an exception. inline block hash not use shared simple
+		 * eval estate, and every inline block has unique simple eval estate.
+		 *
+		 * The advantage of using es_query_cxt context instead caller
+		 * context is a fact, so this context is destroyed before
+		 * related PLpgSQL_function is released (including AST). Caller
+		 * cantext is released too late, and access to AST is broken
+		 * due access to already released memory.
+		 */
+		if (!OidIsValid(func->fn_oid))
+		{
+			MemoryContextRegisterResetCallback(estate->simple_eval_estate->es_query_cxt,
+											   &plugin_info->mcb);
+		}
+		else
+		{
+			MemoryContextRegisterResetCallback(CurrentMemoryContext,
+											   &plugin_info->mcb);
+		}
 	}
 
 	if (prev_plpgsql_plugin)
@@ -439,6 +491,8 @@ func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 			plch_release_fextra(plugin_info->fextra);
 			plugin_info->fextra = NULL;
 		}
+
+		top_pldbgapi_plugin_info = plugin_info->prev_pldbgapi_plugin_info;
 	}
 	PG_END_TRY();
 }
@@ -459,6 +513,17 @@ stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 
 	Assert(plugin_info->estate == estate);
 	Assert(plugin_info->fn_oid == estate->func->fn_oid);
+
+	/*
+	 * When current plugin_info is not not top plugin_info, then
+	 * memory is released in unexpected order. But we can fix it,
+	 * by explicit call of plugin_info_reset, so call all
+	 * plugin_info_reset for all nested executed functions.
+	 */
+	while (top_pldbgapi_plugin_info && top_pldbgapi_plugin_info != plugin_info)
+	{
+		plugin_info_reset(top_pldbgapi_plugin_info);
+	}
 
 	if (plugin_info->fextra)
 	{
@@ -521,7 +586,7 @@ stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 }
 
 /*
- * for all active plugins and prev_plpgsql_plugins calls stmt_end
+ * for all active plugins and prev_plpgsql_plugins calls stmt_end.
  */
 static void
 stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
