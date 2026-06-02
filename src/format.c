@@ -163,11 +163,7 @@ static void put_error_tabular(plpgsql_check_result_info *ri, PLpgSQL_execstate *
 
 #define SET_RESULT_INT32(anum, ival)	SET_RESULT((anum), Int32GetDatum((ival)))
 #define SET_RESULT_INT64(anum, ival)	SET_RESULT((anum), Int64GetDatum((ival)))
-#if PG_VERSION_NUM >= 110000
 #define SET_RESULT_QUERYID(anum, ival)	SET_RESULT((anum), UInt64GetDatum((ival)))
-#else
-#define SET_RESULT_QUERYID(anum, ival)	SET_RESULT((anum), UInt32GetDatum((ival)))
-#endif
 #define SET_RESULT_OID(anum, oid)		SET_RESULT((anum), ObjectIdGetDatum((oid)))
 #define SET_RESULT_FLOAT8(anum, fval)	SET_RESULT((anum), Float8GetDatum(fval))
 
