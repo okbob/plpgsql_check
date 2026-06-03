@@ -37,15 +37,15 @@
  * We don't want to have multiple stats per every update of any
  * function.
  */
-typedef struct func_hashkey
+typedef struct func_hk
 {
 	Oid			fn_oid;
 	Oid			db_oid;
-} func_hashkey;
+} func_hk;
 
 typedef struct FuncStats
 {
-	func_hashkey hk;
+	func_hk hk;
 	slock_t		mutex;
 	uint64		exec_count;
 	uint64		exec_count_err;
@@ -197,7 +197,7 @@ static plch_plugin profiler_plugin =
 	.stmt_abort = profiler_stmt_abort
 };
 
-static void init_func_hashkey(func_hashkey *hk, Oid fn_oid);
+static void init_func_hk(func_hk *hk, Oid fn_oid);
 static void proctuple_init_function_identity_hashkey(plch_fidentity_hk *hk, HeapTuple procTuple);
 static void init_fstats(FuncStats *fs);
 
@@ -336,7 +336,7 @@ plpgsql_check_profiler_shmem_startup(void)
 										  &found);
 
 	shared_func_stats_ht = assign_shared_htab("plpgsql_check profiler func stats",
-											  sizeof(func_hashkey), sizeof(FuncStats),
+											  sizeof(func_hk), sizeof(FuncStats),
 											  FUNC_STATS_COUNT);
 
 	shared_func_stmts_stats_ht = assign_shared_htab("plpgsql_check profiler func stmts stats",
@@ -500,13 +500,13 @@ Datum
 plpgsql_profiler_reset(PG_FUNCTION_ARGS)
 {
 	Oid			funcoid = PG_GETARG_OID(0);
-	func_hashkey fhk;
+	func_hk fhk;
 	plch_fidentity_hk hk;
 	HeapTuple	procTuple;
 	FuncStmtsStats *fss;
 	bool		found;
 
-	init_func_hashkey(&fhk, funcoid);
+	init_func_hk(&fhk, funcoid);
 	hash_search(func_stats_ht, (void *) &fhk, HASH_REMOVE, NULL);
 
 	if (shared_func_stats_ht)
@@ -639,9 +639,9 @@ profiler_fake_queryid_hook(ParseState *pstate, Query *query, JumbleState *jstate
  ***************************************
  */
 static void
-init_func_hashkey(func_hashkey *hk, Oid fn_oid)
+init_func_hk(func_hk *hk, Oid fn_oid)
 {
-	memset(hk, 0, sizeof(func_hashkey));
+	memset(hk, 0, sizeof(func_hk));
 
 	hk->db_oid = MyDatabaseId;
 	hk->fn_oid = fn_oid;
@@ -655,7 +655,7 @@ func_stats_ht_init(void)
 	Assert(func_stats_ht == NULL);
 
 	memset(&ctl, 0, sizeof(ctl));
-	ctl.keysize = sizeof(func_hashkey);
+	ctl.keysize = sizeof(func_hk);
 	ctl.entrysize = sizeof(FuncStats);
 	ctl.hcxt = profiler_mcxt;
 	func_stats_ht = hash_create("plpgsql_check function execution statistics",
@@ -908,11 +908,11 @@ update_local_persistent_fstats(profiler_info *pinfo,
 							   uint64 elapsed,
 							   bool aborted)
 {
-	func_hashkey hk;
+	func_hk hk;
 	FuncStats	   *fs;
 	bool		found;
 
-	init_func_hashkey(&hk, pinfo->func->fn_oid);
+	init_func_hk(&hk, pinfo->func->fn_oid);
 
 	fs = (FuncStats *) hash_search(func_stats_ht,
 								   (void *) &hk,
@@ -930,7 +930,7 @@ update_shared_persistent_fstats(profiler_info *pinfo,
 							   uint64 elapsed,
 							   bool aborted)
 {
-	func_hashkey hk;
+	func_hk hk;
 	FuncStats	   *fs;
 	bool		found;
 	bool		unlock_mutex = false;
@@ -946,7 +946,7 @@ update_shared_persistent_fstats(profiler_info *pinfo,
 		return;
 	}
 
-	init_func_hashkey(&hk, pinfo->func->fn_oid);
+	init_func_hk(&hk, pinfo->func->fn_oid);
 
 	LWLockAcquire(profiler_ss->func_stats_lock, LW_SHARED);
 
@@ -1000,11 +1000,11 @@ update_persistent_fstats(profiler_info *pinfo,
 static void
 merge_lxcached_shared_fstats(LXCache *lxcache)
 {
-	func_hashkey hk;
+	func_hk hk;
 	FuncStats	   *fs;
 	bool		found;
 
-	init_func_hashkey(&hk, lxcache->hk.fn_oid);
+	init_func_hk(&hk, lxcache->hk.fn_oid);
 
 	fs = (FuncStats *) hash_search(shared_func_stats_ht,
 								   (void *) &hk,
@@ -1234,7 +1234,6 @@ update_persistent_stmts_stats(profiler_info *pinfo)
 static void
 merge_lxcached_shared_stmts_stats(LXCache *lxcache, bool *raise_warning)
 {
-
 	FuncStmtsStats *fss;
 	bool		found;
 
