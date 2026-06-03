@@ -50,11 +50,11 @@ typedef struct plpgsql_hashent
 {
 #if PG_VERSION_NUM >= 180000
 
-	CachedFunctionHashKey key;
+	CachedFunctionHashKey hk;
 
 #else
 
-	PLpgSQL_func_hashkey key;
+	PLpgSQL_func_hashkey hk;
 
 #endif
 
@@ -235,15 +235,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 			 * is no reason for protection function against delete, but I
 			 * afraid of asserts.
 			 */
-#if PG_VERSION_NUM >= 180000
-
-			function->cfunc.use_count++;
-
-#else
-
-			function->use_count++;
-
-#endif
+			plch_use_count(function)++;
 
 			/* Create a fake runtime environment and process check */
 			switch (cinfo->trigtype)
@@ -263,15 +255,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 
 			function->cur_estate = cur_estate;
 
-#if PG_VERSION_NUM >= 180000
-
-			function->cfunc.use_count--;
-
-#else
-
-			function->use_count--;
-
-#endif
+			plch_use_count(function)--;
 		}
 		else
 			elog(NOTICE, "plpgsql_check is disabled");
@@ -310,17 +294,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 		if (function)
 		{
 			function->cur_estate = cur_estate;
-
-#if PG_VERSION_NUM >= 180000
-
-			function->cfunc.use_count--;
-
-#else
-
-			function->use_count--;
-
-#endif
-
+			plch_use_count(function)--;
 			release_exprs(cstate.exprs);
 		}
 
@@ -1007,7 +981,9 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 							   result_rettype, -1, 0);
 
 #if PG_VERSION_NUM >= 190000
+
 			TupleDescFinalize(resultTupleDesc);
+
 #endif
 
 			resultTupleDesc = BlessTupleDesc(resultTupleDesc);
@@ -1488,35 +1464,17 @@ plpgsql_check_is_checked(PLpgSQL_function *func)
 {
 	plpgsql_check_HashEnt *hentry;
 
-#if PG_VERSION_NUM >= 180000
-
-	if (!func->cfunc.fn_hashkey)
+	if (!plch_func_hashkey(func))
 		return false;
 
 	hentry = (plpgsql_check_HashEnt *) hash_search(plpgsql_check_HashTable,
-												   (void *) func->cfunc.fn_hashkey,
+												   (void *) plch_func_hashkey(func),
 												   HASH_FIND,
 												   NULL);
 
-	if (hentry != NULL && hentry->fn_xmin == func->cfunc.fn_xmin &&
-		ItemPointerEquals(&hentry->fn_tid, &func->cfunc.fn_tid))
+	if (hentry != NULL && hentry->fn_xmin == plch_func_xmin(func) &&
+		ItemPointerEquals(&hentry->fn_tid, &plch_func_tid(func)))
 		return hentry->is_checked;
-
-#else
-
-	if (!func->fn_hashkey)
-		return false;
-
-	hentry = (plpgsql_check_HashEnt *) hash_search(plpgsql_check_HashTable,
-												   (void *) func->fn_hashkey,
-												   HASH_FIND,
-												   NULL);
-
-	if (hentry != NULL && hentry->fn_xmin == func->fn_xmin &&
-		ItemPointerEquals(&hentry->fn_tid, &func->fn_tid))
-		return hentry->is_checked;
-
-#endif
 
 	return false;
 }
@@ -1534,27 +1492,13 @@ plpgsql_check_mark_as_checked(PLpgSQL_function *func)
 		plpgsql_check_HashEnt *hentry;
 		bool		found;
 
-#if PG_VERSION_NUM >= 180000
-
 		hentry = (plpgsql_check_HashEnt *) hash_search(plpgsql_check_HashTable,
-													   (void *) func->cfunc.fn_hashkey,
+													   (void *) plch_func_hashkey(func),
 													   HASH_ENTER,
 													   &found);
 
-		hentry->fn_xmin = func->cfunc.fn_xmin;
-		hentry->fn_tid = func->cfunc.fn_tid;
-
-#else
-
-		hentry = (plpgsql_check_HashEnt *) hash_search(plpgsql_check_HashTable,
-													   (void *) func->fn_hashkey,
-													   HASH_ENTER,
-													   &found);
-
-		hentry->fn_xmin = func->fn_xmin;
-		hentry->fn_tid = func->fn_tid;
-
-#endif
+		hentry->fn_xmin = plch_func_xmin(func);
+		hentry->fn_tid = plch_func_tid(func);
 
 		hentry->is_checked = true;
 	}

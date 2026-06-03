@@ -440,16 +440,25 @@ extern void plpgsql_check_pragma_apply(PLpgSQL_checkstate *cstate, char *pragma_
 /*
  * functions and structures from fextra_cache.c
  */
+/*
+ * It is unique for any version of function with same oid.
+ * It ensure strong relation between runtime data and source code
+ * (pg_proc tuple). Because it contains db_oid, it can be used as
+ * hash key of shared hash tabs.
+ */
 typedef struct
 {
 	Oid			fn_oid;
+	Oid			db_oid;
 	TransactionId fn_xmin;
 	ItemPointerData fn_tid;
-} plch_fextra_hk;
+} plch_fidentity_hk;
+
+extern void plch_init_fidentity_hk(plch_fidentity_hk *hk, PLpgSQL_function *func);
 
 typedef struct
 {
-	plch_fextra_hk hk;
+	plch_fidentity_hk hk;
 	uint32		hashValue;
 	PLpgSQL_function *func;
 
@@ -573,8 +582,6 @@ extern void plpgsql_check_check_ext_version(Oid fn_oid);
 extern void plpgsql_check_passive_check_init(void);
 
 
-
-
 /*
  * Links to function in plpgsql module
  */
@@ -623,6 +630,34 @@ extern plpgsql_check__ns_lookup_t plpgsql_check__ns_lookup_p;
 #ifndef TupleDescAttr
 #define TupleDescAttr(tupdesc, i) ((tupdesc)->attrs[(i)])
 #endif
+
+#endif
+
+#if PG_VERSION_NUM >= 180000
+
+#define plch_use_count(func)		((func)->cfunc.use_count)
+
+#define plch_func_xmin(func)			((func)->cfunc.fn_xmin)
+#define plch_func_tid(func)				((func)->cfunc.fn_tid)
+#define plch_func_hashkey(func)			((func)->cfunc.fn_hashkey)
+
+#else
+
+#define plch_use_count(func)		((func)->use_count)
+
+#define plch_func_xmin(func)			((func)->fn_xmin)
+#define plch_func_tid(func)				((func)->fn_tid)
+#define plch_func_hashkey(func)			((func)->fn_hashkey)
+
+#endif
+
+#if PG_VERSION_NUM >= 170000
+
+#define CURRENT_LXID	(MyProc->vxid.lxid)
+
+#else
+
+#define CURRENT_LXID	(MyProc->lxid)
 
 #endif
 

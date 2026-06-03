@@ -45,7 +45,7 @@ typedef struct func_hashkey
 
 typedef struct FuncStats
 {
-	func_hashkey key;
+	func_hashkey hk;
 	slock_t		mutex;
 	uint64		exec_count;
 	uint64		exec_count_err;
@@ -98,22 +98,9 @@ typedef struct StmtStats
 
 #define		FUNC_STATS_COUNT				20000
 
-/*
- * It is unique for any version of function with same oid.
- * It ensure strong relation between runtime data and source code
- * (pg_proc tuple).
- */
-typedef struct func_identity_hashkey
-{
-	Oid			fn_oid;
-	Oid			db_oid;
-	TransactionId fn_xmin;
-	ItemPointerData fn_tid;
-} func_identity_hashkey;
-
 typedef struct FuncStmtsStats
 {
-	func_identity_hashkey key;
+	plch_fidentity_hk hk;
 	int			nstatements;
 	slock_t		mutex;
 	StmtStats  *sstats;
@@ -137,7 +124,7 @@ typedef struct ProfilerSharedState
  */
 typedef struct LXCache
 {
-	func_identity_hashkey key;
+	plch_fidentity_hk hk;
 	FuncStats	fstats;
 	StmtStats  *sstats;
 	int			nstatements;
@@ -211,8 +198,7 @@ static plch_plugin profiler_plugin =
 };
 
 static void init_func_hashkey(func_hashkey *hk, Oid fn_oid);
-static void plfunction_init_function_identity_hashkey(func_identity_hashkey *hk, PLpgSQL_function *func);
-static void proctuple_init_function_identity_hashkey(func_identity_hashkey *hk, HeapTuple procTuple);
+static void proctuple_init_function_identity_hashkey(plch_fidentity_hk *hk, HeapTuple procTuple);
 static void init_fstats(FuncStats *fs);
 
 static pc_queryid profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, QParams *qparams);
@@ -354,7 +340,7 @@ plpgsql_check_profiler_shmem_startup(void)
 											  FUNC_STATS_COUNT);
 
 	shared_func_stmts_stats_ht = assign_shared_htab("plpgsql_check profiler func stmts stats",
-													sizeof(func_identity_hashkey), sizeof(FuncStmtsStats),
+													sizeof(plch_fidentity_hk), sizeof(FuncStmtsStats),
 													FUNC_STATS_COUNT);
 
 	LWLockRelease(AddinShmemInitLock);
@@ -464,7 +450,7 @@ plpgsql_profiler_reset_all(PG_FUNCTION_ARGS)
 		while ((fs = hash_seq_search(&hash_seq)) != NULL)
 		{
 			hash_search(shared_func_stats_ht,
-						&(fs->key),
+						&(fs->hk),
 						HASH_REMOVE, NULL);
 		}
 
@@ -483,7 +469,7 @@ plpgsql_profiler_reset_all(PG_FUNCTION_ARGS)
 		while ((fss = hash_seq_search(&hash_seq)) != NULL)
 		{
 			hash_search(shared_func_stmts_stats_ht,
-						&(fss->key),
+						&(fss->hk),
 						HASH_REMOVE, NULL);
 		}
 
@@ -515,7 +501,7 @@ plpgsql_profiler_reset(PG_FUNCTION_ARGS)
 {
 	Oid			funcoid = PG_GETARG_OID(0);
 	func_hashkey fhk;
-	func_identity_hashkey hk;
+	plch_fidentity_hk hk;
 	HeapTuple	procTuple;
 	FuncStmtsStats *fss;
 	bool		found;
@@ -679,33 +665,11 @@ func_stats_ht_init(void)
 }
 
 static void
-plfunction_init_function_identity_hashkey(func_identity_hashkey *hk, PLpgSQL_function *func)
-{
-	memset(hk, 0, sizeof(func_identity_hashkey));
-
-	hk->db_oid = MyDatabaseId;
-	hk->fn_oid = func->fn_oid;
-
-#if PG_VERSION_NUM >= 180000
-
-	hk->fn_xmin = func->cfunc.fn_xmin;
-	hk->fn_tid = func->cfunc.fn_tid;
-
-#else
-
-	hk->fn_xmin = func->fn_xmin;
-	hk->fn_tid = func->fn_tid;
-
-#endif
-
-}
-
-static void
-proctuple_init_function_identity_hashkey(func_identity_hashkey *hk, HeapTuple procTuple)
+proctuple_init_function_identity_hashkey(plch_fidentity_hk *hk, HeapTuple procTuple)
 {
 	Form_pg_proc proc = (Form_pg_proc) GETSTRUCT(procTuple);
 
-	memset(hk, 0, sizeof(func_identity_hashkey));
+	memset(hk, 0, sizeof(plch_fidentity_hk));
 
 	hk->db_oid = MyDatabaseId;
 	hk->fn_oid = proc->oid;
@@ -723,7 +687,7 @@ func_stmts_stats_ht_init(void)
 	Assert(func_stmts_stats_ht == NULL);
 
 	memset(&ctl, 0, sizeof(ctl));
-	ctl.keysize = sizeof(func_identity_hashkey);
+	ctl.keysize = sizeof(plch_fidentity_hk);
 	ctl.entrysize = sizeof(FuncStmtsStats);
 	ctl.hcxt = profiler_mcxt;
 	func_stmts_stats_ht = hash_create("plpgsql_check function execution statistics",
@@ -761,16 +725,7 @@ static void
 lxcache_ht_init(void)
 {
 	HASHCTL		ctl;
-
-#if PG_VERSION_NUM < 170000
-
-	LocalTransactionId thislxid = MyProc->lxid;
-
-#else
-
-	LocalTransactionId thislxid = MyProc->vxid.lxid;
-
-#endif
+	LocalTransactionId thislxid = CURRENT_LXID;
 
 	Assert(lxcache_mcxt == NULL && lxcache_lxid == InvalidLocalTransactionId);
 
@@ -788,7 +743,7 @@ lxcache_ht_init(void)
 	MemoryContextRegisterResetCallback(lxcache_mcxt, &lxcache_mcb);
 
 	memset(&ctl, 0, sizeof(ctl));
-	ctl.keysize = sizeof(func_identity_hashkey);
+	ctl.keysize = sizeof(plch_fidentity_hk);
 	ctl.entrysize = sizeof(LXCache);
 
 	/*
@@ -810,20 +765,9 @@ static LXCache *
 get_lxcache(profiler_info *pinfo)
 {
 	bool		found;
-	func_identity_hashkey hk;
+	plch_fidentity_hk hk;
 	LXCache	   *lxcache;
-
-#if PG_VERSION_NUM < 170000
-
-	LocalTransactionId thislxid = MyProc->lxid;
-
-#else
-
-	LocalTransactionId thislxid = MyProc->vxid.lxid;
-
-#endif
-
-
+	LocalTransactionId thislxid = CURRENT_LXID;
 
 	if (pinfo->lxcache && pinfo->lxcache_lxid == thislxid)
 		return pinfo->lxcache;
@@ -831,7 +775,7 @@ get_lxcache(profiler_info *pinfo)
 	if (!lxcache_ht || lxcache_lxid != thislxid)
 		lxcache_ht_init();
 
-	plfunction_init_function_identity_hashkey(&hk, pinfo->func);
+	plch_init_fidentity_hk(&hk, pinfo->func);
 
 	lxcache = (LXCache *) hash_search(lxcache_ht,
 									  (void *) &hk,
@@ -1060,7 +1004,7 @@ merge_lxcached_shared_fstats(LXCache *lxcache)
 	FuncStats	   *fs;
 	bool		found;
 
-	init_func_hashkey(&hk, lxcache->key.fn_oid);
+	init_func_hashkey(&hk, lxcache->hk.fn_oid);
 
 	fs = (FuncStats *) hash_search(shared_func_stats_ht,
 								   (void *) &hk,
@@ -1128,11 +1072,11 @@ init_stmts_sstats(StmtStats *sstats, int nstatements)
 static void
 update_local_persistent_stmts_stats(profiler_info *pinfo)
 {
-	func_identity_hashkey hk;
+	plch_fidentity_hk hk;
 	FuncStmtsStats *fss;
 	bool		found;
 
-	plfunction_init_function_identity_hashkey(&hk, pinfo->func);
+	plch_init_fidentity_hk(&hk, pinfo->func);
 
 	/* don't need too strong lock for reading shared memory */
 	fss = (FuncStmtsStats *) hash_search(func_stmts_stats_ht,
@@ -1147,7 +1091,7 @@ update_local_persistent_stmts_stats(profiler_info *pinfo)
 		if (((used_stmt_stats_count + fss->nstatements) * sizeof(StmtStats)) > (plch_max_stat_size * 1024))
 		{
 			/* remove invalid current func_stmts_stats */
-			hash_search(func_stmts_stats_ht, &(fss->key), HASH_REMOVE, NULL);
+			hash_search(func_stmts_stats_ht, &(fss->hk), HASH_REMOVE, NULL);
 
 			ereport(WARNING,
 					(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
@@ -1165,7 +1109,7 @@ update_local_persistent_stmts_stats(profiler_info *pinfo)
 		if (unlikely(fss->sstats == NULL))
 		{
 			/* remove invalid current func_stmts_stats */
-			hash_search(func_stmts_stats_ht, &(fss->key), HASH_REMOVE, NULL);
+			hash_search(func_stmts_stats_ht, &(fss->hk), HASH_REMOVE, NULL);
 
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
@@ -1190,7 +1134,7 @@ update_local_persistent_stmts_stats(profiler_info *pinfo)
 static void
 update_shared_persistent_stmts_stats(profiler_info *pinfo)
 {
-	func_identity_hashkey hk;
+	plch_fidentity_hk hk;
 	FuncStmtsStats *fss;
 	bool		found;
 
@@ -1202,7 +1146,7 @@ update_shared_persistent_stmts_stats(profiler_info *pinfo)
 		return;
 	}
 
-	plfunction_init_function_identity_hashkey(&hk, pinfo->func);
+	plch_init_fidentity_hk(&hk, pinfo->func);
 
 	LWLockAcquire(profiler_ss->func_stmts_stats_lock, LW_SHARED);
 
@@ -1232,7 +1176,7 @@ update_shared_persistent_stmts_stats(profiler_info *pinfo)
 		if (profiler_ss->used_stmt_stats_count + pinfo->func->nstatements > profiler_ss->stmt_stats_count)
 		{
 			/* remove invalid func stmts stats entry */
-			hash_search(shared_func_stmts_stats_ht, (void *) &(fss->key), HASH_REMOVE, NULL);
+			hash_search(shared_func_stmts_stats_ht, (void *) &(fss->hk), HASH_REMOVE, NULL);
 
 			ereport(WARNING,
 					(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
@@ -1295,7 +1239,7 @@ merge_lxcached_shared_stmts_stats(LXCache *lxcache, bool *raise_warning)
 	bool		found;
 
 	fss = (FuncStmtsStats *) hash_search(shared_func_stmts_stats_ht,
-										 (void *) &lxcache->key,
+										 (void *) &lxcache->hk,
 										 HASH_ENTER,
 										 &found);
 
@@ -1304,7 +1248,7 @@ merge_lxcached_shared_stmts_stats(LXCache *lxcache, bool *raise_warning)
 		if (profiler_ss->used_stmt_stats_count + lxcache->nstatements > profiler_ss->stmt_stats_count)
 		{
 			/* remove invalid func stmts stats entry */
-			hash_search(shared_func_stmts_stats_ht, (void *) &(fss->key), HASH_REMOVE, NULL);
+			hash_search(shared_func_stmts_stats_ht, (void *) &(fss->hk), HASH_REMOVE, NULL);
 
 			if (*raise_warning)
 			{
@@ -1734,14 +1678,14 @@ local_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 		HeapTuple	tp;
 
 		/* skip dropped functions */
-		tp = SearchSysCache1(PROCOID, ObjectIdGetDatum(fs->key.fn_oid));
+		tp = SearchSysCache1(PROCOID, ObjectIdGetDatum(fs->hk.fn_oid));
 		if (!HeapTupleIsValid(tp))
 			continue;
 
 		ReleaseSysCache(tp);
 
 		plpgsql_check_put_profiler_functions_all_tb(ri,
-													fs->key.fn_oid,
+													fs->hk.fn_oid,
 													fs->exec_count,
 													fs->exec_count_err,
 													(double) fs->total_time,
@@ -1771,7 +1715,7 @@ shared_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 		 * here, Oid of functions from other databases has unassigned oids to
 		 * current system catalogue.
 		 */
-		if (fs->key.db_oid != MyDatabaseId)
+		if (fs->hk.db_oid != MyDatabaseId)
 			continue;
 
 		SpinLockAcquire(&fs->mutex);
@@ -1779,11 +1723,11 @@ shared_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 		PG_TRY();
 		{
 			/* check if function still exists */
-			tp = SearchSysCache1(PROCOID, ObjectIdGetDatum(fs->key.fn_oid));
+			tp = SearchSysCache1(PROCOID, ObjectIdGetDatum(fs->hk.fn_oid));
 			if (HeapTupleIsValid(tp))
 			{
 				plpgsql_check_put_profiler_functions_all_tb(ri,
-															fs->key.fn_oid,
+															fs->hk.fn_oid,
 															fs->exec_count,
 															fs->exec_count_err,
 															(double) fs->total_time,
@@ -1894,7 +1838,7 @@ statement_stats_report_walker(PLpgSQL_stmt *stmt, statement_stats_report_context
  * the work with local statistics are primitive, we don't need to play with locks
  */
 static void
-local_statements_stats_report(func_identity_hashkey *hk,
+local_statements_stats_report(plch_fidentity_hk *hk,
 							  PLpgSQL_stmt *stmt,
 							  statement_stats_report_context *context)
 {
@@ -1916,7 +1860,7 @@ local_statements_stats_report(func_identity_hashkey *hk,
  * shared variant is more complex, we need to protect against race condition
  */
 static void
-shared_statements_stats_report(func_identity_hashkey *hk,
+shared_statements_stats_report(plch_fidentity_hk *hk,
 							   PLpgSQL_stmt *stmt,
 							   statement_stats_report_context *context)
 {
@@ -1966,12 +1910,12 @@ plch_statements_stats_report(plpgsql_check_info *cinfo,
 							 plpgsql_check_result_info *ri)
 {
 	statement_stats_report_context loccontext;
-	func_identity_hashkey hk;
+	plch_fidentity_hk hk;
 	PLpgSQL_function *func;
 	PLpgSQL_stmt *stmt;
 
 	func = cinfo_get_function(cinfo);
-	plfunction_init_function_identity_hashkey(&hk, func);
+	plch_init_fidentity_hk(&hk, func);
 
 	loccontext.ri = ri;
 	loccontext.fextra = plch_get_fextra(func);
@@ -2171,7 +2115,7 @@ show_profile(PLpgSQL_function *func, profiler_report_context *context)
  */
 static void
 show_local_profile(PLpgSQL_function *func,
-				   func_identity_hashkey *hk,
+				   plch_fidentity_hk *hk,
 				   profiler_report_context *context)
 {
 	FuncStmtsStats *fss;
@@ -2190,7 +2134,7 @@ show_local_profile(PLpgSQL_function *func,
 
 static void
 show_shared_profile(PLpgSQL_function *func,
-				    func_identity_hashkey *hk,
+				    plch_fidentity_hk *hk,
 				    profiler_report_context *context)
 {
 	FuncStmtsStats *fss;
@@ -2237,7 +2181,7 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 									plpgsql_check_info *cinfo)
 {
 	profiler_report_context loccontext;
-	func_identity_hashkey hk;
+	plch_fidentity_hk hk;
 	PLpgSQL_function *func;
 
 	memset(&loccontext, 0, sizeof(profiler_report_context));
@@ -2252,7 +2196,7 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 	loccontext.src = cinfo->src;
 
 	func = cinfo_get_function(cinfo);
-	plfunction_init_function_identity_hashkey(&hk, func);
+	plch_init_fidentity_hk(&hk, func);
 
 	if (USE_SHARED_FUNC_STMTS_STATS)
 		show_shared_profile(func, &hk, &loccontext);
@@ -2457,7 +2401,7 @@ coverage_compute(PLpgSQL_stmt *stmt, StmtStats *sstats, int ct)
 }
 
 static double
-local_coverage_compute(func_identity_hashkey *hk, PLpgSQL_stmt *stmt, int ct)
+local_coverage_compute(plch_fidentity_hk *hk, PLpgSQL_stmt *stmt, int ct)
 {
 	FuncStmtsStats *fss;
 	bool		found;
@@ -2471,7 +2415,7 @@ local_coverage_compute(func_identity_hashkey *hk, PLpgSQL_stmt *stmt, int ct)
 }
 
 static double
-shared_coverage_compute(func_identity_hashkey *hk, PLpgSQL_stmt *stmt, int ct)
+shared_coverage_compute(plch_fidentity_hk *hk, PLpgSQL_stmt *stmt, int ct)
 {
 	FuncStmtsStats *fss;
 	StmtStats *sstats = NULL;
@@ -2520,7 +2464,7 @@ coverage_internal(Oid fnoid, int ct)
 {
 	plpgsql_check_info cinfo;
 	PLpgSQL_function *func;
-	func_identity_hashkey hk;
+	plch_fidentity_hk hk;
 
 	plpgsql_check_info_init(&cinfo, fnoid);
 
@@ -2543,7 +2487,7 @@ coverage_internal(Oid fnoid, int ct)
 
 	ReleaseSysCache(cinfo.proctuple);
 
-	plfunction_init_function_identity_hashkey(&hk, func);
+	plch_init_fidentity_hk(&hk, func);
 
 	if (USE_SHARED_FUNC_STMTS_STATS)
 		return shared_coverage_compute(&hk, (PLpgSQL_stmt *) func->action, ct);

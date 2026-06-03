@@ -59,25 +59,16 @@ init_fextra_stmt_walker(PLpgSQL_stmt *stmt, fextra_init_context *context)
 	plch_statement_tree_walker(stmt, init_fextra_stmt_walker, NULL, &loccontext);
 }
 
-static void
-fextra_init_hk(plch_fextra_hk *hk, PLpgSQL_function *func)
+void
+plch_init_fidentity_hk(plch_fidentity_hk *hk, PLpgSQL_function *func)
 {
-	memset(hk, 0, sizeof(plch_fextra_hk));
+	memset(hk, 0, sizeof(plch_fidentity_hk));
 
 	hk->fn_oid = func->fn_oid;
+	hk->db_oid = MyDatabaseId;
 
-#if PG_VERSION_NUM >= 180000
-
-	hk->fn_xmin = func->cfunc.fn_xmin;
-	hk->fn_tid = func->cfunc.fn_tid;
-
-#else
-
-	hk->fn_xmin = func->fn_xmin;
-	hk->fn_tid = func->fn_tid;
-
-#endif
-
+	hk->fn_xmin = plch_func_xmin(func);
+	hk->fn_tid = plch_func_tid(func);
 }
 
 static void
@@ -98,15 +89,7 @@ pin_func(PLpgSQL_function *func)
 	 */
 	Assert(OidIsValid(func->fn_oid));
 
-#if PG_VERSION_NUM >= 180000
-
-	func->cfunc.use_count++;
-
-#else
-
-	func->use_count++;
-
-#endif
+	plch_use_count(func)++;
 }
 
 static void
@@ -114,15 +97,7 @@ unpin_func(PLpgSQL_function *func)
 {
 	Assert(OidIsValid(func->fn_oid));
 
-#if PG_VERSION_NUM >= 180000
-
-	func->cfunc.use_count--;
-
-#else
-
-	func->use_count--;
-
-#endif
+	plch_use_count(func)--;
 }
 
 
@@ -162,7 +137,7 @@ plch_get_fextra(PLpgSQL_function *func)
 	if (OidIsValid(func->fn_oid))
 	{
 		HASHCTL		ctl;
-		plch_fextra_hk hk;
+		plch_fidentity_hk hk;
 		bool		found;
 
 		/*
@@ -179,7 +154,7 @@ plch_get_fextra(PLpgSQL_function *func)
 			Assert(fextra_ht == NULL);
 
 			memset(&ctl, 0, sizeof(ctl));
-			ctl.keysize = sizeof(plch_fextra_hk);
+			ctl.keysize = sizeof(plch_fidentity_hk);
 			ctl.entrysize = sizeof(plch_fextra);
 			ctl.hcxt = fextra_mcxt;
 
@@ -191,7 +166,7 @@ plch_get_fextra(PLpgSQL_function *func)
 			CacheRegisterSyscacheCallback(PROCOID, fextra_CacheObjectCallback, (Datum) 0);
 		}
 
-		fextra_init_hk(&hk, func);
+		plch_init_fidentity_hk(&hk, func);
 		fextra = (plch_fextra *) hash_search(fextra_ht, (void *) &hk, HASH_ENTER, &found);
 
 		if (found && !fextra->is_valid && fextra->use_count == 0)

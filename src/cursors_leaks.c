@@ -37,15 +37,9 @@ typedef struct CursorTrace
 	char	   *curname;
 } CursorTrace;
 
-typedef struct FunctionTraceKey
-{
-	Oid			fn_oid;
-	TransactionId fn_xmin;
-} FunctionTraceKey;
-
 typedef struct FunctionTrace
 {
-	FunctionTraceKey key;
+	plch_fidentity_hk hk;
 
 	int			ncursors;
 	int			cursors_size;
@@ -69,29 +63,21 @@ static void stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra 
 
 static plch_plugin cursors_leaks_plugin =
 {
-	is_active,
-	func_setup, NULL, func_end, NULL,
-	NULL, stmt_end, NULL, NULL, NULL, NULL, NULL, NULL
+	.is_active = is_active,
+	.func_setup = func_setup,
+	.func_end = func_end,
+	.stmt_end = stmt_end,
 };
-
-#if PG_VERSION_NUM >= 170000
-
-#define CURRENT_LXID	(MyProc->vxid.lxid)
-
-#else
-
-#define CURRENT_LXID	(MyProc->lxid)
-
-#endif
 
 static FunctionTrace *
 get_function_trace(PLpgSQL_function *func)
 {
 	bool		found;
 	FunctionTrace *ftrace;
-	FunctionTraceKey key;
+	plch_fidentity_hk hk;
+	LocalTransactionId thislxid = CURRENT_LXID;
 
-	if (traces == NULL || traces_lxid != CURRENT_LXID)
+	if (traces == NULL || traces_lxid != thislxid)
 	{
 		HASHCTL		ctl;
 
@@ -100,7 +86,7 @@ get_function_trace(PLpgSQL_function *func)
 											ALLOCSET_DEFAULT_SIZES);
 
 		memset(&ctl, 0, sizeof(ctl));
-		ctl.keysize = sizeof(FunctionTraceKey);
+		ctl.keysize = sizeof(plch_fidentity_hk);
 		ctl.entrysize = sizeof(FunctionTrace);
 		ctl.hcxt = traces_mcxt;
 
@@ -109,40 +95,18 @@ get_function_trace(PLpgSQL_function *func)
 							 &ctl,
 							 HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 
-		traces_lxid = CURRENT_LXID;
+		traces_lxid = thislxid;
 	}
 
-	key.fn_oid = func->fn_oid;
-
-#if PG_VERSION_NUM >= 180000
-
-	key.fn_xmin = func->cfunc.fn_xmin;
-
-#else
-
-	key.fn_xmin = func->fn_xmin;
-
-#endif
+	plch_init_fidentity_hk(&hk, func);
 
 	ftrace = (FunctionTrace *) hash_search(traces,
-										   (void *) &key,
+										   (void *) &hk,
 										   HASH_ENTER,
 										   &found);
 
 	if (!found)
 	{
-		ftrace->key.fn_oid = func->fn_oid;
-
-#if PG_VERSION_NUM >= 180000
-
-		ftrace->key.fn_xmin = func->cfunc.fn_xmin;
-
-#else
-
-		ftrace->key.fn_xmin = func->fn_xmin;
-
-#endif
-
 		ftrace->ncursors = 0;
 		ftrace->cursors_size = 0;
 		ftrace->cursors_traces = NULL;
