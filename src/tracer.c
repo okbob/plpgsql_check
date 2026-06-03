@@ -73,11 +73,14 @@ static void tracer_stmt_abort(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plc
 
 static plch_plugin tracer_plugin =
 {
-	tracer_is_active,
-	tracer_func_setup,
-	tracer_func_beg, tracer_func_end, tracer_func_abort,
-	tracer_stmt_beg, tracer_stmt_end, tracer_stmt_abort,
-	NULL, NULL, NULL, NULL, NULL
+	.is_active = tracer_is_active,
+	.func_setup = tracer_func_setup,
+	.func_beg = tracer_func_beg,
+	.func_end = tracer_func_end,
+	.func_abort = tracer_func_abort,
+	.stmt_beg = tracer_stmt_beg,
+	.stmt_end = tracer_stmt_end,
+	.stmt_abort = tracer_stmt_abort,
 };
 
 /*
