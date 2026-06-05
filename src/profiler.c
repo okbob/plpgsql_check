@@ -210,7 +210,7 @@ static void WelfordVarianceMerge(uint64 *count, float8 *mean, float8 *m2,
 								 uint64 a_count, float8 a_mean, float8 a_m2,
 								 uint64 b_count, float8 b_mean, float8 b_m2);
 
-static PLpgSQL_function *cinfo_get_function(plpgsql_check_info *cinfo);
+static PLpgSQL_function *cinfo_get_function(plpgsql_check_info *cinfo, FunctionCallInfo fcinfo);
 static bool get_plpgsql_expr_type(PLpgSQL_expr *expr, Oid *result_type);
 static char *cutline(char *str, char **line);
 static HTAB *assign_shared_htab(const char *tabname, Size keysize, Size Entrysize, int nelems);
@@ -1908,12 +1908,13 @@ void
 plch_statements_stats_report(plpgsql_check_info *cinfo,
 							 plpgsql_check_result_info *ri)
 {
+	LOCAL_FCINFO(fake_fcinfo, 0);
 	statement_stats_report_context loccontext;
 	plch_fidentity_hk hk;
 	PLpgSQL_function *func;
 	PLpgSQL_stmt *stmt;
 
-	func = cinfo_get_function(cinfo);
+	func = cinfo_get_function(cinfo, fake_fcinfo);
 	plch_init_fidentity_hk(&hk, func);
 
 	loccontext.ri = ri;
@@ -2179,6 +2180,7 @@ void
 plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 									plpgsql_check_info *cinfo)
 {
+	LOCAL_FCINFO(fake_fcinfo, 0);
 	profiler_report_context loccontext;
 	plch_fidentity_hk hk;
 	PLpgSQL_function *func;
@@ -2194,7 +2196,7 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 	/* attention cinfo->src will be modified */
 	loccontext.src = cinfo->src;
 
-	func = cinfo_get_function(cinfo);
+	func = cinfo_get_function(cinfo, fake_fcinfo);
 	plch_init_fidentity_hk(&hk, func);
 
 	if (USE_SHARED_FUNC_STMTS_STATS)
@@ -2461,6 +2463,7 @@ shared_coverage_compute(plch_fidentity_hk *hk, PLpgSQL_stmt *stmt, int ct)
 static double
 coverage_internal(Oid fnoid, int ct)
 {
+	LOCAL_FCINFO(fake_fcinfo, 0);
 	plpgsql_check_info cinfo;
 	PLpgSQL_function *func;
 	plch_fidentity_hk hk;
@@ -2482,7 +2485,7 @@ coverage_internal(Oid fnoid, int ct)
 
 	plpgsql_check_precheck_conditions(&cinfo);
 
-	func = cinfo_get_function(&cinfo);
+	func = cinfo_get_function(&cinfo, fake_fcinfo);
 
 	ReleaseSysCache(cinfo.proctuple);
 
@@ -2585,9 +2588,8 @@ WelfordVarianceMerge(uint64 *count, float8 *mean, float8 *m2,
  * helper function that returns compiled statement tree
  */
 static PLpgSQL_function *
-cinfo_get_function(plpgsql_check_info *cinfo)
+cinfo_get_function(plpgsql_check_info *cinfo, FunctionCallInfo fcinfo)
 {
-	LOCAL_FCINFO(fake_fcinfo, 0);
 	FmgrInfo	flinfo;
 	TriggerData trigdata;
 	EventTriggerData etrigdata;
@@ -2597,14 +2599,14 @@ cinfo_get_function(plpgsql_check_info *cinfo)
 
 	plpgsql_check_setup_fcinfo(cinfo,
 							   &flinfo,
-							   fake_fcinfo,
+							   fcinfo,
 							   &rsinfo,
 							   &trigdata,
 							   &etrigdata,
 							   &tg_trigger,
 							   &fake_rtd);
 
-	return plpgsql_check__compile_p(fake_fcinfo, false);
+	return plpgsql_check__compile_p(fcinfo, false);
 }
 
 /*
