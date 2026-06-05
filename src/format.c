@@ -175,7 +175,7 @@ static void put_error_tabular(plpgsql_check_result_info *ri, PLpgSQL_execstate *
 int
 plpgsql_check_format_num(char *format_str)
 {
-	int			result;
+	int			result = PLPGSQL_CHECK_FORMAT_INVALID;
 
 	char	   *format_lower_str = str_tolower(format_str, strlen(format_str), DEFAULT_COLLATION_OID);
 
