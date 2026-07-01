@@ -45,7 +45,7 @@ typedef struct func_hk
 
 typedef struct FuncStats
 {
-	func_hk hk;
+	func_hk		hk;
 	slock_t		mutex;
 	uint64		exec_count;
 	uint64		exec_count_err;
@@ -82,7 +82,7 @@ typedef struct StmtInstr
 	uint64		exec_count_err;
 	instr_time	start_time;
 	instr_time	total;
-	QParams *qparams;
+	QParams    *qparams;
 } StmtInstr;
 
 typedef struct StmtStats
@@ -125,7 +125,7 @@ typedef struct ProfilerSharedState
 typedef struct LXCache
 {
 	plch_fidentity_hk hk;
-	FuncStats	fstats;
+	FuncStats fstats;
 	StmtStats  *sstats;
 	int			nstatements;
 } LXCache;
@@ -142,7 +142,7 @@ typedef struct profiler_info
 	PLpgSQL_function *func;
 
 	/* reduce second searching lxcache when se update fstats */
-	LXCache	   *lxcache;
+	LXCache    *lxcache;
 	LocalTransactionId lxcache_lxid;
 	MemoryContextCallback er_mcb;
 } profiler_info;
@@ -332,8 +332,8 @@ plpgsql_check_profiler_shmem_startup(void)
 	}
 
 	SharedStmtStatsArray = ShmemInitStruct("plpgsql_check profiler shared statements stats",
-										  mul_size(sizeof(StmtStats), estimated_stmt_stats_count),
-										  &found);
+										   mul_size(sizeof(StmtStats), estimated_stmt_stats_count),
+										   &found);
 
 	shared_func_stats_ht = assign_shared_htab("plpgsql_check profiler func stats",
 											  sizeof(func_hk), sizeof(FuncStats),
@@ -421,9 +421,9 @@ plpgsql_check_profiler_ctrl(PG_FUNCTION_ARGS)
 
 		if (profiler_ss)
 			elog(NOTICE, "allocated stats: %d (%ldkB), used stats: %d",
-						profiler_ss->stmt_stats_count,
-						(mul_size(sizeof(StmtStats), estimated_stmt_stats_count) / 1024),
-						profiler_ss->used_stmt_stats_count);
+				 profiler_ss->stmt_stats_count,
+				 (mul_size(sizeof(StmtStats), estimated_stmt_stats_count) / 1024),
+				 profiler_ss->used_stmt_stats_count);
 	}
 
 	PG_RETURN_BOOL(result);
@@ -441,7 +441,7 @@ plpgsql_profiler_reset_all(PG_FUNCTION_ARGS)
 	if (shared_func_stats_ht)
 	{
 		HASH_SEQ_STATUS hash_seq;
-		FuncStats *fs;
+		FuncStats  *fs;
 
 		LWLockAcquire(profiler_ss->func_stats_lock, LW_EXCLUSIVE);
 
@@ -500,7 +500,7 @@ Datum
 plpgsql_profiler_reset(PG_FUNCTION_ARGS)
 {
 	Oid			funcoid = PG_GETARG_OID(0);
-	func_hk fhk;
+	func_hk		fhk;
 	plch_fidentity_hk hk;
 	HeapTuple	procTuple;
 	FuncStmtsStats *fss;
@@ -550,7 +550,7 @@ plpgsql_profiler_reset(PG_FUNCTION_ARGS)
 
 	if (lxcache_ht)
 	{
-		LXCache	   *lxcache;
+		LXCache    *lxcache;
 
 		lxcache = (LXCache *) hash_search(lxcache_ht,
 										  (void *) &hk,
@@ -618,15 +618,14 @@ profiler_fake_queryid_hook(ParseState *pstate, Query *query, JumbleState *jstate
 	/*
 	 * force fake queryid
 	 *
-	 * profiler_fake_queryid_hook is active only for one plpgsql_check
-	 * regress test. For this case, we can force fake queryid, althought
-	 * is possible, so real queryid (computed by pg_stat_statements) is
-	 * already computed.
+	 * profiler_fake_queryid_hook is active only for one plpgsql_check regress
+	 * test. For this case, we can force fake queryid, althought is possible,
+	 * so real queryid (computed by pg_stat_statements) is already computed.
 	 *
-	 * Because this fake queryid hook is designed only for one test,
-	 * I don't check this possibility, and I don't raise any warning (because
-	 * it breaks stability of plpgsql_check regress tests - in dependency
-	 * on active (or non active) pg_stat_statements).
+	 * Because this fake queryid hook is designed only for one test, I don't
+	 * check this possibility, and I don't raise any warning (because it
+	 * breaks stability of plpgsql_check regress tests - in dependency on
+	 * active (or non active) pg_stat_statements).
 	 */
 	query->queryId = query->commandType;
 }
@@ -659,9 +658,9 @@ func_stats_ht_init(void)
 	ctl.entrysize = sizeof(FuncStats);
 	ctl.hcxt = profiler_mcxt;
 	func_stats_ht = hash_create("plpgsql_check function execution statistics",
-								   FUNCS_PER_USER,
-								   &ctl,
-								   HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+								FUNCS_PER_USER,
+								&ctl,
+								HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 }
 
 static void
@@ -691,9 +690,9 @@ func_stmts_stats_ht_init(void)
 	ctl.entrysize = sizeof(FuncStmtsStats);
 	ctl.hcxt = profiler_mcxt;
 	func_stmts_stats_ht = hash_create("plpgsql_check function execution statistics",
-											 FUNCS_PER_USER,
-											 &ctl,
-											 HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+									  FUNCS_PER_USER,
+									  &ctl,
+									  HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 }
 
 void
@@ -749,8 +748,8 @@ lxcache_ht_init(void)
 	/*
 	 * Originally I used lxcache_mcxt for hashtable. Unfortunaly it doesn't
 	 * work, because hashtable creates and uses always own child context, that
-	 * is destroyed before lxcache_mcxt. Becase I need to access lxcache_ht
-	 * at transaction end, then I need to use TopMemoryContext, and then destroy
+	 * is destroyed before lxcache_mcxt. Becase I need to access lxcache_ht at
+	 * transaction end, then I need to use TopMemoryContext, and then destroy
 	 * hashtab explicitly.
 	 */
 	ctl.hcxt = TopMemoryContext;
@@ -766,7 +765,7 @@ get_lxcache(profiler_info *pinfo)
 {
 	bool		found;
 	plch_fidentity_hk hk;
-	LXCache	   *lxcache;
+	LXCache    *lxcache;
 	LocalTransactionId thislxid = CURRENT_LXID;
 
 	if (pinfo->lxcache && pinfo->lxcache_lxid == thislxid)
@@ -805,7 +804,7 @@ static void
 lxcache_reset_callback(void *arg)
 {
 	HASH_SEQ_STATUS seqstatus;
-	LXCache	   *lxcache;
+	LXCache    *lxcache;
 	bool		raise_warning = true;
 
 	hash_seq_init(&seqstatus, lxcache_ht);
@@ -908,8 +907,8 @@ update_local_persistent_fstats(profiler_info *pinfo,
 							   uint64 elapsed,
 							   bool aborted)
 {
-	func_hk hk;
-	FuncStats	   *fs;
+	func_hk		hk;
+	FuncStats  *fs;
 	bool		found;
 
 	init_func_hk(&hk, pinfo->func->fn_oid);
@@ -927,20 +926,21 @@ update_local_persistent_fstats(profiler_info *pinfo,
 
 static void
 update_shared_persistent_fstats(profiler_info *pinfo,
-							   uint64 elapsed,
-							   bool aborted)
+								uint64 elapsed,
+								bool aborted)
 {
-	func_hk hk;
-	FuncStats	   *fs;
+	func_hk		hk;
+	FuncStats  *fs;
 	bool		found;
 	bool		unlock_mutex = false;
 
 	/*
-	 * current statistics are buffered inside update_shared_persistent_stmts_stats
+	 * current statistics are buffered inside
+	 * update_shared_persistent_stmts_stats
 	 */
 	if (plch_use_lxcache)
 	{
-		LXCache *lxcache = get_lxcache(pinfo);
+		LXCache    *lxcache = get_lxcache(pinfo);
 
 		update_fstats(&lxcache->fstats, elapsed, aborted);
 		return;
@@ -1000,8 +1000,8 @@ update_persistent_fstats(profiler_info *pinfo,
 static void
 merge_lxcached_shared_fstats(LXCache *lxcache)
 {
-	func_hk hk;
-	FuncStats	   *fs;
+	func_hk		hk;
+	FuncStats  *fs;
 	bool		found;
 
 	init_func_hk(&hk, lxcache->hk.fn_oid);
@@ -1023,12 +1023,13 @@ merge_lxcached_shared_fstats(LXCache *lxcache)
 static void
 merge_stmts_sstats(StmtStats *persist_ss, StmtStats *sstats, int nstatements)
 {
-	int		i;
+	int			i;
 
 	/* merge new statistics with persistent statistics */
 	for (i = 0; i < nstatements; i++)
 	{
-		StmtStats *_t, *_s;
+		StmtStats  *_t,
+				   *_s;
 
 		_t = &persist_ss[i];
 		_s = &sstats[i];
@@ -1049,12 +1050,12 @@ merge_stmts_sstats(StmtStats *persist_ss, StmtStats *sstats, int nstatements)
 static void
 init_stmts_sstats(StmtStats *sstats, int nstatements)
 {
-	int		i;
+	int			i;
 
 	/* merge new statistics with persistent statistics */
 	for (i = 0; i < nstatements; i++)
 	{
-		StmtStats *_s;
+		StmtStats  *_s;
 
 		_s = &sstats[i];
 
@@ -1140,7 +1141,7 @@ update_shared_persistent_stmts_stats(profiler_info *pinfo)
 
 	if (plch_use_lxcache)
 	{
-		LXCache *lxcache = get_lxcache(pinfo);
+		LXCache    *lxcache = get_lxcache(pinfo);
 
 		merge_stmts_sstats(lxcache->sstats, pinfo->sstats, lxcache->nstatements);
 		return;
@@ -1162,9 +1163,9 @@ update_shared_persistent_stmts_stats(profiler_info *pinfo)
 		LWLockAcquire(profiler_ss->func_stmts_stats_lock, LW_EXCLUSIVE);
 
 		fss = (FuncStmtsStats *) hash_search(shared_func_stmts_stats_ht,
-										(void *) &hk,
-										HASH_ENTER,
-										&found);
+											 (void *) &hk,
+											 HASH_ENTER,
+											 &found);
 
 		if (!fss)
 			elog(ERROR,
@@ -1394,8 +1395,8 @@ profiler_func_end(PLpgSQL_execstate *estate,
 
 static void
 profiler_func_abort(PLpgSQL_execstate *estate,
-				  PLpgSQL_function *func,
-				  plch_fextra *fextra)
+					PLpgSQL_function *func,
+					plch_fextra *fextra)
 {
 	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
 
@@ -1414,7 +1415,7 @@ profiler_stmt_beg(PLpgSQL_execstate *estate,
 
 	if (pinfo)
 	{
-		StmtInstr *sinstr = &pinfo->sinstrs[stmt->stmtid - 1];
+		StmtInstr  *sinstr = &pinfo->sinstrs[stmt->stmtid - 1];
 
 		INSTR_TIME_SET_CURRENT(sinstr->start_time);
 	}
@@ -1454,7 +1455,7 @@ profiler_stmt_end(PLpgSQL_execstate *estate,
 
 	if (pinfo)
 	{
-		StmtInstr *sinstr = &pinfo->sinstrs[stmt->stmtid - 1];
+		StmtInstr  *sinstr = &pinfo->sinstrs[stmt->stmtid - 1];
 
 		/*
 		 * We can get query id only if stmt_end is not executed in cleaning
@@ -1462,8 +1463,8 @@ profiler_stmt_end(PLpgSQL_execstate *estate,
 		 */
 		if (sinstr->queryid == NOQUERYID)
 			sinstr->queryid = profiler_get_queryid(estate, stmt,
-												  &sinstr->has_queryid,
-												  &sinstr->qparams);
+												   &sinstr->has_queryid,
+												   &sinstr->qparams);
 
 		_profiler_stmt_end(sinstr, false);
 	}
@@ -1478,7 +1479,7 @@ profiler_stmt_abort(PLpgSQL_execstate *estate,
 
 	if (pinfo)
 	{
-		StmtInstr *sinstr = &pinfo->sinstrs[stmt->stmtid - 1];
+		StmtInstr  *sinstr = &pinfo->sinstrs[stmt->stmtid - 1];
 
 		_profiler_stmt_end(sinstr, true);
 	}
@@ -1515,7 +1516,7 @@ profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
 
 		if (params && !*qparams)
 		{
-			QParams *qps = NULL;
+			QParams    *qps = NULL;
 			int			nparams = list_length(params);
 			int			paramno = 0;
 			MemoryContext oldcxt;
@@ -1668,7 +1669,7 @@ static void
 local_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 {
 	HASH_SEQ_STATUS seqstatus;
-	FuncStats	   *fs;
+	FuncStats  *fs;
 
 	hash_seq_init(&seqstatus, func_stats_ht);
 
@@ -1689,7 +1690,7 @@ local_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 													fs->exec_count_err,
 													(double) fs->total_time,
 													ceil(fs->total_time_mean),
-													ceil(sqrt(fs->total_time_m2/fs->exec_count - 1)),
+													ceil(sqrt(fs->total_time_m2 / fs->exec_count - 1)),
 													(double) fs->min_time,
 													(double) fs->max_time);
 	}
@@ -1699,7 +1700,7 @@ static void
 shared_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 {
 	HASH_SEQ_STATUS seqstatus;
-	FuncStats	   *fs;
+	FuncStats  *fs;
 
 	LWLockAcquire(profiler_ss->func_stats_lock, LW_SHARED);
 
@@ -1777,14 +1778,14 @@ typedef struct statement_stats_report_context
 	plch_fextra *fextra;
 	StmtStats  *sstats;
 	PLpgSQL_stmt *parent_stmt;
-	int			stmt_counter;		/* used for block_num */
+	int			stmt_counter;	/* used for block_num */
 } statement_stats_report_context;
 
 static void
 statement_stats_report_walker(PLpgSQL_stmt *stmt, statement_stats_report_context *context)
 {
 	statement_stats_report_context loccontext;
-	
+
 	int		   *naturalids = context->fextra->naturalids;
 
 	if (stmt->lineno > 0)
@@ -1801,17 +1802,17 @@ statement_stats_report_walker(PLpgSQL_stmt *stmt, statement_stats_report_context
 			StmtStats  *sstats = &context->sstats[stmt->stmtid - 1];
 
 			plpgsql_check_put_profile_statement(context->ri,
-											    sstats->queryid,
-											    naturalids[stmt->stmtid],
-											    parent_natural_stmtid,
-											    context->stmt_counter++,
-											    stmt->lineno,
-											    sstats->exec_count,
-											    sstats->exec_count_err,
-											    sstats->us_total,
-											    sstats->us_max,
-											    sstats->rows,
-											    plpgsql_check__stmt_typename_p(stmt));
+												sstats->queryid,
+												naturalids[stmt->stmtid],
+												parent_natural_stmtid,
+												context->stmt_counter++,
+												stmt->lineno,
+												sstats->exec_count,
+												sstats->exec_count_err,
+												sstats->us_total,
+												sstats->us_max,
+												sstats->rows,
+												plpgsql_check__stmt_typename_p(stmt));
 		}
 		else
 		{
@@ -2052,7 +2053,7 @@ profiler_report_walker(PLpgSQL_stmt *stmt, profiler_report_context *context)
 
 		if (context->sstats)
 		{
-			StmtStats  *sstats = &context->sstats[stmt->stmtid-1];
+			StmtStats  *sstats = &context->sstats[stmt->stmtid - 1];
 			uint64		total_exec_count;
 			float8		avg_time_us;
 
@@ -2134,8 +2135,8 @@ show_local_profile(PLpgSQL_function *func,
 
 static void
 show_shared_profile(PLpgSQL_function *func,
-				    plch_fidentity_hk *hk,
-				    profiler_report_context *context)
+					plch_fidentity_hk *hk,
+					profiler_report_context *context)
 {
 	FuncStmtsStats *fss;
 	bool		found;
@@ -2189,8 +2190,8 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 
 	loccontext.ri = ri;
 	loccontext.tmp_cxt = AllocSetContextCreate(CurrentMemoryContext,
-												"profiler report temporary cxt",
-												ALLOCSET_DEFAULT_SIZES);
+											   "profiler report temporary cxt",
+											   ALLOCSET_DEFAULT_SIZES);
 	loccontext.buffered_stmt_lineno = -1;
 
 	/* attention cinfo->src will be modified */
@@ -2209,7 +2210,7 @@ plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri,
 
 
 /***************************************
- 
+
  * Coverage calculation
  *
  ***************************************
@@ -2233,7 +2234,7 @@ coverage_statements_walker(PLpgSQL_stmt *stmt, coverage_statements_context *cont
 	{
 		context->nstatements += 1;
 
-		if (context->sstats && context->sstats[stmt->stmtid -1].exec_count > 0)
+		if (context->sstats && context->sstats[stmt->stmtid - 1].exec_count > 0)
 			context->nexecuted_statements += 1;
 	}
 
@@ -2249,7 +2250,7 @@ typedef struct coverage_branches_context
 {
 	int			nbranches;
 	int			nexecuted_branches;
-	StmtStats *sstats;
+	StmtStats  *sstats;
 } coverage_branches_context;
 
 static void
@@ -2261,7 +2262,7 @@ increment_branch_counters(coverage_branches_context *context, List *stmts,
 	if (stmts && context->sstats)
 	{
 		PLpgSQL_stmt *stmt = (PLpgSQL_stmt *) linitial(stmts);
-		int64 exec_count = context->sstats[stmt->stmtid - 1].exec_count;
+		int64		exec_count = context->sstats[stmt->stmtid - 1].exec_count;
 
 		if (exec_count > 0)
 			context->nexecuted_branches += 1;
@@ -2336,8 +2337,8 @@ coverage_branches_walker(PLpgSQL_stmt *stmt, coverage_branches_context *context)
 		increment_branch_counters(context, stmt_case->else_stmts, NULL);
 
 		/*
-		 * CASE has not hypothetical else branch. In this case
-		 * an exception is raised.
+		 * CASE has not hypothetical else branch. In this case an exception is
+		 * raised.
 		 */
 	}
 	else if (IS_PLPGSQL_STMT(stmt, PLPGSQL_STMT_BLOCK))
@@ -2347,11 +2348,10 @@ coverage_branches_walker(PLpgSQL_stmt *stmt, coverage_branches_context *context)
 		if (stmt_block->exceptions)
 		{
 			/*
-			 * block without exception handling doesn't make branches,
-			 * in this case the check of execution of first statement
-			 * from the list is maybe not accurate - but it is consistent
-			 * with the variant without the exception handling. We check
-			 * only first statement.
+			 * block without exception handling doesn't make branches, in this
+			 * case the check of execution of first statement from the list is
+			 * maybe not accurate - but it is consistent with the variant
+			 * without the exception handling. We check only first statement.
 			 */
 			increment_branch_counters(context, stmt_block->body, NULL);
 
@@ -2419,7 +2419,7 @@ static double
 shared_coverage_compute(plch_fidentity_hk *hk, PLpgSQL_stmt *stmt, int ct)
 {
 	FuncStmtsStats *fss;
-	StmtStats *sstats = NULL;
+	StmtStats  *sstats = NULL;
 	bool		found;
 	double		result;
 
@@ -2477,8 +2477,8 @@ coverage_internal(Oid fnoid, int ct)
 	plpgsql_check_get_function_info(&cinfo);
 
 	/*
-	 * show_profile on reduces checks - we don't need to specify relations
-	 * for triggers, because we use statements profile without type deduction
+	 * show_profile on reduces checks - we don't need to specify relations for
+	 * triggers, because we use statements profile without type deduction
 	 * (from expressions).
 	 */
 	cinfo.show_profile = true;
@@ -2675,10 +2675,10 @@ cutline(char *str, char **line)
 			*ptr++ = '\0';
 
 			/*
-			 * ignore last empty rows, reduce garbage row. We cannot
-			 * to skip first usuall empty row, because we don't want
-			 * to break relation between lineno and statement's lineno.
-			 * Last empty line we can throw without any impact.
+			 * ignore last empty rows, reduce garbage row. We cannot to skip
+			 * first usuall empty row, because we don't want to break relation
+			 * between lineno and statement's lineno. Last empty line we can
+			 * throw without any impact.
 			 */
 			if (*ptr == '\0')
 				return NULL;
@@ -2692,9 +2692,9 @@ cutline(char *str, char **line)
 
 static HTAB *
 assign_shared_htab(const char *tabname,
-			Size keysize,
-			Size entrysize,
-			int nelems)
+				   Size keysize,
+				   Size entrysize,
+				   int nelems)
 {
 	HASHCTL		info;
 
@@ -2709,7 +2709,7 @@ assign_shared_htab(const char *tabname,
 
 #else
 
-	return ShmemInitHash(tabname, nelems, nelems, &info,  HASH_ELEM | HASH_BLOBS);
+	return ShmemInitHash(tabname, nelems, nelems, &info, HASH_ELEM | HASH_BLOBS);
 
 #endif
 

@@ -1002,8 +1002,8 @@ tracer_func_end(PLpgSQL_execstate *estate,
 
 static void
 tracer_func_abort(PLpgSQL_execstate *estate,
-				PLpgSQL_function *func,
-				plch_fextra *fextra)
+				  PLpgSQL_function *func,
+				  plch_fextra *fextra)
 {
 	tracer_info *tinfo = (tracer_info *) estate->plugin_info;
 
@@ -1334,8 +1334,8 @@ tracer_stmt_end(PLpgSQL_execstate *estate,
 
 static void
 tracer_stmt_abort(PLpgSQL_execstate *estate,
-				 PLpgSQL_stmt *stmt,
-				 plch_fextra *fextra)
+				  PLpgSQL_stmt *stmt,
+				  plch_fextra *fextra)
 {
 	tracer_info *tinfo = (tracer_info *) estate->plugin_info;
 

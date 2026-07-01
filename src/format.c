@@ -352,16 +352,16 @@ plpgsql_check_prepare_err_text_with_target_vardecl(PLpgSQL_checkstate *cstate, P
 	}
 
 	/*
-	 * SELECT INTO makes internal row variable for target. Showing this variable
-	 * as target is useless. We have to wait, when we know real target variable
-	 * (passed as fieldno).
+	 * SELECT INTO makes internal row variable for target. Showing this
+	 * variable as target is useless. We have to wait, when we know real
+	 * target variable (passed as fieldno).
 	 */
 	if (varno != -1)
 		target_varno = varno;
 
 	if (target_varno != -1)
 	{
-		PLpgSQL_datum *d = (PLpgSQL_datum*) cstate->estate->datums[target_varno];
+		PLpgSQL_datum *d = (PLpgSQL_datum *) cstate->estate->datums[target_varno];
 
 		if (d->dtype == PLPGSQL_DTYPE_VAR ||
 			d->dtype == PLPGSQL_DTYPE_ROW ||
@@ -401,7 +401,7 @@ plpgsql_check_prepare_err_text_with_target_vardecl(PLpgSQL_checkstate *cstate, P
 						else
 							appendStringInfoString(&str, ", ");
 
-						d2 = (PLpgSQL_datum*) cstate->estate->datums[row->varnos[fnum]];
+						d2 = (PLpgSQL_datum *) cstate->estate->datums[row->varnos[fnum]];
 						if (d2->dtype == PLPGSQL_DTYPE_VAR ||
 							d2->dtype == PLPGSQL_DTYPE_ROW ||
 							d2->dtype == PLPGSQL_DTYPE_REC)
@@ -923,8 +923,8 @@ format_error_xml(StringInfo str,
 }
 
 /*
-* format_error_json formats and collects a identifided issues
-*/
+ * format_error_json formats and collects a identifided issues
+ */
 static void
 format_error_json(StringInfo str,
 				  PLpgSQL_execstate *estate,

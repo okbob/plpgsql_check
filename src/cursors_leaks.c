@@ -33,7 +33,7 @@ int			plpgsql_check_cursors_leaks_level = WARNING;
 typedef struct CursorTrace
 {
 	int			stmtid;
-	void		*plugin_info;
+	void	   *plugin_info;
 	char	   *curname;
 } CursorTrace;
 

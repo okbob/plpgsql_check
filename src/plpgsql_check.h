@@ -377,8 +377,8 @@ extern char *plpgsql_check_process_echo_string(char *str, plpgsql_check_info *ci
  * functions from profiler.c
  */
 extern bool plpgsql_check_profiler;
-extern int plpgsql_check_profiler_max_shared_chunks;
-extern int plch_max_stat_size;
+extern int	plpgsql_check_profiler_max_shared_chunks;
+extern int	plch_max_stat_size;
 extern bool plch_use_shared_stats_when_it_possible;
 extern bool plch_use_lxcache;
 
@@ -481,7 +481,7 @@ typedef struct
 } plch_fextra;
 
 plch_fextra *plch_get_fextra(PLpgSQL_function *func);
-void plch_release_fextra(plch_fextra *fextra);
+void		plch_release_fextra(plch_fextra *fextra);
 
 #if PG_VERSION_NUM < 150000
 

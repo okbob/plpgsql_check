@@ -278,7 +278,7 @@ plpgsql_check_parse_name_or_signature(char *name_or_signature)
 
 #else
 
-		int		fgc_flags;
+		int			fgc_flags;
 
 		clist = FuncnameGetCandidates(names, -1, NIL, false, false, false,
 									  true, &fgc_flags);

@@ -21,7 +21,7 @@
  * cut from pg_list.h
  *
  * remove when foreach_ptr will be supported on all versions
-
+ *
  */
 #define foreach_ptr(type, var, lst) foreach_internal(type, *, var, lst, lfirst)
 #define foreach_int(var, lst)	foreach_internal(int, , var, lst, lfirst_int)
@@ -50,9 +50,9 @@
 
 void
 plch_statement_tree_walker_impl(PLpgSQL_stmt *stmt,
-								   plch_stmt_walker_callback stmt_callback,
-								   plch_expr_walker_callback expr_callback,
-								   void *context)
+								plch_stmt_walker_callback stmt_callback,
+								plch_expr_walker_callback expr_callback,
+								void *context)
 {
 #define S_WALK(st) do { if (stmt_callback) stmt_callback(st, context); } while(0)
 #define E_WALK(st, ex) do { if (expr_callback) expr_callback(st, ex, context); } while(0)
@@ -376,7 +376,7 @@ PLpgSQL_expr *
 plch_statement_get_expr(PLpgSQL_stmt *stmt, bool *is_dynamic, List **params, const char **exprname)
 {
 	PLpgSQL_expr *expr = NULL;
-	List		*_params = NIL;
+	List	   *_params = NIL;
 	bool		_is_dynamic = false;
 	const char *_exprname = "expr";
 

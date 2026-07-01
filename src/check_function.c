@@ -316,7 +316,7 @@ static bool
 is_active(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 {
 	return plpgsql_check_mode == PLPGSQL_CHECK_MODE_FRESH_START ||
-		   plpgsql_check_mode == PLPGSQL_CHECK_MODE_EVERY_START;
+		plpgsql_check_mode == PLPGSQL_CHECK_MODE_EVERY_START;
 }
 
 /*
@@ -966,7 +966,7 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 	}
 	else if (!IsPolymorphicType(cinfo->rettype))
 	{
-		Oid		result_rettype = getBaseType(cinfo->rettype);
+		Oid			result_rettype = getBaseType(cinfo->rettype);
 
 		if (get_typtype(result_rettype) == TYPTYPE_COMPOSITE)
 			resultTupleDesc = lookup_rowtype_tupdesc_copy(result_rettype, -1);

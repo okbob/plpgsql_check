@@ -284,7 +284,7 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 
 			if (stmt)
 			{
-				bool	have_into = false;
+				bool		have_into = false;
 				PLpgSQL_variable *target;
 
 				if (stmt->cmd_type == PLPGSQL_STMT_EXECSQL)
@@ -342,14 +342,14 @@ volatility_to_string(const char volatility)
 static void
 collect_volatility(PLpgSQL_checkstate *cstate, Query *query)
 {
-	bool	nowarning = false;
+	bool		nowarning = false;
 
 	if (cstate->skip_volatility_check)
 		return;
 
 	if ((cstate->cinfo->performance_warnings &&
 		 cstate->volatility != PROVOLATILE_VOLATILE) ||
-		 (cstate->cinfo->other_warnings))
+		(cstate->cinfo->other_warnings))
 	{
 		char		curr_volatility;
 
@@ -381,8 +381,8 @@ collect_volatility(PLpgSQL_checkstate *cstate, Query *query)
 			curr_volatility = PROVOLATILE_VOLATILE;
 
 			/*
-			 * In this case the error will be raised when function is not volatile,
-			 * so we don't want to raise redundant warning.
+			 * In this case the error will be raised when function is not
+			 * volatile, so we don't want to raise redundant warning.
 			 */
 			nowarning = true;
 		}
@@ -1411,9 +1411,9 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 
 					if (!type_is_rowtype(expr_typoid) && !type_is_rowtype(expected_typoid))
 					{
-						Oid		infunc;
-						Oid		intypeioparam;
-						Oid		typeid;
+						Oid			infunc;
+						Oid			intypeioparam;
+						Oid			typeid;
 
 						typeid = use_element_type ? get_array_type(expected_typoid) : expected_typoid;
 
@@ -1619,13 +1619,13 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 			PLpgSQL_var *var = (PLpgSQL_var *) cstate->estate->datums[targetdno];
 
 			/*
-			 * Trace constants only when target is really scalar.
-			 * The scalar types allows simple IO casting, but composites with different
-			 * number of fields doesn't allow it. There are difference between PL/pgSQL
-			 * assignment, that is not sensitive on different numbers of fields between
-			 * composite target and composite source, and common composite casts (that
-			 * doesn't allow to cast composites when source and target has different
-			 * natts.
+			 * Trace constants only when target is really scalar. The scalar
+			 * types allows simple IO casting, but composites with different
+			 * number of fields doesn't allow it. There are difference between
+			 * PL/pgSQL assignment, that is not sensitive on different numbers
+			 * of fields between composite target and composite source, and
+			 * common composite casts (that doesn't allow to cast composites
+			 * when source and target has different natts.
 			 */
 			if (var->dtype == PLPGSQL_DTYPE_VAR && var->datatype->ttype == PLPGSQL_TTYPE_SCALAR)
 			{
@@ -1644,9 +1644,9 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 						cstate->strconstvars = palloc0(sizeof(char *) * cstate->estate->ndatums);
 
 					/*
-					 * We need to do copy string first. There is an possibility to
-					 * self reference, and then we need to first copy, and after
-					 * that free.
+					 * We need to do copy string first. There is an
+					 * possibility to self reference, and then we need to
+					 * first copy, and after that free.
 					 */
 					prev_val = cstate->strconstvars[targetdno];
 					cstate->strconstvars[targetdno] = pstrdup(str);

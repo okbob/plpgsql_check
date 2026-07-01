@@ -51,28 +51,26 @@ typedef struct plpgsql_plugin_info
 	bool		is_active[MAX_PLUGINS];
 
 	/*
-	 * This array holds a stack of opened statements. It is the base
-	 * for calling stmt_abort callback.
+	 * This array holds a stack of opened statements. It is the base for
+	 * calling stmt_abort callback.
 	 */
 	PLpgSQL_stmt **stmts_stack;
 	int			stmts_stack_size;
 
 	/*
-	 * This array holds a statements, that should be removed
-	 * from stmts_stack. It can be used inside a exception, and
-	 * then can be dangerous to allocate memory. So this array
-	 * is preallocated.
+	 * This array holds a statements, that should be removed from stmts_stack.
+	 * It can be used inside a exception, and then can be dangerous to
+	 * allocate memory. So this array is preallocated.
 	 */
 	PLpgSQL_stmt **stmts_buf;
 
 	MemoryContextCallback mcb;
 
 	/*
-	 * Unfortunately, memory of calling inline block is released
-	 * before memory of called function (after an exception). So
-	 * we need to force execution plugin_info_reset in correct
-	 * order, and then we need to hold sequence of pldbgapi
-	 * plugins info.
+	 * Unfortunately, memory of calling inline block is released before memory
+	 * of called function (after an exception). So we need to force execution
+	 * plugin_info_reset in correct order, and then we need to hold sequence
+	 * of pldbgapi plugins info.
 	 */
 	struct plpgsql_plugin_info *prev_pldbgapi_plugin_info;
 
@@ -83,7 +81,7 @@ static plpgsql_plugin_info *top_pldbgapi_plugin_info = NULL;
 #define PLUGIN_INFO_MAGIC		2026010118
 
 static plch_plugin *plugins[MAX_PLUGINS];
-static int nplugins = 0;
+static int	nplugins = 0;
 
 static void func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func);
 static void func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func);
@@ -159,7 +157,7 @@ abort_statements(PLpgSQL_stmt **stmts, int nstmts,
 static void
 plugin_info_reset(void *arg)
 {
-	plpgsql_plugin_info *plugin_info = (plpgsql_plugin_info*) arg;
+	plpgsql_plugin_info *plugin_info = (plpgsql_plugin_info *) arg;
 	PLpgSQL_execstate loc_estate;
 	PLpgSQL_execstate *old_cur_estate;
 	MemoryContext exec_mcxt = CurrentMemoryContext;
@@ -170,18 +168,18 @@ plugin_info_reset(void *arg)
 	Assert(plugin_info->magic == PLUGIN_INFO_MAGIC);
 
 	/*
-	 * PostgreSQL 19 can remove this callback. But we need to support
-	 * previous releases, so when fextra is already released, then
-	 * do just nothing here.
+	 * PostgreSQL 19 can remove this callback. But we need to support previous
+	 * releases, so when fextra is already released, then do just nothing
+	 * here.
 	 */
 	if (!plugin_info->fextra)
 		return;
 
 	/*
-	 * When current plugin_info is not not top plugin_info, then
-	 * memory is released in unexpected order. But we can fix it,
-	 * by explicit call of plugin_info_reset, so call all
-	 * plugin_info_reset for all nested executed functions.
+	 * When current plugin_info is not not top plugin_info, then memory is
+	 * released in unexpected order. But we can fix it, by explicit call of
+	 * plugin_info_reset, so call all plugin_info_reset for all nested
+	 * executed functions.
 	 */
 	while (top_pldbgapi_plugin_info && top_pldbgapi_plugin_info != plugin_info)
 	{
@@ -189,8 +187,8 @@ plugin_info_reset(void *arg)
 	}
 
 	/*
-	 * In this moment, the estate content can be corrupted, because
-	 * estate is from stack of already ended function.
+	 * In this moment, the estate content can be corrupted, because estate is
+	 * from stack of already ended function.
 	 *
 	 * Inside abort methods, the estate fields should not be referenced!
 	 */
@@ -246,7 +244,7 @@ plugin_info_reset(void *arg)
 static void
 func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 {
-	plpgsql_plugin_info *plugin_info =  palloc0(sizeof(plpgsql_plugin_info));
+	plpgsql_plugin_info *plugin_info = palloc0(sizeof(plpgsql_plugin_info));
 	MemoryContext setup_mcxt = CurrentMemoryContext;
 	int			i;
 
@@ -297,20 +295,20 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 		plugin_info->mcb.arg = plugin_info;
 
 		/*
-		 * Unfortunately, the caller context of inline block
-		 * is released in unstable order (after an exception).
-		 * The other memory is cleaned explicitly in plpgsql_inline_handler.
+		 * Unfortunately, the caller context of inline block is released in
+		 * unstable order (after an exception). The other memory is cleaned
+		 * explicitly in plpgsql_inline_handler.
 		 *
-		 * The workaround - using context from simple_eval_estate is
-		 * not nice, because it enforce plugin_reset before final raising
-		 * an exception. inline block hash not use shared simple
-		 * eval estate, and every inline block has unique simple eval estate.
+		 * The workaround - using context from simple_eval_estate is not nice,
+		 * because it enforce plugin_reset before final raising an exception.
+		 * inline block hash not use shared simple eval estate, and every
+		 * inline block has unique simple eval estate.
 		 *
-		 * The advantage of using es_query_cxt context instead caller
-		 * context is a fact, so this context is destroyed before
-		 * related PLpgSQL_function is released (including AST). Caller
-		 * context is released too late, and access to AST is broken
-		 * due access to already released memory.
+		 * The advantage of using es_query_cxt context instead caller context
+		 * is a fact, so this context is destroyed before related
+		 * PLpgSQL_function is released (including AST). Caller context is
+		 * released too late, and access to AST is broken due access to
+		 * already released memory.
 		 */
 		if (!OidIsValid(func->fn_oid))
 		{
@@ -349,7 +347,7 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 				MemoryContextSwitchTo(setup_mcxt);
 				plugins[i]->func_setup(estate, func, plugin_info->fextra);
 				plugin_info->plugin_info[i] = estate->plugin_info;
-				
+
 			}
 		}
 
@@ -438,7 +436,7 @@ func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	{
 		if (plugin_info->fextra)
 		{
-			int naborted_stmts = plugin_info->stmts_stack_size;
+			int			naborted_stmts = plugin_info->stmts_stack_size;
 
 			Assert(plugin_info->fextra->fn_oid == plugin_info->fn_oid);
 
@@ -501,10 +499,10 @@ stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	Assert(plugin_info->fn_oid == estate->func->fn_oid);
 
 	/*
-	 * When current plugin_info is not not top plugin_info, then
-	 * memory is released in unexpected order. But we can fix it,
-	 * by explicit call of plugin_info_reset, so call all
-	 * plugin_info_reset for all nested executed functions.
+	 * When current plugin_info is not not top plugin_info, then memory is
+	 * released in unexpected order. But we can fix it, by explicit call of
+	 * plugin_info_reset, so call all plugin_info_reset for all nested
+	 * executed functions.
 	 */
 	while (top_pldbgapi_plugin_info && top_pldbgapi_plugin_info != plugin_info)
 	{
@@ -516,12 +514,11 @@ stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		if (estate->cur_error)
 		{
 			/*
-			 * Only inside error handler we need reduce statements
-			 * from stacks, because stmt_end was skipped due some
-			 * exception. All statements until parent of current
-			 * statements should be closed.
+			 * Only inside error handler we need reduce statements from
+			 * stacks, because stmt_end was skipped due some exception. All
+			 * statements until parent of current statements should be closed.
 			 */
-			int		cur_parentid = plugin_info->fextra->parentids[stmt->stmtid];
+			int			cur_parentid = plugin_info->fextra->parentids[stmt->stmtid];
 
 			while (plugin_info->stmts_stack_size > 0 &&
 				   plugin_info->stmts_stack[plugin_info->stmts_stack_size - 1]->stmtid != cur_parentid)
@@ -593,7 +590,8 @@ stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 		Assert(plugin_info->stmts_stack_size > 0);
 
 		/*
-		 * After NULL exception handler, we need to close statements in stmt_end
+		 * After NULL exception handler, we need to close statements in
+		 * stmt_end
 		 */
 		while (plugin_info->stmts_stack_size > 0 &&
 			   stmt->stmtid != plugin_info->stmts_stack[plugin_info->stmts_stack_size - 1]->stmtid)

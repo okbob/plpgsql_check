@@ -29,8 +29,8 @@ typedef struct
 {
 	plch_fextra *fextra;
 	int			parentid;
-	int			*naturalid;
-	int			current_deep;		/* starts from zero */
+	int		   *naturalid;
+	int			current_deep;	/* starts from zero */
 } fextra_init_context;
 
 static void
@@ -41,8 +41,8 @@ init_fextra_stmt_walker(PLpgSQL_stmt *stmt, fextra_init_context *context)
 	int			stmtid = stmt->stmtid;
 
 	/*
-	 * statement ids are starts by one. For simplicity don't
-	 * change base to zero.
+	 * statement ids are starts by one. For simplicity don't change base to
+	 * zero.
 	 */
 	fextra->parentids[stmtid] = context->parentid;
 	fextra->naturalids[stmtid] = ++(*context->naturalid);
@@ -77,15 +77,13 @@ pin_func(PLpgSQL_function *func)
 	/*
 	 * We cannot to pin inline block due two reasons:
 	 *
-	 * 1. After error, the Assert(func->cfunc.use_count == 0);
-	 *    is executed before exec memory is released and our
-	 *    abort callback is raised.
+	 * 1. After error, the Assert(func->cfunc.use_count == 0); is executed
+	 * before exec memory is released and our abort callback is raised.
 	 *
-	 * 2. There is not any reason, why to do it. inline block
-	 *    uses short life contexts for everything - including
-	 *    fextra, and then fextra cannot be corrupted. Unfortunately
-	 *    inside plpgsql_free_function_memory is free_stmt
-	 *    called before MemoryContextDelete(func->fn_cxt)
+	 * 2. There is not any reason, why to do it. inline block uses short life
+	 * contexts for everything - including fextra, and then fextra cannot be
+	 * corrupted. Unfortunately inside plpgsql_free_function_memory is
+	 * free_stmt called before MemoryContextDelete(func->fn_cxt)
 	 */
 	Assert(OidIsValid(func->fn_oid));
 
@@ -177,11 +175,11 @@ plch_get_fextra(PLpgSQL_function *func)
 		if (!found)
 		{
 			fextra->mcxt = AllocSetContextCreate(fextra_mcxt,
-								  "PLpgSQL fextra entry context",
-								  ALLOCSET_DEFAULT_SIZES);
+												 "PLpgSQL fextra entry context",
+												 ALLOCSET_DEFAULT_SIZES);
 
 			fextra->hashValue = GetSysCacheHashValue1(PROCOID,
-														 ObjectIdGetDatum(func->fn_oid));
+													  ObjectIdGetDatum(func->fn_oid));
 
 			fextra->use_count = 0;
 			fextra->is_valid = false;

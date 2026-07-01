@@ -395,7 +395,7 @@ plpgsql_check_assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 
 		if (!cstate->estate->err_text && cstate->estate->err_stmt)
 		{
-			int		target_dno;
+			int			target_dno;
 
 			if (rec)
 				target_dno = rec->dno;
