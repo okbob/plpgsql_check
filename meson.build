@@ -1,4 +1,4 @@
-project('plpgsql_check', ['c'], version: '2.9.3')
+project('plpgsql_check', ['c'], version: '2.10.0')
 
 pg_config = find_program('pg_config')
 
@@ -38,6 +38,7 @@ sources = files(
   'src/check_function.c',
   'src/pldbgapi3.c',
   'src/pragma.c',
+  'src/pragma_generator.c',
   'src/report.c',
   'src/tablefunc.c',
   'src/typdesc.c',
@@ -59,7 +60,8 @@ data = [ module_name + '.control',
 tests = [ 'plpgsql_check_active',
           'plpgsql_check_passive',
           'plpgsql_check_active-'  + pg_version_major.to_string(),
-          'plpgsql_check_passive-' + pg_version_major.to_string() ]
+          'plpgsql_check_passive-' + pg_version_major.to_string(),
+          'plpgsql_check_pragma_generator' ]
 
 compiler = meson.get_compiler('c')
 

@@ -3,7 +3,7 @@
 %global sname plpgsql_check
 
 Name:		%{sname}_%{pgmajorversion}
-Version:	2.9.3
+Version:	2.10.0
 Release:	1%{?dist}
 Summary:	Additional tools for plpgsql functions validation
 
@@ -42,7 +42,7 @@ rm -rf %{buildroot}
 %defattr(644,root,root,755)
 %doc README.md
 %{pginstdir}/lib/plpgsql_check.so
-%{pginstdir}/share/extension/plpgsql_check--2.9.sql
+%{pginstdir}/share/extension/plpgsql_check--2.10.sql
 %{pginstdir}/share/extension/plpgsql_check.control
 %{pginstdir}/lib/bitcode/*.bc
 %{pginstdir}/lib/bitcode/plpgsql_check/src/*.bc
