@@ -46,7 +46,7 @@
 
 PG_MODULE_MAGIC_EXT(
 					.name = "plpgsql_check",
-					.version = "2.9.3"
+					.version = "2.10.0"
 );
 
 #else
@@ -140,7 +140,7 @@ pg_extension_cache_callback(Datum arg, int cacheid, uint32 hashvalue)
  */
 #define LOAD_EXTERNAL_FUNCTION(file, funcname)	((void *) (load_external_function(file, funcname, true, NULL)))
 
-#define EXPECTED_EXTVERSION		"2.9"
+#define EXPECTED_EXTVERSION		"2.10"
 
 void
 plpgsql_check_check_ext_version(Oid fn_oid)

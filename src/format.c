@@ -616,6 +616,16 @@ put_text_line(plpgsql_check_result_info *ri, const char *message, int len)
 	tuplestore_puttuple(ri->tuple_store, tuple);
 }
 
+/*
+ * Public wrapper of put_text_line. Used by the table pragmas generator
+ * for returning generated pragma lines.
+ */
+void
+plch_put_text_line(plpgsql_check_result_info *ri, const char *message, int len)
+{
+	put_text_line(ri, message, len);
+}
+
 static const char *
 error_level_str(int level)
 {

@@ -231,6 +231,24 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 			cstate.estate = &estate;
 
 			/*
+			 * Apply pragmas entered as an argument of the check function.
+			 * They are applied before the start of static analysis, so the
+			 * table pragmas can create temporary objects referenced by the
+			 * checked function.
+			 */
+			if (cinfo->pragmas)
+			{
+				ListCell   *lc;
+
+				foreach(lc, cinfo->pragmas)
+				{
+					char	   *pragma_str = (char *) lfirst(lc);
+
+					plpgsql_check_pragma_apply(&cstate, pragma_str, NULL, 0);
+				}
+			}
+
+			/*
 			 * Mark the function as busy, ensure higher than zero usage. There
 			 * is no reason for protection function against delete, but I
 			 * afraid of asserts.
@@ -297,6 +315,13 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 			plch_use_count(function)--;
 			release_exprs(cstate.exprs);
 		}
+
+		/*
+		 * In pragma generation mode, errors are not converted to check result
+		 * rows - the original error is rethrown.
+		 */
+		if (cinfo->generate_pragmas)
+			ReThrowError(edata);
 
 		plpgsql_check_put_error_edata(&cstate, edata);
 	}
@@ -571,6 +596,20 @@ function_check(PLpgSQL_function *func, PLpgSQL_checkstate *cstate)
 	}
 
 	/*
+	 * In pragma generation mode, only scan the function's body for CREATE
+	 * TEMP TABLE ... AS statements. The check is skipped completely.
+	 */
+	if (cstate->cinfo->generate_pragmas)
+	{
+		plch_generate_table_pragmas_walk(cstate, func);
+
+		/* clean state values - next errors are not related to any command */
+		cstate->estate->err_stmt = NULL;
+
+		return;
+	}
+
+	/*
 	 * Now check the toplevel block of statements
 	 */
 	plpgsql_check_stmt(cstate, (PLpgSQL_stmt *) func->action, &closing, &exceptions);
@@ -655,6 +694,20 @@ trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate)
 	}
 	else
 		elog(ERROR, "unexpected environment");
+
+	/*
+	 * In pragma generation mode, only scan the function's body for CREATE
+	 * TEMP TABLE ... AS statements. The check is skipped completely.
+	 */
+	if (cstate->cinfo->generate_pragmas)
+	{
+		plch_generate_table_pragmas_walk(cstate, func);
+
+		/* clean state values - next errors are not related to any command */
+		cstate->estate->err_stmt = NULL;
+
+		return;
+	}
 
 	/*
 	 * Now check the toplevel block of statements

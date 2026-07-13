@@ -12,12 +12,15 @@
 #include "plpgsql_check.h"
 #include "plpgsql_check_builtins.h"
 
+#include "catalog/pg_type.h"
+#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/syscache.h"
 
 static void SetReturningFunctionCheck(ReturnSetInfo *rsinfo);
 
 PG_FUNCTION_INFO_V1(plpgsql_check_function);
+PG_FUNCTION_INFO_V1(plch_generate_table_pragmas);
 PG_FUNCTION_INFO_V1(plpgsql_check_function_tb);
 PG_FUNCTION_INFO_V1(plpgsql_show_dependency_tb);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_function_tb);
@@ -83,6 +86,31 @@ plpgsql_check_set_without_warnings(plpgsql_check_info *cinfo)
 }
 
 /*
+ * Transform the value of "pragmas" option (text array) to list of
+ * pragma strings. NULL elements are ignored.
+ */
+static List *
+get_pragmas_list(ArrayType *pragmas_array)
+{
+	List	   *result = NIL;
+	Datum	   *elems;
+	bool	   *nulls;
+	int			nelems;
+	int			i;
+
+	deconstruct_array(pragmas_array, TEXTOID, -1, false, TYPALIGN_INT,
+					  &elems, &nulls, &nelems);
+
+	for (i = 0; i < nelems; i++)
+	{
+		if (!nulls[i])
+			result = lappend(result, TextDatumGetCString(elems[i]));
+	}
+
+	return result;
+}
+
+/*
  * plpgsql_check_function
  *
  * Extended check with formatted text output
@@ -99,7 +127,7 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 
 	plpgsql_check_check_ext_version(fcinfo->flinfo->fn_oid);
 
-	Assert(PG_NARGS() == 21);
+	Assert(PG_NARGS() == 22);
 
 	/* check to see if caller supports us returning a tuplestore */
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
@@ -156,6 +184,9 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 
 	cinfo.incomment_options_usage_warning = PG_GETARG_BOOL(19);
 	cinfo.constants_tracing = PG_GETARG_BOOL(20);
+
+	if (!PG_ARGISNULL(21))
+		cinfo.pragmas = get_pragmas_list(PG_GETARG_ARRAYTYPE_P(21));
 
 	/* without_warnings */
 	if (PG_GETARG_BOOL(16))
@@ -243,7 +274,7 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 
 	plpgsql_check_check_ext_version(fcinfo->flinfo->fn_oid);
 
-	Assert(PG_NARGS() == 20);
+	Assert(PG_NARGS() == 21);
 
 	/* check to see if caller supports us returning a tuplestore */
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
@@ -298,6 +329,9 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 
 	cinfo.incomment_options_usage_warning = PG_GETARG_BOOL(18);
 	cinfo.constants_tracing = PG_GETARG_BOOL(19);
+
+	if (!PG_ARGISNULL(20))
+		cinfo.pragmas = get_pragmas_list(PG_GETARG_ARRAYTYPE_P(20));
 
 	/* without_warnings */
 	if (PG_GETARG_BOOL(15))
@@ -547,6 +581,83 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 	fnoid = PG_GETARG_OID(0);
 
 	return check_function_tb_internal(fnoid, fcinfo);
+}
+
+/*
+ * plch_generate_table_pragmas
+ *
+ * Returns table pragmas generated for CREATE TEMP TABLE ... AS statements
+ * used inside the function's body.
+ *
+ */
+Datum
+plch_generate_table_pragmas(PG_FUNCTION_ARGS)
+{
+	plpgsql_check_info cinfo;
+	plpgsql_check_result_info ri;
+	ReturnSetInfo *rsinfo;
+	ErrorContextCallback *prev_errorcontext;
+	Oid			fnoid;
+
+	plpgsql_check_check_ext_version(fcinfo->flinfo->fn_oid);
+
+	Assert(PG_NARGS() == 3);
+
+	/* check to see if caller supports us returning a tuplestore */
+	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	SetReturningFunctionCheck(rsinfo);
+
+	if (PG_ARGISNULL(0))
+		ERR_NULL_OPTION("funcoid");
+	if (PG_ARGISNULL(1))
+		ERR_NULL_OPTION("relid");
+	if (PG_ARGISNULL(2))
+		ERR_NULL_OPTION("fatal_errors");
+
+	fnoid = PG_GETARG_OID(0);
+
+	plpgsql_check_info_init(&cinfo, fnoid);
+
+	cinfo.relid = PG_GETARG_OID(1);
+	cinfo.fatal_errors = PG_GETARG_BOOL(2);
+	cinfo.generate_pragmas = true;
+
+	/* use the same defaults as plpgsql_check_function */
+	cinfo.anyelementoid = INT4OID;
+	cinfo.anyenumoid = InvalidOid;
+	cinfo.anyrangeoid = INT4RANGEOID;
+	cinfo.anycompatibleoid = INT4OID;
+	cinfo.anycompatiblerangeoid = INT4RANGEOID;
+
+	cinfo.proctuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(cinfo.fn_oid));
+	if (!HeapTupleIsValid(cinfo.proctuple))
+		elog(ERROR, "cache lookup failed for function %u", cinfo.fn_oid);
+
+	plpgsql_check_get_function_info(&cinfo);
+	plpgsql_check_precheck_conditions(&cinfo);
+
+	plpgsql_check_search_comment_options(&cinfo);
+
+	/* no warnings should be raised in pragma generation mode */
+	plpgsql_check_set_without_warnings(&cinfo);
+	cinfo.all_warnings = false;
+	cinfo.without_warnings = false;
+
+	/* Envelope outer plpgsql function is not interesting */
+	prev_errorcontext = error_context_stack;
+	error_context_stack = NULL;
+
+	plpgsql_check_init_ri(&ri, PLPGSQL_CHECK_FORMAT_TEXT, rsinfo);
+
+	plpgsql_check_function_internal(&ri, &cinfo);
+
+	plpgsql_check_finalize_ri(&ri);
+
+	error_context_stack = prev_errorcontext;
+
+	ReleaseSysCache(cinfo.proctuple);
+
+	return (Datum) 0;
 }
 
 Datum

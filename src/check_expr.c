@@ -317,6 +317,17 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 	}
 }
 
+/*
+ * Prepare a plan for expression without any additional checks. Used by
+ * the table pragmas generator, where only successful planning of the
+ * statement is interesting.
+ */
+void
+plch_expr_prepare_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+{
+	prepare_plan(cstate, expr, 0, NULL, NULL, false);
+}
+
 static const char *
 volatility_to_string(const char volatility)
 {
@@ -533,6 +544,96 @@ check_pure_expr(PLpgSQL_checkstate *cstate, Query *query, char *query_str)
 }
 
 /*
+ * Process plpgsql_check pragmas written inside the checked function's
+ * body. The pragma can be entered as a plpgsql_check_pragma function
+ * call with constant string arguments, or (only in PERFORM statements)
+ * as a string constant with the "PRAGMA:" prefix. Returns true, when
+ * the statement was recognized as a pragma.
+ */
+bool
+plch_apply_inline_pragmas(PLpgSQL_checkstate *cstate, SelectStmt *selectStmt,
+						  PLpgSQL_nsitem *ns, int lineno, bool is_perform_stmt)
+{
+	bool		was_pragma = false;
+
+	if (selectStmt->targetList && IsA(linitial(selectStmt->targetList), ResTarget))
+	{
+		ResTarget  *rt = (ResTarget *) linitial(selectStmt->targetList);
+
+		if (rt->val && IsA(rt->val, A_Const))
+		{
+			A_Const    *ac = (A_Const *) rt->val;
+			char	   *str = NULL;
+
+#if PG_VERSION_NUM < 150000
+
+			if (ac->val.type == T_String)
+				str = strVal(&(ac->val));
+
+#else
+
+			if (!ac->isnull && IsA(&ac->val, String))
+				str = strVal(&(ac->val));
+
+#endif
+
+			if (str && is_perform_stmt)
+			{
+				while (*str == ' ')
+					str++;
+
+				if (strncasecmp(str, "pragma:", 7) == 0)
+				{
+					was_pragma = true;
+
+					plpgsql_check_pragma_apply(cstate, str + 7, ns, lineno);
+				}
+			}
+		}
+		else if (rt->val && IsA(rt->val, FuncCall))
+		{
+			char	   *funcname;
+			char	   *schemaname;
+			FuncCall   *fc = (FuncCall *) rt->val;
+
+			DeconstructQualifiedName(fc->funcname, &schemaname, &funcname);
+
+			if (strcmp(funcname, "plpgsql_check_pragma") == 0)
+			{
+				ListCell   *lc;
+
+				was_pragma = true;
+
+				foreach(lc, fc->args)
+				{
+					Node	   *arg = (Node *) lfirst(lc);
+
+					if (IsA(arg, A_Const))
+					{
+						A_Const    *ac = (A_Const *) arg;
+
+#if PG_VERSION_NUM < 150000
+
+						if (ac->val.type == T_String)
+							plpgsql_check_pragma_apply(cstate, strVal(&(ac->val)), ns, lineno);
+
+#else
+
+						if (!ac->isnull && IsA(&ac->val, String))
+							plpgsql_check_pragma_apply(cstate, strVal(&(ac->val)), ns, lineno);
+
+#endif
+
+					}
+				}
+			}
+		}
+	}
+
+	return was_pragma;
+}
+
+/*
  * Returns Query node for expression
  *
  */
@@ -598,86 +699,20 @@ ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, CachedPlanSource *p
 			plansource->raw_parse_tree->stmt &&
 			IsA(plansource->raw_parse_tree->stmt, SelectStmt))
 		{
-			SelectStmt *selectStmt = (SelectStmt *) plansource->raw_parse_tree->stmt;
+			bool		is_perform_stmt;
+			int			lineno = 0;
 
-			if (selectStmt->targetList && IsA(linitial(selectStmt->targetList), ResTarget))
-			{
-				ResTarget  *rt = (ResTarget *) linitial(selectStmt->targetList);
+			is_perform_stmt = (cstate->estate &&
+							   cstate->estate->err_stmt &&
+							   cstate->estate->err_stmt->cmd_type == PLPGSQL_STMT_PERFORM);
 
-				if (rt->val && IsA(rt->val, A_Const))
-				{
-					A_Const    *ac = (A_Const *) rt->val;
-					bool		is_perform_stmt;
-					char	   *str = NULL;
+			if (cstate->estate && cstate->estate->err_stmt)
+				lineno = cstate->estate->err_stmt->lineno;
 
-					is_perform_stmt = (cstate->estate &&
-									   cstate->estate->err_stmt &&
-									   cstate->estate->err_stmt->cmd_type == PLPGSQL_STMT_PERFORM);
-
-#if PG_VERSION_NUM < 150000
-
-					if (ac->val.type == T_String)
-						str = strVal(&(ac->val));
-
-#else
-
-					if (!ac->isnull && IsA(&ac->val, String))
-						str = strVal(&(ac->val));
-
-#endif
-
-					if (str && is_perform_stmt)
-					{
-						while (*str == ' ')
-							str++;
-
-						if (strncasecmp(str, "pragma:", 7) == 0)
-						{
-							cstate->was_pragma = true;
-
-							plpgsql_check_pragma_apply(cstate, str + 7, expr->ns, cstate->estate->err_stmt->lineno);
-						}
-					}
-				}
-				else if (rt->val && IsA(rt->val, FuncCall))
-				{
-					char	   *funcname;
-					char	   *schemaname;
-					FuncCall   *fc = (FuncCall *) rt->val;
-
-					DeconstructQualifiedName(fc->funcname, &schemaname, &funcname);
-
-					if (strcmp(funcname, "plpgsql_check_pragma") == 0)
-					{
-						ListCell   *lc;
-
-						cstate->was_pragma = true;
-
-						foreach(lc, fc->args)
-						{
-							Node	   *arg = (Node *) lfirst(lc);
-
-							if (IsA(arg, A_Const))
-							{
-								A_Const    *ac = (A_Const *) arg;
-
-#if PG_VERSION_NUM < 150000
-
-								if (ac->val.type == T_String)
-									plpgsql_check_pragma_apply(cstate, strVal(&(ac->val)), expr->ns, cstate->estate->err_stmt->lineno);
-
-#else
-
-								if (!ac->isnull && IsA(&ac->val, String))
-									plpgsql_check_pragma_apply(cstate, strVal(&(ac->val)), expr->ns, cstate->estate->err_stmt->lineno);
-
-#endif
-
-							}
-						}
-					}
-				}
-			}
+			cstate->was_pragma =
+				plch_apply_inline_pragmas(cstate,
+										  (SelectStmt *) plansource->raw_parse_tree->stmt,
+										  expr->ns, lineno, is_perform_stmt);
 		}
 	}
 

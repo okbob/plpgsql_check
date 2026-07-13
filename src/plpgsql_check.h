@@ -133,6 +133,10 @@ typedef struct plpgsql_check_info
 	char	   *newtable;
 
 	bool		incomment_options_usage_warning;
+
+	List	   *pragmas;		/* list of pragma strings applied before check */
+	bool		generate_pragmas;	/* true, when table pragmas should be
+									 * generated instead of function check */
 } plpgsql_check_info;
 
 typedef struct plpgsql_check_pragma_vector
@@ -234,6 +238,7 @@ extern void plpgsql_check_finalize_ri(plpgsql_check_result_info *ri);
 extern void plpgsql_check_put_error(PLpgSQL_checkstate *cstate, int sqlerrcode, int lineno,
 									const char *message, const char *detail, const char *hint, int level, int position, const char *query, const char *context);
 extern void plpgsql_check_put_error_edata(PLpgSQL_checkstate *cstate, ErrorData *edata);
+extern void plch_put_text_line(plpgsql_check_result_info *ri, const char *message, int len);
 extern void plpgsql_check_put_dependency(plpgsql_check_result_info *ri, char *type, Oid oid, char *schema, char *name, char *params);
 
 extern void plpgsql_check_put_profile(plpgsql_check_result_info *ri, Datum queryids_array, int lineno, int stmt_lineno,
@@ -334,6 +339,9 @@ extern void plpgsql_check_expr_generic_with_parser_setup(PLpgSQL_checkstate *cst
 extern Node *plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool force_plan_checks);
 extern char *plpgsql_check_const_to_string(Node *node, int *location);
 extern CachedPlanSource *plpgsql_check_get_plan_source(PLpgSQL_checkstate *cstate, SPIPlanPtr plan);
+extern void plch_expr_prepare_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
+extern bool plch_apply_inline_pragmas(PLpgSQL_checkstate *cstate, SelectStmt *selectStmt,
+									  PLpgSQL_nsitem *ns, int lineno, bool is_perform_stmt);
 
 extern void plpgsql_check_assignment_to_variable(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 												 PLpgSQL_variable *targetvar, int targetdno);
@@ -437,6 +445,11 @@ extern void plpgsql_check_tracer_init(void);
  * variables from pragma.c
  */
 extern void plpgsql_check_pragma_apply(PLpgSQL_checkstate *cstate, char *pragma_str, PLpgSQL_nsitem *ns, int lineno);
+
+/*
+ * functions from pragma_generator.c
+ */
+extern void plch_generate_table_pragmas_walk(PLpgSQL_checkstate *cstate, PLpgSQL_function *func);
 
 /*
  * functions and structures from fextra_cache.c
