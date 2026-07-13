@@ -323,7 +323,7 @@ prepare_plan(PLpgSQL_checkstate *cstate,
  * statement is interesting.
  */
 void
-plpgsql_check_expr_prepare_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+plch_expr_prepare_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 {
 	prepare_plan(cstate, expr, 0, NULL, NULL, false);
 }
@@ -551,8 +551,8 @@ check_pure_expr(PLpgSQL_checkstate *cstate, Query *query, char *query_str)
  * the statement was recognized as a pragma.
  */
 bool
-plpgsql_check_apply_inline_pragmas(PLpgSQL_checkstate *cstate, SelectStmt *selectStmt,
-								   PLpgSQL_nsitem *ns, int lineno, bool is_perform_stmt)
+plch_apply_inline_pragmas(PLpgSQL_checkstate *cstate, SelectStmt *selectStmt,
+						  PLpgSQL_nsitem *ns, int lineno, bool is_perform_stmt)
 {
 	bool		was_pragma = false;
 
@@ -710,9 +710,9 @@ ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, CachedPlanSource *p
 				lineno = cstate->estate->err_stmt->lineno;
 
 			cstate->was_pragma =
-				plpgsql_check_apply_inline_pragmas(cstate,
-												   (SelectStmt *) plansource->raw_parse_tree->stmt,
-												   expr->ns, lineno, is_perform_stmt);
+				plch_apply_inline_pragmas(cstate,
+										  (SelectStmt *) plansource->raw_parse_tree->stmt,
+										  expr->ns, lineno, is_perform_stmt);
 		}
 	}
 

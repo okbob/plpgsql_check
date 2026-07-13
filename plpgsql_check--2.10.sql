@@ -127,7 +127,7 @@ CREATE FUNCTION plpgsql_check_generate_table_pragmas(funcoid regprocedure,
                                                      relid regclass DEFAULT 0,
                                                      fatal_errors boolean DEFAULT true)
 RETURNS SETOF text
-AS 'MODULE_PATHNAME','plpgsql_check_generate_table_pragmas'
+AS 'MODULE_PATHNAME','plch_generate_table_pragmas'
 LANGUAGE C;
 
 CREATE FUNCTION __plpgsql_show_dependency_tb(funcoid regprocedure,

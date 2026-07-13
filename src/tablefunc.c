@@ -20,7 +20,7 @@
 static void SetReturningFunctionCheck(ReturnSetInfo *rsinfo);
 
 PG_FUNCTION_INFO_V1(plpgsql_check_function);
-PG_FUNCTION_INFO_V1(plpgsql_check_generate_table_pragmas);
+PG_FUNCTION_INFO_V1(plch_generate_table_pragmas);
 PG_FUNCTION_INFO_V1(plpgsql_check_function_tb);
 PG_FUNCTION_INFO_V1(plpgsql_show_dependency_tb);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_function_tb);
@@ -584,14 +584,14 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 }
 
 /*
- * plpgsql_check_generate_table_pragmas
+ * plch_generate_table_pragmas
  *
  * Returns table pragmas generated for CREATE TEMP TABLE ... AS statements
  * used inside the function's body.
  *
  */
 Datum
-plpgsql_check_generate_table_pragmas(PG_FUNCTION_ARGS)
+plch_generate_table_pragmas(PG_FUNCTION_ARGS)
 {
 	plpgsql_check_info cinfo;
 	plpgsql_check_result_info ri;

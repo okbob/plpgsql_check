@@ -621,7 +621,7 @@ put_text_line(plpgsql_check_result_info *ri, const char *message, int len)
  * for returning generated pragma lines.
  */
 void
-plpgsql_check_put_text_line(plpgsql_check_result_info *ri, const char *message, int len)
+plch_put_text_line(plpgsql_check_result_info *ri, const char *message, int len)
 {
 	put_text_line(ri, message, len);
 }

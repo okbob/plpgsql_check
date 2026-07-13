@@ -163,7 +163,7 @@ process_create_table_as(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt,
 	 * CREATE TABLE AS statement, so names and types of columns can be read
 	 * from the target list without execution.
 	 */
-	plpgsql_check_expr_prepare_plan(cstate, expr);
+	plch_expr_prepare_plan(cstate, expr);
 
 	plansource = plpgsql_check_get_plan_source(cstate, expr->plan);
 	if (!plansource || !plansource->query_list)
@@ -187,8 +187,8 @@ process_create_table_as(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt,
 								 ctas->into->colNames,
 								 inner_query->targetList);
 
-	plpgsql_check_put_text_line(cstate->result_info,
-								psprintf("table: %s", def), -1);
+	plch_put_text_line(cstate->result_info,
+					   psprintf("table: %s", def), -1);
 
 	/* make the temporary table visible for following statements */
 	plpgsql_check_pragma_table(cstate, def, stmt->lineno);
@@ -249,11 +249,11 @@ process_stmt_query(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt,
 			}
 			else if (IsA(node, SelectStmt))
 			{
-				(void) plpgsql_check_apply_inline_pragmas(cstate,
-														  (SelectStmt *) node,
-														  expr->ns,
-														  stmt->lineno,
-														  is_perform_stmt);
+				(void) plch_apply_inline_pragmas(cstate,
+												 (SelectStmt *) node,
+												 expr->ns,
+												 stmt->lineno,
+												 is_perform_stmt);
 			}
 		}
 

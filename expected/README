@@ -5,4 +5,4 @@ plpgsql_check_active_3.out			PostgreSQL 18
 plpgsql_check_active_4.out			PostgreSQL 19
 plpgsql_check_active.out			PostgreSQL 17
 
-plpgsql_check_pragma_generator.out		PostgreSQL 14 and higher (all versions)
+plch_pragma_generator.out		PostgreSQL 14 and higher (all versions)
