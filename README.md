@@ -16,7 +16,7 @@ successful - integration into upstream requires some larger plpgsql refactoring.
 But the code is fully functional and can be used in production (and it is used in production).
 So, I created this extension to be available for all plpgsql developers.
 
-If if you want to join our group to help the further development of this extension, register
+If you want to join our group to help the further development of this extension, register
 yourself at that [postgresql extension hacking](https://groups.google.com/forum/#!forum/postgresql-extensions-hacking)
 google group.
 
@@ -33,7 +33,7 @@ google group.
 
 I invite any ideas, patches, bugreports.
 
-PostgreSQL PostgreSQL 14 - 18 are supported.
+PostgreSQL 14 - 18 are supported.
 
 The SQL statements inside PL/pgSQL functions are checked by the validator for semantic errors. These errors
 can be found by calling the plpgsql_check_function:
@@ -146,7 +146,7 @@ You can set level of warnings via function's parameters:
 * `fatal_errors boolean DEFAULT true` - stop on first error (prevents massive error reports)
 
 * `other_warnings boolean DEFAULT true` - show warnings like different attributes number
-  in assignmenet on left and right side, variable overlaps function's parameter, unused
+  in assignment on left and right side, variable overlaps function's parameter, unused
   variables, unwanted casting, etc.
 
 * `extra_warnings boolean DEFAULT true` - show warnings like missing `RETURN`,
@@ -187,7 +187,7 @@ You can set level of warnings via function's parameters:
 
 * `constant_tracing boolean DEFAULT true` - when it is true, then the variable that holds
    some constant content, can be used like constant (it is work only in some simple cases,
-   and the content of variable should not be ambigonuous).
+   and the content of variable should not be ambiguous).
 
 * `pragmas text[] DEFAULT NULL` - list of pragmas that are applied before the check is
    started. Any pragma supported by the `plpgsql_check_pragma` function can be used here.
@@ -348,7 +348,7 @@ You can enable passive mode by
 
 PostgreSQL cursor's and refcursor's variables are enhanced string variables that holds
 unique name of related portal (internal structure of Postgres that is used for cursor's
-implementation). Until PostgreSQL 16, the the portal had same name like name of cursor
+implementation). Until PostgreSQL 16, the portal had same name like name of cursor
 variable. PostgreSQL 16 and higher change this mechanism and by default related portal
 will be named by some unique name. It solves some issues with cursors in nested blocks
 or when cursor is used in recursive called function.
@@ -477,7 +477,7 @@ runtime. For this use case it is necessary to create a fake temp table or disabl
 function.
 
 In reality temp tables are stored in own (per user) schema with higher priority than persistent
-tables. So you can do (with following trick safetly):
+tables. So you can do (with following trick safely):
 
     CREATE OR REPLACE FUNCTION public.disable_dml()
     RETURNS trigger
@@ -569,7 +569,7 @@ early initialization ensures correct work of profiler and tracer. When you doesn
 `shared_preloaded_libraries`, you can use command `load 'plpgsql_check'` instead.
 
 When plpgsql_check is initialized by `shared_preload_libraries`, the shared memory
-of the size `plpgsq_check.max_stats_size` is allocated. When value of 
+of the size `plpgsql_check.max_stats_size` is allocated. When value of 
 `plpgsql_check.use_shared_stats_when_it_possible` is `on` (default is `on`),
 then the statistics are placed in shared memory. When mentioned option is `off`,
 then statistics are stored in local memory. By default the shared statistics are
@@ -579,12 +579,12 @@ protects statistics against race condition, can do performance problems. In this
 case you can try set `plpgsql_check.use_lxcache` to `on` (default is `off`). With
 lxcache, the update shared statistics are delayed at end of transaction time.
 
-The used memory is limited by `plpgsq_check.max_stats_size`. The default value
+The used memory is limited by `plpgsql_check.max_stats_size`. The default value
 is 20MB (min 1MB, max 200MB). After this limit, the memory for new statistics
 are not assigned, and warning is raised. The allocated memory can be released by
 calling function `plpgsql_profiler_reset_all()`. When statistics are stored to
 shared memory, then shared memory of this size is allocated when Postgres is
-started. Without restart, the change of `plpgsq_check.max_stats_size` has not
+started. Without restart, the change of `plpgsql_check.max_stats_size` has not
 any effect on preallocated shared memory. When statistics are stored in local
 memory, this variable can be changed without necessity of restart.
 
@@ -624,7 +624,7 @@ The profile can be displayed by function `plpgsql_profiler_function_tb`:
     └────────┴──────────┴───────────────────────────────────────────────────────────────────┘
     (9 rows)
 
-The times in the result are in miliseconds.
+The times in the result are in milliseconds.
 
 The profile per statements (not per line) can be displayed by function plpgsql_profiler_function_statements_tb:
 
@@ -807,14 +807,14 @@ exception's handlers).
 ## Detection of unclosed cursors
 
 PLpgSQL's cursors are just names of SQL cursors. The life cycle of SQL cursors is not
-joined with scope of related plpgsql's cursor variable. SQL cursors are cloased by self
+joined with scope of related plpgsql's cursor variable. SQL cursors are closed by self
 at transaction end, but for long transaction and too much opened cursors it can be too late.
 It is better to close cursor explicitly when cursor is not necessary (by CLOSE statement).
 Without it the significant memory issues are possible.
 
 When OPEN statement try to use cursor that is not closed yet, the warning is raised.
 This feature can be disabled by setting `plpgsql_check.cursors_leaks to off`. This check
-is not active, when routine is called recusively 
+is not active, when routine is called recursively.
 
 The unclosed cursors can be checked immediately when function is finished. This check is
 disabled by default, and should be enabled by `plpgsql_check.strict_cursors_leaks to on`.
@@ -902,11 +902,11 @@ Shorter syntax for pragma is supported too:
 
 * `sequence: name` - create ephemeral temporary sequence
 
-* `assert-schema: varname` - check-time assertation - ensure so schema specified by variable is valid
+* `assert-schema: varname` - check-time assertion - ensure so schema specified by variable is valid
 
 * `assert-table: [ varname_schema, ] , varname` - ensure so table name specified by variables (by constant tracing) is valid
 
-* `assert-column: [varname_schema, ], varname_table , varname` - ensure so column spefified by variables is valid
+* `assert-column: [varname_schema, ], varname_table , varname` - ensure so column specified by variables is valid
 
 Pragmas `enable:tracer` and `disable:tracer`are active for Postgres 12 and higher
 
@@ -1086,7 +1086,7 @@ result:
 
 ## Compilation for PostgresPro
 
-`plpgsql_check` requires some unpublished patches to successufully compiled and used with PostgresPro. Use
+`plpgsql_check` requires some unpublished patches to be successfully compiled and used with PostgresPro. Use
 `plpgsql_check` from PostgresPro repository.
 
 ## Compilation on Ubuntu
@@ -1117,7 +1117,7 @@ or compile by self:
 2. `cd build`
 3. `ninja`
 4. `ninja install`
-5. optionaly `ninja bindist`
+5. optionally `ninja bindist`
 
 ## Checked on
 
