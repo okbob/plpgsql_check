@@ -320,7 +320,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 		 * In pragma generation mode, errors are not converted to check result
 		 * rows - the original error is rethrown.
 		 */
-		if (cinfo->generate_pragmas)
+		if (cinfo->make_pragma)
 			ReThrowError(edata);
 
 		plpgsql_check_put_error_edata(&cstate, edata);
@@ -599,9 +599,9 @@ function_check(PLpgSQL_function *func, PLpgSQL_checkstate *cstate)
 	 * In pragma generation mode, only scan the function's body for CREATE
 	 * TEMP TABLE ... AS statements. The check is skipped completely.
 	 */
-	if (cstate->cinfo->generate_pragmas)
+	if (cstate->cinfo->make_pragma)
 	{
-		plch_generate_table_pragmas_walk(cstate, func);
+		plch_make_pragma(cstate, func);
 
 		/* clean state values - next errors are not related to any command */
 		cstate->estate->err_stmt = NULL;
@@ -699,9 +699,9 @@ trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate)
 	 * In pragma generation mode, only scan the function's body for CREATE
 	 * TEMP TABLE ... AS statements. The check is skipped completely.
 	 */
-	if (cstate->cinfo->generate_pragmas)
+	if (cstate->cinfo->make_pragma)
 	{
-		plch_generate_table_pragmas_walk(cstate, func);
+		plch_make_pragma(cstate, func);
 
 		/* clean state values - next errors are not related to any command */
 		cstate->estate->err_stmt = NULL;

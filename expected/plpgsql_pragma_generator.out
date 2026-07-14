@@ -4,7 +4,7 @@ create extension if not exists plpgsql_check;
 set client_min_messages to notice;
 set plpgsql_check.regress_test_mode = true;
 --
--- tests of plpgsql_check_generate_table_pragmas and "pragmas" option
+-- tests of plpgsql_make_pragma and "pragmas" option
 -- of check functions
 --
 create table gtp_src(a int, b text);
@@ -18,9 +18,9 @@ begin
   insert into gtp_t1 values (10, 'hello');
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f1()');
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+select * from plpgsql_make_pragma('gtp_f1()');
+       plpgsql_make_pragma        
+----------------------------------
  table: gtp_t1(a integer, b text)
 (1 row)
 
@@ -35,23 +35,23 @@ select * from plpgsql_check_function('gtp_f1()');
 
 -- with generated pragmas the check should be ok
 select * from plpgsql_check_function('gtp_f1()',
-          pragmas => array(select plpgsql_check_generate_table_pragmas('gtp_f1()')));
+          pragmas => array(select plpgsql_make_pragma('gtp_f1()')));
  plpgsql_check_function 
 ------------------------
 (0 rows)
 
 -- tabular form
 select * from plpgsql_check_function_tb('gtp_f1()',
-          pragmas => array(select plpgsql_check_generate_table_pragmas('gtp_f1()')));
+          pragmas => array(select plpgsql_make_pragma('gtp_f1()')));
  functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
 ------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
 (0 rows)
 
 -- generator is idempotent - repeated call returns same result,
 -- and doesn't leave any relation in system catalogue
-select * from plpgsql_check_generate_table_pragmas('gtp_f1()');
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+select * from plpgsql_make_pragma('gtp_f1()');
+       plpgsql_make_pragma        
+----------------------------------
  table: gtp_t1(a integer, b text)
 (1 row)
 
@@ -68,8 +68,8 @@ begin
   create temp table gtp_v1 as values (1, 'x'), (2, 'y');
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f2()');
-     plpgsql_check_generate_table_pragmas     
+select * from plpgsql_make_pragma('gtp_f2()');
+             plpgsql_make_pragma              
 ----------------------------------------------
  table: gtp_v1(column1 integer, column2 text)
 (1 row)
@@ -80,9 +80,9 @@ begin
   create temp table gtp_tt1 as table gtp_src;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f3()');
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+select * from plpgsql_make_pragma('gtp_f3()');
+        plpgsql_make_pragma        
+-----------------------------------
  table: gtp_tt1(a integer, b text)
 (1 row)
 
@@ -93,8 +93,8 @@ begin
   create temp table gtp_tt1 as table gtp_src;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f4()');
-     plpgsql_check_generate_table_pragmas     
+select * from plpgsql_make_pragma('gtp_f4()');
+             plpgsql_make_pragma              
 ----------------------------------------------
  table: gtp_v1(column1 integer, column2 text)
  table: gtp_tt1(a integer, b text)
@@ -114,9 +114,9 @@ begin
   create temp table gtp_oc3 on commit drop as select a from gtp_src;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f5()');
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+select * from plpgsql_make_pragma('gtp_f5()');
+    plpgsql_make_pragma    
+---------------------------
  table: gtp_nd(a integer)
  table: gtp_ine(b text)
  table: gtp_oc1(a integer)
@@ -132,9 +132,9 @@ begin
   create temp table gtp_cn(c1, c2) as select a, b from gtp_src;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f6()');
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+select * from plpgsql_make_pragma('gtp_f6()');
+        plpgsql_make_pragma         
+------------------------------------
  table: gtp_cn(c1 integer, c2 text)
 (1 row)
 
@@ -155,9 +155,9 @@ begin
     select n from r;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f7()');
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+select * from plpgsql_make_pragma('gtp_f7()');
+        plpgsql_make_pragma         
+------------------------------------
  table: gtp_star(a integer, b text)
  table: gtp_join(a integer, b text)
  table: gtp_sub(a integer)
@@ -176,10 +176,10 @@ begin
   create temp table gtp_comp as select a + 1, a + 1 from gtp_src;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f8()');
+select * from plpgsql_make_pragma('gtp_f8()');
 WARNING:  Pragma "table" on line 3 is not processed.
 DETAIL:  column "?column?" specified more than once
-          plpgsql_check_generate_table_pragmas           
+                   plpgsql_make_pragma                   
 ---------------------------------------------------------
  table: gtp_comp("?column?" integer, "?column?" integer)
 (1 row)
@@ -192,9 +192,9 @@ begin
   create temp table gtp_unk as select null as x;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f9()');
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+select * from plpgsql_make_pragma('gtp_f9()');
+  plpgsql_make_pragma   
+------------------------
  table: gtp_unk(x text)
 (1 row)
 
@@ -211,8 +211,8 @@ begin
            3.14::numeric(12,2) as num;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f10()');
-                                  plpgsql_check_generate_table_pragmas                                  
+select * from plpgsql_make_pragma('gtp_f10()');
+                                          plpgsql_make_pragma                                           
 --------------------------------------------------------------------------------------------------------
  table: gtp_types(arr integer[], comp gtp_ct, dom gtp_dom, vc character varying(10), num numeric(12,2))
 (1 row)
@@ -225,8 +225,8 @@ begin
   create temp table "MyT" as select 1 as "select", 2 as normal;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f11()');
-      plpgsql_check_generate_table_pragmas      
+select * from plpgsql_make_pragma('gtp_f11()');
+              plpgsql_make_pragma               
 ------------------------------------------------
  table: "MyT"("select" integer, normal integer)
 (1 row)
@@ -239,9 +239,9 @@ begin
   create temp table gtp_junk as select a from gtp_src order by b;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f12()');
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+select * from plpgsql_make_pragma('gtp_f12()');
+    plpgsql_make_pragma     
+----------------------------
  table: gtp_junk(a integer)
 (1 row)
 
@@ -271,9 +271,9 @@ begin
   create temp table gtp_n6 as select 6 as u;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f13()');
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+select * from plpgsql_make_pragma('gtp_f13()');
+   plpgsql_make_pragma    
+--------------------------
  table: gtp_n1(x integer)
  table: gtp_n2(y integer)
  table: gtp_n3(z integer)
@@ -292,11 +292,11 @@ begin
   create temp table gtp_dup as select 'a'::text as y;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f14()');
+select * from plpgsql_make_pragma('gtp_f14()');
 WARNING:  Pragma "table" on line 5 is not processed.
 DETAIL:  relation "gtp_dup" already exists
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+    plpgsql_make_pragma    
+---------------------------
  table: gtp_dup(x integer)
  table: gtp_dup(y text)
 (2 rows)
@@ -314,9 +314,9 @@ begin
     select a from gtp_src where a in (select a from gtp_c1);
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f15()');
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+select * from plpgsql_make_pragma('gtp_f15()');
+       plpgsql_make_pragma        
+----------------------------------
  table: gtp_c1(a integer, b text)
  table: gtp_c2(a integer, b text)
  table: gtp_c3(a integer, b text)
@@ -333,9 +333,9 @@ begin
   create temp table gtp_from_shadow as select * from gtp_shadow;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f16()');
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+select * from plpgsql_make_pragma('gtp_f16()');
+        plpgsql_make_pragma         
+------------------------------------
  table: gtp_shadow(id integer)
  table: gtp_from_shadow(id integer)
 (2 rows)
@@ -350,9 +350,9 @@ begin
   create table pg_temp.gtp_q2 as select 2 as w;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f17()');
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+select * from plpgsql_make_pragma('gtp_f17()');
+   plpgsql_make_pragma    
+--------------------------
  table: gtp_q1(z integer)
  table: gtp_q2(w integer)
 (2 rows)
@@ -375,9 +375,9 @@ begin
   drop materialized view gtp_s7;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f18()');
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+select * from plpgsql_make_pragma('gtp_f18()');
+ plpgsql_make_pragma 
+---------------------
 (0 rows)
 
 drop function gtp_f18();
@@ -388,9 +388,9 @@ begin
   return (select count(*) from gtp_src);
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f19()');
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+select * from plpgsql_make_pragma('gtp_f19()');
+ plpgsql_make_pragma 
+---------------------
 (0 rows)
 
 drop function gtp_f19();
@@ -402,11 +402,11 @@ begin
   create temp table gtp_zero as select from gtp_src;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f20()');
+select * from plpgsql_make_pragma('gtp_f20()');
 WARNING:  Pragma "table" on line 3 is not processed.
 DETAIL:  Syntax error (expected identifier)
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+ plpgsql_make_pragma 
+---------------------
  table: gtp_zero()
 (1 row)
 
@@ -418,9 +418,9 @@ begin
   create temp table gtp_pe as execute some_prepared_stmt;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f21()');
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+select * from plpgsql_make_pragma('gtp_f21()');
+ plpgsql_make_pragma 
+---------------------
 (0 rows)
 
 drop function gtp_f21();
@@ -435,8 +435,8 @@ begin
     select v_id as id, v_txt as txt, a from gtp_src where a > v_id;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f22()');
-       plpgsql_check_generate_table_pragmas       
+select * from plpgsql_make_pragma('gtp_f22()');
+               plpgsql_make_pragma                
 --------------------------------------------------
  table: gtp_vars(id integer, txt text, a integer)
 (1 row)
@@ -456,15 +456,15 @@ begin
   create temp table gtp_o2 as select p as y;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_over(int)');
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+select * from plpgsql_make_pragma('gtp_over(int)');
+   plpgsql_make_pragma    
+--------------------------
  table: gtp_o1(x integer)
 (1 row)
 
-select * from plpgsql_check_generate_table_pragmas('gtp_over(text)');
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+select * from plpgsql_make_pragma('gtp_over(text)');
+  plpgsql_make_pragma  
+-----------------------
  table: gtp_o2(y text)
 (1 row)
 
@@ -477,9 +477,9 @@ begin
   o1 := p; o2 := 'x';
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_out(int)');
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+select * from plpgsql_make_pragma('gtp_out(int)');
+   plpgsql_make_pragma    
+--------------------------
  table: gtp_ot(q integer)
 (1 row)
 
@@ -493,8 +493,8 @@ begin
   return new;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_trg()', 'gtp_trg_tbl');
-     plpgsql_check_generate_table_pragmas      
+select * from plpgsql_make_pragma('gtp_trg()', 'gtp_trg_tbl');
+              plpgsql_make_pragma              
 -----------------------------------------------
  table: gtp_trg_snapshot(id integer, val text)
 (1 row)
@@ -510,8 +510,8 @@ begin
   create temp table gtp_from_dyn as select * from gtp_dyn;
 end;
 $$ language plpgsql;
-select * from plpgsql_check_generate_table_pragmas('gtp_f23()');
-  plpgsql_check_generate_table_pragmas  
+select * from plpgsql_make_pragma('gtp_f23()');
+          plpgsql_make_pragma           
 ----------------------------------------
  table: gtp_from_dyn(a integer, b text)
 (1 row)
@@ -534,13 +534,13 @@ select * from plpgsql_check_function('gtp_err1()');
 (3 rows)
 
 \set VERBOSITY terse
-select * from plpgsql_check_generate_table_pragmas('gtp_err1()');
+select * from plpgsql_make_pragma('gtp_err1()');
 ERROR:  relation "gtp_nonexistent" does not exist at character 43
 \set VERBOSITY default
 do $$
 declare s text; m text;
 begin
-  perform plpgsql_check_generate_table_pragmas('gtp_err1()');
+  perform plpgsql_make_pragma('gtp_err1()');
 exception when others then
   get stacked diagnostics s = returned_sqlstate, m = message_text;
   raise notice 'sqlstate: %, message: %', s, m;
@@ -561,20 +561,20 @@ $$ language plpgsql;
 do $$
 declare s text; m text;
 begin
-  perform plpgsql_check_generate_table_pragmas('gtp_err2()');
+  perform plpgsql_make_pragma('gtp_err2()');
 exception when others then
   get stacked diagnostics s = returned_sqlstate, m = message_text;
   raise notice 'sqlstate: %, message: %', s, m;
 end;
 $$;
 NOTICE:  sqlstate: 42P01, message: relation "gtp_missing1" does not exist
-select * from plpgsql_check_generate_table_pragmas('gtp_err2()', fatal_errors => false);
+select * from plpgsql_make_pragma('gtp_err2()', fatal_errors => false);
 WARNING:  pragma cannot be generated for statement on line 3
 DETAIL:  relation "gtp_missing1" does not exist
 WARNING:  pragma cannot be generated for statement on line 4
 DETAIL:  relation "gtp_missing2" does not exist
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+    plpgsql_make_pragma    
+---------------------------
  table: gtp_e23(a integer)
 (1 row)
 
@@ -589,7 +589,7 @@ $$ language plpgsql;
 do $$
 declare s text; m text;
 begin
-  perform plpgsql_check_generate_table_pragmas('gtp_err3()');
+  perform plpgsql_make_pragma('gtp_err3()');
 exception when others then
   get stacked diagnostics s = returned_sqlstate, m = message_text;
   raise notice 'sqlstate: %, message: %', s, m;
@@ -611,22 +611,22 @@ $$ language plpgsql;
 do $$
 declare s text; m text;
 begin
-  perform plpgsql_check_generate_table_pragmas('gtp_err4()');
+  perform plpgsql_make_pragma('gtp_err4()');
 exception when others then
   get stacked diagnostics s = returned_sqlstate, m = message_text;
   raise notice 'sqlstate: %, message: %', s, m;
 end;
 $$;
 NOTICE:  sqlstate: 42P16, message: cannot create temporary relation in non-temporary schema
-select * from plpgsql_check_generate_table_pragmas('gtp_err4()', fatal_errors => false);
+select * from plpgsql_make_pragma('gtp_err4()', fatal_errors => false);
 WARNING:  pragma cannot be generated for statement on line 3
 DETAIL:  cannot create temporary relation in non-temporary schema
 WARNING:  pragma cannot be generated for statement on line 4
 DETAIL:  cannot create temporary relation in non-temporary schema
 WARNING:  pragma cannot be generated for statement on line 5
 DETAIL:  cannot create temporary relation in non-temporary schema
- plpgsql_check_generate_table_pragmas 
---------------------------------------
+    plpgsql_make_pragma    
+---------------------------
  table: gtp_e44(a integer)
 (1 row)
 
@@ -641,7 +641,7 @@ $$ language plpgsql;
 do $$
 declare s text; m text;
 begin
-  perform plpgsql_check_generate_table_pragmas('gtp_err5()');
+  perform plpgsql_make_pragma('gtp_err5()');
 exception when others then
   get stacked diagnostics s = returned_sqlstate, m = message_text;
   raise notice 'sqlstate: %, message: %', s, m;

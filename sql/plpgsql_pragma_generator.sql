@@ -6,7 +6,7 @@ set client_min_messages to notice;
 set plpgsql_check.regress_test_mode = true;
 
 --
--- tests of plpgsql_check_generate_table_pragmas and "pragmas" option
+-- tests of plpgsql_make_pragma and "pragmas" option
 -- of check functions
 --
 
@@ -23,22 +23,22 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f1()');
+select * from plpgsql_make_pragma('gtp_f1()');
 
 -- without pragmas the check should detect missing relation
 select * from plpgsql_check_function('gtp_f1()');
 
 -- with generated pragmas the check should be ok
 select * from plpgsql_check_function('gtp_f1()',
-          pragmas => array(select plpgsql_check_generate_table_pragmas('gtp_f1()')));
+          pragmas => array(select plpgsql_make_pragma('gtp_f1()')));
 
 -- tabular form
 select * from plpgsql_check_function_tb('gtp_f1()',
-          pragmas => array(select plpgsql_check_generate_table_pragmas('gtp_f1()')));
+          pragmas => array(select plpgsql_make_pragma('gtp_f1()')));
 
 -- generator is idempotent - repeated call returns same result,
 -- and doesn't leave any relation in system catalogue
-select * from plpgsql_check_generate_table_pragmas('gtp_f1()');
+select * from plpgsql_make_pragma('gtp_f1()');
 
 select count(*) from pg_class where relname in ('gtp_t1');
 
@@ -50,7 +50,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f2()');
+select * from plpgsql_make_pragma('gtp_f2()');
 
 create function gtp_f3()
 returns void as $$
@@ -59,7 +59,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f3()');
+select * from plpgsql_make_pragma('gtp_f3()');
 
 create function gtp_f4()
 returns void as $$
@@ -69,7 +69,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f4()');
+select * from plpgsql_make_pragma('gtp_f4()');
 
 drop function gtp_f2();
 drop function gtp_f3();
@@ -87,7 +87,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f5()');
+select * from plpgsql_make_pragma('gtp_f5()');
 
 drop function gtp_f5();
 
@@ -99,7 +99,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f6()');
+select * from plpgsql_make_pragma('gtp_f6()');
 
 drop function gtp_f6();
 
@@ -120,7 +120,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f7()');
+select * from plpgsql_make_pragma('gtp_f7()');
 
 drop function gtp_f7();
 
@@ -135,7 +135,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f8()');
+select * from plpgsql_make_pragma('gtp_f8()');
 
 drop function gtp_f8();
 
@@ -147,7 +147,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f9()');
+select * from plpgsql_make_pragma('gtp_f9()');
 
 drop function gtp_f9();
 
@@ -164,7 +164,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f10()');
+select * from plpgsql_make_pragma('gtp_f10()');
 
 drop function gtp_f10();
 
@@ -176,7 +176,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f11()');
+select * from plpgsql_make_pragma('gtp_f11()');
 
 drop function gtp_f11();
 
@@ -188,7 +188,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f12()');
+select * from plpgsql_make_pragma('gtp_f12()');
 
 drop function gtp_f12();
 
@@ -218,7 +218,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f13()');
+select * from plpgsql_make_pragma('gtp_f13()');
 
 drop function gtp_f13();
 
@@ -232,7 +232,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f14()');
+select * from plpgsql_make_pragma('gtp_f14()');
 
 drop function gtp_f14();
 
@@ -249,7 +249,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f15()');
+select * from plpgsql_make_pragma('gtp_f15()');
 
 drop function gtp_f15();
 
@@ -264,7 +264,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f16()');
+select * from plpgsql_make_pragma('gtp_f16()');
 
 drop function gtp_f16();
 drop table gtp_shadow;
@@ -278,7 +278,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f17()');
+select * from plpgsql_make_pragma('gtp_f17()');
 
 drop function gtp_f17();
 
@@ -300,7 +300,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f18()');
+select * from plpgsql_make_pragma('gtp_f18()');
 
 drop function gtp_f18();
 
@@ -312,7 +312,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f19()');
+select * from plpgsql_make_pragma('gtp_f19()');
 
 drop function gtp_f19();
 
@@ -325,7 +325,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f20()');
+select * from plpgsql_make_pragma('gtp_f20()');
 
 drop function gtp_f20();
 
@@ -337,7 +337,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f21()');
+select * from plpgsql_make_pragma('gtp_f21()');
 
 drop function gtp_f21();
 
@@ -353,7 +353,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f22()');
+select * from plpgsql_make_pragma('gtp_f22()');
 
 drop function gtp_f22();
 
@@ -373,8 +373,8 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_over(int)');
-select * from plpgsql_check_generate_table_pragmas('gtp_over(text)');
+select * from plpgsql_make_pragma('gtp_over(int)');
+select * from plpgsql_make_pragma('gtp_over(text)');
 
 drop function gtp_over(int);
 drop function gtp_over(text);
@@ -387,7 +387,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_out(int)');
+select * from plpgsql_make_pragma('gtp_out(int)');
 
 drop function gtp_out(int);
 
@@ -402,7 +402,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_trg()', 'gtp_trg_tbl');
+select * from plpgsql_make_pragma('gtp_trg()', 'gtp_trg_tbl');
 
 drop function gtp_trg();
 drop table gtp_trg_tbl;
@@ -417,7 +417,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_f23()');
+select * from plpgsql_make_pragma('gtp_f23()');
 
 drop function gtp_f23();
 
@@ -434,14 +434,14 @@ select * from plpgsql_check_function('gtp_err1()');
 
 \set VERBOSITY terse
 
-select * from plpgsql_check_generate_table_pragmas('gtp_err1()');
+select * from plpgsql_make_pragma('gtp_err1()');
 
 \set VERBOSITY default
 
 do $$
 declare s text; m text;
 begin
-  perform plpgsql_check_generate_table_pragmas('gtp_err1()');
+  perform plpgsql_make_pragma('gtp_err1()');
 exception when others then
   get stacked diagnostics s = returned_sqlstate, m = message_text;
   raise notice 'sqlstate: %, message: %', s, m;
@@ -464,14 +464,14 @@ $$ language plpgsql;
 do $$
 declare s text; m text;
 begin
-  perform plpgsql_check_generate_table_pragmas('gtp_err2()');
+  perform plpgsql_make_pragma('gtp_err2()');
 exception when others then
   get stacked diagnostics s = returned_sqlstate, m = message_text;
   raise notice 'sqlstate: %, message: %', s, m;
 end;
 $$;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_err2()', fatal_errors => false);
+select * from plpgsql_make_pragma('gtp_err2()', fatal_errors => false);
 
 drop function gtp_err2();
 
@@ -486,7 +486,7 @@ $$ language plpgsql;
 do $$
 declare s text; m text;
 begin
-  perform plpgsql_check_generate_table_pragmas('gtp_err3()');
+  perform plpgsql_make_pragma('gtp_err3()');
 exception when others then
   get stacked diagnostics s = returned_sqlstate, m = message_text;
   raise notice 'sqlstate: %, message: %', s, m;
@@ -510,14 +510,14 @@ $$ language plpgsql;
 do $$
 declare s text; m text;
 begin
-  perform plpgsql_check_generate_table_pragmas('gtp_err4()');
+  perform plpgsql_make_pragma('gtp_err4()');
 exception when others then
   get stacked diagnostics s = returned_sqlstate, m = message_text;
   raise notice 'sqlstate: %, message: %', s, m;
 end;
 $$;
 
-select * from plpgsql_check_generate_table_pragmas('gtp_err4()', fatal_errors => false);
+select * from plpgsql_make_pragma('gtp_err4()', fatal_errors => false);
 
 drop function gtp_err4();
 
@@ -532,7 +532,7 @@ $$ language plpgsql;
 do $$
 declare s text; m text;
 begin
-  perform plpgsql_check_generate_table_pragmas('gtp_err5()');
+  perform plpgsql_make_pragma('gtp_err5()');
 exception when others then
   get stacked diagnostics s = returned_sqlstate, m = message_text;
   raise notice 'sqlstate: %, message: %', s, m;

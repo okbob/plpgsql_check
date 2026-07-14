@@ -18,7 +18,7 @@
 #include "parser/parser.h"
 #include "utils/builtins.h"
 
-static void generate_pragmas_stmt_walker(PLpgSQL_stmt *stmt, void *context);
+static void make_pragma_stmt_walker(PLpgSQL_stmt *stmt, void *context);
 static void process_stmt_query(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt,
 							   PLpgSQL_expr *expr, bool is_perform_stmt);
 static void process_create_table_as(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt,
@@ -293,7 +293,7 @@ process_stmt_query(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt,
  * dynamic (EXECUTE) statements are ignored.
  */
 static void
-generate_pragmas_stmt_walker(PLpgSQL_stmt *stmt, void *context)
+make_pragma_stmt_walker(PLpgSQL_stmt *stmt, void *context)
 {
 	PLpgSQL_checkstate *cstate = (PLpgSQL_checkstate *) context;
 
@@ -315,7 +315,7 @@ generate_pragmas_stmt_walker(PLpgSQL_stmt *stmt, void *context)
 			break;
 	}
 
-	plch_statement_tree_walker(stmt, generate_pragmas_stmt_walker, NULL, context);
+	plch_statement_tree_walker(stmt, make_pragma_stmt_walker, NULL, context);
 }
 
 /*
@@ -323,7 +323,7 @@ generate_pragmas_stmt_walker(PLpgSQL_stmt *stmt, void *context)
  * table pragmas for all CREATE TEMP TABLE AS statements there.
  */
 void
-plch_generate_table_pragmas_walk(PLpgSQL_checkstate *cstate, PLpgSQL_function *func)
+plch_make_pragma(PLpgSQL_checkstate *cstate, PLpgSQL_function *func)
 {
-	generate_pragmas_stmt_walker((PLpgSQL_stmt *) func->action, cstate);
+	make_pragma_stmt_walker((PLpgSQL_stmt *) func->action, cstate);
 }

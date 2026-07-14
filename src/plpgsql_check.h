@@ -135,8 +135,8 @@ typedef struct plpgsql_check_info
 	bool		incomment_options_usage_warning;
 
 	List	   *pragmas;		/* list of pragma strings applied before check */
-	bool		generate_pragmas;	/* true, when table pragmas should be
-									 * generated instead of function check */
+	bool		make_pragma;	/* true, when table pragmas should be
+								 * generated instead of function check */
 } plpgsql_check_info;
 
 typedef struct plpgsql_check_pragma_vector
@@ -449,7 +449,7 @@ extern void plpgsql_check_pragma_apply(PLpgSQL_checkstate *cstate, char *pragma_
 /*
  * functions from pragma_generator.c
  */
-extern void plch_generate_table_pragmas_walk(PLpgSQL_checkstate *cstate, PLpgSQL_function *func);
+extern void plch_make_pragma(PLpgSQL_checkstate *cstate, PLpgSQL_function *func);
 
 /*
  * functions and structures from fextra_cache.c
