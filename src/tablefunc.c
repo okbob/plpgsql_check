@@ -241,17 +241,23 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	if (PG_GETARG_BOOL(18))
 		plpgsql_check_search_comment_options(&cinfo);
 
+	plpgsql_check_init_ri(&ri, format, rsinfo);
+
 	/* Envelope outer plpgsql function is not interesting */
 	prev_errorcontext = error_context_stack;
 	error_context_stack = NULL;
 
-	plpgsql_check_init_ri(&ri, format, rsinfo);
-
-	plpgsql_check_function_internal(&ri, &cinfo);
+	PG_TRY();
+	{
+		plpgsql_check_function_internal(&ri, &cinfo);
+	}
+	PG_FINALLY();
+	{
+		error_context_stack = prev_errorcontext;
+	}
+	PG_END_TRY();
 
 	plpgsql_check_finalize_ri(&ri);
-
-	error_context_stack = prev_errorcontext;
 
 	ReleaseSysCache(cinfo.proctuple);
 
@@ -386,17 +392,24 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	if (PG_GETARG_BOOL(17))
 		plpgsql_check_search_comment_options(&cinfo);
 
+
+	plpgsql_check_init_ri(&ri, PLPGSQL_CHECK_FORMAT_TABULAR, rsinfo);
+
 	/* Envelope outer plpgsql function is not interesting */
 	prev_errorcontext = error_context_stack;
 	error_context_stack = NULL;
 
-	plpgsql_check_init_ri(&ri, PLPGSQL_CHECK_FORMAT_TABULAR, rsinfo);
-
-	plpgsql_check_function_internal(&ri, &cinfo);
+	PG_TRY();
+	{
+		plpgsql_check_function_internal(&ri, &cinfo);
+	}
+	PG_FINALLY();
+	{
+		error_context_stack = prev_errorcontext;
+	}
+	PG_END_TRY();
 
 	plpgsql_check_finalize_ri(&ri);
-
-	error_context_stack = prev_errorcontext;
 
 	ReleaseSysCache(cinfo.proctuple);
 
@@ -643,17 +656,24 @@ plpgsql_make_pragma(PG_FUNCTION_ARGS)
 	cinfo.all_warnings = false;
 	cinfo.without_warnings = false;
 
+	plpgsql_check_init_ri(&ri, PLPGSQL_CHECK_FORMAT_TEXT, rsinfo);
+
 	/* Envelope outer plpgsql function is not interesting */
 	prev_errorcontext = error_context_stack;
 	error_context_stack = NULL;
 
-	plpgsql_check_init_ri(&ri, PLPGSQL_CHECK_FORMAT_TEXT, rsinfo);
-
-	plpgsql_check_function_internal(&ri, &cinfo);
+	PG_TRY();
+	{
+		plpgsql_check_function_internal(&ri, &cinfo);
+	}
+	PG_FINALLY();
+	{
+		error_context_stack = prev_errorcontext;
+	}
+	PG_END_TRY();
 
 	plpgsql_check_finalize_ri(&ri);
 
-	error_context_stack = prev_errorcontext;
 
 	ReleaseSysCache(cinfo.proctuple);
 
