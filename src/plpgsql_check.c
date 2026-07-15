@@ -484,8 +484,8 @@ _PG_init(void)
 		 */
 		RequestAddinShmemSpace(plpgsql_check_shmem_size());
 
-		RequestNamedLWLockTranche("plpgsql_check profiler", 1);
-		RequestNamedLWLockTranche("plpgsql_check fstats", 1);
+		RequestNamedLWLockTranche("plpgsql_check profiler funcs stats", 1);
+		RequestNamedLWLockTranche("plpgsql_check profiler func stmts stats", 1);
 
 #endif
 
