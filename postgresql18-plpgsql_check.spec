@@ -49,6 +49,10 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/*.control
 
 %changelog
+* Wed Jul 15 2026 - Pavel Stehule <pavel.stehule@gmail.com> 2.10.0
+- possibility to pass pragma as an argument
+- possibility to generate pragma from code
+
 * Thu May 21 2026 - Pavel Stehule <pavel.stehule@gmail.com> 2.9.0
 - significant profiler refactoring
 
