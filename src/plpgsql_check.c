@@ -46,7 +46,7 @@
 
 PG_MODULE_MAGIC_EXT(
 					.name = "plpgsql_check",
-					.version = "2.10.0"
+					.version = "2.10.1"
 );
 
 #else
