@@ -2,7 +2,7 @@
  *
  * pragma_generator.c
  *
- *			  generator of table pragmas for CREATE TEMP TABLE AS
+ *			  generator of table pragmas for CREATE TEMP TABLE
  *			  statements used in function's body
  *
  * by Pavel Stehule 2013-2026
@@ -12,18 +12,26 @@
 
 #include "plpgsql_check.h"
 
+#include "access/table.h"
+#include "catalog/namespace.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_type.h"
 #include "nodes/nodeFuncs.h"
 #include "parser/parser.h"
 #include "utils/builtins.h"
+#include "utils/rel.h"
 
 static void make_pragma_stmt_walker(PLpgSQL_stmt *stmt, void *context);
 static void process_stmt_query(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt,
 							   PLpgSQL_expr *expr, bool is_perform_stmt);
 static void process_create_table_as(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt,
 									PLpgSQL_expr *expr, CreateTableAsStmt *ctas);
+static void process_create_table(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
+								 CreateStmt *cstmt);
 static char *build_table_pragma_def(const char *relname, List *colNames, List *targetList);
+static char *build_table_pragma_def_from_tupdesc(const char *relname, TupleDesc tupdesc);
+static void emit_pragma_from_relid(PLpgSQL_checkstate *cstate, Oid relid);
+static void drop_temp_table(const char *relname);
 static bool is_temp_range_var(RangeVar *rel);
 static void check_temp_schema(RangeVar *rel);
 
@@ -127,6 +135,84 @@ build_table_pragma_def(const char *relname, List *colNames, List *targetList)
 }
 
 /*
+ * Returns definition of a table (usable by table pragma) derived from
+ * a tuple descriptor of an existing relation.
+ */
+static char *
+build_table_pragma_def_from_tupdesc(const char *relname, TupleDesc tupdesc)
+{
+	StringInfoData def;
+	bool		is_first = true;
+	int			i;
+
+	initStringInfo(&def);
+	appendStringInfo(&def, "%s(", quote_identifier(relname));
+
+	for (i = 0; i < tupdesc->natts; i++)
+	{
+		Form_pg_attribute att = TupleDescAttr(tupdesc, i);
+
+		if (att->attisdropped)
+			continue;
+
+		if (!is_first)
+			appendStringInfoString(&def, ", ");
+
+		appendStringInfo(&def, "%s %s",
+						 quote_identifier(NameStr(att->attname)),
+						 format_type_with_typemod(att->atttypid, att->atttypmod));
+
+		is_first = false;
+	}
+
+	appendStringInfoChar(&def, ')');
+
+	return def.data;
+}
+
+/*
+ * Emits the table pragma derived from the structure of an existing
+ * relation.
+ */
+static void
+emit_pragma_from_relid(PLpgSQL_checkstate *cstate, Oid relid)
+{
+	Relation	rel;
+	char	   *def;
+
+	rel = table_open(relid, AccessShareLock);
+
+	def = build_table_pragma_def_from_tupdesc(RelationGetRelationName(rel),
+											  RelationGetDescr(rel));
+
+	table_close(rel, AccessShareLock);
+
+	plch_put_text_line(cstate->result_info,
+					   psprintf("table: %s", def), -1);
+}
+
+/*
+ * A name collision (usually the pattern CREATE, DROP, CREATE with same
+ * name) is an artifact of static scanning - DROP statements are not
+ * executed. We want to return pragmas for both definitions, so the
+ * previous table is dropped (the drop is reverted by rollback of the
+ * check's subtransaction), and the following statements will see the
+ * last definition like in runtime.
+ */
+static void
+drop_temp_table(const char *relname)
+{
+	ereport(WARNING,
+			(errcode(ERRCODE_DUPLICATE_TABLE),
+			 errmsg("relation \"%s\" already exists", relname),
+			 errdetail("The temporary table is replaced by the new definition.")));
+
+	if (SPI_execute(psprintf("DROP TABLE pg_temp.%s", quote_identifier(relname)),
+					false, 0) != SPI_OK_UTILITY)
+		elog(ERROR, "unexpected SPI result on DROP TABLE execution");
+}
+
+/*
  * Generates (and returns as a result row) the table pragma for one
  * CREATE TEMP TABLE AS statement. The pragma is applied immediately
  * too, so the temporary table is visible for planning of the following
@@ -140,6 +226,7 @@ process_create_table_as(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt,
 	CreateTableAsStmt *ctas_analyzed;
 	Query	   *query;
 	Query	   *inner_query;
+	Oid			relid;
 	char	   *def;
 
 	/* materialized views cannot be temporary */
@@ -187,11 +274,62 @@ process_create_table_as(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt,
 								 ctas->into->colNames,
 								 inner_query->targetList);
 
+	relid = RangeVarGetRelid(ctas->into->rel, NoLock, true);
+	if (OidIsValid(relid))
+	{
+		/* like runtime does, the existing table wins */
+		if (ctas->if_not_exists)
+		{
+			emit_pragma_from_relid(cstate, relid);
+			return;
+		}
+
+		drop_temp_table(ctas->into->rel->relname);
+	}
+
 	plch_put_text_line(cstate->result_info,
 					   psprintf("table: %s", def), -1);
 
 	/* make the temporary table visible for following statements */
 	plpgsql_check_pragma_table(cstate, def, stmt->lineno);
+}
+
+/*
+ * Generates (and returns as a result row) the table pragma for one
+ * CREATE TEMP TABLE statement - the column definition list form, the
+ * LIKE clause, the OF type clause, inheritance or partitioning. The
+ * original statement is executed - the temporary table is created
+ * inside the check's subtransaction, that is always rolled back, so
+ * no object survives the check. The execution is the only reliable
+ * way how to get the table's structure - the LIKE clause, the OF type
+ * clause, inheritance, partitioning or serial columns are expanded by
+ * PostgreSQL itself. Unlike the CREATE TABLE AS branch, the pragma is
+ * not applied here - the table already exists, and it is visible for
+ * planning of the following statements.
+ */
+static void
+process_create_table(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
+					 CreateStmt *cstmt)
+{
+	Oid			relid;
+
+	if (!is_temp_range_var(cstmt->relation))
+		return;
+
+	check_temp_schema(cstmt->relation);
+
+	relid = RangeVarGetRelid(cstmt->relation, NoLock, true);
+	if (OidIsValid(relid) && !cstmt->if_not_exists)
+		drop_temp_table(cstmt->relation->relname);
+
+	if (SPI_execute(expr->query, false, 0) != SPI_OK_UTILITY)
+		elog(ERROR, "unexpected SPI result on CREATE TABLE execution");
+
+	relid = RangeVarGetRelid(cstmt->relation, NoLock, true);
+	if (!OidIsValid(relid))
+		return;
+
+	emit_pragma_from_relid(cstate, relid);
 }
 
 /*
@@ -236,16 +374,7 @@ process_stmt_query(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt,
 			}
 			else if (IsA(node, CreateStmt))
 			{
-				CreateStmt *cstmt = (CreateStmt *) node;
-
-				/*
-				 * The table pragma cannot be generated from CREATE TABLE
-				 * statement (column definition list, LIKE clause or OF type
-				 * clause), but the check of target schema should be done
-				 * every time.
-				 */
-				if (is_temp_range_var(cstmt->relation))
-					check_temp_schema(cstmt->relation);
+				process_create_table(cstate, expr, (CreateStmt *) node);
 			}
 			else if (IsA(node, SelectStmt))
 			{
@@ -320,7 +449,7 @@ make_pragma_stmt_walker(PLpgSQL_stmt *stmt, void *context)
 
 /*
  * Scans the function's body and generates (and returns as result rows)
- * table pragmas for all CREATE TEMP TABLE AS statements there.
+ * table pragmas for all statements there that create temporary tables.
  */
 void
 plch_make_pragma(PLpgSQL_checkstate *cstate, PLpgSQL_function *func)

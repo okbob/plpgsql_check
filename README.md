@@ -517,9 +517,9 @@ You can use pragma `table` and create ephemeral table:
        PERFORM plpgsql_check_pragma('table: [pg_temp].zzz(like schemaname.table1 including all)');
        ...
 
-For temporary tables created by the `CREATE TEMP TABLE AS` statement, the table pragmas
-can be generated automatically by the function `plpgsql_make_pragma`
-(see the section "Table pragmas generator").
+For temporary tables created inside the function's body, the table pragmas can be
+generated automatically by the function `plpgsql_make_pragma` (see the section
+"Table pragmas generator").
 
 
 # Dependency list
@@ -898,7 +898,8 @@ Shorter syntax for pragma is supported too:
   
 * `type:varname typename` or `type:varname (fieldname type, ...)` - set type to variable of record type
 
-* `table: name (column_name type, ...)` or `table: name (like tablename)` - create ephemeral temporary table (if you want to specify schema, then only `pg_temp` schema is allowed.
+* `table: name (column_name type, ...)` or `table: name (like tablename)` - create ephemeral temporary table (if you want to specify schema, then only `pg_temp` schema is allowed).
+  The column list supports only a column name and a type (with optional type modifiers and array dimensions) - column constraints (`PRIMARY KEY`, `NOT NULL`, `DEFAULT`, `CHECK`) and `COLLATE` clauses are not supported here.
 
 * `sequence: name` - create ephemeral temporary sequence
 
@@ -914,13 +915,22 @@ Pragmas `enable:tracer` and `disable:tracer`are active for Postgres 12 and highe
 
 <i>plpgsql_check</i> cannot verify queries over temporary tables that are created at runtime.
 The pragma `table` solves this issue, but the column list must be written (and maintained)
-manually there - it gets out of sync easily when the query is changed. For temporary tables
-created by the `CREATE TEMP TABLE AS` statement, these pragmas can be generated automatically
-by the function `plpgsql_make_pragma`. It scans the function's body, and for
-every `CREATE TEMP TABLE ... AS SELECT|VALUES|TABLE` statement it returns one table pragma
-string. The names and types of columns are derived from planning of the inner query. The query
-is planned, but never executed - the function has no side effects, it doesn't create any object
-in the system catalogue, and repeated calls return the same result.
+manually there - it gets out of sync easily when the definition is changed. These pragmas
+can be generated automatically by the function `plpgsql_make_pragma`. It scans the
+function's body, and for every statement there that creates a temporary table it returns
+one table pragma string.
+
+For `CREATE TEMP TABLE ... AS SELECT|VALUES|TABLE` statements the names and types of
+columns are derived from planning of the inner query (the query is never executed). For
+`CREATE TEMP TABLE` statements (the column definition list, the `LIKE` clause, the
+`OF type_name` clause, inheritance and partitioning) the statement is executed inside an
+always rolled back subtransaction, and the pragma is derived from the structure of the
+really created table - so serial or identity columns, inherited or LIKE-copied columns
+are expanded by PostgreSQL itself. Column constraints (`PRIMARY KEY`, `NOT NULL`,
+`DEFAULT`, `CHECK`) don't block the generation, but they are not carried into the
+generated pragma - the pragma holds only column names and types, which is enough for
+the static checks. In both cases no object survives the call, and repeated calls
+return the same result.
 
     create table gtp_src(a int, b text);
 
@@ -1005,12 +1015,37 @@ The statements are processed in the order of appearance in the function's body (
 blocks, loops, IF branches and exception handlers are scanned too), and the pragmas are
 returned in the same order without deduplication. Explicitly written table pragmas inside
 the function's body are respected, so a temporary table created by dynamic SQL can be
-declared manually, and the following `CREATE TEMP TABLE AS` statements can reference it.
+declared manually, and the following statements can reference it.
 
-Only statically written `CREATE TEMP TABLE ... AS SELECT|VALUES|TABLE` commands are
-processed. Other forms of temporary tables - the column definition list, the `LIKE`
-clause and the `OF type_name` clause - and dynamic SQL are ignored (the pragma cannot
-be derived from them). Not temporary tables and materialized views are ignored too.
+The `CREATE TEMP TABLE` statement based forms are supported in all variants - with
+storage parameters, access method, `ON COMMIT` or `IF NOT EXISTS` clauses, or with the
+`pg_temp` schema qualification used without the `TEMP` keyword:
+
+    create or replace function gtp_f20()
+    returns void as $$
+    begin
+      create temp table gtp_x (id serial, v varchar(10));
+      create temp table gtp_y (like gtp_x including all);
+      insert into gtp_y(v) values ('hello');
+    end;
+    $$ language plpgsql;
+
+    postgres=# select * from plpgsql_make_pragma('gtp_f20()');
+                    plpgsql_make_pragma                
+    ---------------------------------------------------
+     table: gtp_x(id integer, v character varying(10))
+     table: gtp_y(id integer, v character varying(10))
+    (2 rows)
+
+Only statically written commands are processed - dynamic SQL (`EXECUTE`), not temporary
+tables and materialized views are ignored.
+
+A name collision (usually the pattern `CREATE`, `DROP`, `CREATE` with the same name -
+DROP statements are not executed by static scanning) is not an error. A warning is
+raised, pragmas are returned for both definitions, and the following statements of the
+function's body see the last definition like in runtime. `CREATE TEMP TABLE IF NOT EXISTS`
+over an existing table returns the structure of the existing table (the existing table
+wins like in runtime).
 
 The function raises an error when:
 
@@ -1025,7 +1060,11 @@ The function raises an error when:
   forms too),
 
 * more column names are explicitly specified than the query returns - the error
-  `too many column names were specified`.
+  `too many column names were specified`,
+
+* the execution of a `CREATE TEMP TABLE` statement fails - e.g. a temporary partition
+  of a persistent table, a foreign key from a temporary table to a persistent table, or
+  the `LIKE` clause over a missing table. The error is the same like in runtime.
 
 When the option `fatal_errors` is false, then failed statements are skipped (with a
 warning), and the scanning continues.
