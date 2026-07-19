@@ -6,3 +6,4 @@ plpgsql_check_active_4.out			PostgreSQL 19
 plpgsql_check_active.out			PostgreSQL 17
 
 plch_pragma_generator.out		PostgreSQL 14 and higher (all versions)
+plch_record_field.out			PostgreSQL 14 and higher (all versions)

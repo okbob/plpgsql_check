@@ -204,10 +204,28 @@ param_get_desc(PLpgSQL_checkstate *cstate, Param *p)
 		dno = p->paramid - 1;
 		var = (PLpgSQL_var *) cstate->estate->datums[dno];
 
-		if (!var->datatype ||
-			!OidIsValid(var->datatype->typoid) ||
-			var->datatype->typoid == 0xFFFFFFFF ||
-			var->datatype->typoid == p->paramtype)
+		if (var->dtype == PLPGSQL_DTYPE_RECFIELD)
+		{
+			/*
+			 * The datum is a field of a record variable (PLpgSQL_recfield).
+			 * It does not share the PLpgSQL_variable header, so var->datatype
+			 * must not be touched here (issue #216).  The only available type
+			 * info is the param type; for a field of an anonymous record type
+			 * the lookup returns NULL and we give up.
+			 */
+			TupleDesc	rectupdesc;
+
+			rectupdesc = lookup_rowtype_tupdesc_noerror(p->paramtype, p->paramtypmod, true);
+			if (rectupdesc)
+			{
+				rettupdesc = CreateTupleDescCopy(rectupdesc);
+				ReleaseTupleDesc(rectupdesc);
+			}
+		}
+		else if (!var->datatype ||
+				 !OidIsValid(var->datatype->typoid) ||
+				 var->datatype->typoid == 0xFFFFFFFF ||
+				 var->datatype->typoid == p->paramtype)
 		{
 			TupleDesc	rectupdesc;
 

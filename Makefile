@@ -10,7 +10,7 @@ MAJORVERSION := $(basename $(VERSION))
 endif
 
 REGRESS_OPTS = --dbname=$(PL_TESTDB)
-REGRESS = plpgsql_check_passive plpgsql_check_active plpgsql_check_active-$(MAJORVERSION) plpgsql_check_passive-$(MAJORVERSION) plpgsql_check_profiler plpgsql_pragma_generator
+REGRESS = plpgsql_check_passive plpgsql_check_active plpgsql_check_active-$(MAJORVERSION) plpgsql_check_passive-$(MAJORVERSION) plpgsql_check_profiler plpgsql_pragma_generator plch_record_field
 
 ifdef NO_PGXS
 subdir = contrib/plpgsql_check
