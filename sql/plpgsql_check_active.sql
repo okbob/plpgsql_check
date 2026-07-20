@@ -4611,3 +4611,29 @@ select * from plpgsql_check_function('test_retcode_bad');
 drop function test_retcode_bad;
 
 drop type t_retcode cascade;
+
+create type demo_payload as (value integer);
+
+create function demo_produce_row(out status_code integer, out payload record)
+as $$
+begin
+  status_code := 0;
+  payload := ROW(1)::demo_payload;
+end
+$$ language plpgsql;
+
+create function demo_consume_row()
+returns void as $$
+declare
+  fetched_row record;
+  typed_payload demo_payload;
+  observed_status integer;
+begin
+  select * into strict fetched_row from demo_produce_row();
+  typed_payload := fetched_row.payload;
+  observed_status := fetched_row.status_code;
+end;
+$$ language plpgsql;
+
+-- should not crash - issue #216
+select * from plpgsql_check_function('demo_consume_row()');

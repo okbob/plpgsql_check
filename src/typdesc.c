@@ -204,16 +204,28 @@ param_get_desc(PLpgSQL_checkstate *cstate, Param *p)
 		dno = p->paramid - 1;
 		var = (PLpgSQL_var *) cstate->estate->datums[dno];
 
-		if (!var->datatype ||
-			!OidIsValid(var->datatype->typoid) ||
-			var->datatype->typoid == 0xFFFFFFFF ||
-			var->datatype->typoid == p->paramtype)
+		if (var->dtype == PLPGSQL_DTYPE_ROW || var->dtype == PLPGSQL_DTYPE_RECFIELD)
 		{
 			TupleDesc	rectupdesc;
 
-			if (var->dtype == PLPGSQL_DTYPE_REC)
+			rectupdesc = lookup_rowtype_tupdesc_noerror(p->paramtype, p->paramtypmod, true);
+
+			if (rectupdesc != NULL)
 			{
-				PLpgSQL_rec *rec = (PLpgSQL_rec *) var;
+				rettupdesc = CreateTupleDescCopy(rectupdesc);
+				ReleaseTupleDesc(rectupdesc);
+			}
+		}
+		else if (var->dtype == PLPGSQL_DTYPE_REC)
+		{
+			PLpgSQL_rec *rec = (PLpgSQL_rec *) var;
+
+			if (!rec->datatype ||
+				!OidIsValid(rec->datatype->typoid) ||
+				rec->datatype->typoid == 0xFFFFFFFF ||
+				rec->datatype->typoid == p->paramtype)
+			{
+				TupleDesc	rectupdesc;
 				Oid			typoid;
 				int32		typmod;
 
@@ -226,17 +238,9 @@ param_get_desc(PLpgSQL_checkstate *cstate, Param *p)
 					ReleaseTupleDesc(rectupdesc);
 				}
 			}
-			else
-			{
-				rectupdesc = lookup_rowtype_tupdesc_noerror(p->paramtype, p->paramtypmod, true);
-
-				if (rectupdesc != NULL)
-				{
-					rettupdesc = CreateTupleDescCopy(rectupdesc);
-					ReleaseTupleDesc(rectupdesc);
-				}
-			}
 		}
+		else
+			elog(ERROR, "unexpected dtype");
 	}
 
 	return rettupdesc;
