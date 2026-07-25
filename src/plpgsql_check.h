@@ -62,12 +62,6 @@ enum
 	PLPGSQL_CHECK_UNKNOWN
 };
 
-typedef enum profiler_stmt_walker_mode
-{
-	PLPGSQL_CHECK_STMT_WALKER_PREPARE_RESULT,
-	PLPGSQL_CHECK_STMT_WALKER_COLLECT_COVERAGE
-} profiler_stmt_walker_mode;
-
 typedef enum PragmaAssertType
 {
 	PLPGSQL_CHECK_PRAGMA_ASSERT_SCHEMA,
@@ -203,14 +197,6 @@ typedef struct PLpgSQL_checkstate
 								 * value is constant */
 	PLpgSQL_statements *top_stmts;	/* pointer to current statement group */
 } PLpgSQL_checkstate;
-
-typedef struct coverage_state
-{
-	int			statements;
-	int			branches;
-	int			executed_statements;
-	int			executed_branches;
-} coverage_state;
 
 /*
  * function from assign.c
@@ -400,9 +386,6 @@ extern void plpgsql_check_profiler_shmem_startup(void);
 
 extern Size plpgsql_check_shmem_size(void);
 extern void plch_profiler_init_local_hash_tables(void);
-
-extern void plpgsql_check_iterate_over_profile(plpgsql_check_info *cinfo, profiler_stmt_walker_mode mode,
-											   plpgsql_check_result_info *ri, coverage_state *cs);
 
 extern void plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo);
 extern void plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri);

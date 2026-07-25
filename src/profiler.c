@@ -125,7 +125,7 @@ typedef struct ProfilerSharedState
 typedef struct LXCache
 {
 	plch_fidentity_hk hk;
-	FuncStats fstats;
+	FuncStats	fstats;
 	StmtStats  *sstats;
 	int			nstatements;
 } LXCache;
