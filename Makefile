@@ -25,3 +25,9 @@ endif
 
 # temorary fix of compilation with gcc 15
 override CFLAGS += -Wno-error=incompatible-pointer-types -I$(top_builddir)/src/pl/plpgsql/src -Wall -g
+
+plpgsql_check.typedefs: $(OBJS)
+	./typedefs_gen.py
+
+pgindent: plpgsql_check.typedefs
+	pgindent --typedefs=plpgsql_check.typedefs src/*.c src/*.h
