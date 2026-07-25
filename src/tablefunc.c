@@ -63,6 +63,11 @@ plpgsql_check_info_init(plpgsql_check_info *cinfo, Oid fn_oid)
 	memset(cinfo, 0, sizeof(*cinfo));
 
 	cinfo->fn_oid = fn_oid;
+
+	cinfo->anyelementoid = INT4OID;
+	cinfo->anyrangeoid = INT4RANGEOID;
+	cinfo->anycompatibleoid = INT4OID;
+	cinfo->anycompatiblerangeoid = INT4RANGEOID;
 }
 
 void
