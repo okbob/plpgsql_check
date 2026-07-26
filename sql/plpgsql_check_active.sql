@@ -4637,3 +4637,23 @@ $$ language plpgsql;
 
 -- should not crash - issue #216
 select * from plpgsql_check_function('demo_consume_row()');
+
+-- should not crash - issue #220
+create function f_poly(anyelement)
+returns int as $$
+begin
+  return $1;
+end;
+$$ language plpgsql;
+
+select plpgsql_check_profiler(true);
+
+select f_poly(1);
+
+select plpgsql_coverage_statements('f_poly(anyelement)');
+
+select plpgsql_coverage_statements('f_poly');
+
+select plpgsql_check_profiler(false);
+
+drop function f_poly;
