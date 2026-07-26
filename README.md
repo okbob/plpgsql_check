@@ -678,6 +678,9 @@ plpgsql_check provides two functions:
 * `plpgsql_coverage_statements(name)`
 * `plpgsql_coverage_branches(name)`
 
+The coverage data are collected only when profiling is active.
+
+
 ## Note
 
 There is another very good PLpgSQL profiler - https://github.com/glynastill/plprofiler
