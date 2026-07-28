@@ -2379,6 +2379,25 @@ drop function myfunc4(int, float);
 drop table mytable;
 drop view myview;
 
+-- issue #221
+create type foo_type as (a int);
+create table foo(a int);
+
+create function testfuncdep()
+returns void as $$
+declare
+  x foo_type;
+  y foo;
+begin
+end;
+$$ language plpgsql;
+
+select type, schema, name from plpgsql_show_dependency_tb('testfuncdep');
+
+drop function testfuncdep();
+drop type foo_type;
+drop table foo;
+
 -- issue #34
 create or replace function testcase()
 returns bool as $$

@@ -114,6 +114,69 @@ collect_out_variables(PLpgSQL_function *func, PLpgSQL_checkstate *cstate)
 }
 
 /*
+ * reports dependency of composite variables that uses referenced types
+ */
+static void
+reports_used_rowtypes_dependency(PLpgSQL_function *func, PLpgSQL_checkstate *cstate)
+{
+	plpgsql_check_result_info *ri = cstate->result_info;
+	int			i;
+
+	if (cstate->result_info->format != PLPGSQL_SHOW_DEPENDENCY_FORMAT_TABULAR)
+		return;
+
+	for (i = 0; i < func->ndatums; i++)
+	{
+		PLpgSQL_var *var = (PLpgSQL_var *) func->datums[i];
+
+		if (var->dtype == PLPGSQL_DTYPE_REC)
+		{
+			PLpgSQL_rec *rec = (PLpgSQL_rec *) var;
+			Oid		typrelid;
+			char	relkind;
+
+			typrelid = get_typ_typrelid(rec->datatype->typoid);
+			relkind = get_rel_relkind(typrelid);
+
+			if (!bms_is_member(typrelid, cstate->rel_oids))
+			{
+				if (relkind == RELKIND_COMPOSITE_TYPE)
+				{
+					plpgsql_check_put_dependency(ri,
+												 "TYPE",
+												 typrelid,
+												 get_namespace_name(get_rel_namespace(typrelid)),
+												 get_rel_name(typrelid),
+												 NULL);
+				}
+				else if (relkind == RELKIND_RELATION ||
+						 relkind == RELKIND_PARTITIONED_TABLE)
+				{
+					plpgsql_check_put_dependency(ri,
+												 "RELATION",
+												 typrelid,
+												 get_namespace_name(get_rel_namespace(typrelid)),
+												 get_rel_name(typrelid),
+												 NULL);
+				}
+				else if (relkind == RELKIND_VIEW ||
+						 relkind == RELKIND_MATVIEW)
+				{
+					plpgsql_check_put_dependency(ri,
+												 "VIEW",
+												 typrelid,
+												 get_namespace_name(get_rel_namespace(typrelid)),
+												 get_rel_name(typrelid),
+												 NULL);
+				}
+
+				cstate->rel_oids = bms_add_member(cstate->rel_oids, typrelid);
+			}
+		}
+	}
+}
+
+/*
  * Returns true, when routine should be closed by RETURN statement
  *
  */
@@ -219,6 +282,8 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 			function = plpgsql_check__compile_p(fake_fcinfo, false);
 
 			collect_out_variables(function, &cstate);
+
+			reports_used_rowtypes_dependency(function, &cstate);
 
 			/* Must save and restore prior value of cur_estate */
 			cur_estate = function->cur_estate;
