@@ -3268,6 +3268,26 @@ select type, schema, name from plpgsql_show_dependency_tb('testfuncdep');
 drop function testfuncdep();
 drop type foo_type;
 drop table foo;
+-- issue #221 - dependency report on trigger function should not crash
+-- (NEW and OLD record variables have no datatype)
+create table foo(a int, b text);
+create function foo_trg_func()
+returns trigger as $$
+begin
+  new.b := 'x';
+  return new;
+end;
+$$ language plpgsql;
+create trigger foo_trg before insert on foo
+  for each row execute function foo_trg_func();
+select type, schema, name from plpgsql_show_dependency_tb('foo_trg_func', 'foo');
+ type | schema | name 
+------+--------+------
+(0 rows)
+
+drop trigger foo_trg on foo;
+drop function foo_trg_func();
+drop table foo;
 -- issue #34
 create or replace function testcase()
 returns bool as $$
