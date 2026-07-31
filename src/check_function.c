@@ -148,6 +148,8 @@ reports_used_rowtypes_dependency(PLpgSQL_function *func, PLpgSQL_checkstate *cst
 												 get_namespace_name(get_rel_namespace(typrelid)),
 												 get_rel_name(typrelid),
 												 NULL);
+
+					cstate->rel_oids = bms_add_member(cstate->rel_oids, typrelid);
 				}
 				else if (relkind == RELKIND_RELATION ||
 						 relkind == RELKIND_PARTITIONED_TABLE ||
@@ -161,9 +163,9 @@ reports_used_rowtypes_dependency(PLpgSQL_function *func, PLpgSQL_checkstate *cst
 												 get_namespace_name(get_rel_namespace(typrelid)),
 												 get_rel_name(typrelid),
 												 NULL);
-				}
 
-				cstate->rel_oids = bms_add_member(cstate->rel_oids, typrelid);
+					cstate->rel_oids = bms_add_member(cstate->rel_oids, typrelid);
+				}
 			}
 		}
 	}
