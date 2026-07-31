@@ -135,6 +135,10 @@ reports_used_rowtypes_dependency(PLpgSQL_function *func, PLpgSQL_checkstate *cst
 			Oid		typrelid;
 			char	relkind;
 
+			/* datatype can be NULL, when rectypeid is RECORDOID (trigger NEW/OLD) */
+			if (!rec->datatype)
+				continue;
+
 			typrelid = get_typ_typrelid(rec->datatype->typoid);
 			relkind = get_rel_relkind(typrelid);
 
