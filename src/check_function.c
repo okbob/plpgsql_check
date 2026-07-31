@@ -150,20 +150,13 @@ reports_used_rowtypes_dependency(PLpgSQL_function *func, PLpgSQL_checkstate *cst
 												 NULL);
 				}
 				else if (relkind == RELKIND_RELATION ||
-						 relkind == RELKIND_PARTITIONED_TABLE)
-				{
-					plpgsql_check_put_dependency(ri,
-												 "RELATION",
-												 typrelid,
-												 get_namespace_name(get_rel_namespace(typrelid)),
-												 get_rel_name(typrelid),
-												 NULL);
-				}
-				else if (relkind == RELKIND_VIEW ||
+						 relkind == RELKIND_PARTITIONED_TABLE ||
+						 relkind == RELKIND_FOREIGN_TABLE ||
+						 relkind == RELKIND_VIEW ||
 						 relkind == RELKIND_MATVIEW)
 				{
 					plpgsql_check_put_dependency(ri,
-												 "VIEW",
+												 "RELATION",
 												 typrelid,
 												 get_namespace_name(get_rel_namespace(typrelid)),
 												 get_rel_name(typrelid),
