@@ -1,4 +1,4 @@
-project('plpgsql_check', ['c'], version: '2.10.3')
+project('plpgsql_check', ['c'], version: '2.10.4')
 
 pg_config = find_program('pg_config')
 
