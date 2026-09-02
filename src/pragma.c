@@ -185,7 +185,7 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 	{
 		is_valid = plpgsql_check_pragma_table(cstate, pragma_str + 6, lineno);
 	}
-	else if (strncasecmp(pragma_str, "SEQUENCE:", 6) == 0)
+	else if (strncasecmp(pragma_str, "SEQUENCE:", 9) == 0)
 	{
 		is_valid = plpgsql_check_pragma_sequence(cstate, pragma_str + 9, lineno);
 	}
