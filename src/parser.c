@@ -1044,6 +1044,10 @@ plpgsql_check_pragma_assert(PLpgSQL_checkstate *cstate,
 			elog(ERROR, "too much variables for \"%s\" pragma",
 				 pragma_assert_name(pat));
 
+		if (pat == PLPGSQL_CHECK_PRAGMA_ASSERT_COLUMN && nvars < 2)
+			elog(ERROR, "too few variables for \"%s\" pragma",
+				 pragma_assert_name(pat));
+
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
@@ -1077,6 +1081,7 @@ plpgsql_check_pragma_assert(PLpgSQL_checkstate *cstate,
 
 	if (pat == PLPGSQL_CHECK_PRAGMA_ASSERT_SCHEMA)
 	{
+		Assert(nvars == 1);
 		(void) check_var_schema(cstate, dno[0]);
 	}
 	else if (pat == PLPGSQL_CHECK_PRAGMA_ASSERT_TABLE)
@@ -1084,14 +1089,20 @@ plpgsql_check_pragma_assert(PLpgSQL_checkstate *cstate,
 		if (nvars == 1)
 			(void) check_var_table(cstate, -1, dno[0]);
 		else
+		{
+			Assert(nvars == 2);
 			(void) check_var_table(cstate, dno[0], dno[1]);
+		}
 	}
 	else if (pat == PLPGSQL_CHECK_PRAGMA_ASSERT_COLUMN)
 	{
 		if (nvars == 2)
 			(void) check_var_column(cstate, -1, dno[0], dno[1]);
 		else
+		{
+			Assert(nvars == 3);
 			(void) check_var_column(cstate, dno[0], dno[1], dno[2]);
+		}
 	}
 
 	return result;
