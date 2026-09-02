@@ -33,7 +33,7 @@ google group.
 
 I invite any ideas, patches, bugreports.
 
-PostgreSQL 14 - 18 are supported.
+PostgreSQL 14 - 19 are supported.
 
 The SQL statements inside PL/pgSQL functions are checked by the validator for semantic errors. These errors
 can be found by calling the plpgsql_check_function:
