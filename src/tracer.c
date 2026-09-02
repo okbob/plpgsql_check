@@ -214,33 +214,25 @@ convert_plpgsql_datum_to_string(PLpgSQL_execstate *estate,
 }
 
 /*
- * Trim string value to n bytes
+ * returns size of string trimmed to plpgsql_check_tracer_variable_max_length.
+ * This function does not break multibyte characters.
  */
-static void
-trim_string(char *str, int n)
+static int
+trimmed_str_size(char *str)
 {
-	size_t		l = strlen(str);
+	int			len = strlen(str);
 
-	if (l <= (size_t) n)
-		return;
-
-	if (pg_database_encoding_max_length() == 1)
+	if (len > plpgsql_check_tracer_variable_max_length)
 	{
-		str[n] = '\0';
-		return;
+		if (pg_database_encoding_max_length() > 1)
+		{
+			len = pg_mbcliplen(str, len, plpgsql_check_tracer_variable_max_length);
+		}
+		else
+			len = plpgsql_check_tracer_variable_max_length;
 	}
 
-	while (n > 0)
-	{
-		int			mbl = pg_mblen(str);
-
-		if (mbl > n)
-			break;
-		str += mbl;
-		n -= mbl;
-	}
-
-	*str = '\0';
+	return len;
 }
 
 /*
@@ -331,16 +323,23 @@ print_func_args(PLpgSQL_execstate *estate, PLpgSQL_function *func, int frame_num
 											  &isnull,
 											  &refname);
 
+		if (!isnull)
+		{
+			int			tlen;
+
+			Assert(str);
+			tlen = trimmed_str_size(str);
+			str[tlen] = '\0';
+		}
+
 		if (refname)
 		{
 			if (!isnull)
 			{
 				/*
-				 * when this output is too long or contains new line, print it
-				 * separately
+				 * contains new line, print it separately
 				 */
-				if (((int) strlen(str)) > plpgsql_check_tracer_variable_max_length ||
-					strchr(str, '\n') != NULL)
+				if (strchr(str, '\n') != NULL)
 				{
 					if (*ds.data)
 					{
@@ -354,7 +353,6 @@ print_func_args(PLpgSQL_execstate *estate, PLpgSQL_function *func, int frame_num
 						resetStringInfo(&ds);
 					}
 
-					trim_string(str, plpgsql_check_tracer_variable_max_length);
 					elog(plpgsql_check_tracer_errlevel,
 						 "#%-*d%*s \"%s\" => '%s'",
 						 frame_width,
@@ -460,6 +458,15 @@ print_expr_args(PLpgSQL_execstate *estate,
 											  &isnull,
 											  &refname);
 
+		if (!isnull)
+		{
+			int			tlen;
+
+			Assert(str);
+			tlen = trimmed_str_size(str);
+			str[tlen] = '\0';
+		}
+
 		if (refname)
 		{
 			if (!isnull)
@@ -468,8 +475,7 @@ print_expr_args(PLpgSQL_execstate *estate,
 				 * when this output is too long or contains new line, print it
 				 * separately
 				 */
-				if (((int) strlen(str)) > plpgsql_check_tracer_variable_max_length ||
-					strchr(str, '\n') != NULL)
+				if (strchr(str, '\n') != NULL)
 				{
 					if (*ds.data)
 					{
@@ -483,7 +489,6 @@ print_expr_args(PLpgSQL_execstate *estate,
 						resetStringInfo(&ds);
 					}
 
-					trim_string(str, plpgsql_check_tracer_variable_max_length);
 					elog(plpgsql_check_tracer_errlevel,
 						 "#%-*s%*s \"%s\" => '%s'",
 						 frame_width,
@@ -584,6 +589,15 @@ print_assert_args(PLpgSQL_execstate *estate, PLpgSQL_stmt_assert *stmt)
 											  &isnull,
 											  &refname);
 
+		if (!isnull)
+		{
+			int			tlen;
+
+			Assert(str);
+			tlen = trimmed_str_size(str);
+			str[tlen] = '\0';
+		}
+
 		if (refname)
 		{
 			if (!isnull)
@@ -592,8 +606,7 @@ print_assert_args(PLpgSQL_execstate *estate, PLpgSQL_stmt_assert *stmt)
 				 * when this output is too long or contains new line, print it
 				 * separately
 				 */
-				if (((int) strlen(str)) > plpgsql_check_tracer_variable_max_length ||
-					strchr(str, '\n') != NULL)
+				if (strchr(str, '\n') != NULL)
 				{
 					if (*ds.data)
 					{
@@ -602,7 +615,6 @@ print_assert_args(PLpgSQL_execstate *estate, PLpgSQL_stmt_assert *stmt)
 						resetStringInfo(&ds);
 					}
 
-					trim_string(str, plpgsql_check_tracer_variable_max_length);
 					elog(plpgsql_check_tracer_errlevel,
 						 " \"%s\" => '%s'",
 						 refname,
@@ -668,6 +680,15 @@ print_all_variables(PLpgSQL_execstate *estate)
 											  &isnull,
 											  &refname);
 
+		if (!isnull)
+		{
+			int			tlen;
+
+			Assert(str);
+			tlen = trimmed_str_size(str);
+			str[tlen] = '\0';
+		}
+
 		if (strcmp(refname, "*internal*") == 0 ||
 			strcmp(refname, "(unnamed row)") == 0)
 			refname = NULL;
@@ -680,8 +701,7 @@ print_all_variables(PLpgSQL_execstate *estate)
 				 * when this output is too long or contains new line, print it
 				 * separately
 				 */
-				if (((int) strlen(str)) > plpgsql_check_tracer_variable_max_length ||
-					strchr(str, '\n') != NULL)
+				if (strchr(str, '\n') != NULL)
 				{
 					if (*ds.data)
 					{
@@ -690,7 +710,6 @@ print_all_variables(PLpgSQL_execstate *estate)
 						resetStringInfo(&ds);
 					}
 
-					trim_string(str, plpgsql_check_tracer_variable_max_length);
 					elog(plpgsql_check_tracer_errlevel,
 						 "%*s \"%s\" => '%s'",
 						 indent, "",
@@ -751,11 +770,19 @@ print_datum(PLpgSQL_execstate *estate, PLpgSQL_datum *dtm, char *frame, int leve
 										  &isnull,
 										  &refname);
 
+	if (!isnull)
+	{
+		int			tlen;
+
+		Assert(str);
+		tlen = trimmed_str_size(str);
+		str[tlen] = '\0';
+	}
+
 	if (refname)
 	{
 		if (!isnull)
 		{
-			trim_string(str, plpgsql_check_tracer_variable_max_length);
 			elog(plpgsql_check_tracer_errlevel,
 				 "#%-*s%*s \"%s\" => '%s'",
 				 frame_width,
@@ -1022,7 +1049,7 @@ copy_string_part(char *dest, char *src, int n)
 
 	while (*src && n > 0)
 	{
-		int			mbl = pg_mblen(src);
+		int			mbl = pg_mblen_cstr(src);
 
 		memcpy(dest, src, mbl);
 		src += mbl;

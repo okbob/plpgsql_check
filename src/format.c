@@ -755,7 +755,7 @@ put_error_text(plpgsql_check_result_info *ri,
 				/* go to next line */
 				query_line = ptr + 1;
 			}
-			ptr += pg_mblen(ptr);
+			ptr += pg_mblen_cstr(ptr);
 
 			if (position > 0)
 				position--;
