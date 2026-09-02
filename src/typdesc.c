@@ -191,7 +191,24 @@ param_get_desc(PLpgSQL_checkstate *cstate, Param *p)
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("function does not return composite type, is not possible to identify composite type")));
 
-	if (p->paramkind == PARAM_EXTERN && p->paramid > 0 && p->location != -1)
+	/*
+	 * paramid inside dynamic query (executed by EXECUTE command) is not
+	 * related to datum number
+	 */
+	if (cstate->is_dyn_query)
+	{
+		TupleDesc	rectupdesc;
+
+		rectupdesc = lookup_rowtype_tupdesc_noerror(p->paramtype, p->paramtypmod, true);
+
+		if (rectupdesc != NULL)
+		{
+			rettupdesc = CreateTupleDescCopy(rectupdesc);
+			ReleaseTupleDesc(rectupdesc);
+		}
+	}
+
+	else if (p->paramkind == PARAM_EXTERN && p->paramid > 0 && p->location != -1)
 	{
 		int			dno;
 		PLpgSQL_var *var;
@@ -202,6 +219,9 @@ param_get_desc(PLpgSQL_checkstate *cstate, Param *p)
 		 * already.
 		 */
 		dno = p->paramid - 1;
+
+		Assert(dno < cstate->estate->ndatums);
+
 		var = (PLpgSQL_var *) cstate->estate->datums[dno];
 
 		if (var->dtype == PLPGSQL_DTYPE_ROW || var->dtype == PLPGSQL_DTYPE_RECFIELD)

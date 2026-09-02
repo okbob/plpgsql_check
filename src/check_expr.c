@@ -969,7 +969,7 @@ plpgsql_check_const_to_string(Node *node, int *location)
 	return NULL;
 }
 
-char *
+static char *
 plpgsql_check_get_tracked_const(PLpgSQL_checkstate *cstate, Node *node)
 {
 	if (!cstate->strconstvars)
@@ -978,7 +978,7 @@ plpgsql_check_get_tracked_const(PLpgSQL_checkstate *cstate, Node *node)
 	if (cstate->pragma_vector.disable_constants_tracing)
 		return NULL;
 
-	if (IsA(node, Param))
+	if (!cstate->is_dyn_query && IsA(node, Param))
 	{
 		Param	   *p = (Param *) node;
 
@@ -1168,11 +1168,16 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
  *
  */
 void
-plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expression)
+plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
+											  PLpgSQL_expr *expr,
+											  bool is_expression,
+											  ParserSetupHook parser_setup,
+											  void *arg)
 {
 	PLpgSQL_execstate *estate = cstate->estate;
 	PLpgSQL_function *func = estate->func;
 	bool		is_return_query = !is_expression;
+	bool		is_dyn_query = parser_setup == plch_dynsql_parser_setup;
 
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
@@ -1187,11 +1192,14 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 		bool		is_immutable_null;
 		Oid			first_level_typ = InvalidOid;
 
-		prepare_plan(cstate, expr, 0, NULL, NULL, is_expression);
+		cstate->is_dyn_query = is_dyn_query;
+
+		prepare_plan(cstate, expr, 0, parser_setup, arg, is_expression);
 
 		/*
 		 * record all variables used by the query, should be after
-		 * prepare_plan
+		 * prepare_plan.
+		 * Note: expr->paramnos should be empty for dynamic queries.
 		 */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
@@ -1287,6 +1295,8 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
+
+		cstate->is_dyn_query = false;
 	}
 	PG_CATCH();
 	{
@@ -1300,6 +1310,8 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
 
+		cstate->is_dyn_query = false;
+
 		/*
 		 * If fatal_errors is true, we just propagate the error up to the
 		 * highest level. Otherwise the error is appended to our current list
@@ -1312,6 +1324,14 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 		MemoryContextSwitchTo(oldCxt);
 	}
 	PG_END_TRY();
+}
+
+void
+plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate,
+							PLpgSQL_expr *expr,
+							bool is_expression)
+{
+	plpgsql_check_returned_expr_with_parser_setup(cstate, expr, is_expression, NULL, NULL);
 }
 
 /*
@@ -1351,9 +1371,15 @@ free_string_constant(PLpgSQL_checkstate *cstate, PLpgSQL_row *row)
  *
  */
 void
-plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
-							 PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
-							 int targetdno, bool use_element_type, bool is_expression)
+plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
+											   PLpgSQL_expr *expr,
+											   PLpgSQL_rec *targetrec,
+											   PLpgSQL_row *targetrow,
+											   int targetdno,
+											   bool use_element_type,
+											   bool is_expression,
+											   ParserSetupHook parser_setup,
+											   void *arg)
 {
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
@@ -1363,6 +1389,7 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 	Oid			first_level_typoid;
 	Oid			expected_typoid = InvalidOid;
 	int			expected_typmod = InvalidOid;
+	bool		is_dyn_query = parser_setup == plch_dynsql_parser_setup;
 
 	if (targetdno != -1)
 	{
@@ -1408,6 +1435,8 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 		char	   *local_err_text;
 		bool		free_local_err_text;
 
+		cstate->is_dyn_query = is_dyn_query;
+
 		if (cstate->estate->err_text)
 		{
 			local_err_text = (char *) cstate->estate->err_text;
@@ -1424,7 +1453,7 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 			free_local_err_text = false;
 		}
 
-		prepare_plan(cstate, expr, 0, NULL, NULL, is_expression);
+		prepare_plan(cstate, expr, 0, parser_setup, arg, is_expression);
 		/* record all variables used by the query */
 
 		if (expr->target_param != -1)
@@ -1765,6 +1794,8 @@ no_other_check:
 		if (free_local_err_text)
 			pfree(local_err_text);
 
+		cstate->is_dyn_query = false;
+
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
@@ -1776,6 +1807,8 @@ no_other_check:
 		MemoryContextSwitchTo(oldCxt);
 		edata = CopyErrorData();
 		FlushErrorState();
+
+		cstate->is_dyn_query = false;
 
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
@@ -1794,6 +1827,18 @@ no_other_check:
 	}
 	PG_END_TRY();
 }
+
+void
+plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
+							 PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow,
+							 int targetdno, bool use_element_type, bool is_expression)
+{
+	plpgsql_check_expr_as_rvalue_with_parser_setup(cstate, expr,
+												   targetrec, targetrow,
+												   targetdno, use_element_type, is_expression,
+												   NULL, NULL);
+}
+
 
 /*
  * Check a SQL statement, should not to return data
@@ -1952,43 +1997,63 @@ plpgsql_check_assignment(PLpgSQL_checkstate *cstate,
 								 is_expression);
 }
 
+
+void
+plpgsql_check_assignment_to_variable_with_parser_setup(PLpgSQL_checkstate *cstate,
+													   PLpgSQL_expr *expr,
+													   PLpgSQL_variable *targetvar,
+													   int targetdno,
+													   ParserSetupHook parser_setup,
+													   void *arg)
+{
+	if (targetvar != NULL)
+	{
+		if (targetvar->dtype == PLPGSQL_DTYPE_ROW)
+			plpgsql_check_expr_as_rvalue_with_parser_setup(cstate,
+														   expr,
+														   NULL,
+														   (PLpgSQL_row *) targetvar,
+														   targetdno,
+														   false,
+														   false,
+														   parser_setup,
+														   arg);
+
+		else if (targetvar->dtype == PLPGSQL_DTYPE_REC)
+			plpgsql_check_expr_as_rvalue_with_parser_setup(cstate,
+														   expr,
+														   (PLpgSQL_rec *) targetvar,
+														   NULL,
+														   targetdno,
+														   false,
+														   false,
+														   parser_setup,
+														   arg);
+
+		else
+			elog(ERROR, "unsupported target variable type");
+	}
+	else
+		plpgsql_check_expr_as_rvalue_with_parser_setup(cstate,
+													   expr,
+													   NULL,
+													   NULL,
+													   targetdno,
+													   false,
+													   true,
+													   parser_setup,
+													   arg);
+}
+
 void
 plpgsql_check_assignment_to_variable(PLpgSQL_checkstate *cstate,
 									 PLpgSQL_expr *expr,
 									 PLpgSQL_variable *targetvar,
 									 int targetdno)
 {
-	if (targetvar != NULL)
-	{
-		if (targetvar->dtype == PLPGSQL_DTYPE_ROW)
-			plpgsql_check_expr_as_rvalue(cstate,
-										 expr,
-										 NULL,
-										 (PLpgSQL_row *) targetvar,
-										 targetdno,
-										 false,
-										 false);
-
-		else if (targetvar->dtype == PLPGSQL_DTYPE_REC)
-			plpgsql_check_expr_as_rvalue(cstate,
-										 expr,
-										 (PLpgSQL_rec *) targetvar,
-										 NULL,
-										 targetdno,
-										 false,
-										 false);
-
-		else
-			elog(ERROR, "unsupported target variable type");
-	}
-	else
-		plpgsql_check_expr_as_rvalue(cstate,
-									 expr,
-									 NULL,
-									 NULL,
-									 targetdno,
-									 false,
-									 true);
+	plpgsql_check_assignment_to_variable_with_parser_setup(cstate, expr,
+														   targetvar, targetdno,
+														   NULL, NULL);
 }
 
 /*

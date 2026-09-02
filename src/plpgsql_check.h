@@ -196,6 +196,14 @@ typedef struct PLpgSQL_checkstate
 	char	  **strconstvars;	/* the values of string variables where the
 								 * value is constant */
 	PLpgSQL_statements *top_stmts;	/* pointer to current statement group */
+
+	/*
+	 * is_dyn_query is true if currently processed query is executed by
+	 * EXECUTE command. In this case, we cannot to derive estate variable
+	 * from Param nodes. In this case, the Param node reference is a number
+	 * of expr in USING list.
+	 */
+	bool		is_dyn_query;
 } PLpgSQL_checkstate;
 
 /*
@@ -304,7 +312,6 @@ extern char *plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate, cons
  * functions from check_expr.c
  */
 extern char *plpgsql_check_expr_get_string(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, int *location);
-extern char *plpgsql_check_get_tracked_const(PLpgSQL_checkstate *cstate, Node *node);
 extern char *plpgsql_check_get_const_string(PLpgSQL_checkstate *cstate, Node *node, int *location);
 extern void plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, Oid expected_typoid, bool required);
 extern void plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expression);
@@ -321,7 +328,12 @@ extern void plpgsql_check_assignment(PLpgSQL_checkstate *cstate, PLpgSQL_expr *e
 extern void plpgsql_check_expr_generic(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 extern void plpgsql_check_expr_generic_with_parser_setup(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 														 ParserSetupHook parser_setup, void *arg);
-
+extern void plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
+											  bool is_expression, ParserSetupHook parser_setup, void *arg);
+extern void plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
+														   PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow, int targetdno,
+														   bool use_element_type, bool is_expression,
+														   ParserSetupHook parser_setup, void *arg);
 extern Node *plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool force_plan_checks);
 extern char *plpgsql_check_const_to_string(Node *node, int *location);
 extern CachedPlanSource *plpgsql_check_get_plan_source(PLpgSQL_checkstate *cstate, SPIPlanPtr plan);
@@ -329,8 +341,13 @@ extern void plch_expr_prepare_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *exp
 extern bool plch_apply_inline_pragmas(PLpgSQL_checkstate *cstate, SelectStmt *selectStmt,
 									  PLpgSQL_nsitem *ns, int lineno, bool is_perform_stmt);
 
+extern void plpgsql_check_assignment_to_variable_with_parser_setup(PLpgSQL_checkstate *cstate,
+																   PLpgSQL_expr *expr, PLpgSQL_variable *targetvar,
+																   int targetdno,
+																   ParserSetupHook parser_setup, void *arg);
 extern void plpgsql_check_assignment_to_variable(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 												 PLpgSQL_variable *targetvar, int targetdno);
+
 
 /*
  * functions from report.c
@@ -346,6 +363,19 @@ extern bool plpgsql_check_is_internal_variable(PLpgSQL_checkstate *cstate, PLpgS
  */
 extern bool plpgsql_check_is_reserved_keyword(char *name);
 extern void plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **exceptions);
+extern void plch_dynsql_parser_setup(struct ParseState *pstate, void *params);
+
+typedef struct plch_DynSQLParams
+{
+	List	   *args;
+	PLpgSQL_checkstate *cstate;
+
+	/*
+	 * When dynamic query uses params, then this flag
+	 * will be set to true by dynsql_param_ref callback
+	 */
+	bool		use_params;
+} plch_DynSQLParams;
 
 /*
  * functions from typdesc.c

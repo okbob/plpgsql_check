@@ -1710,17 +1710,10 @@ exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond)
  * static SQL.
  */
 
-typedef struct DynSQLParams
-{
-	List	   *args;
-	PLpgSQL_checkstate *cstate;
-	bool		use_params;
-} DynSQLParams;
-
 static Node *
 dynsql_param_ref(ParseState *pstate, ParamRef *pref)
 {
-	DynSQLParams *params = (DynSQLParams *) pstate->p_ref_hook_state;
+	plch_DynSQLParams *params = (plch_DynSQLParams *) pstate->p_ref_hook_state;
 	List	   *args = params->args;
 	int			nargs = list_length(args);
 	Param	   *param = NULL;
@@ -1747,6 +1740,7 @@ dynsql_param_ref(ParseState *pstate, ParamRef *pref)
 		param = makeNode(Param);
 		param->paramkind = PARAM_EXTERN;
 		param->paramid = pref->number;
+
 		param->paramtype = TupleDescAttr(tupdesc, 0)->atttypid;
 		param->location = pref->location;
 
@@ -1772,8 +1766,8 @@ dynsql_param_ref(ParseState *pstate, ParamRef *pref)
  * Parameters are not mapped to function parameters, but to USING
  * clause expressions.
  */
-static void
-dynsql_parser_setup(struct ParseState *pstate, DynSQLParams *params)
+void
+plch_dynsql_parser_setup(struct ParseState *pstate, void *params)
 {
 	pstate->p_pre_columnref_hook = NULL;
 	pstate->p_post_columnref_hook = NULL;
@@ -1899,7 +1893,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	if (dynquery)
 	{
 		PLpgSQL_expr *dynexpr = NULL;
-		DynSQLParams dsp;
+		plch_DynSQLParams dsp;
 		volatile bool is_mp;
 		volatile bool is_ok = true;
 
@@ -1924,7 +1918,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 				plpgsql_check_expr_generic_with_parser_setup(cstate,
 															 dynexpr,
-															 (ParserSetupHook) dynsql_parser_setup,
+															 (ParserSetupHook) plch_dynsql_parser_setup,
 															 &dsp);
 
 				is_mp = cstate->has_mp;
@@ -1963,7 +1957,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 				plpgsql_check_expr_generic_with_parser_setup(cstate,
 															 dynexpr,
-															 (ParserSetupHook) dynsql_parser_setup,
+															 (ParserSetupHook) plch_dynsql_parser_setup,
 															 &dsp);
 
 				is_mp = cstate->has_mp;
@@ -2020,13 +2014,17 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 			if (stmt->cmd_type == PLPGSQL_STMT_RETURN_QUERY)
 			{
-				plpgsql_check_returned_expr(cstate, dynexpr, false);
+				plpgsql_check_returned_expr_with_parser_setup(cstate, dynexpr, false,
+															  (ParserSetupHook) plch_dynsql_parser_setup,
+															  &dsp);
 				cstate->found_return_query = true;
 			}
 			else if (into)
 			{
 				check_variable(cstate, target);
-				plpgsql_check_assignment_to_variable(cstate, dynexpr, target, -1);
+				plpgsql_check_assignment_to_variable_with_parser_setup(cstate, dynexpr, target, -1,
+																	   (ParserSetupHook) plch_dynsql_parser_setup,
+																	   &dsp);
 			}
 		}
 
