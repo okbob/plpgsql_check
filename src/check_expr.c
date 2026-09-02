@@ -1205,13 +1205,13 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 			Node	   *node = plpgsql_check_expr_get_node(cstate, expr, false);
 			bool		is_ok = true;
 
-			if (IsA((Node *) node, Const))
+			if (node && IsA((Node *) node, Const))
 			{
 				/* only NULL constant argument is ok */
 				if (!((Const *) node)->constisnull)
 					is_ok = false;
 			}
-			else if (IsA((Node *) node, Param))
+			else if (node && IsA((Node *) node, Param))
 			{
 				/* only variable of refcursor is ok */
 				if (((Param *) node)->paramtype != REFCURSOROID)
@@ -1581,13 +1581,13 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 					cstate->estate->err_stmt->cmd_type == PLPGSQL_STMT_BLOCK &&
 					var->cursor_explicit_expr;
 
-				if (IsA((Node *) node, Const))
+				if (node && IsA((Node *) node, Const))
 				{
 					/* only NULL constant argument is ok */
 					if (!((Const *) node)->constisnull)
 						is_ok = false;
 				}
-				else if (IsA((Node *) node, Param))
+				else if (node && IsA((Node *) node, Param))
 				{
 					/* only variable of refcursor is ok */
 					if (((Param *) node)->paramtype != REFCURSOROID)
