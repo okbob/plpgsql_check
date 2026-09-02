@@ -986,6 +986,8 @@ plpgsql_check_get_tracked_const(PLpgSQL_checkstate *cstate, Node *node)
 		{
 			int			dno = p->paramid - 1;
 
+			Assert(dno < cstate->estate->ndatums);
+
 			if (cstate->strconstvars[dno])
 				return cstate->strconstvars[dno];
 		}
