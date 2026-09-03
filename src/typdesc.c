@@ -293,8 +293,10 @@ pofce_get_desc(PLpgSQL_checkstate *cstate,
 		char	  **argnames;
 		int			pronallargs;
 		int			i;
+		int			inargno;
 
 		pronallargs = get_func_arg_info(func_tuple, &argtypes, &argnames, &argmodes);
+		inargno = 0;
 
 		for (i = 0; i < pronallargs; i++)
 		{
@@ -305,11 +307,18 @@ pofce_get_desc(PLpgSQL_checkstate *cstate,
 
 			if (argtypes[i] == ANYELEMENTOID)
 			{
-				if (IsA(list_nth(fn->args, i), Param))
-				{
-					Param	   *p = (Param *) list_nth(fn->args, i);
+				Node	   *arg;
 
-					if (p->paramkind == PARAM_EXTERN && p->paramid > 0 && p->location != -1)
+				Assert(inargno < procStruct->pronargs);
+
+				arg = list_nth(fn->args, inargno);
+
+				if (IsA(arg, Param))
+				{
+					Param	   *p = (Param *) arg;
+
+					if (!cstate->is_dyn_query &&
+						p->paramkind == PARAM_EXTERN && p->paramid > 0 && p->location != -1)
 					{
 						int			dno = p->paramid - 1;
 
@@ -355,6 +364,8 @@ pofce_get_desc(PLpgSQL_checkstate *cstate,
 					}
 				}
 			}
+
+			inargno++;
 		}
 
 		if (argtypes)
