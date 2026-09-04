@@ -296,7 +296,7 @@ print_func_args(PLpgSQL_execstate *estate, PLpgSQL_function *func, int frame_num
 		if (rec_new_varno != -1)
 			print_datum(estate, estate->datums[rec_new_varno], buffer, level);
 		if (rec_old_varno != -1)
-			print_datum(estate, estate->datums[rec_new_varno], buffer, level);
+			print_datum(estate, estate->datums[rec_old_varno], buffer, level);
 	}
 
 	if (func->fn_is_trigger == PLPGSQL_EVENT_TRIGGER)

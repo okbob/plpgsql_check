@@ -1907,7 +1907,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	{
 		PLpgSQL_expr *dynexpr = NULL;
 		plch_DynSQLParams dsp;
-		volatile bool is_mp;
+		volatile bool is_mp = false;
 		volatile bool is_ok = true;
 
 		dynexpr = palloc0(sizeof(PLpgSQL_expr));
