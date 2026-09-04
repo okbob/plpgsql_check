@@ -1297,6 +1297,8 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 
 	/* for simple string constants tracing */
 	cstate->strconstvars = NULL;
+
+	cstate->is_dyn_query = false;
 }
 
 /*
