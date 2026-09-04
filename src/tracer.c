@@ -689,8 +689,9 @@ print_all_variables(PLpgSQL_execstate *estate)
 			str[tlen] = '\0';
 		}
 
-		if (strcmp(refname, "*internal*") == 0 ||
-			strcmp(refname, "(unnamed row)") == 0)
+		if (refname && (
+			(strcmp(refname, "*internal*") == 0 ||
+			 strcmp(refname, "(unnamed row)") == 0))
 			refname = NULL;
 
 		if (refname)
