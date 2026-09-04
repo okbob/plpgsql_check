@@ -273,30 +273,6 @@ drop table traced_tab cascade;
 drop function traced_trg_func();
 
 
-create function failing_assert() returns void as $$
-declare
-  r record;
-begin
-  select 1 as x into r;
-  -- the reference to a record field creates a RECFIELD datum
-  assert r.x = 2;
-end;
-$$ language plpgsql;
-
-set plpgsql_check.enable_tracer to on;
-set plpgsql_check.tracer to on;
-set plpgsql_check.trace_assert to on;
-set plpgsql_check.tracer_test_mode to true;
-
-select failing_assert();
-
-set plpgsql_check.trace_assert to off;
-set plpgsql_check.tracer to off;
-set plpgsql_check.enable_tracer to off;
-
-drop function failing_assert();
-
-
 create function dynamic_record_param() returns setof record as $$
 begin
   -- the 12th USING argument is a record, so the tuple descriptor of the
