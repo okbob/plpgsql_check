@@ -1273,6 +1273,8 @@ merge_lxcached_shared_stmts_stats(LXCache *lxcache, bool *raise_warning)
 
 				*raise_warning = false;
 			}
+
+			return;
 		}
 
 		fss->sstats = NULL;
