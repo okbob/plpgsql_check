@@ -1545,7 +1545,7 @@ profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
 
 				if (!get_plpgsql_expr_type(param_expr, &qps->paramtypes[paramno++]))
 				{
-					free(qps);
+					pfree(qps);
 					return NOQUERYID;
 				}
 			}
