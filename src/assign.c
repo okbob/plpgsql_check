@@ -341,6 +341,13 @@ plpgsql_check_assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDes
 			{
 				PLpgSQL_var *var = (PLpgSQL_var *) target;
 
+				/*
+				 * plpgsql_check_assign_tupdesc_dno is used when the expr result
+				 * is assigned to scalar variable. And then the tupdesc should be
+				 * not null
+				 */
+				Assert(tupdesc && tupdesc->natts > 0);
+
 				plpgsql_check_assign_to_target_type(cstate,
 													var->datatype->typoid, var->datatype->atttypmod,
 													TupleDescAttr(tupdesc, 0)->atttypid,
@@ -363,6 +370,8 @@ plpgsql_check_assign_tupdesc_dno(PLpgSQL_checkstate *cstate, int varno, TupleDes
 				int			typmod;
 
 				plpgsql_check_target(cstate, varno, &typoid, &typmod);
+
+				Assert(tupdesc && tupdesc->natts > 0);
 
 				plpgsql_check_assign_to_target_type(cstate,
 													typoid, typmod,
