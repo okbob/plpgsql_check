@@ -481,22 +481,28 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 															  true, /* expand record */
 															  true, /* is expression */
 															  NULL);
-						result_oid = TupleDescAttr(tupdesc, 0)->atttypid;
 
-						/*
-						 * When expected datatype is different from real,
-						 * change it. Note that what we're modifying here is
-						 * an execution copy of the datum, so this doesn't
-						 * affect the originally stored function parse tree.
-						 */
-						if (t_var->datatype->typoid != result_oid)
+						if (tupdesc)
+						{
+							Assert(tupdesc->natts == 1);
 
-							t_var->datatype = plpgsql_check__build_datatype_p(result_oid,
-																			  -1,
-																			  cstate->estate->func->fn_input_collation,
-																			  t_var->datatype->origtypname);
+							result_oid = TupleDescAttr(tupdesc, 0)->atttypid;
 
-						ReleaseTupleDesc(tupdesc);
+							/*
+							 * When expected datatype is different from real,
+							 * change it. Note that what we're modifying here is
+							 * an execution copy of the datum, so this doesn't
+							 * affect the originally stored function parse tree.
+							 */
+							if (t_var->datatype->typoid != result_oid)
+
+								t_var->datatype = plpgsql_check__build_datatype_p(result_oid,
+																				  -1,
+																				  cstate->estate->func->fn_input_collation,
+																				  t_var->datatype->origtypname);
+
+							ReleaseTupleDesc(tupdesc);
+						}
 					}
 
 					foreach(l, stmt_case->case_when_list)
