@@ -1846,6 +1846,13 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	plpgsql_check_expr(cstate, query);
 	expr_node = plpgsql_check_expr_get_node(cstate, query, false);
 
+	/*
+	 * The query is checked before by PL/pgSQL parser. And then
+	 * result of plpgsql_check_expr_get_node should be not NULL
+	 * every time.
+	 */
+	Assert(expr_node);
+
 	if (IsA(expr_node, FuncExpr))
 	{
 		FuncExpr   *fexpr = (FuncExpr *) expr_node;
