@@ -807,6 +807,18 @@ lxcache_reset_callback(void *arg)
 	LXCache    *lxcache;
 	bool		raise_warning = true;
 
+	/*
+	 * After plpgsql_profiler_reset_all inside transaction, the
+	 * lxcache_ht will be destroyed.
+	 */
+	if (!lxcache_ht)
+	{
+		Assert(lxcache_mcxt == NULL);
+		Assert(lxcache_lxid == InvalidLocalTransactionId);
+
+		return;
+	}
+
 	hash_seq_init(&seqstatus, lxcache_ht);
 
 	LWLockAcquire(profiler_ss->func_stmts_stats_lock, LW_EXCLUSIVE);
