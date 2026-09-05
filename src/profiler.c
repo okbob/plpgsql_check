@@ -484,8 +484,9 @@ plpgsql_profiler_reset_all(PG_FUNCTION_ARGS)
 		lxcache_ht = NULL;
 
 		MemoryContextDelete(lxcache_mcxt);
-		lxcache_mcxt = NULL;
-		lxcache_lxid = InvalidLocalTransactionId;
+
+		Assert(lxcache_mcxt == NULL);
+		Assert(lxcache_lxid == InvalidLocalTransactionId);
 	}
 
 	plch_profiler_init_local_hash_tables();
@@ -809,12 +810,14 @@ lxcache_reset_callback(void *arg)
 
 	/*
 	 * After plpgsql_profiler_reset_all inside transaction, the
-	 * lxcache_ht will be destroyed.
+	 * lxcache_ht will be destroyed, and lxcache_mcxt is explicitly
+	 * deleted. In this time lxchache_ht is already NULL, but lxcache_mcxt
+	 * and lxcache_lxid has still original content.
 	 */
 	if (!lxcache_ht)
 	{
-		Assert(lxcache_mcxt == NULL);
-		Assert(lxcache_lxid == InvalidLocalTransactionId);
+		lxcache_mcxt = NULL;
+		lxcache_lxid = InvalidLocalTransactionId;
 
 		return;
 	}
