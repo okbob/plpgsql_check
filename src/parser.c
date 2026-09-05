@@ -407,7 +407,10 @@ get_token(TokenizerState *state, PragmaTokenType *token)
 			state->str += 1;
 	}
 	else
+	{
+		token->substr = state->str;
 		token->value = *state->str++;
+	}
 
 	token->size = state->str - token->substr;
 
