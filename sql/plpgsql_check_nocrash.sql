@@ -412,3 +412,23 @@ $$ language plpgsql;
 select * from plpgsql_check_function('memsafety_nextval_missing_rel()');
 
 drop function memsafety_nextval_missing_rel();
+
+create type memsafety_ct as (a int, b int);
+
+create function memsafety_case_composite() returns void as $$
+declare v memsafety_ct;
+begin
+  v := row(1,2)::memsafety_ct;
+  case v
+    when row(1,2)::memsafety_ct then raise notice 'one';
+    else raise notice 'other';
+  end case;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('memsafety_case_composite()');
+
+select memsafety_case_composite();
+
+drop function memsafety_case_composite();
+drop type memsafety_ct;

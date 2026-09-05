@@ -484,9 +484,16 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 						if (tupdesc)
 						{
-							Assert(tupdesc->natts == 1);
-
-							result_oid = TupleDescAttr(tupdesc, 0)->atttypid;
+							/*
+							 * When the CASE expression is a composite value,
+							 * the returned descriptor describes its fields,
+							 * and it can hold any number of attributes. Use
+							 * the type of the composite itself then.
+							 */
+							if (tupdesc->natts == 1)
+								result_oid = TupleDescAttr(tupdesc, 0)->atttypid;
+							else
+								result_oid = tupdesc->tdtypeid;
 
 							/*
 							 * When expected datatype is different from real,
