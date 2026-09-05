@@ -1283,6 +1283,7 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 
 	cstate->stop_check = false;
 	cstate->allow_mp = false;
+	cstate->is_dyn_query = false;
 
 	cstate->pragma_vector.disable_check = false;
 	cstate->pragma_vector.disable_other_warnings = false;
@@ -1298,7 +1299,6 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	/* for simple string constants tracing */
 	cstate->strconstvars = NULL;
 
-	cstate->is_dyn_query = false;
 }
 
 /*
