@@ -689,6 +689,8 @@ check_fmt_string(const char *fmt,
 	int			required_nargs = 0;
 	int			arg = 1;
 
+	*is_error = false;
+
 	/* Scan format string, looking for conversion specifiers. */
 	for (cp = fmt; cp < end_ptr; cp++)
 	{
@@ -699,6 +701,9 @@ check_fmt_string(const char *fmt,
 			continue;
 
 		ADVANCE_PARSE_POINTER(cp, end_ptr);
+
+		if (*is_error)
+			return -1;
 
 		if (*cp == '%')
 			continue;

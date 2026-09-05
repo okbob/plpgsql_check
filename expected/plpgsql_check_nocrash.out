@@ -428,10 +428,7 @@ select * from plpgsql_check_function('memsafety_format_pct()');
  Query: format('abc%')
  --            ^
  Hint: For a single "%%" use "%%%%".
- error:22023:3:RAISE:too few arguments for format()
- Query: format('abc%')
- --            ^
-(7 rows)
+(4 rows)
 
 drop function memsafety_format_pct();
 create function memsafety_format_pct2() returns void as $$
