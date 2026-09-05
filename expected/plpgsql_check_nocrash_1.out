@@ -452,9 +452,9 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('memsafety_nextval_missing_rel()');
-              plpgsql_check_function              
---------------------------------------------------
- error:42809:3:PERFORM:"(null)" is not a sequence
+                plpgsql_check_function                
+------------------------------------------------------
+ error:42809:3:PERFORM:"4294967000" is not a sequence
  Query: SELECT nextval('4294967000'::regclass)
  --                    ^
 (3 rows)

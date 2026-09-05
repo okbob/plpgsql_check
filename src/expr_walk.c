@@ -222,10 +222,16 @@ check_funcexpr_walker(Node *node, void *context)
 							{
 								char		message[1024];
 								check_funcexpr_walker_params *wp;
+								char	   *relname;
 
 								wp = (check_funcexpr_walker_params *) context;
 
-								snprintf(message, sizeof(message), "\"%s\" is not a sequence", get_rel_name(classid));
+								relname = get_rel_name(classid);
+
+								if (relname)
+									snprintf(message, sizeof(message), "\"%s\" is not a sequence", relname);
+								else
+									snprintf(message, sizeof(message), "\"%u\" is not a sequence", classid);
 
 								plpgsql_check_put_error(wp->cstate,
 														ERRCODE_WRONG_OBJECT_TYPE, 0,
