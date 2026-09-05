@@ -10,6 +10,7 @@ MAJORVERSION := $(basename $(VERSION))
 endif
 
 REGRESS_OPTS = --dbname=$(PL_TESTDB)
+
 REGRESS = plpgsql_check_passive\
 		plpgsql_check_active\
 		plpgsql_check_active-$(MAJORVERSION)\

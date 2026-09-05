@@ -332,3 +332,83 @@ select * from plpgsql_check_function('call_polymorphic_out_first()');
 
 drop function call_polymorphic_out_first();
 drop function polymorphic_out_first(anyelement);
+
+
+create function memsafety_profiled_fx() returns int as $$
+begin
+  return 1;
+end;
+$$ language plpgsql;
+
+set plpgsql_check.profiler to on;
+
+begin;
+select memsafety_profiled_fx();
+select plpgsql_profiler_reset_all();
+select memsafety_profiled_fx();
+select plpgsql_profiler_reset_all();
+commit;
+
+begin;
+select memsafety_profiled_fx();
+select plpgsql_profiler_reset_all();
+rollback;
+
+set plpgsql_check.profiler to off;
+
+drop function memsafety_profiled_fx();
+
+
+create table memsafety_pt(a int);
+
+create function memsafety_pragma_tokens() returns void as $$
+declare r record;
+begin
+  -- "(", ")", ",", "[" and "]" are one character tokens
+  perform plpgsql_check_pragma('table: memsafety_pt1(a int, b numeric(10,2), c int[])');
+  perform plpgsql_check_pragma('table: memsafety_pt2(like memsafety_pt)');
+  for r in execute 'select * from memsafety_pt1' loop
+    raise notice '%', r.b;
+  end loop;
+  for r in execute 'select * from memsafety_pt2' loop
+    raise notice '%', r.a;
+  end loop;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('memsafety_pragma_tokens()');
+
+drop function memsafety_pragma_tokens();
+drop table memsafety_pt;
+
+
+create function memsafety_format_pct() returns void as $$
+begin
+  raise notice '%', format('abc%');
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('memsafety_format_pct()');
+
+drop function memsafety_format_pct();
+
+create function memsafety_format_pct2() returns void as $$
+begin
+  raise notice '%', format('abc%', 1);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('memsafety_format_pct2()');
+
+drop function memsafety_format_pct2();
+
+
+create function memsafety_nextval_missing_rel() returns void as $$
+begin
+  perform nextval('4294967000'::regclass);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('memsafety_nextval_missing_rel()');
+
+drop function memsafety_nextval_missing_rel();
