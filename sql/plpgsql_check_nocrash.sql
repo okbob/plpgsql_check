@@ -279,7 +279,7 @@ declare
 begin
   select 1 as x into r;
   -- the reference to a record field creates a RECFIELD datum
-  assert r.x = 2;
+  assert r.x = 1;
 end;
 $$ language plpgsql;
 

@@ -32,8 +32,6 @@
 
 #include <math.h>
 
-static bool		mcx_callback_executed = false;
-
 /*
  * It is unique for function with same oid. For function statistic
  * We don't want to have multiple stats per every update of any
@@ -485,12 +483,7 @@ plpgsql_profiler_reset_all(PG_FUNCTION_ARGS)
 		hash_destroy(lxcache_ht);
 		lxcache_ht = NULL;
 
-		mcx_callback_executed = false;
-
 		MemoryContextDelete(lxcache_mcxt);
-
-		if (!mcx_callback_executed)
-			elog(WARNING, "memory context reset callback was not executed!!!");
 
 		Assert(lxcache_mcxt == NULL);
 		Assert(lxcache_lxid == InvalidLocalTransactionId);
@@ -814,8 +807,6 @@ lxcache_reset_callback(void *arg)
 	HASH_SEQ_STATUS seqstatus;
 	LXCache    *lxcache;
 	bool		raise_warning = true;
-
-	mcx_callback_executed = true;
 
 	/*
 	 * After plpgsql_profiler_reset_all inside transaction, the
