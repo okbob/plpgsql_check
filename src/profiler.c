@@ -32,7 +32,7 @@
 
 #include <math.h>
 
-bool		mcx_callback_executed = false;
+static bool		mcx_callback_executed = false;
 
 /*
  * It is unique for function with same oid. For function statistic
