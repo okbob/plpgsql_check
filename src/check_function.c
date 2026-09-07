@@ -1284,6 +1284,8 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->stop_check = false;
 	cstate->allow_mp = false;
 	cstate->is_dyn_query = false;
+	cstate->has_mp = false;
+	cstate->top_stmts = NULL;
 
 	cstate->pragma_vector.disable_check = false;
 	cstate->pragma_vector.disable_other_warnings = false;
@@ -1292,6 +1294,9 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->pragma_vector.disable_security_warnings = false;
 	cstate->pragma_vector.disable_compatibility_warnings = false;
 	cstate->pragma_vector.disable_constants_tracing = false;
+	cstate->pragma_vector.disable_tracer = false;
+
+	cstate->was_pragma = false;
 
 	/* try to find oid of plpgsql_check pragma function */
 	cstate->pragma_foid = plpgsql_check_pragma_func_oid();
