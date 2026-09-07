@@ -1477,7 +1477,7 @@ trace_assert(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, tracer_info *tinfo)
 				 * We detect PLpgSQL related estate by known error callback
 				 * function. This is inspirated by PLDebugger.
 				 */
-				if (econtext->callback == (*plpgsql_check_plugin_var_ptr)->error_callback)
+				if (econtext->callback == tracer_plugin.error_callback)
 				{
 					PLpgSQL_execstate *oestate = (PLpgSQL_execstate *) econtext->arg;
 
