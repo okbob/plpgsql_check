@@ -193,22 +193,16 @@ convert_plpgsql_datum_to_string(PLpgSQL_execstate *estate,
 		case PLPGSQL_DTYPE_ROW:
 			{
 				PLpgSQL_row *row = (PLpgSQL_row *) dtm;
+				StringInfoData ds;
 
 				*refname = row->refname;
 
-				if (row->notnull)
-				{
-					StringInfoData ds;
+				*isnull = false;
 
-					*isnull = false;
+				initStringInfo(&ds);
+				StringInfoPrintRow(&ds, estate, row);
 
-					initStringInfo(&ds);
-					StringInfoPrintRow(&ds, estate, row);
-
-					return ds.data;
-				}
-				else
-					return NULL;
+				return ds.data;
 			}
 
 		case PLPGSQL_DTYPE_RECFIELD:
