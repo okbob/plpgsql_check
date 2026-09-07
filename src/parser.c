@@ -661,6 +661,8 @@ get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool
 	TypeName   *typeName = NULL;
 	Oid			typtype;
 
+	check_stack_depth();
+
 	_token = get_token(state, &token);
 	if (!_token)
 		elog(ERROR, "Syntax error (expected identifier)");
