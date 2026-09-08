@@ -1700,11 +1700,9 @@ plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
 				str = plpgsql_check_expr_get_string(cstate, expr, NULL);
 				if (str)
 				{
-					PLpgSQL_stmt_stack_item *current = cstate->top_stmt_stack;
+					PLpgSQL_statements *top_stmts = cstate->top_stmts;
 					MemoryContext oldcxt = MemoryContextSwitchTo(cstate->check_cxt);
 					char	   *prev_val;
-
-					Assert(cstate->top_stmt_stack);
 
 					if (!cstate->strconstvars)
 						cstate->strconstvars = palloc0(sizeof(char *) * cstate->estate->ndatums);
@@ -1720,7 +1718,9 @@ plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
 					if (prev_val)
 						pfree(prev_val);
 
-					current->invalidate_strconstvars = bms_add_member(current->invalidate_strconstvars, targetdno);
+					if (top_stmts)
+						top_stmts->invalidate_strconstvars =
+											bms_add_member(top_stmts->invalidate_strconstvars, targetdno);
 
 					MemoryContextSwitchTo(oldcxt);
 				}

@@ -76,7 +76,6 @@ typedef struct PLpgSQL_stmt_stack_item
 	char	   *label;
 	struct PLpgSQL_stmt_stack_item *outer;
 	bool		is_exception_handler;
-	Bitmapset  *invalidate_strconstvars;
 } PLpgSQL_stmt_stack_item;
 
 typedef struct PLpgSQL_statements

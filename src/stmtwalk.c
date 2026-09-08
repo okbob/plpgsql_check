@@ -1284,7 +1284,8 @@ invalidate_strconstvars(PLpgSQL_checkstate *cstate)
 			}
 		}
 
-		pfree(cstate->top_stmts->invalidate_strconstvars);
+		bms_free(cstate->top_stmts->invalidate_strconstvars);
+		cstate->top_stmts->invalidate_strconstvars = NULL;
 	}
 }
 
