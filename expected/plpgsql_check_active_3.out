@@ -1570,8 +1570,6 @@ select * from plpgsql_check_function_tb('scan_rows(int[])', performance_warnings
 (2 rows)
 
 drop function scan_rows(int[]);
-drop function fx();
-ERROR:  function fx() does not exist
 drop type t1;
 drop type t2;
 create table t1(a int, b int);

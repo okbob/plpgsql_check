@@ -488,3 +488,231 @@ NOTICE:  one
 
 drop function memsafety_case_composite();
 drop type memsafety_ct;
+-- the constant is assigned in a branch, so it must not be used afterwards
+create or replace function repro02_stale_const(flag bool) returns void as $$
+declare
+  s text;
+begin
+  if flag then
+    s := 'select * from repro02_missing';
+  end if;
+
+  execute s;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('repro02_stale_const(bool)');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+-- control: an unconditional assignment really is a constant and must be used
+create or replace function repro02_live_const() returns void as $$
+declare
+  s text;
+begin
+  s := 'select * from repro02_missing';
+
+  execute s;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('repro02_live_const()');
+                     plpgsql_check_function                      
+-----------------------------------------------------------------
+ error:42P01:7:EXECUTE:relation "repro02_missing" does not exist
+ Query: select * from repro02_missing
+ --                   ^
+(3 rows)
+
+drop function repro02_stale_const(bool);
+drop function repro02_live_const();
+set plpgsql_check.enable_tracer to on;
+set plpgsql_check.tracer to on;
+set plpgsql_check.tracer_test_mode to true;
+set plpgsql_check.tracer_verbosity to verbose;
+set client_min_messages to notice;
+-- the OUT parameters of a function are collected into an (unnamed) row datum,
+-- and RETURN traces that datum
+create or replace function repro03_out_params(out a int, out b text) as $$
+begin
+  a := 1;
+  b := 'x';
+  return;
+end;
+$$ language plpgsql;
+select * from repro03_out_params();
+NOTICE:  #0            ->> start of function repro03_out_params() (oid=0, tnl=1)
+NOTICE:  #0.1       2    --> start of statement block (tnl=1)
+NOTICE:  #0.2       3      --> start of assignment a := 1 (tnl=1)
+NOTICE:  #0.2                  "a" => null
+NOTICE:  #0.1              <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.2                  "a" => '1'
+NOTICE:  #0.3       4      --> start of assignment b := 'x' (tnl=1)
+NOTICE:  #0.3                  "b" => null
+NOTICE:  #0.2              <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.3                  "b" => 'x'
+NOTICE:  #0.4       5      --> start of RETURN (tnl=1)
+NOTICE:  #0.4                  "(unnamed row)" => '(1,x)'
+NOTICE:  #0.3              <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.4            <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #0            <<- end of function repro03_out_params (elapsed time=0.010 ms)
+ a | b 
+---+---
+ 1 | x
+(1 row)
+
+set plpgsql_check.tracer to off;
+set plpgsql_check.enable_tracer to off;
+drop function repro03_out_params();
+create or replace function repro04_tracked_const() returns void as $$
+declare
+  str text;
+  res int;
+begin
+  str := 'constant';
+
+  execute 'select $40'
+     into res
+    using 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+          11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+          21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+          31, 32, 33, 34, 35, 36, 37, 38, 39, 40;
+
+  raise notice '%, %', str, res;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('repro04_tracked_const()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create or replace function repro04_tracked_const() returns void as $$
+declare
+  str text;
+  res int;
+begin
+  str := 'constant';
+
+  execute 'select $41'
+     into res
+    using 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+          11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+          21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+          31, 32, 33, 34, 35, 36, 37, 38, 39, 40;
+
+  raise notice '%, %', str, res;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('repro04_tracked_const()');
+             plpgsql_check_function              
+-------------------------------------------------
+ error:42P02:8:EXECUTE:there is no parameter $41
+ Query: select $41
+ --            ^
+(3 rows)
+
+-- (b) param_get_desc(): the tuple descriptor of the unpinned record returned by
+--     the dynamic query is deduced from a high numbered parameter
+create or replace function repro04_param_desc() returns setof record as $$
+begin
+  return query execute 'select $40'
+                 using 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+                       11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+                       21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+                       31, 32, 33, 34, 35, 36, 37, 38, 39, row(1, 2);
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('repro04_param_desc()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+-- (c) plpgsql_check_assign_tupdesc_dno(): a query with no output column at all
+create table repro04_zero_columns();
+create or replace function repro04_empty_tupdesc() returns int as $$
+declare
+  v int;
+begin
+  select * from repro04_zero_columns into v;
+  execute 'select * from repro04_zero_columns' into v;
+  return v;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('repro04_empty_tupdesc()');
+                        plpgsql_check_function                         
+-----------------------------------------------------------------------
+ warning:00000:5:SQL statement:too few attributes for target variables
+ Query: select * from repro04_zero_columns
+ --     ^
+ Detail: There are more target variables than output columns in query.
+ Hint: Check target variables in SELECT INTO statement.
+ Context: at SQL statement to v variables
+ warning:00000:6:EXECUTE:too few attributes for target variables
+ Query: select * from repro04_zero_columns
+ --     ^
+ Detail: There are more target variables than output columns in query.
+ Hint: Check target variables in SELECT INTO statement.
+ Context: at EXECUTE to v variables
+(12 rows)
+
+drop function repro04_tracked_const();
+drop function repro04_param_desc();
+drop function repro04_empty_tupdesc();
+drop table repro04_zero_columns;
+set plpgsql_check.profiler to on;
+set plpgsql_check.use_lxcache to on;
+create or replace function repro07_ok() returns int as $$
+begin
+  return 1;
+end;
+$$ language plpgsql;
+create or replace function repro07_err() returns int as $$
+begin
+  raise exception 'boom';
+end;
+$$ language plpgsql;
+-- control: an aborted function with no lxcache from an earlier call is fine
+begin;
+  select repro07_err();
+ERROR:  boom
+CONTEXT:  PL/pgSQL function repro07_err() line 3 at RAISE
+commit;
+-- the successful call creates the lxcache, the failing one leaves an execution
+-- context behind, and the cleanup of that context re-enters get_lxcache()
+begin;
+  select repro07_ok();
+ repro07_ok 
+------------
+          1
+(1 row)
+
+  select repro07_err();
+ERROR:  boom
+CONTEXT:  PL/pgSQL function repro07_err() line 3 at RAISE
+commit;
+select 'survived' as result;
+  result  
+----------
+ survived
+(1 row)
+
+-- the same happens on an explicit ROLLBACK
+begin;
+  select repro07_ok();
+ repro07_ok 
+------------
+          1
+(1 row)
+
+  select repro07_err();
+ERROR:  boom
+CONTEXT:  PL/pgSQL function repro07_err() line 3 at RAISE
+rollback;
+select 'survived' as result;
+  result  
+----------
+ survived
+(1 row)
+
+set plpgsql_check.profiler to off;
+drop function if exists repro07_ok();
+drop function if exists repro07_err();

@@ -562,35 +562,6 @@ drop function repro04_param_desc();
 drop function repro04_empty_tupdesc();
 drop table repro04_zero_columns;
 
-set plpgsql_check.enable_tracer to on;
-set plpgsql_check.tracer to on;
-set plpgsql_check.trace_assert to on;
-set plpgsql_check.tracer_test_mode to true;
-
-create or replace function repro06_inner() returns void as $$
-begin
-  assert 1 = 2, 'boom';
-end;
-$$ language plpgsql;
-
-create or replace function repro06_outer() returns void as $$
-begin
-  perform repro06_inner();
-end;
-$$ language plpgsql;
-
--- no outer error context frame - the loop is not entered, so this is safe
-select repro06_inner();
-
--- called from another function, so error_context_stack->previous is set
-select repro06_outer();
-
-set plpgsql_check.tracer to off;
-set plpgsql_check.trace_assert to off;
-
-drop function if exists repro06_outer();
-drop function if exists repro06_inner();
-
 set plpgsql_check.profiler to on;
 set plpgsql_check.use_lxcache to on;
 

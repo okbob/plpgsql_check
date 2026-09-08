@@ -1131,7 +1131,6 @@ select * from plpgsql_check_function_tb('scan_rows(int[])', performance_warnings
 
 drop function scan_rows(int[]);
 
-drop function fx();
 drop type t1;
 drop type t2;
 

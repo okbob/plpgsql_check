@@ -63,7 +63,8 @@ tests = [ 'plpgsql_check_active',
           'plpgsql_check_passive-' + pg_version_major.to_string(),
           'plpgsql_check_profiler',
           'plpgsql_pragma_generator',
-          'plpgsql_check_nocrash' ]
+          'plpgsql_check_nocrash',
+          'plpgsql_check_nocrash_unstable_01' ]
 
 compiler = meson.get_compiler('c')
 
