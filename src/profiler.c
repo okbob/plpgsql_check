@@ -153,6 +153,21 @@ enum
 	COVERAGE_BRANCHES
 };
 
+/*
+ * lxcache_ht is created in top memory context, but the content
+ * is transactional. This is necessary, because we want to use
+ * lxcache_ht from lxcache mcx reset callback. Sometimes can be
+ * problem who is responsible for destroing this table. We can
+ * do this at lxcace reset callback. Then this table cannot be
+ * orphaned. This structure will be used as a arg of MemoryContext
+ * reset callback;
+ */
+typedef struct LXCache_info
+{
+	MemoryContext lxcache_mcxt;
+	HTAB		   *lxcache_ht;
+	MemoryContextCallback lxcache_mcb;
+} LXCache_info;
 
 PG_FUNCTION_INFO_V1(plpgsql_check_profiler_ctrl);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_reset_all);
@@ -240,10 +255,16 @@ int			plch_max_stat_size = 20480;
 static int	used_stmt_stats_count = 0;
 static int	estimated_stmt_stats_count = 0;
 
+/*
+ * plpgsql_profiler_reset_all destroy lxcache_mcxt. It emits
+ * execution of lxcache_reset_callback. But in this case, we
+ * don't want to persistenting the content of lxcache.
+ * A flag skip_cirrent_lxcache signalize this case.
+ */
+static bool	skip_current_lxcache = false;
+
 static ProfilerSharedState *profiler_ss = NULL;
 static StmtStats *SharedStmtStatsArray = NULL;
-
-static MemoryContextCallback lxcache_mcb;
 
 #define		USE_SHARED_FUNC_STATS			(shared_func_stats_ht && plch_use_shared_stats_when_it_possible)
 #define		USE_SHARED_FUNC_STMTS_STATS		(shared_func_stmts_stats_ht && plch_use_shared_stats_when_it_possible)
@@ -478,12 +499,22 @@ plpgsql_profiler_reset_all(PG_FUNCTION_ARGS)
 		LWLockRelease(profiler_ss->func_stmts_stats_lock);
 	}
 
-	if (lxcache_ht)
+	if (lxcache_mcxt)
 	{
-		hash_destroy(lxcache_ht);
-		lxcache_ht = NULL;
+		/*
+		 * More robust solution can be remove MemoryContextResetCallback
+		 * and destroy context locally. But this possibility is not on
+		 * available on all supported releases.
+		 */
+		skip_current_lxcache = true;
 
+		/*
+		 * In this case only hash_destroy -> MemoryContextDelete are executed.
+		 * No exception can be throw, so we don't need to wrap this call to
+		 * PG_TRY
+		 */
 		MemoryContextDelete(lxcache_mcxt);
+		skip_current_lxcache = false;
 
 		Assert(lxcache_mcxt == NULL);
 		Assert(lxcache_lxid == InvalidLocalTransactionId);
@@ -726,21 +757,9 @@ lxcache_ht_init(void)
 {
 	HASHCTL		ctl;
 	LocalTransactionId thislxid = CURRENT_LXID;
+	LXCache_info *lxcinfo;
 
-	Assert(lxcache_mcxt == NULL && lxcache_lxid == InvalidLocalTransactionId);
-
-	lxcache_mcxt = AllocSetContextCreate(TopTransactionContext,
-										 "plpgsql_check - lxcache context",
-										 ALLOCSET_DEFAULT_MINSIZE,
-										 ALLOCSET_DEFAULT_INITSIZE,
-										 ALLOCSET_DEFAULT_MAXSIZE);
-
-	lxcache_lxid = thislxid;
-
-	lxcache_mcb.func = lxcache_reset_callback;
-	lxcache_mcb.arg = NULL;
-
-	MemoryContextRegisterResetCallback(lxcache_mcxt, &lxcache_mcb);
+	Assert(thislxid != InvalidLocalTransactionId);
 
 	memset(&ctl, 0, sizeof(ctl));
 	ctl.keysize = sizeof(plch_fidentity_hk);
@@ -759,8 +778,29 @@ lxcache_ht_init(void)
 							 FUNCS_PER_USER,
 							 &ctl,
 							 HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+
+	lxcache_mcxt = AllocSetContextCreate(TopTransactionContext,
+										 "plpgsql_check - lxcache context",
+										 ALLOCSET_DEFAULT_MINSIZE,
+										 ALLOCSET_DEFAULT_INITSIZE,
+										 ALLOCSET_DEFAULT_MAXSIZE);
+
+	lxcinfo = MemoryContextAlloc(lxcache_mcxt, sizeof(LXCache_info));
+
+	lxcinfo->lxcache_mcxt = lxcache_mcxt;
+	lxcinfo->lxcache_ht = lxcache_ht;
+
+	lxcinfo->lxcache_mcb.func = lxcache_reset_callback;
+	lxcinfo->lxcache_mcb.arg = lxcinfo;
+
+	MemoryContextRegisterResetCallback(lxcache_mcxt, &lxcinfo->lxcache_mcb);
+
+	lxcache_lxid = thislxid;
 }
 
+/*
+ * can return NULL, when it is called transaction cleanup.
+ */
 static LXCache *
 get_lxcache(profiler_info *pinfo)
 {
@@ -771,6 +811,14 @@ get_lxcache(profiler_info *pinfo)
 
 	if (pinfo->lxcache && pinfo->lxcache_lxid == thislxid)
 		return pinfo->lxcache;
+
+	/*
+	 * When we lost current lxid (due aborted state), we it is better
+	 * don't create new lxcache - in this moment nothing new can be
+	 * executed.
+	 */
+	if (thislxid == InvalidLocalTransactionId)
+		return NULL;
 
 	if (!lxcache_ht || lxcache_lxid != thislxid)
 		lxcache_ht_init();
@@ -807,22 +855,24 @@ lxcache_reset_callback(void *arg)
 	HASH_SEQ_STATUS seqstatus;
 	LXCache    *lxcache;
 	bool		raise_warning = true;
+	LXCache_info *lxcinfo = (LXCache_info *) arg;
 
-	/*
-	 * After plpgsql_profiler_reset_all inside transaction, the
-	 * lxcache_ht will be destroyed, and lxcache_mcxt is explicitly
-	 * deleted. In this time lxchache_ht is already NULL, but lxcache_mcxt
-	 * and lxcache_lxid has still original content.
-	 */
-	if (!lxcache_ht)
+	if (skip_current_lxcache && lxcache_mcxt == lxcinfo->lxcache_mcxt)
 	{
+		/*
+		 * when the callback is from plpgsql_profiler_reset_all,
+		 * we just clean memory.
+		 */
+		hash_destroy(lxcinfo->lxcache_ht);
+
 		lxcache_mcxt = NULL;
+		lxcache_ht = NULL;
 		lxcache_lxid = InvalidLocalTransactionId;
 
 		return;
 	}
 
-	hash_seq_init(&seqstatus, lxcache_ht);
+	hash_seq_init(&seqstatus, lxcinfo->lxcache_ht);
 
 	LWLockAcquire(profiler_ss->func_stmts_stats_lock, LW_EXCLUSIVE);
 	LWLockAcquire(profiler_ss->func_stats_lock, LW_EXCLUSIVE);
@@ -841,11 +891,22 @@ lxcache_reset_callback(void *arg)
 		LWLockRelease(profiler_ss->func_stmts_stats_lock);
 		LWLockRelease(profiler_ss->func_stats_lock);
 
-		hash_destroy(lxcache_ht);
-		lxcache_ht = NULL;
+		hash_destroy(lxcinfo->lxcache_ht);
 
-		lxcache_mcxt = NULL;
-		lxcache_lxid = InvalidLocalTransactionId;
+		/*
+		 * Invalidate static variables if referenced to
+		 * currently resetted (released) lxcache.
+		 */
+		if (lxcache_mcxt == lxcinfo->lxcache_mcxt)
+		{
+			/*
+			 * Invalidate static variables if referenced to
+			 * currently resetted (released) lxcache.
+			 */
+			lxcache_mcxt = NULL;
+			lxcache_ht = NULL;
+			lxcache_lxid = InvalidLocalTransactionId;
+		}
 	}
 	PG_END_TRY();
 }
@@ -957,8 +1018,11 @@ update_shared_persistent_fstats(profiler_info *pinfo,
 	{
 		LXCache    *lxcache = get_lxcache(pinfo);
 
-		update_fstats(&lxcache->fstats, elapsed, aborted);
-		return;
+		if (lxcache)
+		{
+			update_fstats(&lxcache->fstats, elapsed, aborted);
+			return;
+		}
 	}
 
 	init_func_hk(&hk, pinfo->func->fn_oid);
@@ -1158,8 +1222,11 @@ update_shared_persistent_stmts_stats(profiler_info *pinfo)
 	{
 		LXCache    *lxcache = get_lxcache(pinfo);
 
-		merge_stmts_sstats(lxcache->sstats, pinfo->sstats, lxcache->nstatements);
-		return;
+		if (lxcache)
+		{
+			merge_stmts_sstats(lxcache->sstats, pinfo->sstats, lxcache->nstatements);
+			return;
+		}
 	}
 
 	plch_init_fidentity_hk(&hk, pinfo->func);

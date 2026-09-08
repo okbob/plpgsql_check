@@ -432,3 +432,203 @@ select memsafety_case_composite();
 
 drop function memsafety_case_composite();
 drop type memsafety_ct;
+
+-- the constant is assigned in a branch, so it must not be used afterwards
+create or replace function repro02_stale_const(flag bool) returns void as $$
+declare
+  s text;
+begin
+  if flag then
+    s := 'select * from repro02_missing';
+  end if;
+
+  execute s;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('repro02_stale_const(bool)');
+
+-- control: an unconditional assignment really is a constant and must be used
+create or replace function repro02_live_const() returns void as $$
+declare
+  s text;
+begin
+  s := 'select * from repro02_missing';
+
+  execute s;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('repro02_live_const()');
+
+drop function repro02_stale_const(bool);
+drop function repro02_live_const();
+
+set plpgsql_check.enable_tracer to on;
+set plpgsql_check.tracer to on;
+set plpgsql_check.tracer_test_mode to true;
+set plpgsql_check.tracer_verbosity to verbose;
+set client_min_messages to notice;
+
+-- the OUT parameters of a function are collected into an (unnamed) row datum,
+-- and RETURN traces that datum
+create or replace function repro03_out_params(out a int, out b text) as $$
+begin
+  a := 1;
+  b := 'x';
+  return;
+end;
+$$ language plpgsql;
+
+select * from repro03_out_params();
+
+set plpgsql_check.tracer to off;
+set plpgsql_check.enable_tracer to off;
+
+drop function repro03_out_params();
+
+create or replace function repro04_tracked_const() returns void as $$
+declare
+  str text;
+  res int;
+begin
+  str := 'constant';
+
+  execute 'select $40'
+     into res
+    using 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+          11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+          21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+          31, 32, 33, 34, 35, 36, 37, 38, 39, 40;
+
+  raise notice '%, %', str, res;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('repro04_tracked_const()');
+
+create or replace function repro04_tracked_const() returns void as $$
+declare
+  str text;
+  res int;
+begin
+  str := 'constant';
+
+  execute 'select $41'
+     into res
+    using 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+          11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+          21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+          31, 32, 33, 34, 35, 36, 37, 38, 39, 40;
+
+  raise notice '%, %', str, res;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('repro04_tracked_const()');
+
+
+-- (b) param_get_desc(): the tuple descriptor of the unpinned record returned by
+--     the dynamic query is deduced from a high numbered parameter
+create or replace function repro04_param_desc() returns setof record as $$
+begin
+  return query execute 'select $40'
+                 using 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+                       11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+                       21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+                       31, 32, 33, 34, 35, 36, 37, 38, 39, row(1, 2);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('repro04_param_desc()');
+
+-- (c) plpgsql_check_assign_tupdesc_dno(): a query with no output column at all
+create table repro04_zero_columns();
+
+create or replace function repro04_empty_tupdesc() returns int as $$
+declare
+  v int;
+begin
+  select * from repro04_zero_columns into v;
+  execute 'select * from repro04_zero_columns' into v;
+  return v;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('repro04_empty_tupdesc()');
+
+drop function repro04_tracked_const();
+drop function repro04_param_desc();
+drop function repro04_empty_tupdesc();
+drop table repro04_zero_columns;
+
+set plpgsql_check.enable_tracer to on;
+set plpgsql_check.tracer to on;
+set plpgsql_check.trace_assert to on;
+set plpgsql_check.tracer_test_mode to true;
+
+create or replace function repro06_inner() returns void as $$
+begin
+  assert 1 = 2, 'boom';
+end;
+$$ language plpgsql;
+
+create or replace function repro06_outer() returns void as $$
+begin
+  perform repro06_inner();
+end;
+$$ language plpgsql;
+
+-- no outer error context frame - the loop is not entered, so this is safe
+select repro06_inner();
+
+-- called from another function, so error_context_stack->previous is set
+select repro06_outer();
+
+set plpgsql_check.tracer to off;
+set plpgsql_check.trace_assert to off;
+
+drop function if exists repro06_outer();
+drop function if exists repro06_inner();
+
+set plpgsql_check.profiler to on;
+set plpgsql_check.use_lxcache to on;
+
+create or replace function repro07_ok() returns int as $$
+begin
+  return 1;
+end;
+$$ language plpgsql;
+
+create or replace function repro07_err() returns int as $$
+begin
+  raise exception 'boom';
+end;
+$$ language plpgsql;
+
+-- control: an aborted function with no lxcache from an earlier call is fine
+begin;
+  select repro07_err();
+commit;
+
+-- the successful call creates the lxcache, the failing one leaves an execution
+-- context behind, and the cleanup of that context re-enters get_lxcache()
+begin;
+  select repro07_ok();
+  select repro07_err();
+commit;
+
+select 'survived' as result;
+
+-- the same happens on an explicit ROLLBACK
+begin;
+  select repro07_ok();
+  select repro07_err();
+rollback;
+
+select 'survived' as result;
+
+set plpgsql_check.profiler to off;
+
+drop function if exists repro07_ok();
+drop function if exists repro07_err();
