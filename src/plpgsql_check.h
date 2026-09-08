@@ -603,8 +603,6 @@ extern shmem_request_hook_type plpgsql_check_prev_shmem_request_hook;
 #endif
 extern shmem_startup_hook_type plpgsql_check_prev_shmem_startup_hook;
 
-extern PLpgSQL_plugin **plpgsql_check_plugin_var_ptr;
-
 extern void plpgsql_check_check_ext_version(Oid fn_oid);
 extern void plpgsql_check_passive_check_init(void);
 
