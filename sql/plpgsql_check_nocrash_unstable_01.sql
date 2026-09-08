@@ -1,5 +1,6 @@
 load 'plpgsql';
 create extension if not exists plpgsql_check;
+load 'plpgsql_check';
 set client_min_messages to notice;
 
 set plpgsql_check.regress_test_mode = true;

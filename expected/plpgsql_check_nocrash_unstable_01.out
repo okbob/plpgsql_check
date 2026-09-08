@@ -1,6 +1,7 @@
 load 'plpgsql';
 create extension if not exists plpgsql_check;
 NOTICE:  extension "plpgsql_check" already exists, skipping
+load 'plpgsql_check';
 set client_min_messages to notice;
 set plpgsql_check.regress_test_mode = true;
 set plpgsql_check.enable_tracer to on;
@@ -21,9 +22,9 @@ $$ language plpgsql;
 select repro06_inner();
 NOTICE:  #0   ->> start of function repro06_inner() (oid=0, tnl=1)
 NOTICE:  #0 PLpgSQL assert expression (1 = 2) on line 3 of repro06_inner() is false
+NOTICE:  #0   <<- end of function repro06_inner (elapsed time=0.010 ms) aborted
 ERROR:  boom
 CONTEXT:  PL/pgSQL function repro06_inner() line 3 at ASSERT
-NOTICE:  #0   <<- end of function repro06_inner (elapsed time=0.010 ms) aborted
 -- called from another function, so error_context_stack->previous is set
 select repro06_outer();
 NOTICE:  #0   ->> start of function repro06_outer() (oid=0, tnl=1)
@@ -31,11 +32,11 @@ NOTICE:  #2       ->> start of function repro06_inner() (oid=0, tnl=1)
 NOTICE:  #2           context: SQL statement "SELECT repro06_inner()"
 NOTICE:  #2 PLpgSQL assert expression (1 = 2) on line 3 of repro06_inner() is false
 NOTICE:  #0 PL/pgSQL function repro06_outer() line 3 at PERFORM
+NOTICE:  #2       <<- end of function repro06_inner (elapsed time=0.010 ms) aborted
+NOTICE:  #0   <<- end of function repro06_outer (elapsed time=0.010 ms) aborted
 ERROR:  boom
 CONTEXT:  PL/pgSQL function repro06_inner() line 3 at ASSERT
 SQL statement "SELECT repro06_inner()"
 PL/pgSQL function repro06_outer() line 3 at PERFORM
-NOTICE:  #2       <<- end of function repro06_inner (elapsed time=0.010 ms) aborted
-NOTICE:  #0   <<- end of function repro06_outer (elapsed time=0.010 ms) aborted
 set plpgsql_check.tracer to off;
 set plpgsql_check.trace_assert to off;
