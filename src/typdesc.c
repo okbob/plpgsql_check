@@ -195,7 +195,7 @@ param_get_desc(PLpgSQL_checkstate *cstate, Param *p)
 	 * paramid inside dynamic query (executed by EXECUTE command) is not
 	 * related to datum number
 	 */
-	if (cstate->is_dyn_query)
+	if (cstate->is_dynsql)
 	{
 		TupleDesc	rectupdesc;
 
@@ -317,7 +317,7 @@ pofce_get_desc(PLpgSQL_checkstate *cstate,
 				{
 					Param	   *p = (Param *) arg;
 
-					if (!cstate->is_dyn_query &&
+					if (!cstate->is_dynsql &&
 						p->paramkind == PARAM_EXTERN && p->paramid > 0 && p->location != -1)
 					{
 						int			dno = p->paramid - 1;

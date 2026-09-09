@@ -197,12 +197,12 @@ typedef struct PLpgSQL_checkstate
 	PLpgSQL_statements *top_stmts;	/* pointer to current statement group */
 
 	/*
-	 * is_dyn_query is true if currently processed query is executed by
+	 * is_dynsql is true if currently processed query is executed by
 	 * EXECUTE command. In this case, we cannot to derive estate variable
 	 * from Param nodes. In this case, the Param node reference is a number
 	 * of expr in USING list.
 	 */
-	bool		is_dyn_query;
+	bool		is_dynsql;
 } PLpgSQL_checkstate;
 
 /*
@@ -362,19 +362,6 @@ extern bool plpgsql_check_is_internal_variable(PLpgSQL_checkstate *cstate, PLpgS
  */
 extern bool plpgsql_check_is_reserved_keyword(char *name);
 extern void plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing, List **exceptions);
-extern void plch_dynsql_parser_setup(struct ParseState *pstate, void *params);
-
-typedef struct plch_DynSQLParams
-{
-	List	   *args;
-	PLpgSQL_checkstate *cstate;
-
-	/*
-	 * When dynamic query uses params, then this flag
-	 * will be set to true by dynsql_param_ref callback
-	 */
-	bool		use_params;
-} plch_DynSQLParams;
 
 /*
  * functions from typdesc.c

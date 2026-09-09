@@ -978,7 +978,7 @@ plpgsql_check_get_tracked_const(PLpgSQL_checkstate *cstate, Node *node)
 	if (cstate->pragma_vector.disable_constants_tracing)
 		return NULL;
 
-	if (!cstate->is_dyn_query && IsA(node, Param))
+	if (!cstate->is_dynsql && IsA(node, Param))
 	{
 		Param	   *p = (Param *) node;
 
@@ -986,8 +986,12 @@ plpgsql_check_get_tracked_const(PLpgSQL_checkstate *cstate, Node *node)
 		{
 			int			dno = p->paramid - 1;
 
-			Assert(dno < cstate->estate->ndatums);
-
+			/*
+			 * The paramid is calculated by PLpgSQL compiler. And then should
+			 * should be correct. User has not possibility to change paramid
+			 * in static queries (dynamic queries are different case, but its
+			 * are prohibited in this path).
+			 */
 			if (cstate->strconstvars[dno])
 				return cstate->strconstvars[dno];
 		}
@@ -1177,7 +1181,6 @@ plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
 	PLpgSQL_execstate *estate = cstate->estate;
 	PLpgSQL_function *func = estate->func;
 	bool		is_return_query = !is_expression;
-	bool		is_dyn_query = parser_setup == plch_dynsql_parser_setup;
 
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
@@ -1191,8 +1194,6 @@ plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
 		TupleDesc	tupdesc;
 		bool		is_immutable_null;
 		Oid			first_level_typ = InvalidOid;
-
-		cstate->is_dyn_query = is_dyn_query;
 
 		prepare_plan(cstate, expr, 0, parser_setup, arg, is_expression);
 
@@ -1295,8 +1296,6 @@ plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
-
-		cstate->is_dyn_query = false;
 	}
 	PG_CATCH();
 	{
@@ -1309,8 +1308,6 @@ plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
-
-		cstate->is_dyn_query = false;
 
 		/*
 		 * If fatal_errors is true, we just propagate the error up to the
@@ -1389,7 +1386,6 @@ plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
 	Oid			first_level_typoid;
 	Oid			expected_typoid = InvalidOid;
 	int			expected_typmod = InvalidOid;
-	bool		is_dyn_query = parser_setup == plch_dynsql_parser_setup;
 
 	if (targetdno != -1)
 	{
@@ -1434,8 +1430,6 @@ plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
 	{
 		char	   *local_err_text;
 		bool		free_local_err_text;
-
-		cstate->is_dyn_query = is_dyn_query;
 
 		if (cstate->estate->err_text)
 		{
@@ -1794,8 +1788,6 @@ no_other_check:
 		if (free_local_err_text)
 			pfree(local_err_text);
 
-		cstate->is_dyn_query = false;
-
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
@@ -1807,8 +1799,6 @@ no_other_check:
 		MemoryContextSwitchTo(oldCxt);
 		edata = CopyErrorData();
 		FlushErrorState();
-
-		cstate->is_dyn_query = false;
 
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);

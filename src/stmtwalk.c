@@ -35,6 +35,18 @@ static bool found_shadowed_variable(char *varname, PLpgSQL_stmt_stack_item *curr
 static void check_dynamic_sql(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, PLpgSQL_expr *query, bool into, PLpgSQL_variable *target, List *params);
 static bool is_inside_protected_block(PLpgSQL_stmt_stack_item *current);
 
+typedef struct DynSQLParams
+{
+	List	   *args;
+	PLpgSQL_checkstate *cstate;
+
+	/*
+	 * When dynamic query uses params, then this flag
+	 * will be set to true by dynsql_param_ref callback
+	 */
+	bool		use_params;
+} DynSQLParams;
+
 static void
 check_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var)
 {
@@ -1727,7 +1739,7 @@ exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond)
 static Node *
 dynsql_param_ref(ParseState *pstate, ParamRef *pref)
 {
-	plch_DynSQLParams *params = (plch_DynSQLParams *) pstate->p_ref_hook_state;
+	DynSQLParams *params = (DynSQLParams *) pstate->p_ref_hook_state;
 	List	   *args = params->args;
 	int			nargs = list_length(args);
 	Param	   *param = NULL;
@@ -1780,8 +1792,8 @@ dynsql_param_ref(ParseState *pstate, ParamRef *pref)
  * Parameters are not mapped to function parameters, but to USING
  * clause expressions.
  */
-void
-plch_dynsql_parser_setup(struct ParseState *pstate, void *params)
+static void
+dynsql_parser_setup(struct ParseState *pstate, void *params)
 {
 	pstate->p_pre_columnref_hook = NULL;
 	pstate->p_post_columnref_hook = NULL;
@@ -1821,7 +1833,6 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	ListCell   *l;
 	int			loc = -1;
 	char	   *dynquery = NULL;
-	bool		prev_has_execute_stmt = cstate->has_execute_stmt;
 	volatile bool expr_is_const = false;
 
 	volatile bool raise_unknown_rec_warning = false;
@@ -1843,8 +1854,6 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	 * used only placeholders %I and %L, then we can try to check syntax of
 	 * embeded query.
 	 */
-
-	cstate->has_execute_stmt = true;
 
 	foreach(l, params)
 	{
@@ -1914,9 +1923,23 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	if (dynquery)
 	{
 		PLpgSQL_expr *dynexpr = NULL;
-		plch_DynSQLParams dsp;
-		volatile bool is_mp = false;
+		DynSQLParams dsp;
 		volatile bool is_ok = true;
+
+		/*
+		 * Use dedicated cstate for dynamic queries. The dynamic queries should
+		 * not to modify pragma, allows multiqueries, and Paramid are reference
+		 * to USING clause list instead dno. All dynamic queries are checked from
+		 * this point.
+		 */
+		PLpgSQL_checkstate cstate_dynsql;
+
+		memcpy(&cstate_dynsql, cstate, sizeof(PLpgSQL_checkstate));
+
+		cstate_dynsql.has_execute_stmt = true;
+		cstate_dynsql.has_mp = false;
+		cstate_dynsql.allow_mp = true;
+		cstate_dynsql.is_dynsql = true;
 
 		dynexpr = palloc0(sizeof(PLpgSQL_expr));
 		dynexpr->expr_rw_param = NULL;
@@ -1933,26 +1956,11 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		 */
 		if (expr_is_const)
 		{
-			PG_TRY();
-			{
-				cstate->allow_mp = true;
-
-				plpgsql_check_expr_generic_with_parser_setup(cstate,
-															 dynexpr,
-															 (ParserSetupHook) plch_dynsql_parser_setup,
-															 &dsp);
-
-				is_mp = cstate->has_mp;
-				cstate->has_mp = false;
-			}
-			PG_CATCH();
-			{
-				cstate->allow_mp = false;
-				cstate->has_mp = false;
-
-				PG_RE_THROW();
-			}
-			PG_END_TRY();
+			plpgsql_check_expr_generic_with_parser_setup(&cstate_dynsql,
+														 dynexpr,
+														 (ParserSetupHook) dynsql_parser_setup,
+														 &dsp);
+			cstate->volatility = cstate_dynsql.volatility;
 		}
 		else
 		{
@@ -1965,7 +1973,6 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 			 * parameter, so we can use it just for type detection when check
 			 * is ok.
 			 */
-
 			oldCxt = CurrentMemoryContext;
 
 			oldowner = CurrentResourceOwner;
@@ -1974,15 +1981,12 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 			PG_TRY();
 			{
-				cstate->allow_mp = true;
-
-				plpgsql_check_expr_generic_with_parser_setup(cstate,
+				plpgsql_check_expr_generic_with_parser_setup(&cstate_dynsql,
 															 dynexpr,
-															 (ParserSetupHook) plch_dynsql_parser_setup,
+															 (ParserSetupHook) dynsql_parser_setup,
 															 &dsp);
 
-				is_mp = cstate->has_mp;
-				cstate->has_mp = false;
+				cstate->volatility = cstate_dynsql.volatility;
 
 				RollbackAndReleaseCurrentSubTransaction();
 				MemoryContextSwitchTo(oldCxt);
@@ -1991,9 +1995,6 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 			PG_CATCH();
 			{
 				is_ok = false;
-
-				cstate->allow_mp = false;
-				cstate->has_mp = false;
 
 				MemoryContextSwitchTo(oldCxt);
 				FlushErrorState();
@@ -2005,11 +2006,11 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 			PG_END_TRY();
 		}
 
-		if (is_ok && expr_is_const && !is_mp && (!params || !dsp.use_params))
+		if (is_ok && expr_is_const && !cstate_dynsql.has_mp && (!params || !dsp.use_params))
 		{
 
 			/* probably useless dynamic command */
-			plpgsql_check_put_error(cstate,
+			plpgsql_check_put_error(&cstate_dynsql,
 									0, 0,
 									"immutable expression without parameters found",
 									"the EXECUTE command is not necessary probably",
@@ -2020,7 +2021,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 		if (is_ok && params && !dsp.use_params)
 		{
-			plpgsql_check_put_error(cstate,
+			plpgsql_check_put_error(&cstate_dynsql,
 									0, 0,
 									"values passed to EXECUTE statement by USING clause was not used",
 									NULL,
@@ -2035,23 +2036,26 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 			if (stmt->cmd_type == PLPGSQL_STMT_RETURN_QUERY)
 			{
-				plpgsql_check_returned_expr_with_parser_setup(cstate, dynexpr, false,
-															  (ParserSetupHook) plch_dynsql_parser_setup,
+				plpgsql_check_returned_expr_with_parser_setup(&cstate_dynsql, dynexpr, false,
+															  (ParserSetupHook) dynsql_parser_setup,
 															  &dsp);
 				cstate->found_return_query = true;
 			}
 			else if (into)
 			{
 				check_variable(cstate, target);
-				plpgsql_check_assignment_to_variable_with_parser_setup(cstate, dynexpr, target, -1,
-																	   (ParserSetupHook) plch_dynsql_parser_setup,
+				plpgsql_check_assignment_to_variable_with_parser_setup(&cstate_dynsql, dynexpr, target, -1,
+																	   (ParserSetupHook) dynsql_parser_setup,
 																	   &dsp);
 			}
 		}
 
-		/* this is not real dynamic SQL statement */
-		if (!is_mp)
-			cstate->has_execute_stmt = prev_has_execute_stmt;
+		/*
+		 * this is not real dynamic SQL statement, in this case,
+		 * this cannot be parametrized.
+		 */
+		if (!cstate_dynsql.has_mp)
+			cstate->has_execute_stmt = true;
 	}
 
 	if (!expr_is_const)
