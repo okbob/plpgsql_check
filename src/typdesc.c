@@ -298,6 +298,8 @@ pofce_get_desc(PLpgSQL_checkstate *cstate,
 		pronallargs = get_func_arg_info(func_tuple, &argtypes, &argnames, &argmodes);
 		inargno = 0;
 
+		Assert(procStruct->pronargs == list_length(fn->args));
+
 		for (i = 0; i < pronallargs; i++)
 		{
 			if (argmodes &&
@@ -311,6 +313,10 @@ pofce_get_desc(PLpgSQL_checkstate *cstate,
 
 				Assert(inargno < procStruct->pronargs);
 
+				/*
+				 * fn->args are transformated already, so items
+				 * in this list must match fields in proargtypes.
+				 */
 				arg = list_nth(fn->args, inargno);
 
 				if (IsA(arg, Param))
