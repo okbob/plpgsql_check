@@ -264,6 +264,14 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 			if (!plugin_info->fextra)
 				plugin_info->fextra = plch_get_fextra(func);
 
+			/*
+			 * The size of stmt_stack is constant. We know max deep of AST
+			 * of plpgsql function. The one stack is per one function call.
+			 * When function call self recursively, then new stack is created.
+			 * Because AST is tree always - and the PLpgSQL is based on iteration
+			 * over AST, then there is not the possibility how the execution
+			 * can across max_deep size.
+			 */
 			plugin_info->stmts_stack = palloc((plugin_info->fextra->max_deep + 1) * sizeof(PLpgSQL_stmt *));
 			plugin_info->stmts_buf = palloc((plugin_info->fextra->max_deep + 1) * sizeof(PLpgSQL_stmt *));
 		}
