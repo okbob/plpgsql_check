@@ -1079,19 +1079,27 @@ tracer_func_abort(PLpgSQL_execstate *estate,
 	_tracer_func_end(tinfo, true);
 }
 
+/*
+ * returns trimmed string
+ */
 static char *
-copy_string_part(char *dest, char *src, int n)
+sntrimstr(char *dest, size_t dest_size, char *src, int n)
 {
-	char	   *retval = dest;
+	char	   *result = dest;
+	size_t		available_bytes = dest_size - 4;
 
 	while (*src && n > 0)
 	{
 		int			mbl = pg_mblen_cstr(src);
 
+		if (mbl > available_bytes)
+			break;
+
 		memcpy(dest, src, mbl);
 		src += mbl;
 		dest += mbl;
 		n -= mbl;
+		available_bytes -= mbl;
 	}
 
 	if (*src)
@@ -1102,7 +1110,7 @@ copy_string_part(char *dest, char *src, int n)
 
 	*dest = '\0';
 
-	return retval;
+	return result;
 }
 
 static void
@@ -1232,7 +1240,7 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 					 frame_width, printbuf,
 					 stmt->lineno,
 					 indent, "",
-					 copy_string_part(exprbuf, expr->query + startpos, 30),
+					 sntrimstr(exprbuf, sizeof(exprbuf), expr->query + startpos, 30),
 					 buffer);
 			}
 			else if (is_perform)
@@ -1242,7 +1250,7 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 					 frame_width, printbuf,
 					 stmt->lineno,
 					 indent, "",
-					 copy_string_part(exprbuf, expr->query + startpos, 30),
+					 sntrimstr(exprbuf, sizeof(exprbuf), expr->query + startpos, 30),
 					 buffer);
 			}
 			else
@@ -1254,7 +1262,7 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 					 indent, "",
 					 plpgsql_check__stmt_typename_p(stmt),
 					 exprname,
-					 copy_string_part(exprbuf, expr->query + startpos, 30),
+					 sntrimstr(exprbuf, sizeof(exprbuf), expr->query + startpos, 30),
 					 buffer);
 			}
 		}
@@ -1289,7 +1297,7 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 							 frame_width, printbuf,
 							 ifelseif->lineno,
 							 indent, "",
-							 copy_string_part(exprbuf, ifelseif->cond->query + STREXPR_START, 30));
+							 sntrimstr(exprbuf, sizeof(exprbuf), ifelseif->cond->query + STREXPR_START, 30));
 
 						print_expr_args(estate, ifelseif->cond, printbuf, total_level);
 					}
@@ -1438,7 +1446,7 @@ trace_assert(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, tracer_info *tinfo)
 		if (plpgsql_check_trace_assert_verbosity >= PGERROR_DEFAULT)
 		{
 			elog(plpgsql_check_tracer_errlevel, "PLpgSQL assert expression (%s) on line %d of %s is true",
-				 copy_string_part(exprbuf, stmt_assert->cond->query + STREXPR_START, 30),
+				 sntrimstr(exprbuf, sizeof(exprbuf), stmt_assert->cond->query + STREXPR_START, 30),
 				 stmt->lineno,
 				 estate->func->fn_signature);
 
@@ -1452,7 +1460,7 @@ trace_assert(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, tracer_info *tinfo)
 
 		elog(plpgsql_check_tracer_errlevel, "#%d PLpgSQL assert expression (%s) on line %d of %s is false",
 			 frame_num,
-			 copy_string_part(exprbuf, stmt_assert->cond->query + STREXPR_START, 30),
+			 sntrimstr(exprbuf, sizeof(exprbuf), stmt_assert->cond->query + STREXPR_START, 30),
 			 stmt->lineno,
 			 estate->func->fn_signature);
 
