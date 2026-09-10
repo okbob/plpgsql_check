@@ -219,9 +219,9 @@ plch_get_fextra(PLpgSQL_function *func)
 		fextra->fn_signature = func->fn_signature ? pstrdup(func->fn_signature) : NULL;
 		fextra->nstatements = func->nstatements;
 
-		fextra->parentids = palloc(sizeof(int) * (func->nstatements + 1));
-		fextra->naturalids = palloc(sizeof(int) * (func->nstatements + 1));
-		fextra->levels = palloc(sizeof(int) * (func->nstatements + 1));
+		fextra->parentids = palloc0(sizeof(int) * (func->nstatements + 1));
+		fextra->naturalids = palloc0(sizeof(int) * (func->nstatements + 1));
+		fextra->levels = palloc0(sizeof(int) * (func->nstatements + 1));
 
 		MemoryContextSwitchTo(oldcxt);
 
