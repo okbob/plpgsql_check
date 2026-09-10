@@ -603,3 +603,185 @@ set plpgsql_check.profiler to off;
 
 drop function if exists repro07_ok();
 drop function if exists repro07_err();
+
+
+CREATE SCHEMA IF NOT EXISTS repro01;
+SET search_path = repro01, public;
+
+CREATE TABLE t_b (a int);
+
+-- The EXECUTE records t_b into cstate_dynsql.rel_oids, which is then thrown
+-- away.  The static PERFORM records the very same OID again, this time into
+-- the caller's cstate->rel_oids.
+CREATE FUNCTION f_dup() RETURNS void AS $$
+BEGIN
+  EXECUTE 'select * from repro01.t_b';
+  PERFORM * FROM repro01.t_b;
+END
+$$ LANGUAGE plpgsql;
+
+\echo '### Finding 1: duplicate RELATION dependency (expect 1 row, bug yields 2)'
+SELECT type, schema, name FROM plpgsql_show_dependency_tb('repro01.f_dup()')
+ORDER BY type, name;
+
+\echo '### Same query, counted:'
+SELECT count(*) AS relation_rows_for_t_b
+  FROM plpgsql_show_dependency_tb('repro01.f_dup()')
+ WHERE type = 'RELATION' AND name = 't_b';
+
+-- Control: the purely static equivalent reports the relation exactly once.
+CREATE FUNCTION f_static() RETURNS void AS $$
+BEGIN
+  PERFORM * FROM repro01.t_b;
+  PERFORM * FROM repro01.t_b;
+END
+$$ LANGUAGE plpgsql;
+
+\echo '### Control: static-only function reports t_b once'
+SELECT count(*) AS relation_rows_for_t_b
+  FROM plpgsql_show_dependency_tb('repro01.f_static()')
+ WHERE type = 'RELATION' AND name = 't_b';
+
+DROP SCHEMA repro01 CASCADE;
+
+
+
+CREATE SCHEMA IF NOT EXISTS repro04;
+SET search_path = repro04, public;
+
+SET plpgsql_check.tracer_test_mode = true;
+SET plpgsql_check.tracer = on;
+SET plpgsql_check.tracer_verbosity = verbose;
+SET client_min_messages = error;   -- silence the trace output itself
+
+-- (1) exception at maximum depth, EMPTY handler: nothing inside the handler
+--     calls stmt_beg, so the stack is only unwound by stmt_end of the block.
+CREATE FUNCTION f_empty_handler() RETURNS int AS $$
+DECLARE x int := 0;
+BEGIN
+  FOR i IN 1..3 LOOP
+    BEGIN
+      RAISE EXCEPTION 'boom';
+    EXCEPTION WHEN others THEN
+    END;
+  END LOOP;
+  RETURN x;
+END $$ LANGUAGE plpgsql;
+
+-- (2) nested handlers, each re-raising: unwinds several levels per stmt_beg.
+CREATE FUNCTION f_nested_reraise() RETURNS int AS $$
+BEGIN
+  BEGIN
+    BEGIN
+      RAISE EXCEPTION 'inner';
+    EXCEPTION WHEN others THEN
+      RAISE EXCEPTION 'middle';
+    END;
+  EXCEPTION WHEN others THEN
+    PERFORM 1;
+  END;
+  RETURN 1;
+END $$ LANGUAGE plpgsql;
+
+-- (3) exception thrown from deep inside loops and caught at the very top.
+CREATE FUNCTION f_deep_escape() RETURNS int AS $$
+DECLARE j int;
+BEGIN
+  BEGIN
+    FOR i IN 1..2 LOOP
+      FOREACH j IN ARRAY ARRAY[1,2] LOOP
+        WHILE true LOOP
+          IF j = 2 THEN
+            RAISE EXCEPTION 'deep';
+          END IF;
+          EXIT;
+        END LOOP;
+      END LOOP;
+    END LOOP;
+  EXCEPTION WHEN others THEN
+    RETURN -1;
+  END;
+  RETURN 0;
+END $$ LANGUAGE plpgsql;
+
+-- (4) handler whose FIRST statement is itself a block (repair path must match
+--     the block's parent, not the failing statement's parent).
+CREATE FUNCTION f_handler_block() RETURNS int AS $$
+BEGIN
+  BEGIN
+    BEGIN
+      RAISE EXCEPTION 'x';
+    EXCEPTION WHEN others THEN
+      BEGIN
+        PERFORM 1;
+      END;
+    END;
+  END;
+  RETURN 1;
+END $$ LANGUAGE plpgsql;
+
+-- (5) repeated entry/exit so any leaked stack slot accumulates across calls.
+CREATE FUNCTION f_repeat() RETURNS int AS $$
+DECLARE n int := 0;
+BEGIN
+  FOR i IN 1..50 LOOP
+    BEGIN
+      BEGIN
+        RAISE EXCEPTION 'e%', i;
+      EXCEPTION WHEN others THEN
+      END;
+      n := n + 1;
+    EXCEPTION WHEN others THEN
+      n := n - 1;
+    END;
+  END LOOP;
+  RETURN n;
+END $$ LANGUAGE plpgsql;
+
+-- (6) exception crossing a function boundary (separate plugin_info per estate).
+CREATE FUNCTION f_callee() RETURNS int AS $$
+BEGIN
+  BEGIN
+    RAISE EXCEPTION 'from callee';
+  END;
+END $$ LANGUAGE plpgsql;
+
+CREATE FUNCTION f_caller() RETURNS int AS $$
+BEGIN
+  BEGIN
+    FOR i IN 1..2 LOOP
+      PERFORM f_callee();
+    END LOOP;
+  EXCEPTION WHEN others THEN
+    RETURN -1;
+  END;
+  RETURN 0;
+END $$ LANGUAGE plpgsql;
+
+RESET client_min_messages;
+\echo '### Driving stmt_beg/stmt_end imbalance patterns under the tracer'
+SET client_min_messages = error;
+
+SELECT f_empty_handler();
+SELECT f_nested_reraise();
+SELECT f_deep_escape();
+SELECT f_handler_block();
+SELECT f_repeat();
+SELECT f_caller();
+
+-- run them all again, now with the profiler also attached (two active plugins,
+-- which additionally exercises the duplicated palloc in func_setup)
+SET plpgsql_check.profiler = on;
+SELECT f_empty_handler();
+SELECT f_nested_reraise();
+SELECT f_deep_escape();
+SELECT f_handler_block();
+SELECT f_repeat();
+SELECT f_caller();
+
+RESET client_min_messages;
+\echo '### Survived: no assertion failure and the backend is still alive'
+SELECT 'still alive' AS status;
+
+DROP SCHEMA repro04 CASCADE;
+
