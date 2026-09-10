@@ -481,6 +481,7 @@ plch_statement_get_expr(PLpgSQL_stmt *stmt, bool *is_dynamic, List **params, con
 				else
 					expr = o->argquery;
 			}
+			break;
 		case PLPGSQL_STMT_BLOCK:
 		case PLPGSQL_STMT_COMMIT:
 		case PLPGSQL_STMT_ROLLBACK:
