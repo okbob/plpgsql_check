@@ -735,8 +735,7 @@ ORDER BY type, name;
    type   | schema  | name 
 ----------+---------+------
  RELATION | repro01 | t_b
- RELATION | repro01 | t_b
-(2 rows)
+(1 row)
 
 \echo '### Same query, counted:'
 ### Same query, counted:
@@ -745,7 +744,7 @@ SELECT count(*) AS relation_rows_for_t_b
  WHERE type = 'RELATION' AND name = 't_b';
  relation_rows_for_t_b 
 -----------------------
-                     2
+                     1
 (1 row)
 
 -- Control: the purely static equivalent reports the relation exactly once.
