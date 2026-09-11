@@ -271,6 +271,11 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 			 * Because AST is tree always - and the PLpgSQL is based on iteration
 			 * over AST, then there is not the possibility how the execution
 			 * can across max_deep size.
+			 *
+			 * After an exception pldbgapi reduces stack how it is necessary, so
+			 * under pldbgapi - the number of calls of stmt_beg should be same like
+			 * number of calls of stmt_end (because stmt_end is called after any
+			 * abort before an execution of any statement from same function).
 			 */
 			plugin_info->stmts_stack = palloc((plugin_info->fextra->max_deep + 1) * sizeof(PLpgSQL_stmt *));
 			plugin_info->stmts_buf = palloc((plugin_info->fextra->max_deep + 1) * sizeof(PLpgSQL_stmt *));
