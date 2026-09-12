@@ -167,82 +167,107 @@ plch_get_fextra(PLpgSQL_function *func)
 		plch_init_fidentity_hk(&hk, func);
 		fextra = (plch_fextra *) hash_search(fextra_ht, (void *) &hk, HASH_ENTER, &found);
 
-		if (found && !fextra->is_valid && fextra->use_count == 0)
-		{
-			MemoryContextReset(fextra->mcxt);
-		}
-
+		/*
+		 * Although, there are not threads, there can be "semi parallel" access
+		 * to fextra_ht due fextra_CacheObjectCallback, that can be emitted by
+		 * any catalog operations. So immediately set fields, that can be checked
+		 * used by fextra_CacheObjectCallback.
+		 */
 		if (!found)
 		{
-			fextra->mcxt = AllocSetContextCreate(fextra_mcxt,
-												 "PLpgSQL fextra entry context",
-												 ALLOCSET_DEFAULT_SIZES);
-
-			fextra->hashValue = GetSysCacheHashValue1(PROCOID,
-													  ObjectIdGetDatum(func->fn_oid));
-
+			fextra->hashValue = 0;
+			fextra->mcxt = NULL;
 			fextra->use_count = 0;
 			fextra->is_valid = false;
 		}
 	}
 	else
 	{
-		/* one shot fextra for anonymous blocks */
+		/*
+		 * one shot fextra for anonymous blocks. These structures are not
+		 * stored in fextra_ht, so there is not risk with fextra_CacheObjectCallback
+		*/
 		fextra = palloc0(sizeof(plch_fextra));
-		fextra->mcxt = CurrentMemoryContext;
-		fextra->use_count = 0;
-		fextra->is_valid = false;
 	}
 
-	if (!fextra->is_valid && fextra->use_count == 0)
+	/* pin entry first as protection against dropping in fextra_CacheObjectCallback */
+	fextra->use_count++;
+
+	PG_TRY();
 	{
-		MemoryContext oldcxt;
-		char	   *fn_name = NULL;
-		char	   *fn_namespacename = NULL;
-		int			naturalid = 0;
-		fextra_init_context context;
-
-		if (func->fn_oid)
+		if (!fextra->is_valid && fextra->use_count == 1)
 		{
-			fn_name = get_func_name(func->fn_oid);
-			if (!fn_name)
-				fn_name = func->fn_signature;
+			MemoryContext oldcxt;
+			char	   *fn_name = NULL;
+			char	   *fn_namespacename = NULL;
+			int			naturalid = 0;
+			fextra_init_context context;
 
-			fn_namespacename = get_namespace_name_or_temp(get_func_namespace(func->fn_oid));
+			/* initialization of refreshing of fextra entry */
+			if (!fextra->mcxt)
+			{
+				if (OidIsValid(func->fn_oid))
+				{
+					fextra->mcxt = AllocSetContextCreate(fextra_mcxt,
+														 "PLpgSQL fextra entry context",
+														 ALLOCSET_DEFAULT_SIZES);
+
+					fextra->hashValue = GetSysCacheHashValue1(PROCOID,
+														  ObjectIdGetDatum(func->fn_oid));
+				}
+				else
+					fextra->mcxt = CurrentMemoryContext;
+			}
+			else
+				MemoryContextReset(fextra->mcxt);
+
+			if (OidIsValid(func->fn_oid))
+			{
+				fn_name = get_func_name(func->fn_oid);
+				if (!fn_name)
+					fn_name = func->fn_signature;
+
+				fn_namespacename = get_namespace_name_or_temp(get_func_namespace(func->fn_oid));
+			}
+
+			oldcxt = MemoryContextSwitchTo(fextra->mcxt);
+
+			fextra->fn_oid = func->fn_oid;
+			fextra->fn_name = fn_name ? pstrdup(fn_name) : NULL;
+			fextra->fn_namespacename = fn_namespacename ? pstrdup(fn_namespacename) : NULL;
+			fextra->fn_signature = func->fn_signature ? pstrdup(func->fn_signature) : NULL;
+			fextra->nstatements = func->nstatements;
+
+			fextra->parentids = palloc0(sizeof(int) * (func->nstatements + 1));
+			fextra->naturalids = palloc0(sizeof(int) * (func->nstatements + 1));
+			fextra->levels = palloc0(sizeof(int) * (func->nstatements + 1));
+
+			MemoryContextSwitchTo(oldcxt);
+
+			fextra->max_deep = 0;
+
+			context.fextra = fextra;
+			context.parentid = 0;
+			context.current_deep = 0;
+			context.naturalid = &naturalid;
+
+			init_fextra_stmt_walker((PLpgSQL_stmt *) func->action, &context);
+
+			fextra->func = func;
+
+			fextra->is_valid = true;
 		}
-
-		oldcxt = MemoryContextSwitchTo(fextra->mcxt);
-
-		fextra->fn_oid = func->fn_oid;
-		fextra->fn_name = fn_name ? pstrdup(fn_name) : NULL;
-		fextra->fn_namespacename = fn_namespacename ? pstrdup(fn_namespacename) : NULL;
-		fextra->fn_signature = func->fn_signature ? pstrdup(func->fn_signature) : NULL;
-		fextra->nstatements = func->nstatements;
-
-		fextra->parentids = palloc0(sizeof(int) * (func->nstatements + 1));
-		fextra->naturalids = palloc0(sizeof(int) * (func->nstatements + 1));
-		fextra->levels = palloc0(sizeof(int) * (func->nstatements + 1));
-
-		MemoryContextSwitchTo(oldcxt);
-
-		fextra->max_deep = 0;
-
-		context.fextra = fextra;
-		context.parentid = 0;
-		context.current_deep = 0;
-		context.naturalid = &naturalid;
-
-		init_fextra_stmt_walker((PLpgSQL_stmt *) func->action, &context);
-
-		fextra->func = func;
-
-		fextra->is_valid = true;
 	}
+	PG_CATCH();
+	{
+		/* don't leave a half built entry pinned forever */
+		fextra->use_count--;
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	if (OidIsValid(func->fn_oid))
 		pin_func(fextra->func);
-
-	fextra->use_count++;
 
 	return fextra;
 }
