@@ -78,6 +78,7 @@ tests = [ 'plpgsql_check_active',
           'plpgsql_check_assign',
           'plpgsql_check_catalog',
           'plpgsql_check_check_function',
+          'plpgsql_check_pldbgapi3',
           'plpgsql_check_nocrash',
           'plpgsql_check_nocrash_unstable_01' ]
 
