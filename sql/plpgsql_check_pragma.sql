@@ -1,0 +1,201 @@
+--
+-- regress tests of the pragma function (src/pragma.c)
+--
+-- The plpgsql_check_pragma() function has two completely separate
+-- implementations. When plpgsql_check walks the AST, the arguments are
+-- taken from the parse tree and applied to the check state. When the
+-- function is really executed, the arguments are processed as ordinary
+-- variadic text arguments, and only the tracer can be controlled.
+--
+load 'plpgsql_check';
+
+set client_min_messages to warning;
+create extension if not exists plpgsql_check;
+set client_min_messages to notice;
+
+--
+-- compile time pragmas
+--
+
+-- STATUS reports the current value of every switch. Note that the
+-- keyword recognized by STATUS for the constants tracing switch is
+-- "constants_trancing", while ENABLE and DISABLE use
+-- "constants_tracing".
+create function prg_status()
+returns void as $$
+begin
+  perform plpgsql_check_pragma('status:check');
+  perform plpgsql_check_pragma('status:tracer');
+  perform plpgsql_check_pragma('status:other_warnings');
+  perform plpgsql_check_pragma('status:performance_warnings');
+  perform plpgsql_check_pragma('status:extra_warnings');
+  perform plpgsql_check_pragma('status:security_warnings');
+  perform plpgsql_check_pragma('status:compatibility_warnings');
+  perform plpgsql_check_pragma('status:constants_trancing');
+  -- spaces around the pragma name and its argument are ignored
+  perform plpgsql_check_pragma('  status:  check');
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('prg_status');
+
+-- DISABLE turns every switch off, the following STATUS shows it.
+create function prg_disable()
+returns void as $$
+begin
+  perform plpgsql_check_pragma('  disable:  check');
+  perform plpgsql_check_pragma('disable:tracer');
+  perform plpgsql_check_pragma('disable:other_warnings');
+  perform plpgsql_check_pragma('disable:performance_warnings');
+  perform plpgsql_check_pragma('disable:extra_warnings');
+  perform plpgsql_check_pragma('disable:security_warnings');
+  perform plpgsql_check_pragma('disable:compatibility_warnings');
+  perform plpgsql_check_pragma('disable:constants_tracing');
+
+  perform plpgsql_check_pragma('status:check');
+  perform plpgsql_check_pragma('status:tracer');
+  perform plpgsql_check_pragma('status:other_warnings');
+  perform plpgsql_check_pragma('status:performance_warnings');
+  perform plpgsql_check_pragma('status:extra_warnings');
+  perform plpgsql_check_pragma('status:security_warnings');
+  perform plpgsql_check_pragma('status:compatibility_warnings');
+  perform plpgsql_check_pragma('status:constants_trancing');
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('prg_disable');
+
+-- ENABLE turns them on again
+create function prg_enable()
+returns void as $$
+begin
+  perform plpgsql_check_pragma('disable:check');
+  perform plpgsql_check_pragma('disable:tracer');
+  perform plpgsql_check_pragma('disable:other_warnings');
+  perform plpgsql_check_pragma('disable:performance_warnings');
+  perform plpgsql_check_pragma('disable:extra_warnings');
+  perform plpgsql_check_pragma('disable:security_warnings');
+  perform plpgsql_check_pragma('disable:compatibility_warnings');
+  perform plpgsql_check_pragma('disable:constants_tracing');
+
+  perform plpgsql_check_pragma('  enable:  check');
+  perform plpgsql_check_pragma('enable:tracer');
+  perform plpgsql_check_pragma('enable:other_warnings');
+  perform plpgsql_check_pragma('enable:performance_warnings');
+  perform plpgsql_check_pragma('enable:extra_warnings');
+  perform plpgsql_check_pragma('enable:security_warnings');
+  perform plpgsql_check_pragma('enable:compatibility_warnings');
+  perform plpgsql_check_pragma('enable:constants_tracing');
+
+  perform plpgsql_check_pragma('status:check');
+  perform plpgsql_check_pragma('status:tracer');
+  perform plpgsql_check_pragma('status:other_warnings');
+  perform plpgsql_check_pragma('status:performance_warnings');
+  perform plpgsql_check_pragma('status:extra_warnings');
+  perform plpgsql_check_pragma('status:security_warnings');
+  perform plpgsql_check_pragma('status:compatibility_warnings');
+  perform plpgsql_check_pragma('status:constants_trancing');
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('prg_enable');
+
+-- an unknown switch is reported for every pragma that takes a switch
+-- name, and an entirely unknown pragma is reported too
+create function prg_unsupported()
+returns void as $$
+begin
+  perform plpgsql_check_pragma('status:unknown_switch');
+  perform plpgsql_check_pragma('enable:unknown_switch');
+  perform plpgsql_check_pragma('disable:unknown_switch');
+  perform plpgsql_check_pragma('unknown_pragma: something');
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('prg_unsupported');
+
+-- ECHO prints its argument. The @@name and @@signature placeholders are
+-- replaced by the name and the signature of the checked function, an
+-- unknown placeholder is copied to the output.
+create function prg_echo(a int, b text)
+returns void as $$
+begin
+  perform plpgsql_check_pragma('echo: nothing to substitute here');
+  perform plpgsql_check_pragma('echo: the name is @@name');
+  perform plpgsql_check_pragma('echo: the signature is @@signature');
+  perform plpgsql_check_pragma('echo: @@unknown is not a placeholder');
+  perform plpgsql_check_pragma('echo:');
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('prg_echo');
+
+-- more pragmas can be passed in one call
+create function prg_multi()
+returns void as $$
+begin
+  perform plpgsql_check_pragma('disable:extra_warnings',
+                               'status:extra_warnings',
+                               'enable:extra_warnings',
+                               'status:extra_warnings');
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('prg_multi');
+
+drop function prg_multi();
+drop function prg_echo(int, text);
+drop function prg_unsupported();
+drop function prg_enable();
+drop function prg_disable();
+drop function prg_status();
+
+--
+-- runtime pragmas
+--
+-- When the pragma function is really executed, only the tracer pragmas
+-- are recognized, everything else is silently ignored. The tracer is
+-- only armed here, no tracing is started, because that additionally
+-- requires plpgsql_check.enable_tracer.
+--
+
+select plpgsql_check_pragma('status:tracer');
+select plpgsql_check_pragma('enable:tracer');
+select plpgsql_check_pragma('status:tracer');
+select plpgsql_check_pragma('disable:tracer');
+select plpgsql_check_pragma('status:tracer');
+
+-- leading spaces and spaces after the colon are ignored
+select plpgsql_check_pragma('   enable:   tracer');
+select plpgsql_check_pragma('   status:   tracer');
+select plpgsql_check_pragma('   disable:   tracer');
+
+-- pragmas which are compile time only, and unknown pragmas, are ignored
+select plpgsql_check_pragma('status:check');
+select plpgsql_check_pragma('enable:check');
+select plpgsql_check_pragma('disable:check');
+select plpgsql_check_pragma('echo: not printed in runtime');
+select plpgsql_check_pragma('this is not a pragma');
+select plpgsql_check_pragma('');
+
+-- NULL argument is ignored, NULL elements of the argument array are
+-- skipped
+select plpgsql_check_pragma(VARIADIC NULL::text[]);
+select plpgsql_check_pragma(VARIADIC array[NULL, 'enable:tracer', NULL]::text[]);
+select plpgsql_check_pragma('status:tracer');
+select plpgsql_check_pragma('disable:tracer');
+
+-- the pragma function called from a really executed function
+create function prg_runtime()
+returns void as $$
+begin
+  perform plpgsql_check_pragma('enable:tracer');
+  perform plpgsql_check_pragma('status:tracer');
+  perform plpgsql_check_pragma('disable:tracer');
+  perform plpgsql_check_pragma('status:tracer');
+end;
+$$ language plpgsql;
+
+select prg_runtime();
+
+drop function prg_runtime();
