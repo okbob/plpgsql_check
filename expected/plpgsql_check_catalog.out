@@ -1,0 +1,125 @@
+set client_min_messages to warning;
+create extension if not exists plpgsql_check;
+set client_min_messages to notice;
+--
+-- checks done before the function is checked
+--
+-- the checked routine must be written in plpgsql
+select * from plpgsql_check_function('upper(text)');
+ERROR:  upper(text) is not a plpgsql function
+select * from plpgsql_check_function('sum(int)');
+ERROR:  sum(integer) is not a plpgsql function
+-- a routine with a pseudotype result is rejected sooner, the result type
+-- is read before the language of the routine is validated
+select * from plpgsql_check_function('textout(text)');
+ERROR:  PL/pgSQL functions cannot return type cstring
+-- record, void and the polymorphic types are pseudotypes too, but they
+-- are allowed
+create function cat_f1() returns void as $$
+begin
+end;
+$$ language plpgsql;
+create function cat_f2(a anyelement) returns anyelement as $$
+begin
+  return a;
+end;
+$$ language plpgsql;
+create function cat_f3() returns record as $$
+declare r record;
+begin
+  select 1 as a, 2 as b into r;
+  return r;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('cat_f1');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function('cat_f2(anyelement)');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function('cat_f3');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+--
+-- the relation of a trigger
+--
+create table cat_tab1(a int, b int);
+create function cat_trg1() returns trigger as $$
+begin
+  return new;
+end;
+$$ language plpgsql;
+create function cat_evtrg1() returns event_trigger as $$
+begin
+end;
+$$ language plpgsql;
+-- a dml trigger cannot be checked without the triggering relation
+select * from plpgsql_check_function('cat_trg1');
+ERROR:  missing trigger relation
+HINT:  Trigger relation oid must be valid
+select * from plpgsql_check_function('cat_trg1', relid => 'cat_tab1'::regclass);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+-- an event trigger has no triggering relation
+select * from plpgsql_check_function('cat_evtrg1', relid => 'cat_tab1'::regclass);
+ERROR:  function is not trigger
+HINT:  Trigger relation oid must not be valid for non dml trigger function.
+select * from plpgsql_check_function('cat_evtrg1');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+-- a plain function has no triggering relation either
+select * from plpgsql_check_function('cat_f1', relid => 'cat_tab1'::regclass);
+ERROR:  function is not trigger
+HINT:  Trigger relation oid must not be valid for non dml trigger function.
+-- the profiler does not check the triggering relation, it only reads the
+-- collected statistics
+select * from plpgsql_profiler_function_tb('cat_trg1');
+ lineno | stmt_lineno | queryids | cmds_on_row | exec_stmts | exec_stmts_err | total_time | avg_time | max_time | processed_rows |    source     
+--------+-------------+----------+-------------+------------+----------------+------------+----------+----------+----------------+---------------
+      1 |             |          |             |            |                |            |          |          |                | 
+      2 |           2 |          |           1 |            |                |            |          |          |                | begin
+      3 |           3 |          |           1 |            |                |            |          |          |                |   return new;
+      4 |             |          |             |            |                |            |          |          |                | end;
+(4 rows)
+
+--
+-- the pragma function is searched by name, and only the function from the
+-- schema of the extension is used
+--
+create schema cat_ns;
+create function cat_ns.plpgsql_check_pragma(int) returns int as $$
+  select 1;
+$$ language sql;
+create function cat_f4() returns int as $$
+declare r record;
+begin
+  perform plpgsql_check_pragma('type: r (a int)');
+  return r.a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('cat_f4');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function cat_ns.plpgsql_check_pragma(int);
+drop schema cat_ns;
+drop function cat_f1();
+drop function cat_f2(anyelement);
+drop function cat_f3();
+drop function cat_f4();
+drop function cat_evtrg1();
+drop trigger if exists cat_trg1 on cat_tab1;
+NOTICE:  trigger "cat_trg1" for relation "cat_tab1" does not exist, skipping
+drop function cat_trg1();
+drop table cat_tab1;

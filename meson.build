@@ -76,6 +76,7 @@ tests = [ 'plpgsql_check_active',
           'plpgsql_check_stmtwalk',
           'plpgsql_check_expr_walk',
           'plpgsql_check_assign',
+          'plpgsql_check_catalog',
           'plpgsql_check_nocrash',
           'plpgsql_check_nocrash_unstable_01' ]
 
