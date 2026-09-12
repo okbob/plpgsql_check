@@ -1,0 +1,291 @@
+set client_min_messages to warning;
+create extension if not exists plpgsql_check;
+set client_min_messages to notice;
+--
+-- Tests of the SQL callable entry points of plpgsql_check and of the
+-- validation of their arguments.
+--
+-- Almost every option of the check functions is mandatory - it has a
+-- default value, but an explicit NULL is rejected. Every such check is
+-- executed here.
+--
+create function tf_f1(a int)
+returns int as $$
+begin
+  return a;
+end;
+$$ language plpgsql;
+create table tf_t1(a int, b int);
+--
+-- plpgsql_check_function
+--
+select * from plpgsql_check_function(null::regprocedure);
+ERROR:  the option "funcoid" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function(null::text);
+ERROR:  the option "name" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function('tf_f1', relid := null);
+ERROR:  the option "relid" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function('tf_f1', format := null);
+ERROR:  the option "format" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function('tf_f1', fatal_errors := null);
+ERROR:  the option "fatal_errors" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function('tf_f1', other_warnings := null);
+ERROR:  the option "other_warnings" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function('tf_f1', performance_warnings := null);
+ERROR:  the option "performance warnings" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function('tf_f1', extra_warnings := null);
+ERROR:  the option "extra_warnings" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function('tf_f1', security_warnings := null);
+ERROR:  the option "security_warnings" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function('tf_f1', compatibility_warnings := null);
+ERROR:  the option "compatibility_warnings" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function('tf_f1', anyelememttype := null);
+ERROR:  the option "anyelementtype" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function('tf_f1', anyenumtype := null);
+ERROR:  the option "anyenumtype" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function('tf_f1', anyrangetype := null);
+ERROR:  the option "anyrangetype" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function('tf_f1', anycompatibletype := null);
+ERROR:  the option "anycompatibletype" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function('tf_f1', anycompatiblerangetype := null);
+ERROR:  the option "anycompatiblerangetype" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function('tf_f1', without_warnings := null);
+ERROR:  the option "without_warnings" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function('tf_f1', all_warnings := null);
+ERROR:  the option "all_warnings" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function('tf_f1', use_incomment_options := null);
+ERROR:  the option "use_incomment_options" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function('tf_f1', incomment_options_usage_warning := null);
+ERROR:  the option "incomment_options_usage_warning" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function('tf_f1', constant_tracing := null);
+ERROR:  the option "constants_tracing" is NULL
+HINT:  this option should not be NULL
+-- the two shortcuts of the set of enabled warnings are exclusive
+select * from plpgsql_check_function('tf_f1', without_warnings := true, all_warnings := true);
+ERROR:  without_warnings and all_warnings cannot be true same time
+-- the names of the transition tables can be used only for a trigger
+-- function, which requires the relation
+select * from plpgsql_check_function('tf_f1', oldtable := 'o');
+ERROR:  missing description of oldtable or newtable
+HINT:  Parameter relid is a empty.
+select * from plpgsql_check_function('tf_f1', newtable := 'n');
+ERROR:  missing description of oldtable or newtable
+HINT:  Parameter relid is a empty.
+-- the list of the pragmas can contain a NULL, such entry is ignored
+select * from plpgsql_check_function('tf_f1', pragmas := array[null, 'echo:from a pragma']::text[]);
+NOTICE:  from a pragma
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+--
+-- plpgsql_check_function_tb
+--
+select * from plpgsql_check_function_tb(null::regprocedure);
+ERROR:  the option "funcoid" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb(null::text);
+ERROR:  the option "name" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb('tf_f1', relid := null);
+ERROR:  the option "relid" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb('tf_f1', fatal_errors := null);
+ERROR:  the option "fatal_errors" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb('tf_f1', other_warnings := null);
+ERROR:  the option "other_warnings" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb('tf_f1', performance_warnings := null);
+ERROR:  the option "performance_warnings" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb('tf_f1', extra_warnings := null);
+ERROR:  the option "extra_warnings" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb('tf_f1', security_warnings := null);
+ERROR:  the option "security_warnings" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb('tf_f1', compatibility_warnings := null);
+ERROR:  the option "compatibility_warnings" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb('tf_f1', anyelememttype := null);
+ERROR:  the option "anyelementtype" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb('tf_f1', anyenumtype := null);
+ERROR:  the option "anyenumtype" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb('tf_f1', anyrangetype := null);
+ERROR:  the option "anyrangetype" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb('tf_f1', anycompatibletype := null);
+ERROR:  the option "anycompatibletype" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb('tf_f1', anycompatiblerangetype := null);
+ERROR:  the option "anycompatiblerangetype" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb('tf_f1', without_warnings := null);
+ERROR:  the option "without_warnings" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb('tf_f1', all_warnings := null);
+ERROR:  the option "all_warnings" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb('tf_f1', use_incomment_options := null);
+ERROR:  the option "use_incomment_options" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb('tf_f1', incomment_options_usage_warning := null);
+ERROR:  the option "incomment_options_usage_warning" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb('tf_f1', constant_tracing := null);
+ERROR:  the option "constants_tracing" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_check_function_tb('tf_f1', without_warnings := true, all_warnings := true);
+ERROR:  without_warnings and all_warnings cannot be true same time
+select * from plpgsql_check_function_tb('tf_f1', oldtable := 'o');
+ERROR:  missing description of oldtable or newtable
+HINT:  Parameter relid is a empty.
+select * from plpgsql_check_function_tb('tf_f1', newtable := 'n');
+ERROR:  missing description of oldtable or newtable
+HINT:  Parameter relid is a empty.
+-- all_warnings enables every group of the warnings, without_warnings
+-- disables them; the difference is visible on a function with an unused
+-- variable
+create function tf_f2()
+returns void as $$
+declare
+  v int;
+begin
+  v := 1;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('tf_f2', all_warnings := true);
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ warning extra:00000:3:DECLARE:never read variable "v"
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(3 rows)
+
+select * from plpgsql_check_function('tf_f2', without_warnings := true);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select level, message from plpgsql_check_function_tb('tf_f2', all_warnings := true);
+     level     |                      message                       
+---------------+----------------------------------------------------
+ warning extra | never read variable "v"
+ performance   | routine is marked as VOLATILE, should be IMMUTABLE
+(2 rows)
+
+select level, message from plpgsql_check_function_tb('tf_f2', without_warnings := true);
+ level | message 
+-------+---------
+(0 rows)
+
+--
+-- plpgsql_show_dependency_tb
+--
+select * from plpgsql_show_dependency_tb(null::regprocedure);
+ERROR:  the option "funcoid" is NULL
+HINT:  this option should not be NULL
+CONTEXT:  SQL function "plpgsql_show_dependency_tb" statement 1
+select * from plpgsql_show_dependency_tb(null::text);
+ERROR:  the option "name" is NULL
+HINT:  this option should not be NULL
+CONTEXT:  SQL function "plpgsql_show_dependency_tb" statement 1
+select * from plpgsql_show_dependency_tb('tf_f1', relid := null);
+ERROR:  the option "relid" is NULL
+HINT:  this option should not be NULL
+CONTEXT:  SQL function "plpgsql_show_dependency_tb" statement 1
+select * from plpgsql_show_dependency_tb('tf_f1', anyelememttype := null);
+ERROR:  the option "anyelementtype" is NULL
+HINT:  this option should not be NULL
+CONTEXT:  SQL function "plpgsql_show_dependency_tb" statement 1
+select * from plpgsql_show_dependency_tb('tf_f1', anyenumtype := null);
+ERROR:  the option "anyenumtype" is NULL
+HINT:  this option should not be NULL
+CONTEXT:  SQL function "plpgsql_show_dependency_tb" statement 1
+select * from plpgsql_show_dependency_tb('tf_f1', anyrangetype := null);
+ERROR:  the option "anyrangetype" is NULL
+HINT:  this option should not be NULL
+CONTEXT:  SQL function "plpgsql_show_dependency_tb" statement 1
+select * from plpgsql_show_dependency_tb('tf_f1', anycompatibletype := null);
+ERROR:  the option "anycompatibletype" is NULL
+HINT:  this option should not be NULL
+CONTEXT:  SQL function "plpgsql_show_dependency_tb" statement 1
+select * from plpgsql_show_dependency_tb('tf_f1', anycompatiblerangetype := null);
+ERROR:  the option "anycompatiblerangetype" is NULL
+HINT:  this option should not be NULL
+CONTEXT:  SQL function "plpgsql_show_dependency_tb" statement 1
+create function tf_f3()
+returns void as $$
+begin
+  insert into tf_t1 values(1, 2);
+  perform tf_f1(1);
+end;
+$$ language plpgsql;
+select type, schema, name, params from plpgsql_show_dependency_tb('tf_f3');
+   type   | schema | name  |  params   
+----------+--------+-------+-----------
+ FUNCTION | public | tf_f1 | (integer)
+ RELATION | public | tf_t1 | 
+(2 rows)
+
+select type, schema, name, params from plpgsql_show_dependency_tb('tf_f3()'::regprocedure);
+   type   | schema | name  |  params   
+----------+--------+-------+-----------
+ FUNCTION | public | tf_f1 | (integer)
+ RELATION | public | tf_t1 | 
+(2 rows)
+
+--
+-- plpgsql_make_pragma
+--
+select * from plpgsql_make_pragma(null::regprocedure);
+ERROR:  the option "funcoid" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_make_pragma('tf_f1(int)', relid := null);
+ERROR:  the option "relid" is NULL
+HINT:  this option should not be NULL
+select * from plpgsql_make_pragma('tf_f1(int)', fatal_errors := null);
+ERROR:  the option "fatal_errors" is NULL
+HINT:  this option should not be NULL
+create function tf_f4()
+returns void as $$
+declare r record;
+begin
+  create temp table tf_tmp as select 1 as a, 2 as b;
+  select * from tf_tmp into r;
+  raise notice '%', r.a;
+end;
+$$ language plpgsql;
+select * from plpgsql_make_pragma('tf_f4()');
+         plpgsql_make_pragma         
+-------------------------------------
+ table: tf_tmp(a integer, b integer)
+(1 row)
+
+drop function tf_f4();
+drop function tf_f3();
+drop function tf_f2();
+drop function tf_f1(int);
+drop table tf_t1;
