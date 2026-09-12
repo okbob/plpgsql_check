@@ -587,7 +587,7 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 		{
 			if (widthpos > 0)
 			{
-				if (widthpos > nargs)
+				if (widthpos + 1 > nargs)
 				{
 					pfree(sinfo.data);
 					return NULL;
@@ -657,7 +657,7 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 
 		if (argpos >= 1)
 		{
-			if (argpos > nargs)
+			if (argpos + 1 > nargs)
 			{
 				pfree(sinfo.data);
 				return NULL;
@@ -759,7 +759,7 @@ check_fmt_string(const char *fmt,
 		{
 			if (widthpos > 0)
 			{
-				TOO_FEW_ARGUMENTS_CHECK(widthpos, nargs);
+				TOO_FEW_ARGUMENTS_CHECK(widthpos + 1, nargs);
 				required_nargs = -1;
 			}
 			else
@@ -775,7 +775,7 @@ check_fmt_string(const char *fmt,
 		{
 			if (*cp == 's')
 			{
-				int			argn = argpos >= 1 ? argpos : arg + 1;
+				int			argn = argpos >= 1 ? argpos + 1 : arg + 1;
 
 				/*
 				 * this is usually called after format check, but better be
@@ -798,7 +798,7 @@ check_fmt_string(const char *fmt,
 
 		if (argpos >= 1)
 		{
-			TOO_FEW_ARGUMENTS_CHECK(argpos, nargs);
+			TOO_FEW_ARGUMENTS_CHECK(argpos + 1, nargs);
 			required_nargs = -1;
 		}
 		else

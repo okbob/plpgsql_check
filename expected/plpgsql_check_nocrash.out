@@ -969,3 +969,70 @@ drop cascades to function f_handler_block()
 drop cascades to function f_repeat()
 drop cascades to function f_callee()
 drop cascades to function f_caller()
+SELECT format('%2$s', 'a');
+ERROR:  too few arguments for format()
+CREATE OR REPLACE FUNCTION repro05_a() RETURNS void AS $$
+BEGIN
+    RAISE NOTICE '%', format('%2$s', 'a');
+END
+$$ LANGUAGE plpgsql;
+-- buggy: reports nothing
+-- correct: error:22023:...:RAISE:too few arguments for format()
+SELECT * FROM plpgsql_check_function('repro05_a()');
+               plpgsql_check_function               
+----------------------------------------------------
+ error:22023:3:RAISE:too few arguments for format()
+ Query: format('%2$s', 'a')
+ --            ^
+(3 rows)
+
+-- for comparison, the same mistake without an explicit position IS reported
+CREATE OR REPLACE FUNCTION repro05_a2() RETURNS void AS $$
+BEGIN
+    RAISE NOTICE '%', format('%s %s', 'a');
+END
+$$ LANGUAGE plpgsql;
+SELECT * FROM plpgsql_check_function('repro05_a2()');
+               plpgsql_check_function               
+----------------------------------------------------
+ error:22023:3:RAISE:too few arguments for format()
+ Query: format('%s %s', 'a')
+ --            ^
+(3 rows)
+
+----------------------------------------------------------------------
+-- part B: missed SQL-injection warning
+----------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION repro05_b(p text) RETURNS void AS $$
+BEGIN
+    EXECUTE format('SELECT %1$s', p);
+END
+$$ LANGUAGE plpgsql;
+-- buggy: reports nothing
+-- correct: security:00000:...:EXECUTE:text type variable is not sanitized
+SELECT * FROM plpgsql_check_function('repro05_b(text)', security_warnings => true);
+                           plpgsql_check_function                            
+-----------------------------------------------------------------------------
+ security:00000:3:EXECUTE:text type variable is not sanitized
+ Query: format('SELECT %1$s', p)
+ --                           ^
+ Detail: The EXECUTE expression is SQL injection vulnerable.
+ Hint: Use quote_ident, quote_literal or format function to secure variable.
+(5 rows)
+
+-- for comparison, the same code without an explicit position IS reported
+CREATE OR REPLACE FUNCTION repro05_b2(p text) RETURNS void AS $$
+BEGIN
+    EXECUTE format('SELECT %s', p);
+END
+$$ LANGUAGE plpgsql;
+SELECT * FROM plpgsql_check_function('repro05_b2(text)', security_warnings => true);
+                           plpgsql_check_function                            
+-----------------------------------------------------------------------------
+ security:00000:3:EXECUTE:text type variable is not sanitized
+ Query: format('SELECT %s', p)
+ --                         ^
+ Detail: The EXECUTE expression is SQL injection vulnerable.
+ Hint: Use quote_ident, quote_literal or format function to secure variable.
+(5 rows)
+
