@@ -32,6 +32,7 @@ REGRESS = plpgsql_check_passive\
 		plpgsql_check_tablefunc\
 		plpgsql_check_tracer\
 		plpgsql_check_report\
+		plpgsql_check_stmtwalk\
 		plpgsql_check_nocrash\
 		plpgsql_check_nocrash_unstable_01
 
