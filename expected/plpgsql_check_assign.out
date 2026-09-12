@@ -1,0 +1,347 @@
+set client_min_messages to warning;
+create extension if not exists plpgsql_check;
+set client_min_messages to notice;
+--
+-- assignment to the automatic variables
+--
+-- the variable of a numeric FOR loop is maintained by the runtime, so it
+-- should not be modified by the body of the loop
+create function as_f1(n int)
+returns int as $$
+declare s int := 0;
+begin
+  for i in 1..n loop
+    s := s + i;
+    i := i + 1;
+  end loop;
+  return s;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('as_f1', extra_warnings => false);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function('as_f1', extra_warnings => true);
+                              plpgsql_check_function                              
+----------------------------------------------------------------------------------
+ warning extra:00000:6:assignment:auto varible "i" should not be modified by user
+ Context: at assignment
+(2 rows)
+
+-- the same for the FOUND variable
+create function as_f2()
+returns int as $$
+begin
+  found := true;
+  return 1;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('as_f2', extra_warnings => true);
+                                plpgsql_check_function                                
+--------------------------------------------------------------------------------------
+ warning extra:00000:3:assignment:auto varible "found" should not be modified by user
+ Context: at assignment
+(2 rows)
+
+--
+-- assignment to a constant
+--
+-- the default value of a constant is assigned at the start of the block,
+-- and it is not reported
+create function as_f4()
+returns int as $$
+declare c constant int := 1;
+begin
+  return c;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('as_f4');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+--
+-- assignment to a field of a record
+--
+-- the structure of a record is known after the first assignment only
+create function as_f5()
+returns int as $$
+declare r record;
+begin
+  r.a := 1;
+  return r.a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('as_f5');
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ error:55000:4:assignment:record "r" is not assigned to tuple structure
+ Context: at assignment to field "a" of variable "r" declared on line 2
+(2 rows)
+
+-- when the record has a structure, the name of the field is validated
+create function as_f6()
+returns int as $$
+declare r record;
+begin
+  select 1 as a, 2 as b into r;
+  r.c := 1;
+  return r.a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('as_f6');
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ error:42703:5:assignment:record "r" has no field "c"
+ Context: at assignment to field "c" of variable "r" declared on line 2
+(2 rows)
+
+-- and the type of the field is used for the check of the assigned value
+create function as_f7()
+returns int as $$
+declare r record;
+begin
+  select 1 as a, 2 as b into r;
+  r.a := 'x';
+  return r.a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('as_f7');
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ error:22P02:5:assignment:invalid input syntax for type integer: "x"
+ Query: r.a := 'x'
+ --            ^
+ Context: at assignment to field "a" of variable "r" declared on line 2
+(4 rows)
+
+--
+-- checks of the assigned type
+--
+create table as_tab1(a int, b int, c int);
+-- a composite value cannot be assigned to a scalar variable
+create function as_f8()
+returns int as $$
+declare x int;
+begin
+  select t into x from as_tab1 t;
+  return x;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('as_f8');
+                                            plpgsql_check_function                                             
+---------------------------------------------------------------------------------------------------------------
+ error:42804:4:SQL statement:cannot cast composite value of "as_tab1" type to a scalar value of "integer" type
+ Query: select t        from as_tab1 t
+ --     ^
+ Context: at SQL statement to variable "x" declared on line 2
+(4 rows)
+
+-- a cast which is only explicit, a cast which is allowed on assignment
+-- and a cast which is done implicitly
+create function as_f9()
+returns void as $$
+declare
+  i int;
+  t text;
+  n numeric;
+begin
+  select 'x'::text into i;
+  select 1 into t;
+  select 1.5::numeric into i;
+  select 1 into n;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('as_f9', fatal_errors => false);
+                                plpgsql_check_function                                
+--------------------------------------------------------------------------------------
+ warning:42804:7:SQL statement:target type is different type than source type
+ Query: select 'x'::text
+ --     ^
+ Detail: cast "text" value to "integer" type
+ Hint: The input expression type does not have an assignment cast to the target type.
+ Context: at SQL statement to variable "i" declared on line 3
+ warning extra:00000:3:DECLARE:never read variable "i"
+ warning extra:00000:4:DECLARE:never read variable "t"
+ warning extra:00000:5:DECLARE:never read variable "n"
+(9 rows)
+
+select * from plpgsql_check_function('as_f9', fatal_errors => false, performance_warnings => true);
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:7:SQL statement:detected "SELECT expr INTO variable"
+ Query: select 'x'::text
+ --     ^
+ Detail: This obsolete syntax of assigning can be slow.
+ Hint: Use syntax "variable := expr" instead.
+ warning:42804:7:SQL statement:target type is different type than source type
+ Query: select 'x'::text
+ --     ^
+ Detail: cast "text" value to "integer" type
+ Hint: The input expression type does not have an assignment cast to the target type.
+ Context: at SQL statement to variable "i" declared on line 3
+ performance:00000:8:SQL statement:detected "SELECT expr INTO variable"
+ Query: select 1
+ --     ^
+ Detail: This obsolete syntax of assigning can be slow.
+ Hint: Use syntax "variable := expr" instead.
+ performance:42804:8:SQL statement:target type is different type than source type
+ Query: select 1
+ --     ^
+ Detail: cast "integer" value to "text" type
+ Hint: Hidden casting can be a performance issue.
+ Context: at SQL statement to variable "t" declared on line 4
+ performance:00000:9:SQL statement:detected "SELECT expr INTO variable"
+ Query: select 1.5::numeric
+ --     ^
+ Detail: This obsolete syntax of assigning can be slow.
+ Hint: Use syntax "variable := expr" instead.
+ performance:42804:9:SQL statement:target type is different type than source type
+ Query: select 1.5::numeric
+ --     ^
+ Detail: cast "numeric" value to "integer" type
+ Hint: Hidden casting can be a performance issue.
+ Context: at SQL statement to variable "i" declared on line 3
+ performance:00000:10:SQL statement:detected "SELECT expr INTO variable"
+ Query: select 1
+ --     ^
+ Detail: This obsolete syntax of assigning can be slow.
+ Hint: Use syntax "variable := expr" instead.
+ performance:42804:10:SQL statement:target type is different type than source type
+ Query: select 1
+ --     ^
+ Detail: cast "integer" value to "numeric" type
+ Hint: Hidden casting can be a performance issue.
+ Context: at SQL statement to variable "n" declared on line 5
+ warning extra:00000:3:DECLARE:never read variable "i"
+ warning extra:00000:4:DECLARE:never read variable "t"
+ warning extra:00000:5:DECLARE:never read variable "n"
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(49 rows)
+
+--
+-- assignment of a query result to a composite variable
+--
+-- a variable of a table rowtype where the table has a dropped column -
+-- the descriptors are not equal, but the dropped column is skipped on
+-- both sides
+alter table as_tab1 drop column b;
+create function as_f10()
+returns int as $$
+declare r as_tab1;
+begin
+  select * into r from as_tab1;
+  return r.a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('as_f10');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+-- the query returns less columns than the variable has
+create function as_f11()
+returns int as $$
+declare r as_tab1;
+begin
+  select a into r from as_tab1;
+  return r.a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('as_f11');
+                         plpgsql_check_function                          
+-------------------------------------------------------------------------
+ warning:00000:4:SQL statement:too few attributes for composite variable
+ Query: select a        from as_tab1
+ --     ^
+ Context: at SQL statement to variable "r" declared on line 2
+(4 rows)
+
+-- and more columns than the variable has
+create function as_f12()
+returns int as $$
+declare r as_tab1;
+begin
+  select a, c, a from as_tab1 into r;
+  return r.a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('as_f12');
+                          plpgsql_check_function                          
+--------------------------------------------------------------------------
+ warning:00000:4:SQL statement:too many attributes for composite variable
+ Query: select a, c, a from as_tab1
+ --     ^
+ Context: at SQL statement to variable "r" declared on line 2
+(4 rows)
+
+-- the types of the columns are compared one by one
+create function as_f13()
+returns int as $$
+declare r as_tab1;
+begin
+  select 'x'::text, 1 into r;
+  return r.a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('as_f13', fatal_errors => false);
+                                plpgsql_check_function                                
+--------------------------------------------------------------------------------------
+ warning:42804:4:SQL statement:target type is different type than source type
+ Query: select 'x'::text, 1
+ --     ^
+ Detail: cast "text" value to "integer" type
+ Hint: The input expression type does not have an assignment cast to the target type.
+ Context: at SQL statement to variable "r" declared on line 2
+(6 rows)
+
+-- a whole row value of a type with a dropped column is assigned to a
+-- record variable
+create function as_f14()
+returns int as $$
+declare r record;
+begin
+  select t.* into r from as_tab1 t;
+  return r.a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('as_f14');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+-- the NEW and the OLD records of a trigger get the descriptor of the
+-- triggering relation, which contains the dropped column too
+create function as_trg1()
+returns trigger as $$
+begin
+  new.a := old.a;
+  new.c := 1;
+  return new;
+end;
+$$ language plpgsql;
+create trigger as_trg1 before update on as_tab1
+  for each row execute procedure as_trg1();
+select * from plpgsql_check_function('as_trg1', relid => 'as_tab1'::regclass);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function as_f1(int);
+drop function as_f2();
+drop function as_f4();
+drop function as_f5();
+drop function as_f6();
+drop function as_f7();
+drop function as_f8();
+drop function as_f9();
+drop function as_f10();
+drop function as_f11();
+drop function as_f12();
+drop function as_f13();
+drop function as_f14();
+drop trigger as_trg1 on as_tab1;
+drop function as_trg1();
+drop table as_tab1;
