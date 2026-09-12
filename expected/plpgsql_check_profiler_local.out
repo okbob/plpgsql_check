@@ -1,0 +1,331 @@
+set client_min_messages to warning;
+create extension if not exists plpgsql_check;
+set client_min_messages to notice;
+--
+-- Tests of the profiler with the statistics stored in the local memory
+-- of the session.
+--
+-- When the shared memory was preallocated, the profiler stores the
+-- statistics there, so the local variant of the storage is used only
+-- when the shared memory is not available or when it is disabled by
+-- the following option. The option is used here, so the same code is
+-- tested in both configurations.
+--
+set plpgsql_check.use_shared_stats_when_it_possible to off;
+-- the profiler can be enabled by a function too
+select plpgsql_check_profiler(true);
+NOTICE:  profiler is active
+ plpgsql_check_profiler 
+------------------------
+ t
+(1 row)
+
+create table pl_t1(a int, b int);
+create function pl_f1(a int)
+returns int as $$
+declare b int = 0;
+begin
+  if a > 10 then
+    b := a;
+  else
+    b := -a;
+  end if;
+  while b > 0 loop
+    b := b - 1;
+  end loop;
+  return b;
+end;
+$$ language plpgsql;
+-- there are no statistics before the first execution of the function,
+-- but the statements are listed anyway
+select stmtid, parent_stmtid, exec_stmts, stmtname
+  from plpgsql_profiler_function_statements_tb('pl_f1');
+ stmtid | parent_stmtid | exec_stmts |    stmtname     
+--------+---------------+------------+-----------------
+      1 |               |            | statement block
+      2 |             1 |            | IF
+      3 |             2 |            | assignment
+      4 |             2 |            | assignment
+      5 |             1 |            | WHILE
+      6 |             5 |            | assignment
+      7 |             1 |            | RETURN
+(7 rows)
+
+select lineno, stmt_lineno, exec_stmts, source
+  from plpgsql_profiler_function_tb('pl_f1');
+ lineno | stmt_lineno | exec_stmts |       source       
+--------+-------------+------------+--------------------
+      1 |             |            | 
+      2 |             |            | declare b int = 0;
+      3 |           3 |            | begin
+      4 |           4 |            |   if a > 10 then
+      5 |           5 |            |     b := a;
+      6 |             |            |   else
+      7 |           7 |            |     b := -a;
+      8 |             |            |   end if;
+      9 |           9 |            |   while b > 0 loop
+     10 |          10 |            |     b := b - 1;
+     11 |             |            |   end loop;
+     12 |          12 |            |   return b;
+     13 |             |            | end;
+(13 rows)
+
+select plpgsql_coverage_statements('pl_f1');
+ plpgsql_coverage_statements 
+-----------------------------
+                           0
+(1 row)
+
+select plpgsql_coverage_branches('pl_f1');
+ plpgsql_coverage_branches 
+---------------------------
+                         0
+(1 row)
+
+-- only a part of the function is executed, so the coverage is partial
+select pl_f1(20);
+ pl_f1 
+-------
+     0
+(1 row)
+
+select stmtid, parent_stmtid, exec_stmts, stmtname
+  from plpgsql_profiler_function_statements_tb('pl_f1');
+ stmtid | parent_stmtid | exec_stmts |    stmtname     
+--------+---------------+------------+-----------------
+      1 |               |          1 | statement block
+      2 |             1 |          1 | IF
+      3 |             2 |          1 | assignment
+      4 |             2 |          0 | assignment
+      5 |             1 |          1 | WHILE
+      6 |             5 |         20 | assignment
+      7 |             1 |          1 | RETURN
+(7 rows)
+
+select lineno, stmt_lineno, exec_stmts, source
+  from plpgsql_profiler_function_tb('pl_f1');
+ lineno | stmt_lineno | exec_stmts |       source       
+--------+-------------+------------+--------------------
+      1 |             |            | 
+      2 |             |            | declare b int = 0;
+      3 |           3 | {1}        | begin
+      4 |           4 | {1}        |   if a > 10 then
+      5 |           5 | {1}        |     b := a;
+      6 |             |            |   else
+      7 |           7 | {0}        |     b := -a;
+      8 |             |            |   end if;
+      9 |           9 | {1}        |   while b > 0 loop
+     10 |          10 | {20}       |     b := b - 1;
+     11 |             |            |   end loop;
+     12 |          12 | {1}        |   return b;
+     13 |             |            | end;
+(13 rows)
+
+select plpgsql_coverage_statements('pl_f1');
+ plpgsql_coverage_statements 
+-----------------------------
+          0.8571428571428571
+(1 row)
+
+select plpgsql_coverage_branches('pl_f1');
+ plpgsql_coverage_branches 
+---------------------------
+        0.6666666666666666
+(1 row)
+
+-- the coverage functions accept the oid of the function too
+select plpgsql_coverage_statements('pl_f1(int)'::regprocedure);
+ plpgsql_coverage_statements 
+-----------------------------
+          0.8571428571428571
+(1 row)
+
+select plpgsql_coverage_branches('pl_f1(int)'::regprocedure);
+ plpgsql_coverage_branches 
+---------------------------
+        0.6666666666666666
+(1 row)
+
+-- the statistics of the second execution are merged with the first ones
+-- and both branches of the IF statement are executed now
+select pl_f1(5);
+ pl_f1 
+-------
+    -5
+(1 row)
+
+select stmtid, parent_stmtid, exec_stmts, stmtname
+  from plpgsql_profiler_function_statements_tb('pl_f1');
+ stmtid | parent_stmtid | exec_stmts |    stmtname     
+--------+---------------+------------+-----------------
+      1 |               |          2 | statement block
+      2 |             1 |          2 | IF
+      3 |             2 |          1 | assignment
+      4 |             2 |          1 | assignment
+      5 |             1 |          2 | WHILE
+      6 |             5 |         20 | assignment
+      7 |             1 |          2 | RETURN
+(7 rows)
+
+select plpgsql_coverage_statements('pl_f1');
+ plpgsql_coverage_statements 
+-----------------------------
+                           1
+(1 row)
+
+select plpgsql_coverage_branches('pl_f1');
+ plpgsql_coverage_branches 
+---------------------------
+                         1
+(1 row)
+
+-- a function without any conditional statement has no branches, and the
+-- branch coverage of such function is 1
+create function pl_f2()
+returns void as $$
+begin
+  insert into pl_t1 values(1, 2);
+end;
+$$ language plpgsql;
+select pl_f2();
+ pl_f2 
+-------
+ 
+(1 row)
+
+select plpgsql_coverage_statements('pl_f2');
+ plpgsql_coverage_statements 
+-----------------------------
+                           1
+(1 row)
+
+select plpgsql_coverage_branches('pl_f2');
+ plpgsql_coverage_branches 
+---------------------------
+                         1
+(1 row)
+
+-- the statistics of an aborted execution are collected too; the
+-- anonymous block is profiled as well, but it is not listed by
+-- plpgsql_profiler_functions_all(), because it has no entry in pg_proc
+create function pl_f3()
+returns void as $$
+begin
+  raise exception 'pl_f3 failed';
+end;
+$$ language plpgsql;
+do $$
+begin
+  perform pl_f3();
+exception when others then
+  raise notice 'catched: %', sqlerrm;
+end;
+$$;
+NOTICE:  catched: pl_f3 failed
+select funcoid, exec_count, exec_stmts_err
+  from plpgsql_profiler_functions_all()
+ order by funcoid::text;
+    funcoid     | exec_count | exec_stmts_err 
+----------------+------------+----------------
+ pl_f1(integer) |          2 |              0
+ pl_f2()        |          1 |              0
+ pl_f3()        |          1 |              1
+(3 rows)
+
+-- the statistics of one function can be removed
+select plpgsql_profiler_reset('pl_f1(int)');
+ plpgsql_profiler_reset 
+------------------------
+ 
+(1 row)
+
+select stmtid, parent_stmtid, exec_stmts, stmtname
+  from plpgsql_profiler_function_statements_tb('pl_f1');
+ stmtid | parent_stmtid | exec_stmts |    stmtname     
+--------+---------------+------------+-----------------
+      1 |               |            | statement block
+      2 |             1 |            | IF
+      3 |             2 |            | assignment
+      4 |             2 |            | assignment
+      5 |             1 |            | WHILE
+      6 |             5 |            | assignment
+      7 |             1 |            | RETURN
+(7 rows)
+
+select funcoid, exec_count, exec_stmts_err
+  from plpgsql_profiler_functions_all()
+ order by funcoid::text;
+ funcoid | exec_count | exec_stmts_err 
+---------+------------+----------------
+ pl_f2() |          1 |              0
+ pl_f3() |          1 |              1
+(2 rows)
+
+-- ... and the statistics of all functions too
+select plpgsql_profiler_reset_all();
+ plpgsql_profiler_reset_all 
+----------------------------
+ 
+(1 row)
+
+select funcoid, exec_count, exec_stmts_err
+  from plpgsql_profiler_functions_all()
+ order by funcoid::text;
+ funcoid | exec_count | exec_stmts_err 
+---------+------------+----------------
+(0 rows)
+
+-- the size of the statistics is limited by a configuration option; when
+-- the limit is reached, the statistics of the function are not stored
+-- and a warning is raised
+set plpgsql_check.max_stats_size to '64kB';
+do $$
+begin
+  execute 'create function pl_big() returns void as $x$ begin ' ||
+          repeat('perform 1;', 2000) ||
+          'end; $x$ language plpgsql';
+end;
+$$;
+select pl_big();
+WARNING:  cannot allocate local memory for profiler statistics
+DETAIL:  Statistics can be cleaned by calling function "plpgsql_profiler_reset_all()".
+ pl_big 
+--------
+ 
+(1 row)
+
+-- the function level statistics are collected even in this case
+select funcoid, exec_count from plpgsql_profiler_functions_all()
+ where funcoid = 'pl_big()'::regprocedure;
+ funcoid  | exec_count 
+----------+------------
+ pl_big() |          1
+(1 row)
+
+select stmtid, exec_stmts from plpgsql_profiler_function_statements_tb('pl_big')
+ where stmtid = 1;
+ stmtid | exec_stmts 
+--------+------------
+      1 |           
+(1 row)
+
+set plpgsql_check.max_stats_size to default;
+select plpgsql_profiler_reset_all();
+ plpgsql_profiler_reset_all 
+----------------------------
+ 
+(1 row)
+
+select plpgsql_check_profiler(false);
+NOTICE:  profiler is not active
+ plpgsql_check_profiler 
+------------------------
+ f
+(1 row)
+
+drop function pl_big();
+drop function pl_f3();
+drop function pl_f2();
+drop function pl_f1(int);
+drop table pl_t1;
+set plpgsql_check.use_shared_stats_when_it_possible to default;
