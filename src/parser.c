@@ -1617,11 +1617,17 @@ plpgsql_check_process_echo_string(char *str, plpgsql_check_info *cinfo)
 			}
 			else if (is_keyword(start, bytes, "name"))
 			{
-				appendStringInfoString(&sinfo, get_func_name(cinfo->fn_oid));
+				if (OidIsValid(cinfo->fn_oid))
+					appendStringInfoString(&sinfo, get_func_name(cinfo->fn_oid));
+				else
+					appendStringInfoString(&sinfo, "inline code block");
 			}
 			else if (is_keyword(start, bytes, "signature"))
 			{
-				appendStringInfoString(&sinfo, format_procedure(cinfo->fn_oid));
+				if (OidIsValid(cinfo->fn_oid))
+					appendStringInfoString(&sinfo, format_procedure(cinfo->fn_oid));
+				else
+					appendStringInfoString(&sinfo, "inline code block");
 			}
 			else
 				appendStringInfo(&sinfo, "@@%.*s", (int) bytes, start);
