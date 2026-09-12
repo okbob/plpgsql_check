@@ -1,0 +1,421 @@
+set client_min_messages to warning;
+create extension if not exists plpgsql_check;
+set client_min_messages to notice;
+--
+-- Tests of the tracer.
+--
+-- The tracer prints the entered and left functions and statements, the
+-- arguments of the expressions and the content of the variables. The
+-- test mode replaces the measured time and the oid of the function by
+-- constants, so the output is stable.
+--
+-- the tracer can be activated by anybody, but it does nothing until a
+-- superuser enables it
+select plpgsql_check_tracer(true);
+NOTICE:  tracer is active
+NOTICE:  tracer verbosity is default
+NOTICE:  tracer is still blocked
+DETAIL:  The tracer should be enabled by the superuser for security reasons.
+HINT:  Execute "set plpgsql_check.enable_tracer to on" (superuser only).
+ plpgsql_check_tracer 
+----------------------
+ t
+(1 row)
+
+set plpgsql_check.enable_tracer to on;
+set plpgsql_check.tracer_test_mode to true;
+-- the control function sets the state and the verbosity and reports both
+select plpgsql_check_tracer(false);
+NOTICE:  tracer is not active
+NOTICE:  tracer verbosity is default
+ plpgsql_check_tracer 
+----------------------
+ f
+(1 row)
+
+select plpgsql_check_tracer();
+NOTICE:  tracer is not active
+NOTICE:  tracer verbosity is default
+ plpgsql_check_tracer 
+----------------------
+ f
+(1 row)
+
+select plpgsql_check_tracer(null, 'terse');
+NOTICE:  tracer is not active
+NOTICE:  tracer verbosity is terse
+ plpgsql_check_tracer 
+----------------------
+ f
+(1 row)
+
+create table tr_t1(a int, b int);
+create function tr_f1(a int, t text)
+returns int as $$
+declare b int;
+begin
+  b := a * 2;
+  if b > 100 then
+    b := 100;
+  end if;
+  raise notice 'tr_f1: % %', b, t;
+  return b;
+end;
+$$ language plpgsql;
+-- the terse verbosity prints one short line per function and statement
+select plpgsql_check_tracer(true, 'terse');
+NOTICE:  tracer is active
+NOTICE:  tracer verbosity is terse
+ plpgsql_check_tracer 
+----------------------
+ t
+(1 row)
+
+select tr_f1(10, 'terse');
+NOTICE:  #0   start of tr_f1 (oid=0, tnl=1)
+NOTICE:  tr_f1: 20 terse
+NOTICE:  #0   end of tr_f1
+ tr_f1 
+-------
+    20
+(1 row)
+
+-- the default verbosity prints the frame numbers and the context
+select plpgsql_check_tracer(true, 'default');
+NOTICE:  tracer is active
+NOTICE:  tracer verbosity is default
+ plpgsql_check_tracer 
+----------------------
+ t
+(1 row)
+
+select tr_f1(10, 'default');
+NOTICE:  #0   ->> start of function tr_f1(integer,text) (oid=0, tnl=1)
+NOTICE:  #0       "a" => '10', "t" => 'default'
+NOTICE:  tr_f1: 20 default
+NOTICE:  #0   <<- end of function tr_f1 (elapsed time=0.010 ms)
+ tr_f1 
+-------
+    20
+(1 row)
+
+-- the verbose verbosity prints the arguments of the function and the
+-- arguments of every traced expression
+select plpgsql_check_tracer(true, 'verbose');
+NOTICE:  tracer is active
+NOTICE:  tracer verbosity is verbose
+ plpgsql_check_tracer 
+----------------------
+ t
+(1 row)
+
+select tr_f1(10, 'verbose');
+NOTICE:  #0            ->> start of function tr_f1(integer,text) (oid=0, tnl=1)
+NOTICE:  #0                "a" => '10', "t" => 'verbose'
+NOTICE:  #0.1       3    --> start of statement block (tnl=1)
+NOTICE:  #0.2       4      --> start of assignment b := a * 2 (tnl=1)
+NOTICE:  #0.2                  "a" => '10', "b" => null
+NOTICE:  #0.1              <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.2                  "b" => '20'
+NOTICE:  #0.3       5      --> start of IF (cond='b > 100') (tnl=1)
+NOTICE:  #0.3                  "b" => '20'
+NOTICE:  #0.3              <-- end of IF (elapsed time=0.010 ms)
+NOTICE:  #0.5       8      --> start of RAISE (tnl=1)
+NOTICE:  tr_f1: 20 verbose
+NOTICE:  #0.4              <-- end of RAISE (elapsed time=0.010 ms)
+NOTICE:  #0.6       9      --> start of RETURN (tnl=1)
+NOTICE:  #0.6                  "b" => '20'
+NOTICE:  #0.5              <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.6            <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #0            <<- end of function tr_f1 (elapsed time=0.010 ms)
+ tr_f1 
+-------
+    20
+(1 row)
+
+-- the number of the subtransactions can be printed too
+set plpgsql_check.tracer_show_nsubxids to on;
+select tr_f1(1, 'nsubxids');
+NOTICE:  #0            ->> start of function tr_f1(integer,text) (oid=0, tnl=1, nxids=0)
+NOTICE:  #0                "a" => '1', "t" => 'nsubxids'
+NOTICE:  #0.1       3    --> start of statement block (tnl=1, nxids=0)
+NOTICE:  #0.2       4      --> start of assignment b := a * 2 (tnl=1, nxids=0)
+NOTICE:  #0.2                  "a" => '1', "b" => null
+NOTICE:  #0.1              <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.2                  "b" => '2'
+NOTICE:  #0.3       5      --> start of IF (cond='b > 100') (tnl=1, nxids=0)
+NOTICE:  #0.3                  "b" => '2'
+NOTICE:  #0.3              <-- end of IF (elapsed time=0.010 ms)
+NOTICE:  #0.5       8      --> start of RAISE (tnl=1, nxids=0)
+NOTICE:  tr_f1: 2 nsubxids
+NOTICE:  #0.4              <-- end of RAISE (elapsed time=0.010 ms)
+NOTICE:  #0.6       9      --> start of RETURN (tnl=1, nxids=0)
+NOTICE:  #0.6                  "b" => '2'
+NOTICE:  #0.5              <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.6            <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #0            <<- end of function tr_f1 (elapsed time=0.010 ms)
+ tr_f1 
+-------
+     2
+(1 row)
+
+set plpgsql_check.tracer_show_nsubxids to off;
+-- an IF statement with the ELSIF parts prints the condition of every part
+create function tr_f2(a int)
+returns text as $$
+begin
+  if a < 0 then
+    return 'negative';
+  elsif a = 0 then
+    return 'zero';
+  elsif a < 10 then
+    return 'small';
+  else
+    return 'big';
+  end if;
+end;
+$$ language plpgsql;
+select tr_f2(5);
+NOTICE:  #0            ->> start of function tr_f2(integer) (oid=0, tnl=1)
+NOTICE:  #0                "a" => '5'
+NOTICE:  #0.1       2    --> start of statement block (tnl=1)
+NOTICE:  #0.2       3      --> start of IF (cond='a < 0') (tnl=1)
+NOTICE:  #0.2                  "a" => '5'
+NOTICE:  #0.2       5          ELSEIF (expr='a = 0')
+NOTICE:  #0.2                  "a" => '5'
+NOTICE:  #0.2       7          ELSEIF (expr='a < 10')
+NOTICE:  #0.2                  "a" => '5'
+NOTICE:  #0.5       8        --> start of RETURN (expr=''small'') (tnl=1)
+NOTICE:  #0.3                <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.5              <-- end of IF (elapsed time=0.010 ms)
+NOTICE:  #0.6            <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #0            <<- end of function tr_f2 (elapsed time=0.010 ms)
+ tr_f2 
+-------
+ small
+(1 row)
+
+-- When the assert fails, the tracer prints the content of all the
+-- variables of the function. The variables of the types which cannot be
+-- converted to a string are skipped, a value containing a newline is
+-- printed on a separate row, and a long value is trimmed.
+create function tr_f3()
+returns void as $$
+declare
+  r record;
+  v tr_t1;
+  a int[];
+  n int;
+  t text;
+  m text;
+  c refcursor := 'tr_cursor';
+begin
+  a := array[1, 2, 3];
+  t := 'a longer text used for the trimming';
+  m := 'first line' || chr(10) || 'second line';
+  select 1 as x, 2 as y into r;
+  v := (1, 2);
+  open c for select * from tr_t1;
+  assert n is not null, 'n should not be null';
+  close c;
+end;
+$$ language plpgsql;
+-- The ASSERT statement is traced separately and has its own verbosity.
+-- With the verbose verbosity it prints all the variables of the
+-- function. The tracer itself is switched to the terse verbosity here,
+-- so only the output of the traced assert is interesting.
+set plpgsql_check.trace_assert to on;
+set plpgsql_check.trace_assert_verbosity to verbose;
+select plpgsql_check_tracer(true, 'terse');
+NOTICE:  tracer is active
+NOTICE:  tracer verbosity is terse
+ plpgsql_check_tracer 
+----------------------
+ t
+(1 row)
+
+-- the exception raised by the failed assert is caught, so the output of
+-- the tracer and the message of the exception are not mixed
+do $$
+begin
+  perform tr_f3();
+exception when others then
+  raise notice 'catched: %', sqlerrm;
+end;
+$$;
+NOTICE:  #0   start of inline code block (oid=0, tnl=1)
+NOTICE:  #2   start of tr_f3 (oid=0, tnl=2)
+NOTICE:  #2 PLpgSQL assert expression (n is not null) on line 17 of tr_f3() is false
+NOTICE:   "r" => '(1,2)', "v" => '(1,2)', "a" => '{1,2,3}', "n" => null, "t" => 'a longer text used for the trimming'
+NOTICE:     "m" => 'first line
+second line'
+NOTICE:    "c" => 'tr_cursor'
+NOTICE:  #0 PL/pgSQL function inline_code_block line 3 at PERFORM
+NOTICE:   "sqlstate" => null, "sqlerrm" => null
+NOTICE:  #2   end of tr_f3 aborted
+NOTICE:  #0   end of inline code block aborted
+ERROR:  n should not be null
+CONTEXT:  PL/pgSQL function tr_f3() line 17 at ASSERT
+SQL statement "SELECT tr_f3()"
+PL/pgSQL function inline_code_block line 3 at PERFORM
+-- the content of a long variable is trimmed
+set plpgsql_check.tracer_variable_max_length to 10;
+do $$
+begin
+  perform tr_f3();
+exception when others then
+  raise notice 'catched: %', sqlerrm;
+end;
+$$;
+NOTICE:  #0   start of inline code block (oid=0, tnl=1)
+NOTICE:  #2   start of tr_f3 (oid=0, tnl=2)
+NOTICE:  #2 PLpgSQL assert expression (n is not null) on line 17 of tr_f3() is false
+NOTICE:   "r" => '(1,2)'
+NOTICE:    "v" => '(1,2)'
+NOTICE:    "a" => '{1,2,3}'
+NOTICE:    "n" => null
+NOTICE:    "t" => 'a longer t'
+NOTICE:    "m" => 'first line'
+NOTICE:    "c" => 'tr_cursor'
+NOTICE:  #0 PL/pgSQL function inline_code_block line 3 at PERFORM
+NOTICE:   "sqlstate" => null
+NOTICE:    "sqlerrm" => null
+NOTICE:  #2   end of tr_f3 aborted
+NOTICE:  #0   end of inline code block aborted
+ERROR:  n should not be null
+CONTEXT:  PL/pgSQL function tr_f3() line 17 at ASSERT
+SQL statement "SELECT tr_f3()"
+PL/pgSQL function inline_code_block line 3 at PERFORM
+set plpgsql_check.tracer_variable_max_length to default;
+-- a failed assert is traced too
+create function tr_f4(a int)
+returns void as $$
+begin
+  assert a > 0, 'a should be positive';
+end;
+$$ language plpgsql;
+select tr_f4(1);
+NOTICE:  #0   start of tr_f4 (oid=0, tnl=1)
+NOTICE:  PLpgSQL assert expression (a > 0) on line 3 of tr_f4(integer) is true
+NOTICE:   "a" => '1'
+NOTICE:  #0   end of tr_f4
+ tr_f4 
+-------
+ 
+(1 row)
+
+do $$
+begin
+  perform tr_f4(-1);
+exception when others then
+  raise notice 'catched: %', sqlerrm;
+end;
+$$;
+NOTICE:  #0   start of inline code block (oid=0, tnl=1)
+NOTICE:  #2   start of tr_f4 (oid=0, tnl=2)
+NOTICE:  #2 PLpgSQL assert expression (a > 0) on line 3 of tr_f4(integer) is false
+NOTICE:   "a" => '-1'
+NOTICE:  #0 PL/pgSQL function inline_code_block line 3 at PERFORM
+NOTICE:   "sqlstate" => null, "sqlerrm" => null
+NOTICE:  #2   end of tr_f4 aborted
+NOTICE:  #0   end of inline code block aborted
+ERROR:  a should be positive
+CONTEXT:  PL/pgSQL function tr_f4(integer) line 3 at ASSERT
+SQL statement "SELECT tr_f4(-1)"
+PL/pgSQL function inline_code_block line 3 at PERFORM
+set plpgsql_check.trace_assert_verbosity to terse;
+do $$
+begin
+  perform tr_f4(-1);
+exception when others then
+  raise notice 'catched: %', sqlerrm;
+end;
+$$;
+NOTICE:  #0   start of inline code block (oid=0, tnl=1)
+NOTICE:  #2   start of tr_f4 (oid=0, tnl=2)
+NOTICE:  #2 PLpgSQL assert expression (a > 0) on line 3 of tr_f4(integer) is false
+NOTICE:   "a" => '-1'
+NOTICE:  #2   end of tr_f4 aborted
+NOTICE:  #0   end of inline code block aborted
+ERROR:  a should be positive
+CONTEXT:  PL/pgSQL function tr_f4(integer) line 3 at ASSERT
+SQL statement "SELECT tr_f4(-1)"
+PL/pgSQL function inline_code_block line 3 at PERFORM
+set plpgsql_check.trace_assert to off;
+set plpgsql_check.trace_assert_verbosity to default;
+-- the tracer prints the type of the fired trigger and the transition
+-- records
+create function tr_trg_row()
+returns trigger as $$
+begin
+  if TG_OP = 'DELETE' then
+    return old;
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+create function tr_trg_stmt()
+returns trigger as $$
+begin
+  return null;
+end;
+$$ language plpgsql;
+create trigger tr_t1_row before insert or update or delete on tr_t1
+  for each row execute procedure tr_trg_row();
+create trigger tr_t1_trunc before truncate on tr_t1
+  for each statement execute procedure tr_trg_stmt();
+select plpgsql_check_tracer(true, 'default');
+NOTICE:  tracer is active
+NOTICE:  tracer verbosity is default
+ plpgsql_check_tracer 
+----------------------
+ t
+(1 row)
+
+insert into tr_t1 values(1, 2);
+NOTICE:  #0   ->> start of function tr_trg_row() (oid=0, tnl=1)
+NOTICE:  #0       triggered by before row insert trigger
+NOTICE:  #0       "new" => '(1,2)'
+NOTICE:  #0   <<- end of function tr_trg_row (elapsed time=0.010 ms)
+update tr_t1 set b = 3;
+NOTICE:  #0   ->> start of function tr_trg_row() (oid=0, tnl=1)
+NOTICE:  #0       triggered by before row update trigger
+NOTICE:  #0       "new" => '(1,3)'
+NOTICE:  #0       "old" => '(1,2)'
+NOTICE:  #0   <<- end of function tr_trg_row (elapsed time=0.010 ms)
+delete from tr_t1;
+NOTICE:  #0   ->> start of function tr_trg_row() (oid=0, tnl=1)
+NOTICE:  #0       triggered by before row delete trigger
+NOTICE:  #0       "old" => '(1,3)'
+NOTICE:  #0   <<- end of function tr_trg_row (elapsed time=0.010 ms)
+insert into tr_t1 values(1, 2);
+NOTICE:  #0   ->> start of function tr_trg_row() (oid=0, tnl=1)
+NOTICE:  #0       triggered by before row insert trigger
+NOTICE:  #0       "new" => '(1,2)'
+NOTICE:  #0   <<- end of function tr_trg_row (elapsed time=0.010 ms)
+truncate tr_t1;
+NOTICE:  #0   ->> start of function tr_trg_stmt() (oid=0, tnl=1)
+NOTICE:  #0       triggered by before statement trigger
+NOTICE:  #0       "new" => null
+NOTICE:  #0       "old" => null
+NOTICE:  #0   <<- end of function tr_trg_stmt (elapsed time=0.010 ms)
+select plpgsql_check_tracer(false);
+NOTICE:  tracer is not active
+NOTICE:  tracer verbosity is default
+ plpgsql_check_tracer 
+----------------------
+ f
+(1 row)
+
+set plpgsql_check.enable_tracer to off;
+set plpgsql_check.tracer_test_mode to false;
+set plpgsql_check.tracer_verbosity to default;
+drop trigger tr_t1_trunc on tr_t1;
+drop trigger tr_t1_row on tr_t1;
+drop function tr_trg_stmt();
+drop function tr_trg_row();
+drop function tr_f4(int);
+drop function tr_f3();
+drop function tr_f2(int);
+drop function tr_f1(int, text);
+drop table tr_t1;
