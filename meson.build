@@ -65,6 +65,7 @@ tests = [ 'plpgsql_check_active',
           'plpgsql_pragma_generator',
           'plpgsql_check_stmt_walker',
           'plpgsql_check_pragma',
+          'plpgsql_check_comment_options',
           'plpgsql_check_nocrash',
           'plpgsql_check_nocrash_unstable_01' ]
 
