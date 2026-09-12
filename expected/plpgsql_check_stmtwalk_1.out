@@ -537,7 +537,7 @@ select * from plpgsql_check_function('sw_f21');
  Hint: Don't use dynamic SQL and record type together, when you would check function.
  error:55000:5:RETURN:record "r" is not assigned yet
  Detail: The tuple structure of a not-yet-assigned record is indeterminate.
- Context: PL/pgSQL expression "r.x"
+ Context: SQL expression "r.x"
 (6 rows)
 
 -- the expression of EXECUTE is built by a function which does not

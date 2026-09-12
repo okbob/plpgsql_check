@@ -304,9 +304,12 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('ew_f11', fatal_errors => false);
- plpgsql_check_function 
-------------------------
-(0 rows)
+               plpgsql_check_function               
+----------------------------------------------------
+ error:22023:3:RAISE:too few arguments for format()
+ Query: format('[%2$*3$s]', w, w)
+ --            ^
+(3 rows)
 
 -- the arguments that are not used by the format string are reported
 create function ew_f12(p text)

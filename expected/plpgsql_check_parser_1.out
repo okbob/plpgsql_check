@@ -253,7 +253,7 @@ DETAIL:  syntax error at or near "x"
 ----------------------------------------------------------------------------
  error:55000:11:RAISE:record "r" is not assigned yet
  Detail: The tuple structure of a not-yet-assigned record is indeterminate.
- Context: PL/pgSQL expression "r.a"
+ Context: SQL expression "r.a"
 (3 rows)
 
 drop function pr_settype();
@@ -323,7 +323,7 @@ DETAIL:  Syntax error (unclosed quoted identifier)
 ----------------------------------------------------------------------------
  error:55000:14:RAISE:record "r" is not assigned yet
  Detail: The tuple structure of a not-yet-assigned record is indeterminate.
- Context: PL/pgSQL expression "r.a"
+ Context: SQL expression "r.a"
 (3 rows)
 
 drop function pr_type();

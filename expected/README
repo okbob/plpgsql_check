@@ -6,3 +6,6 @@ plpgsql_check_active_4.out			PostgreSQL 19, 20
 plpgsql_check_active.out			PostgreSQL 17
 
 plpgsql_pragma_generator.out		PostgreSQL 14 and higher (all versions)
+
+plpgsql_check_parser_1.out			PostgreSQL 14
+plpgsql_check_stmtwalk_1.out		PostgreSQL 14
