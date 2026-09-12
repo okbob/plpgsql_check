@@ -72,6 +72,7 @@ tests = [ 'plpgsql_check_active',
           'plpgsql_check_profiler_ctrl',
           'plpgsql_check_tablefunc',
           'plpgsql_check_tracer',
+          'plpgsql_check_report',
           'plpgsql_check_nocrash',
           'plpgsql_check_nocrash_unstable_01' ]
 
