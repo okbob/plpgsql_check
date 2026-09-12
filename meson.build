@@ -69,6 +69,7 @@ tests = [ 'plpgsql_check_active',
           'plpgsql_check_parser',
           'plpgsql_check_profiler_local',
           'plpgsql_check_profiler_queryid',
+          'plpgsql_check_profiler_ctrl',
           'plpgsql_check_nocrash',
           'plpgsql_check_nocrash_unstable_01' ]
 
