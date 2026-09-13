@@ -1147,6 +1147,8 @@ setup_estate(PLpgSQL_execstate *estate,
 			 ReturnSetInfo *rsi,
 			 plpgsql_check_info *cinfo)
 {
+	memset(estate, 0, sizeof(*estate));
+
 	/* this link will be restored at exit from plpgsql_call_handler */
 	func->cur_estate = estate;
 
