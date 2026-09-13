@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "catalog/namespace.h"
+#include "parser/parser.h"
 #include "parser/scansup.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
@@ -1811,6 +1812,7 @@ void
 plpgsql_check_search_comment_options(plpgsql_check_info *cinfo)
 {
 	char	   *src = plpgsql_check_get_src(cinfo->proctuple);
+	char	   *srcstart = src;
 
 	cinfo->all_warnings = false;
 	cinfo->without_warnings = false;
@@ -1825,11 +1827,17 @@ plpgsql_check_search_comment_options(plpgsql_check_info *cinfo)
 
 		else if (*src == '\'')
 		{
+			bool		backslash_escapes = !standard_conforming_strings ||
+				(src > srcstart && (src[-1] == 'e' || src[-1] == 'E') &&
+				 (src == srcstart + 1 || !is_ident_cont((unsigned char) src[-2])));
+
 			src++;
 
 			while (*src)
 			{
-				if (*src++ == '\'')
+				if (*src == '\\' && backslash_escapes && src[1])
+					src += 2;
+				else if (*src++ == '\'')
 				{
 					if (*src == '\'')
 						src += 1;

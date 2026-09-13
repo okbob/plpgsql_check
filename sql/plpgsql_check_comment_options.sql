@@ -162,6 +162,65 @@ select * from co_check('co_skipping');
 select * from plpgsql_check_function('co_skipping',
                                      use_incomment_options := false);
 
+-- escape strings honor backslashes, but literal contents are never options
+set standard_conforming_strings = on;
+
+create function co_escape_string()
+returns text as $func$
+declare
+  s1 text := E'can\'t
+-- @plpgsql_check_options: nonsense
+';
+  s2 text := e'won\'t';
+  x int;
+begin
+  -- @plpgsql_check_options: without_warnings
+  return s1 || s2;
+end;
+$func$ language plpgsql;
+
+select * from co_check('co_escape_string');
+select count(*) = 1 as unused_without_options
+  from plpgsql_check_function_tb('co_escape_string', use_incomment_options => false)
+  where message = 'unused variable "x"';
+
+-- the last letter of a type name is not an escape-string prefix
+create function co_standard_string()
+returns text as $func$
+declare
+  s name := name'backslash\';
+  x int;
+begin
+  -- @plpgsql_check_options: without_warnings
+  return s::text;
+end;
+$func$ language plpgsql;
+
+select * from co_check('co_standard_string');
+
+set standard_conforming_strings = off;
+set escape_string_warning = off;
+
+create function co_legacy_string()
+returns text as $func$
+declare
+  s text := 'can\'t';
+  x int;
+begin
+  -- @plpgsql_check_options: without_warnings
+  return s;
+end;
+$func$ language plpgsql;
+
+select * from co_check('co_legacy_string');
+
+reset escape_string_warning;
+reset standard_conforming_strings;
+
+drop function co_escape_string();
+drop function co_standard_string();
+drop function co_legacy_string();
+
 --
 -- name options
 --
