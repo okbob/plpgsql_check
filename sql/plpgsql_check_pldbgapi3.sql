@@ -177,6 +177,44 @@ set plpgsql_check.profiler to off;
 set plpgsql_check.enable_tracer to off;
 select plpgsql_check_tracer(false, 'default');
 
+-- Recursive callers keep their cursors open, but each invocation closes its own
+set plpgsql_check.cursors_leaks to on;
+set plpgsql_check.strict_cursors_leaks to off;
+set plpgsql_check.cursors_leaks_errlevel to 'error';
+
+create function pd_cursor_recursive(depth int) returns void as $$
+declare c refcursor;
+begin
+  open c for select 1;
+  if depth > 0 then
+    perform pd_cursor_recursive(depth - 1);
+  end if;
+  close c;
+end;
+$$ language plpgsql;
+
+do $$
+begin
+  perform pd_cursor_recursive(1);
+  perform pd_cursor_recursive(1);
+end;
+$$;
+
+-- Genuine leaks between sequential calls must still be detected
+do $$
+begin
+  perform pd_f5();
+  perform pd_f5();
+exception when invalid_cursor_state then
+  raise notice 'sequential cursor leak detected';
+end;
+$$;
+
+set plpgsql_check.strict_cursors_leaks to default;
+set plpgsql_check.cursors_leaks_errlevel to default;
+set plpgsql_check.cursors_leaks to default;
+
+drop function pd_cursor_recursive(int);
 drop function pd_f6();
 drop function pd_f5();
 drop function pd_f4();

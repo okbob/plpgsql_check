@@ -128,7 +128,10 @@ is_active(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 static void
 func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fextra *fextra)
 {
-	if (plpgsql_check_cursors_leaks)
+	estate->plugin_info = NULL;
+
+	/* An active caller can legitimately keep its cursor open during recursion. */
+	if (plpgsql_check_cursors_leaks && fextra->use_count == 1)
 	{
 		CursorLeaksPlugin2Info *pinfo;
 
