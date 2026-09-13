@@ -16,6 +16,7 @@
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "nodes/pg_list.h"
+#include "optimizer/optimizer.h"
 #include "parser/analyze.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
@@ -1569,6 +1570,27 @@ profiler_stmt_abort(PLpgSQL_execstate *estate,
 	}
 }
 
+/*
+ * Returns true, when the expression can have side effects, or when its value
+ * can differ between two evaluations. Returns true also when the related query
+ * is not available, because then we cannot prove the opposite.
+ */
+static bool
+expr_is_volatile(PLpgSQL_expr *expr)
+{
+  List	   *plan_sources;
+  CachedPlanSource *plan_source;
+
+  plan_sources = SPI_plan_get_plan_sources(expr->plan);
+  if (!plan_sources)
+	return true;
+
+  plan_source = (CachedPlanSource *) linitial(plan_sources);
+  if (!plan_source->query_list)
+	return true;
+
+  return contain_volatile_functions((Node *) linitial_node(Query, plan_source->query_list));
+}
 
 /***************************************
  *
@@ -1597,6 +1619,18 @@ profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
 	if (dynamic)
 	{
 		Assert(expr);
+
+		/*
+		 * Attention - the expression used in EXECUTE commands is executed 2x.
+		 * Unfortunatelly there is not any other way how to get queryid of
+		 * query maked by the expression. Usually this is not a problem, but
+		 * when volatile function is executed, then some unwanted side effect
+		 * can be detected. In this case the computed queryid can be false,
+		 * and looks so can be better in this case don't compute queryid.
+		 */
+
+		if (expr_is_volatile(expr))
+			return NOQUERYID;
 
 		if (params && !*qparams)
 		{
@@ -1690,6 +1724,14 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, QParams 
 	MemoryContextSwitchTo(oldcxt);
 
 	profiler_plugin.assign_expr(estate, (PLpgSQL_datum *) &result, expr);
+
+	if (result.isnull)
+	{
+		MemoryContextSwitchTo(oldcxt);
+		MemoryContextReset(profiler_queryid_mcxt);
+
+		return NOQUERYID;
+	}
 
 	query_string = TextDatumGetCString(result.value);
 

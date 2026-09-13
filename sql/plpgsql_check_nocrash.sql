@@ -830,3 +830,64 @@ $$ LANGUAGE plpgsql;
 SELECT * FROM plpgsql_check_function('repro05_b2(text)', security_warnings => true);
 
 
+DROP SEQUENCE IF EXISTS repro02_seq;
+CREATE SEQUENCE repro02_seq;
+
+-- 1st call returns a valid query, every later call returns NULL
+CREATE OR REPLACE FUNCTION repro02_gen() RETURNS text AS $$
+BEGIN
+    IF nextval('repro02_seq') = 1 THEN
+        RETURN 'SELECT 1';
+    ELSE
+        RETURN NULL;
+    END IF;
+END
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION repro02_run() RETURNS void AS $$
+BEGIN
+    EXECUTE repro02_gen();
+END
+$$ LANGUAGE plpgsql;
+
+-- PGC_USERSET
+SET plpgsql_check.profiler = on;
+
+-- boom
+SELECT repro02_run();
+
+SET plpgsql_check.profiler = off;
+
+
+DROP SEQUENCE IF EXISTS repro03_seq;
+CREATE SEQUENCE repro03_seq;
+
+----------------------------------------------------------------------
+-- part A: the side effect of the query-text expression happens twice
+----------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION repro03_gen() RETURNS text AS $$
+BEGIN
+    PERFORM nextval('repro03_seq');
+    RETURN 'SELECT 1';
+END
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION repro03_run() RETURNS void AS $$
+BEGIN
+    EXECUTE repro03_gen();
+END
+$$ LANGUAGE plpgsql;
+
+SET plpgsql_check.profiler = off;
+SELECT setval('repro03_seq', 1, false);
+SELECT repro03_run();
+-- correct: 1
+SELECT currval('repro03_seq') AS "nextval calls with profiler off";
+
+SET plpgsql_check.profiler = on;
+SELECT setval('repro03_seq', 1, false);
+SELECT repro03_run();
+-- buggy: 2 - the profiler evaluated repro03_gen() a second time
+SELECT currval('repro03_seq') AS "nextval calls with profiler on";
+

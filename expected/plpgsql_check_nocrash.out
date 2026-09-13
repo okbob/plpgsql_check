@@ -1036,3 +1036,88 @@ SELECT * FROM plpgsql_check_function('repro05_b2(text)', security_warnings => tr
  Hint: Use quote_ident, quote_literal or format function to secure variable.
 (5 rows)
 
+DROP SEQUENCE IF EXISTS repro02_seq;
+NOTICE:  sequence "repro02_seq" does not exist, skipping
+CREATE SEQUENCE repro02_seq;
+-- 1st call returns a valid query, every later call returns NULL
+CREATE OR REPLACE FUNCTION repro02_gen() RETURNS text AS $$
+BEGIN
+    IF nextval('repro02_seq') = 1 THEN
+        RETURN 'SELECT 1';
+    ELSE
+        RETURN NULL;
+    END IF;
+END
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION repro02_run() RETURNS void AS $$
+BEGIN
+    EXECUTE repro02_gen();
+END
+$$ LANGUAGE plpgsql;
+-- PGC_USERSET
+SET plpgsql_check.profiler = on;
+-- boom
+SELECT repro02_run();
+ repro02_run 
+-------------
+ 
+(1 row)
+
+SET plpgsql_check.profiler = off;
+DROP SEQUENCE IF EXISTS repro03_seq;
+NOTICE:  sequence "repro03_seq" does not exist, skipping
+CREATE SEQUENCE repro03_seq;
+----------------------------------------------------------------------
+-- part A: the side effect of the query-text expression happens twice
+----------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION repro03_gen() RETURNS text AS $$
+BEGIN
+    PERFORM nextval('repro03_seq');
+    RETURN 'SELECT 1';
+END
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION repro03_run() RETURNS void AS $$
+BEGIN
+    EXECUTE repro03_gen();
+END
+$$ LANGUAGE plpgsql;
+SET plpgsql_check.profiler = off;
+SELECT setval('repro03_seq', 1, false);
+ setval 
+--------
+      1
+(1 row)
+
+SELECT repro03_run();
+ repro03_run 
+-------------
+ 
+(1 row)
+
+-- correct: 1
+SELECT currval('repro03_seq') AS "nextval calls with profiler off";
+ nextval calls with profiler off 
+---------------------------------
+                               1
+(1 row)
+
+SET plpgsql_check.profiler = on;
+SELECT setval('repro03_seq', 1, false);
+ setval 
+--------
+      1
+(1 row)
+
+SELECT repro03_run();
+ repro03_run 
+-------------
+ 
+(1 row)
+
+-- buggy: 2 - the profiler evaluated repro03_gen() a second time
+SELECT currval('repro03_seq') AS "nextval calls with profiler on";
+ nextval calls with profiler on 
+--------------------------------
+                              1
+(1 row)
+
