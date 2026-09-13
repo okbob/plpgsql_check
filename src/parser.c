@@ -1863,28 +1863,21 @@ plpgsql_check_search_comment_options(plpgsql_check_info *cinfo)
 			}
 		}
 
-		else if (*src == '$')
+		else if (*src == '$' &&
+				 (src == srcstart || !is_ident_cont((unsigned char) src[-1])))
 		{
 			char	   *start = src++;
-			bool		is_custom_string = false;
 
-			while (*src)
+			if (is_ident_start((unsigned char) *src))
 			{
-				if (isblank(*src))
+				do
 				{
-					is_custom_string = false;
-					break;
+					src += 1;
 				}
-				else if (*src == '$')
-				{
-					is_custom_string = true;
-					break;
-				}
-
-				src += 1;
+				while (*src != '$' && is_ident_cont((unsigned char) *src));
 			}
 
-			if (is_custom_string)
+			if (*src == '$')
 			{
 				size_t		cust_str_length = 0;
 

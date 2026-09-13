@@ -221,6 +221,51 @@ drop function co_escape_string();
 drop function co_standard_string();
 drop function co_legacy_string();
 
+-- positional parameters and identifiers do not open dollar-quoted strings
+create function co_dollar_parameters(int, int)
+returns int as $func$
+declare x int;
+begin
+  return $1+$2;
+  -- @plpgsql_check_options: without_warnings
+end;
+$func$ language plpgsql;
+
+select * from co_check('co_dollar_parameters');
+
+create function co_dollar_identifier()
+returns int as $func$
+declare
+  v$x$part int := 1;
+  x int;
+begin
+  -- @plpgsql_check_options: without_warnings
+  return v$x$part;
+end;
+$func$ language plpgsql;
+
+select * from co_check('co_dollar_identifier');
+
+-- genuine tags can contain digits, are case sensitive, and hide literal options
+create function co_dollar_literal()
+returns text as $func$
+declare
+  s text := $Tag_1$other delimiters $$ and $tag_1$
+-- @plpgsql_check_options: nonsense
+$Tag_1$;
+  x int;
+begin
+  -- @plpgsql_check_options: without_warnings
+  return s;
+end;
+$func$ language plpgsql;
+
+select * from co_check('co_dollar_literal');
+
+drop function co_dollar_parameters(int, int);
+drop function co_dollar_identifier();
+drop function co_dollar_literal();
+
 --
 -- name options
 --
