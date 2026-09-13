@@ -1160,7 +1160,8 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 					check_variable(cstate, stmt_fetch->target);
 
-					if (var != NULL && var->cursor_explicit_expr != NULL)
+					if (!stmt_fetch->is_move &&
+						var != NULL && var->cursor_explicit_expr != NULL)
 						plpgsql_check_assignment_to_variable(cstate, var->cursor_explicit_expr,
 															 stmt_fetch->target, -1);
 

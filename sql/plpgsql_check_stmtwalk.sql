@@ -539,3 +539,17 @@ select * from plpgsql_check_function('sw_handler_raise');
 
 drop function sw_bare_raise();
 drop function sw_handler_raise();
+
+-- MOVE has no result target, even when the cursor query has several columns
+create function sw_move(distance int) returns void as $$
+declare c cursor for select 1 as a, 2 as b;
+begin
+  open c;
+  move forward distance from c;
+  close c;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_move(int)');
+
+drop function sw_move(int);
