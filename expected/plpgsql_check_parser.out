@@ -270,6 +270,9 @@ begin
   perform plpgsql_check_pragma('type: r (a double precision, b varchar(10), c numeric(10,2))');
   -- an array, with and without a dimension
   perform plpgsql_check_pragma('type: r (a int[], b int[3], c pg_catalog.varchar[])');
+  -- datetime modifiers can precede more words, and arrays can have many dimensions
+  perform plpgsql_check_pragma('type: r (a timestamp(3) without time zone, b time(2) with time zone, c interval day to second(2))');
+  perform plpgsql_check_pragma('type: r (a integer[][], b integer[2][3], c (d numeric(8,2), e timestamp(1) with time zone))');
   -- a composite type copied from a table
   perform plpgsql_check_pragma('type: r (like pr_tab)');
   raise notice '%', r.a;
@@ -280,6 +283,24 @@ select * from plpgsql_check_function('pr_type');
 ------------------------
 (0 rows)
 
+create function pr_negative_scale()
+returns void as $$
+declare r record;
+begin
+  perform plpgsql_check_pragma('type: r (a numeric(5,-2), b int)');
+  raise notice '%', r.a;
+end;
+$$ language plpgsql;
+select case when current_setting('server_version_num')::int >= 150000 then
+  not exists (select from plpgsql_check_function_tb('pr_negative_scale')
+              where level = 'error')
+  else true end as negative_scale;
+ negative_scale 
+----------------
+ t
+(1 row)
+
+drop function pr_negative_scale();
 -- errors of the type parser
 create or replace function pr_type()
 returns void as $$
@@ -308,15 +329,15 @@ DETAIL:  Syntax error (expected identifier)
 WARNING:  Pragma "type" on line 7 is not processed.
 DETAIL:  syntax error at or near "b"
 WARNING:  Pragma "type" on line 8 is not processed.
-DETAIL:  Syntax error (expected number for typmod specification)
+DETAIL:  invalid input syntax for type integer: "x"
 WARNING:  Pragma "type" on line 9 is not processed.
-DETAIL:  Syntax error (unclosed typmod specification)
+DETAIL:  syntax error at end of input
 WARNING:  Pragma "type" on line 10 is not processed.
-DETAIL:  Syntax error (expected "," in typmod list)
+DETAIL:  syntax error at or near "2"
 WARNING:  Pragma "type" on line 11 is not processed.
-DETAIL:  Syntax error (expected "]")
+DETAIL:  syntax error at or near ")"
 WARNING:  Pragma "type" on line 12 is not processed.
-DETAIL:  Syntax error (unclosed array specification)
+DETAIL:  syntax error at end of input
 WARNING:  Pragma "type" on line 13 is not processed.
 DETAIL:  Syntax error (unclosed quoted identifier)
                            plpgsql_check_function                           
@@ -360,6 +381,12 @@ begin
   -- a composite type is not allowed as a type of a column of a table
   -- created by this pragma
   perform plpgsql_check_pragma('table: pr_tt8(a (b int))');
+  -- constraints and collations are still outside the table pragma grammar
+  perform plpgsql_check_pragma('table: pr_tt9(a int primary key)');
+  perform plpgsql_check_pragma('table: pr_tt9(a int not null)');
+  perform plpgsql_check_pragma('table: pr_tt9(a int default 1)');
+  perform plpgsql_check_pragma('table: pr_tt9(a int check (a > 0))');
+  perform plpgsql_check_pragma('table: pr_tt9(a text collate "C")');
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('pr_table');
@@ -377,6 +404,16 @@ WARNING:  Pragma "table" on line 8 is not processed.
 DETAIL:  Syntax error (unclosed quoted identifier)
 WARNING:  Pragma "table" on line 11 is not processed.
 DETAIL:  Cannot to create table with pseudo-type record.
+WARNING:  Pragma "table" on line 13 is not processed.
+DETAIL:  syntax error at or near "primary"
+WARNING:  Pragma "table" on line 14 is not processed.
+DETAIL:  syntax error at or near "not"
+WARNING:  Pragma "table" on line 15 is not processed.
+DETAIL:  syntax error at or near "default"
+WARNING:  Pragma "table" on line 16 is not processed.
+DETAIL:  syntax error at or near "check"
+WARNING:  Pragma "table" on line 17 is not processed.
+DETAIL:  syntax error at or near "collate"
  plpgsql_check_function 
 ------------------------
 (0 rows)

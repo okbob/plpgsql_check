@@ -168,6 +168,24 @@ select * from plpgsql_make_pragma('gtp_f10()');
 
 drop function gtp_f10();
 
+-- generated datetime and interval type spellings must be usable as pragmas
+create function gtp_datetime()
+returns void as $$
+begin
+  create temp table gtp_datetime1 as
+    select timestamp(3) '2026-01-01 12:34:56.789' as ts,
+           time(2) with time zone '12:34:56.78+00' as tm;
+  create temp table gtp_datetime2 (elapsed interval day to second(2), items int[2][3]);
+  perform ts, tm, elapsed, items from gtp_datetime1, gtp_datetime2;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_make_pragma('gtp_datetime()');
+select * from plpgsql_check_function('gtp_datetime()',
+          pragmas => array(select plpgsql_make_pragma('gtp_datetime()')));
+
+drop function gtp_datetime();
+
 -- identifiers that require quoting
 create function gtp_f11()
 returns void as $$

@@ -646,6 +646,72 @@ parse_qualified_identifier(TokenizerState *state, const char **startptr, size_t 
 	*size = _size;
 }
 
+static Oid
+get_scalar_type(TokenizerState *state, int32 *typmod)
+{
+	PragmaTokenType token,
+			   *_token;
+	const char *typename_start;
+	const char *typename_end;
+	const char *typestr;
+	TypeName   *typeName;
+	Oid			typtype;
+	int			paren_depth = 0;
+	int			bracket_depth = 0;
+
+	_token = get_token(state, &token);
+	if (!_token ||
+		(_token->value != PRAGMA_TOKEN_IDENTIF &&
+		 _token->value != PRAGMA_TOKEN_QIDENTIF))
+		elog(ERROR, "Syntax error (expected identifier)");
+
+	typename_start = _token->substr;
+	typename_end = typename_start;
+
+	/*
+	 * Leave the enclosing field list or option separator unread. PostgreSQL
+	 * validates the complete type spelling, including modifiers and arrays.
+	 */
+	do
+	{
+		if (paren_depth == 0 && bracket_depth == 0 &&
+			(_token->value == ',' || _token->value == ')'))
+		{
+			unget_token(state, _token);
+			break;
+		}
+
+		if (_token->value == '(')
+			paren_depth++;
+		else if (_token->value == ')' && paren_depth > 0)
+			paren_depth--;
+		else if (_token->value == '[')
+			bracket_depth++;
+		else if (_token->value == ']' && bracket_depth > 0)
+			bracket_depth--;
+
+		typename_end = _token->substr + _token->size;
+		_token = get_token(state, &token);
+	}
+	while (_token);
+
+	typestr = pnstrdup(typename_start, typename_end - typename_start);
+
+#if PG_VERSION_NUM >= 160000
+
+	typeName = typeStringToTypeName(typestr, NULL);
+
+#else
+
+	typeName = typeStringToTypeName(typestr);
+
+#endif
+
+	typenameTypeIdAndMod(NULL, typeName, &typtype, typmod);
+
+	return typtype;
+}
+
 /*
  * When rectype is not allowed, then composite type is allowed only
  * on top level.
@@ -655,10 +721,6 @@ get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool
 {
 	PragmaTokenType token,
 			   *_token;
-	const char *typename_start = NULL;
-	size_t		typename_length = 0;
-	const char *typestr;
-	TypeName   *typeName = NULL;
 	Oid			typtype;
 
 	check_stack_depth();
@@ -734,121 +796,9 @@ get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool
 
 		return resultTupleDesc->tdtypeid;
 	}
-	else if (_token->value == PRAGMA_TOKEN_QIDENTIF)
-	{
-		unget_token(state, _token);
 
-		parse_qualified_identifier(state, &typename_start, &typename_length);
-	}
-	else if (_token->value == PRAGMA_TOKEN_IDENTIF)
-	{
-		PragmaTokenType token2,
-				   *_token2;
-
-		_token2 = get_token(state, &token2);
-
-		if (_token2)
-		{
-			if (_token2->value == '.')
-			{
-				typename_start = _token->substr;
-				typename_length = _token->size;
-
-				parse_qualified_identifier(state, &typename_start, &typename_length);
-			}
-			else
-			{
-				/* multi word type name */
-				typename_start = _token->substr;
-				typename_length = _token->size;
-
-				while (_token2 && _token2->value == PRAGMA_TOKEN_IDENTIF)
-				{
-					typename_length = _token2->substr + _token2->size - typename_start;
-
-					_token2 = get_token(state, &token2);
-				}
-
-				unget_token(state, _token2);
-			}
-		}
-		else
-		{
-			typename_start = _token->substr;
-			typename_length = _token->size;
-		}
-	}
-	else
-		elog(ERROR, "Syntax error (expected identifier)");
-
-	/* get typmod */
-	_token = get_token(state, &token);
-	if (_token)
-	{
-		if (_token->value == '(')
-		{
-			while (1)
-			{
-				_token = get_token(state, &token);
-				if (!_token || _token->value != PRAGMA_TOKEN_NUMBER)
-					elog(ERROR, "Syntax error (expected number for typmod specification)");
-
-				_token = get_token(state, &token);
-				if (!_token)
-					elog(ERROR, "Syntax error (unclosed typmod specification)");
-
-				if (_token->value == ')')
-				{
-					break;
-				}
-				else if (_token->value != ',')
-					elog(ERROR, "Syntax error (expected \",\" in typmod list)");
-			}
-
-			typename_length = _token->substr + _token->size - typename_start;
-		}
-		else
-			unget_token(state, _token);
-	}
-
-	/* get array symbols */
-	_token = get_token(state, &token);
-	if (_token)
-	{
-		if (_token->value == '[')
-		{
-			_token = get_token(state, &token);
-			if (_token && _token->value == PRAGMA_TOKEN_NUMBER)
-				_token = get_token(state, &token);
-
-			if (!_token)
-				elog(ERROR, "Syntax error (unclosed array specification)");
-
-			if (_token->value != ']')
-				elog(ERROR, "Syntax error (expected \"]\")");
-
-			typename_length = _token->substr + _token->size - typename_start;
-		}
-		else
-			unget_token(state, _token);
-	}
-
-	typestr = pnstrdup(typename_start, typename_length);
-
-
-#if PG_VERSION_NUM >= 160000
-
-	typeName = typeStringToTypeName(typestr, NULL);
-
-#else
-
-	typeName = typeStringToTypeName(typestr);
-
-#endif
-
-	typenameTypeIdAndMod(NULL, typeName, &typtype, typmod);
-
-	return typtype;
+	unget_token(state, _token);
+	return get_scalar_type(state, typmod);
 }
 
 static Oid
