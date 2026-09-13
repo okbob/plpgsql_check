@@ -301,6 +301,23 @@ create or replace function pr_assert()
 returns void as $$
 declare
   v_schema varchar default 'pr_missing_schema';
+  v_table varchar default 'pr_tab';
+  v_column varchar default 'a';
+begin
+  perform 'pragma:assert-schema: v_schema';
+  perform 'pragma:assert-table: v_schema, v_table';
+  perform 'pragma:assert-column: v_schema, v_table, v_column';
+end;
+$$ language plpgsql;
+
+select count(*) = 3 as missing_schemas
+  from plpgsql_check_function_tb('pr_assert', fatal_errors => false)
+  where sqlstate = '3F000';
+
+create or replace function pr_assert()
+returns void as $$
+declare
+  v_schema varchar default 'pr_missing_schema';
   v_table varchar default 'pr_missing_table';
   v_column varchar default 'pr_missing_column';
 begin

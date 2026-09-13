@@ -937,7 +937,7 @@ pragma_assert_name(PragmaAssertType pat)
 static Oid
 check_var_schema(PLpgSQL_checkstate *cstate, int dno)
 {
-	return get_namespace_oid(cstate->strconstvars[dno], true);
+	return get_namespace_oid(cstate->strconstvars[dno], false);
 }
 
 static Oid
