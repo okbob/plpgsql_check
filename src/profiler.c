@@ -1348,6 +1348,8 @@ merge_lxcached_shared_stmts_stats(LXCache *lxcache, bool *raise_warning)
 			return;
 		}
 
+		SpinLockInit(&fss->mutex);
+
 		fss->sstats = NULL;
 		fss->nstatements = lxcache->nstatements;
 		fss->shared_sstats_offset = profiler_ss->used_stmt_stats_count;
