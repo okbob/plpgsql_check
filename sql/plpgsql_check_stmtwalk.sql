@@ -571,3 +571,24 @@ select sw_case_single(row(1)::sw_single_field) = 1
 
 drop function sw_case_single(sw_single_field);
 drop type sw_single_field;
+
+-- Earlier exception paths must remain visible when later paths are merged
+create function sw_exception_union(p boolean) returns int as $$
+begin
+  begin
+    if p then
+      raise division_by_zero;
+    else
+      raise unique_violation;
+    end if;
+  exception
+    when division_by_zero then null;
+    when unique_violation then return 2;
+  end;
+  return 1;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_exception_union(boolean)');
+
+drop function sw_exception_union(boolean);

@@ -1643,19 +1643,31 @@ possibly_closed(int c)
 static int
 merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int err_code)
 {
-	*exceptions = NIL;
-
+	/*
+	 * initial state - result state is copy of local state
+	 */
 	if (c == PLPGSQL_CHECK_UNKNOWN)
 	{
 		if (c_local == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
 			*exceptions = exceptions_local;
+		else
+			*exceptions = NIL;
 
 		return c_local;
 	}
 
+
+	/*
+	 * Do nothing when new state is UNKNOWN
+	 */
 	if (c_local == PLPGSQL_CHECK_UNKNOWN)
 		return c;
 
+	/*
+	 * When both first and second path has same closing state, the
+	 * result is same. Concat exceptions when closing state is an
+	 * exception.
+	 */
 	if (c == c_local)
 	{
 		if (c == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
@@ -1681,13 +1693,32 @@ merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int
 		return c_local;
 	}
 
+	/*
+	 * When one path ending by RETURN and second by an exception,
+	 * then we know, so the result is closed paths. It is more
+	 * practical to return PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS,
+	 * because we don't lost a list of exceptions.
+	 */
 	if (c == PLPGSQL_CHECK_CLOSED || c_local == PLPGSQL_CHECK_CLOSED)
 	{
-		if (c == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS ||
-			c_local == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
-			return PLPGSQL_CHECK_CLOSED;
+		if (c_local == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
+		{
+			*exceptions = exceptions_local;
+			return PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS;
+		}
+		else if (c == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
+		{
+			return PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS;
+		}
 	}
 
+	*exceptions = NIL;
+
+	/*
+	 * common combination is CLOSED and UNCLOSED, maybe
+	 * there is a possibility to be more accurate, but
+	 * the result can be some between.
+	 */
 	return PLPGSQL_CHECK_POSSIBLY_CLOSED;
 }
 
