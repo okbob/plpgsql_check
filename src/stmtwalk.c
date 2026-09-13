@@ -1343,6 +1343,11 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 				dead_code_alert = false;
 			}
 
+			/* Diagnose dead statements without changing the reachable exits. */
+			if (*closing == PLPGSQL_CHECK_CLOSED ||
+				*closing == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
+				continue;
+
 			if (closing_local == PLPGSQL_CHECK_CLOSED)
 			{
 				dead_code_alert = true;

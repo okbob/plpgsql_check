@@ -612,3 +612,33 @@ $$ language plpgsql;
 select * from plpgsql_check_function('sw_nested_rethrow()');
 
 drop function sw_nested_rethrow();
+
+-- Dead exits must not change which exception handler is reachable
+create function sw_dead_flow() returns int as $$
+begin
+  begin
+    raise division_by_zero;
+    raise unique_violation;
+  exception
+    when division_by_zero then return 1;
+    when unique_violation then null;
+  end;
+end;
+$$ language plpgsql;
+
+select sqlstate, message from plpgsql_check_function_tb('sw_dead_flow()');
+
+-- Expressions in dead statements still need to be checked
+create function sw_dead_expression() returns int as $$
+begin
+  return 1;
+  perform sw_missing_dead_column;
+end;
+$$ language plpgsql;
+
+select exists (
+  select from plpgsql_check_function_tb('sw_dead_expression()')
+  where sqlstate = '42703') as checked;
+
+drop function sw_dead_flow();
+drop function sw_dead_expression();
