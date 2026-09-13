@@ -306,6 +306,30 @@ drop function co_dollar_parameters(int, int);
 drop function co_dollar_identifier();
 drop function co_dollar_literal();
 
+-- end of source terminates a line comment just like a newline
+create function co_final_comment()
+returns void as $func$declare x int; begin null; end; -- @plpgsql_check_options: without_warnings$func$ language plpgsql;
+
+select * from co_check('co_final_comment');
+select count(*) = 1 as unused_without_options
+  from plpgsql_check_function_tb('co_final_comment', use_incomment_options => false)
+  where message = 'unused variable "x"';
+
+create function co_final_newline()
+returns void as $func$declare x int; begin null; end; -- @plpgsql_check_options: without_warnings
+$func$ language plpgsql;
+
+select * from co_check('co_final_newline');
+
+create function co_final_empty()
+returns void as $func$begin null; end; --$func$ language plpgsql;
+
+select * from co_check('co_final_empty');
+
+drop function co_final_comment();
+drop function co_final_newline();
+drop function co_final_empty();
+
 --
 -- name options
 --

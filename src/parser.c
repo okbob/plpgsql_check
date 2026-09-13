@@ -1758,25 +1758,17 @@ static char *
 search_comment_options_linecomment(char *src, plpgsql_check_info *cinfo)
 {
 	char	   *start = src;
+	char	   *tag;
 
-	while (*src)
-	{
-		if (*src == '\n')
-		{
-			char	   *tag;
-
-			tag = memmem(start, src - start,
-						 tagstr, strlen(tagstr));
-			if (tag)
-				comment_options_parsecontent(tag, src - tag, cinfo);
-
-			return src + 1;
-		}
-
+	while (*src && *src != '\n')
 		src += 1;
-	}
 
-	return src;
+	tag = memmem(start, src - start,
+				 tagstr, strlen(tagstr));
+	if (tag)
+		comment_options_parsecontent(tag, src - tag, cinfo);
+
+	return *src ? src + 1 : src;
 }
 
 static char *
