@@ -206,6 +206,25 @@ truncate tr_t1;
 
 select plpgsql_check_tracer(false);
 
+-- ASSERT tracing is independent of both general tracing and runtime asserts.
+create sequence tr_assert_calls;
+create function tr_assert_only()
+returns void as $$
+begin
+  assert nextval('tr_assert_calls') > 0;
+end;
+$$ language plpgsql;
+
+set plpgsql.check_asserts to off;
+set plpgsql_check.trace_assert to on;
+select tr_assert_only();
+select last_value, is_called from tr_assert_calls;
+set plpgsql_check.trace_assert to off;
+set plpgsql.check_asserts to default;
+
+drop function tr_assert_only();
+drop sequence tr_assert_calls;
+
 set plpgsql_check.enable_tracer to off;
 set plpgsql_check.tracer_test_mode to false;
 set plpgsql_check.tracer_verbosity to default;

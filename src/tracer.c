@@ -1130,11 +1130,14 @@ tracer_stmt_beg(PLpgSQL_execstate *estate,
 	tinfo->stmts_tracer_state[stmt->stmtid - 1] = plpgsql_check_tracer;
 
 	/* don't trace invisible statements */
-	if (invisible || !plpgsql_check_tracer)
+	if (invisible)
 		return;
 
 	if (stmt->cmd_type == PLPGSQL_STMT_ASSERT && plpgsql_check_trace_assert)
 		trace_assert(estate, stmt, tinfo);
+
+	if (!plpgsql_check_tracer)
+		return;
 
 	total_level = tinfo->frame_num + fextra->levels[stmt->stmtid];
 
