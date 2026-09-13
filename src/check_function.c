@@ -201,6 +201,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 {
 	PLpgSQL_checkstate cstate;
 	PLpgSQL_function *volatile function = NULL;
+	volatile bool function_is_pinned = false;
 	bool		reload_config;
 
 	LOCAL_FCINFO(fake_fcinfo, 0);
@@ -211,7 +212,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 	Trigger		tg_trigger;
 	int			rc;
 	ResourceOwner oldowner;
-	PLpgSQL_execstate *cur_estate = NULL;
+	PLpgSQL_execstate *volatile cur_estate = NULL;
 	MemoryContext old_cxt;
 	PLpgSQL_execstate estate;
 	ReturnSetInfo rsinfo;
@@ -280,12 +281,14 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 			/* Get a compiled function */
 			function = plpgsql_check__compile_p(fake_fcinfo, false);
 
+			/* Acquire the pin before any preparation step can fail. */
+			cur_estate = function->cur_estate;
+			plch_use_count(function)++;
+			function_is_pinned = true;
+
 			collect_out_variables(function, &cstate);
 
 			reports_used_rowtypes_dependency(function, &cstate);
-
-			/* Must save and restore prior value of cur_estate */
-			cur_estate = function->cur_estate;
 
 			/* recheck trigtype */
 
@@ -312,13 +315,6 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 				}
 			}
 
-			/*
-			 * Mark the function as busy, ensure higher than zero usage. There
-			 * is no reason for protection function against delete, but I
-			 * afraid of asserts.
-			 */
-			plch_use_count(function)++;
-
 			/* Create a fake runtime environment and process check */
 			switch (cinfo->trigtype)
 			{
@@ -338,6 +334,7 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 			function->cur_estate = cur_estate;
 
 			plch_use_count(function)--;
+			function_is_pinned = false;
 		}
 		else
 			elog(NOTICE, "plpgsql_check is disabled");
@@ -375,8 +372,12 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 
 		if (function)
 		{
-			function->cur_estate = cur_estate;
-			plch_use_count(function)--;
+			if (function_is_pinned)
+			{
+				function->cur_estate = cur_estate;
+				plch_use_count(function)--;
+				function_is_pinned = false;
+			}
 			release_exprs(cstate.exprs);
 		}
 
