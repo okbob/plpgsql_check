@@ -543,16 +543,16 @@ NOTICE:  #0            ->> start of function repro03_out_params() (oid=0, tnl=1)
 NOTICE:  #0.1       2    --> start of statement block (tnl=1)
 NOTICE:  #0.2       3      --> start of assignment a := 1 (tnl=1)
 NOTICE:  #0.2                  "a" => null
-NOTICE:  #0.1              <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.2              <-- end of assignment (elapsed time=0.010 ms)
 NOTICE:  #0.2                  "a" => '1'
 NOTICE:  #0.3       4      --> start of assignment b := 'x' (tnl=1)
 NOTICE:  #0.3                  "b" => null
-NOTICE:  #0.2              <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.3              <-- end of assignment (elapsed time=0.010 ms)
 NOTICE:  #0.3                  "b" => 'x'
 NOTICE:  #0.4       5      --> start of RETURN (tnl=1)
 NOTICE:  #0.4                  "(unnamed row)" => '(1,x)'
-NOTICE:  #0.3              <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #0.4            <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #0.4              <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.1            <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0            <<- end of function repro03_out_params (elapsed time=0.010 ms)
  a | b 
 ---+---

@@ -1354,7 +1354,7 @@ _tracer_stmt_end(tracer_info *tinfo,
 				elapsed = 10;
 		}
 
-		snprintf(printbuf, 20, "%d.%d", tinfo->frame_num, stmtid);
+		snprintf(printbuf, 20, "%d.%d", tinfo->frame_num, fextra->naturalids[stmtid]);
 
 		elog(plpgsql_check_tracer_errlevel,
 			 "#%-*s      %*s <-- end of %s (elapsed time=%.3f ms)%s",

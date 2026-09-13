@@ -5409,10 +5409,10 @@ NOTICE:  #1                  "a" => '0'
 NOTICE:  #1.1       2      --> start of statement block (tnl=1)
 NOTICE:  #1.2       3        --> start of RETURN (expr='a + 1') (tnl=1)
 NOTICE:  #1.2                    "a" => '0'
-NOTICE:  #1.1                <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #1.2              <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #1.2                <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #1.1              <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #1              <<- end of function nested_trace_test (elapsed time=0.010 ms)
-NOTICE:  #0.2                <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.3                <-- end of assignment (elapsed time=0.010 ms)
 NOTICE:  #0.3                    "r" => '1'
 NOTICE:  #0.3       6        --> start of assignment r := nested_trace_test(r) (tnl=1)
 NOTICE:  #0.3                    "r" => '1'
@@ -5422,10 +5422,10 @@ NOTICE:  #1                  "a" => '1'
 NOTICE:  #1.1       2      --> start of statement block (tnl=1)
 NOTICE:  #1.2       3        --> start of RETURN (expr='a + 1') (tnl=1)
 NOTICE:  #1.2                    "a" => '1'
-NOTICE:  #1.1                <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #1.2              <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #1.2                <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #1.1              <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #1              <<- end of function nested_trace_test (elapsed time=0.010 ms)
-NOTICE:  #0.2                <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.3                <-- end of assignment (elapsed time=0.010 ms)
 NOTICE:  #0.3                    "r" => '2'
 NOTICE:  #0.3       6        --> start of assignment r := nested_trace_test(r) (tnl=1)
 NOTICE:  #0.3                    "r" => '2'
@@ -5435,16 +5435,16 @@ NOTICE:  #1                  "a" => '2'
 NOTICE:  #1.1       2      --> start of statement block (tnl=1)
 NOTICE:  #1.2       3        --> start of RETURN (expr='a + 1') (tnl=1)
 NOTICE:  #1.2                    "a" => '2'
-NOTICE:  #1.1                <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #1.2              <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #1.2                <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #1.1              <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #1              <<- end of function nested_trace_test (elapsed time=0.010 ms)
-NOTICE:  #0.2                <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.3                <-- end of assignment (elapsed time=0.010 ms)
 NOTICE:  #0.3                    "r" => '3'
-NOTICE:  #0.1              <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
+NOTICE:  #0.2              <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
 NOTICE:  #0.4       8      --> start of RETURN (tnl=1)
 NOTICE:  #0.4                  "r" => '3'
-NOTICE:  #0.3              <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #0.4            <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #0.4              <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.1            <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
  trace_test 
 ------------
@@ -5469,12 +5469,12 @@ NOTICE:  #0                "b" => '3'
 NOTICE:  #0.1       3    --> start of statement block (tnl=1)
 NOTICE:  #0.2       4      --> start of FOR with integer loop variable (tnl=1)
 NOTICE:  #0.3       6        --> start of perform plpgsql_check_pragma('disable: .. (tnl=1)
-NOTICE:  #0.2                <-- end of PERFORM (elapsed time=0.010 ms)
-NOTICE:  #0.1              <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
+NOTICE:  #0.3                <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #0.2              <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
 NOTICE:  #0.5       9      --> start of RETURN (tnl=1)
 NOTICE:  #0.5                  "r" => '3'
-NOTICE:  #0.4              <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #0.5            <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #0.5              <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.1            <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
  trace_test 
 ------------
@@ -5494,21 +5494,21 @@ NOTICE:  #0                "b" => '3'
 NOTICE:  #0.1       3    --> start of statement block (tnl=1)
 NOTICE:  #0.2       4      --> start of FOR with integer loop variable (tnl=1)
 NOTICE:  #0.3       6        --> start of perform plpgsql_check_pragma('disable: .. (tnl=1)
-NOTICE:  #0.2                <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #0.3                <-- end of PERFORM (elapsed time=0.010 ms)
 NOTICE:  #1.3       4        --> start of RETURN (expr='a + 1') (tnl=1)
 NOTICE:  #1.3                    "a" => '0'
-NOTICE:  #1.2                <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #1.3                <-- end of RETURN (elapsed time=0.010 ms)
 NOTICE:  #1.3       4        --> start of RETURN (expr='a + 1') (tnl=1)
 NOTICE:  #1.3                    "a" => '1'
-NOTICE:  #1.2                <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #1.3                <-- end of RETURN (elapsed time=0.010 ms)
 NOTICE:  #1.3       4        --> start of RETURN (expr='a + 1') (tnl=1)
 NOTICE:  #1.3                    "a" => '2'
-NOTICE:  #1.2                <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #0.1              <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
+NOTICE:  #1.3                <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.2              <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
 NOTICE:  #0.5       9      --> start of RETURN (tnl=1)
 NOTICE:  #0.5                  "r" => '3'
-NOTICE:  #0.4              <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #0.5            <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #0.5              <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.1            <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
  trace_test 
 ------------
@@ -5535,29 +5535,29 @@ NOTICE:  #0.1       3    --> start of statement block (tnl=1)
 NOTICE:  #0.2       4      --> start of FOR with integer loop variable (tnl=1)
 NOTICE:  #0.3       5        --> start of assignment r := r + 1 (tnl=1)
 NOTICE:  #0.3                    "r" => '0'
-NOTICE:  #0.2                <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.3                <-- end of assignment (elapsed time=0.010 ms)
 NOTICE:  #0.3                    "r" => '1'
 NOTICE:  #0.3       5        --> start of assignment r := r + 1 (tnl=1)
 NOTICE:  #0.3                    "r" => '1'
-NOTICE:  #0.2                <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.3                <-- end of assignment (elapsed time=0.010 ms)
 NOTICE:  #0.3                    "r" => '2'
 NOTICE:  #0.3       5        --> start of assignment r := r + 1 (tnl=1)
 NOTICE:  #0.3                    "r" => '2'
-NOTICE:  #0.2                <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.3                <-- end of assignment (elapsed time=0.010 ms)
 NOTICE:  #0.3                    "r" => '3'
 NOTICE:  #0.3       5        --> start of assignment r := r + 1 (tnl=1)
 NOTICE:  #0.3                    "r" => '3'
-NOTICE:  #0.2                <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.3                <-- end of assignment (elapsed time=0.010 ms)
 NOTICE:  #0.3                    "r" => '4'
-NOTICE:  #0.1              <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
+NOTICE:  #0.2              <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
 NOTICE:  #0.4       7      --> start of assignment r := r + 10 (tnl=1)
 NOTICE:  #0.4                  "r" => '4'
-NOTICE:  #0.3              <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.4              <-- end of assignment (elapsed time=0.010 ms)
 NOTICE:  #0.4                  "r" => '14'
 NOTICE:  #0.5       8      --> start of RETURN (tnl=1)
 NOTICE:  #0.5                  "r" => '14'
-NOTICE:  #0.4              <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #0.5            <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #0.5              <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.1            <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
  trace_test 
 ------------
@@ -5582,16 +5582,16 @@ NOTICE:  #0                "$1" => '4'
 NOTICE:  #0.1       3    --> start of statement block (tnl=1)
 NOTICE:  #0.2       4      --> start of FOR with integer loop variable (tnl=1)
 NOTICE:  #0.3       5        --> start of perform plpgsql_check_pragma('disable: .. (tnl=1)
-NOTICE:  #0.2                <-- end of PERFORM (elapsed time=0.010 ms)
-NOTICE:  #0.1              <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
+NOTICE:  #0.3                <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #0.2              <-- end of FOR with integer loop variable (elapsed time=0.010 ms)
 NOTICE:  #0.5       8      --> start of assignment r := r + 10 (tnl=1)
 NOTICE:  #0.5                  "r" => '4'
-NOTICE:  #0.4              <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.5              <-- end of assignment (elapsed time=0.010 ms)
 NOTICE:  #0.5                  "r" => '14'
 NOTICE:  #0.6       9      --> start of RETURN (tnl=1)
 NOTICE:  #0.6                  "r" => '14'
-NOTICE:  #0.5              <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #0.6            <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #0.6              <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.1            <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
  trace_test 
 ------------
@@ -5619,15 +5619,15 @@ NOTICE:  #0            ->> start of function trace_test(integer) (oid=0, tnl=1)
 NOTICE:  #0                "$1" => '4'
 NOTICE:  #0.1       3    --> start of statement block (tnl=1)
 NOTICE:  #0.2       4      --> start of perform plpgsql_check_pragma('disable: .. (tnl=1)
-NOTICE:  #0.1              <-- end of PERFORM (elapsed time=0.010 ms)
+NOTICE:  #0.2              <-- end of PERFORM (elapsed time=0.010 ms)
 NOTICE:  #0.6      12      --> start of assignment r := r + 10 (tnl=1)
 NOTICE:  #0.6                  "r" => '4'
-NOTICE:  #0.5              <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.6              <-- end of assignment (elapsed time=0.010 ms)
 NOTICE:  #0.6                  "r" => '14'
 NOTICE:  #0.7      13      --> start of RETURN (tnl=1)
 NOTICE:  #0.7                  "r" => '14'
-NOTICE:  #0.6              <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #0.7            <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #0.7              <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.1            <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0            <<- end of function trace_test (elapsed time=0.010 ms)
  trace_test 
 ------------
@@ -5690,9 +5690,9 @@ NOTICE:  #0            ->> start of block inline_code_block (oid=0, tnl=1)
 NOTICE:  #0.1       2    --> start of statement block (tnl=1)
 NOTICE:  #0.2       3      --> start of statement block (tnl=1)
 NOTICE:  #0.3       5        --> start of SQL statement (query='create role regress_plpgsql_ch ..') (tnl=2)
-NOTICE:  #0.1                <-- end of SQL statement (elapsed time=0.010 ms) aborted
+NOTICE:  #0.3                <-- end of SQL statement (elapsed time=0.010 ms) aborted
 NOTICE:  #0.2              <-- end of statement block (elapsed time=0.010 ms)
-NOTICE:  #0.3            <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #0.1            <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0            <<- end of block (elapsed time=0.010 ms)
 drop role regress_plpgsql_check_test_role;
 set plpgsql_check.enable_tracer to off;

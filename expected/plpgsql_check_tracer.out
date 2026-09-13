@@ -115,18 +115,18 @@ NOTICE:  #0                "a" => '10', "t" => 'verbose'
 NOTICE:  #0.1       3    --> start of statement block (tnl=1)
 NOTICE:  #0.2       4      --> start of assignment b := a * 2 (tnl=1)
 NOTICE:  #0.2                  "a" => '10', "b" => null
-NOTICE:  #0.1              <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.2              <-- end of assignment (elapsed time=0.010 ms)
 NOTICE:  #0.2                  "b" => '20'
 NOTICE:  #0.3       5      --> start of IF (cond='b > 100') (tnl=1)
 NOTICE:  #0.3                  "b" => '20'
 NOTICE:  #0.3              <-- end of IF (elapsed time=0.010 ms)
 NOTICE:  #0.5       8      --> start of RAISE (tnl=1)
 NOTICE:  tr_f1: 20 verbose
-NOTICE:  #0.4              <-- end of RAISE (elapsed time=0.010 ms)
+NOTICE:  #0.5              <-- end of RAISE (elapsed time=0.010 ms)
 NOTICE:  #0.6       9      --> start of RETURN (tnl=1)
 NOTICE:  #0.6                  "b" => '20'
-NOTICE:  #0.5              <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #0.6            <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #0.6              <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.1            <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0            <<- end of function tr_f1 (elapsed time=0.010 ms)
  tr_f1 
 -------
@@ -141,18 +141,18 @@ NOTICE:  #0                "a" => '1', "t" => 'nsubxids'
 NOTICE:  #0.1       3    --> start of statement block (tnl=1, nxids=0)
 NOTICE:  #0.2       4      --> start of assignment b := a * 2 (tnl=1, nxids=0)
 NOTICE:  #0.2                  "a" => '1', "b" => null
-NOTICE:  #0.1              <-- end of assignment (elapsed time=0.010 ms)
+NOTICE:  #0.2              <-- end of assignment (elapsed time=0.010 ms)
 NOTICE:  #0.2                  "b" => '2'
 NOTICE:  #0.3       5      --> start of IF (cond='b > 100') (tnl=1, nxids=0)
 NOTICE:  #0.3                  "b" => '2'
 NOTICE:  #0.3              <-- end of IF (elapsed time=0.010 ms)
 NOTICE:  #0.5       8      --> start of RAISE (tnl=1, nxids=0)
 NOTICE:  tr_f1: 2 nsubxids
-NOTICE:  #0.4              <-- end of RAISE (elapsed time=0.010 ms)
+NOTICE:  #0.5              <-- end of RAISE (elapsed time=0.010 ms)
 NOTICE:  #0.6       9      --> start of RETURN (tnl=1, nxids=0)
 NOTICE:  #0.6                  "b" => '2'
-NOTICE:  #0.5              <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #0.6            <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #0.6              <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.1            <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0            <<- end of function tr_f1 (elapsed time=0.010 ms)
  tr_f1 
 -------
@@ -186,9 +186,9 @@ NOTICE:  #0.2                  "a" => '5'
 NOTICE:  #0.2       7          ELSEIF (expr='a < 10')
 NOTICE:  #0.2                  "a" => '5'
 NOTICE:  #0.5       8        --> start of RETURN (expr=''small'') (tnl=1)
-NOTICE:  #0.3                <-- end of RETURN (elapsed time=0.010 ms)
-NOTICE:  #0.5              <-- end of IF (elapsed time=0.010 ms)
-NOTICE:  #0.6            <-- end of statement block (elapsed time=0.010 ms)
+NOTICE:  #0.5                <-- end of RETURN (elapsed time=0.010 ms)
+NOTICE:  #0.2              <-- end of IF (elapsed time=0.010 ms)
+NOTICE:  #0.1            <-- end of statement block (elapsed time=0.010 ms)
 NOTICE:  #0            <<- end of function tr_f2 (elapsed time=0.010 ms)
  tr_f2 
 -------
