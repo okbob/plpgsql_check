@@ -553,3 +553,21 @@ $$ language plpgsql;
 select * from plpgsql_check_function('sw_move(int)');
 
 drop function sw_move(int);
+
+-- Check before execution initializes the hidden CASE variable's type
+create type sw_single_field as (a int);
+create function sw_case_single(v sw_single_field) returns int as $$
+begin
+  case v
+    when row(1)::sw_single_field then return 1;
+    else return 2;
+  end case;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_case_single(sw_single_field)');
+select sw_case_single(row(1)::sw_single_field) = 1
+   and sw_case_single(row(2)::sw_single_field) = 2 as valid;
+
+drop function sw_case_single(sw_single_field);
+drop type sw_single_field;
