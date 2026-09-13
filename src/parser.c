@@ -1444,20 +1444,10 @@ get_type_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_
 	if (_token->value == PRAGMA_TOKEN_IDENTIF ||
 		_token->value == PRAGMA_TOKEN_QIDENTIF)
 	{
-		const char *typname_start = NULL;
-		size_t		typname_length;
-		char	   *typestr;
-		Oid			typid;
 		int32		typmod;
 
 		unget_token(tstate, _token);
-
-		parse_qualified_identifier(tstate, &typname_start, &typname_length);
-
-		typestr = pnstrdup(typname_start, typname_length);
-		parseTypeString(typestr, &typid, &typmod, false);
-
-		return typid;
+		return get_scalar_type(tstate, &typmod);
 	}
 	else
 		elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected type identifier)",

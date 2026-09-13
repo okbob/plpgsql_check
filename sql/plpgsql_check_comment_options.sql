@@ -297,6 +297,47 @@ $$ language plpgsql;
 
 select * from co_check('co_anycompatiblerange');
 
+-- complete type syntax, including separators inside modifiers and between options
+create function co_type_array(anyelement)
+returns text as $$
+-- @plpgsql_check_options: anyelementtype = "pg_catalog"."int4"[][], extra_warnings = off
+begin
+  return $1::text;
+end;
+$$ language plpgsql;
+
+select * from co_check('co_type_array');
+
+create function co_type_datetime(anyelement)
+returns text as $$
+-- @plpgsql_check_options: anyelementtype = timestamp(3) without time zone
+begin
+  return $1::text;
+end;
+$$ language plpgsql;
+
+select * from co_check('co_type_datetime');
+
+create function co_type_multiword(anycompatible)
+returns text as $$
+-- @plpgsql_check_options: anycompatibletype = double precision, extra_warnings = off
+begin
+  return $1::text;
+end;
+$$ language plpgsql;
+
+select * from co_check('co_type_multiword');
+
+create function co_type_numeric(anyelement)
+returns text as $$
+-- @plpgsql_check_options: anyelementtype = numeric(8,2), extra_warnings = off
+begin
+  return $1::text;
+end;
+$$ language plpgsql;
+
+select * from co_check('co_type_numeric');
+
 --
 -- echo option
 --
@@ -394,6 +435,16 @@ $$ language plpgsql;
 
 select * from co_check('co_err_badtype');
 
+create function co_err_type_suffix(anyelement)
+returns text as $$
+-- @plpgsql_check_options: anyelementtype = integer[] trailing
+begin
+  return $1::text;
+end;
+$$ language plpgsql;
+
+select * from co_check('co_err_type_suffix');
+
 create function co_err_notype(anyelement)
 returns void as $$
 -- @plpgsql_check_options: anyelementtype
@@ -469,6 +520,7 @@ drop function co_err_noname();
 drop function co_err_badname();
 drop function co_err_notype(anyelement);
 drop function co_err_badtype(anyelement);
+drop function co_err_type_suffix(anyelement);
 drop function co_err_notrange2(anycompatiblerange);
 drop function co_err_notrange(anyrange);
 drop function co_err_nobool();
@@ -478,6 +530,10 @@ drop function co_err_nooption();
 drop function co_err_unknown();
 drop function co_echo(int);
 drop function co_anycompatiblerange(anycompatiblerange);
+drop function co_type_array(anyelement);
+drop function co_type_datetime(anyelement);
+drop function co_type_multiword(anycompatible);
+drop function co_type_numeric(anyelement);
 drop function co_anycompatible(anycompatible);
 drop function co_anyrange(anyrange);
 drop function co_anyenum(anyenum);
