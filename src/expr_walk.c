@@ -1396,8 +1396,8 @@ has_external_param_with_paramid(Node *node, void *context)
 }
 
 /*
- * This walker is used for checking usage target_param elsewhere than top subscripting
- * node.
+ * Ignore the implicit old-container fetch in a subscript assignment, but
+ * count reads in its bounds and assigned value.
  */
 bool
 plpgsql_check_vardno_is_used_for_reading(Node *node, int dno)
@@ -1406,7 +1406,14 @@ plpgsql_check_vardno_is_used_for_reading(Node *node, int dno)
 		return false;
 
 	if (IsA(node, SubscriptingRef))
-		node = (Node *) ((SubscriptingRef *) node)->refassgnexpr;
+	{
+		SubscriptingRef *sbsref = (SubscriptingRef *) node;
+
+		if (sbsref->refassgnexpr != NULL)
+			return has_external_param_with_paramid((Node *) sbsref->refupperindexpr, &dno) ||
+				has_external_param_with_paramid((Node *) sbsref->reflowerindexpr, &dno) ||
+				has_external_param_with_paramid((Node *) sbsref->refassgnexpr, &dno);
+	}
 
 	return has_external_param_with_paramid(node, (void *) &dno);
 }

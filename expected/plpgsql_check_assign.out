@@ -566,6 +566,38 @@ select * from as_f25();
  7
 (1 row)
 
+-- Bounds and the RHS read their variables; the implicit old array does not.
+create function as_f26()
+returns void as $$
+declare
+  element_array int[] := array[1, 2];
+  lower_array int[] := array[1, 2];
+  upper_array int[] := array[1, 2];
+  rhs_array int[] := array[1, 2];
+  fetch_array int[] := array[1, 2];
+  write_only int[] := array[1, 2];
+begin
+  element_array[element_array[1]] := 3;
+  lower_array[lower_array[1]:2] := array[3, 4];
+  upper_array[1:upper_array[2]] := array[3, 4];
+  rhs_array[1] := rhs_array[2];
+  fetch_array := fetch_array[1:2];
+  write_only[1] := 3;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('as_f26');
+                     plpgsql_check_function                     
+----------------------------------------------------------------
+ warning extra:00000:8:DECLARE:never read variable "write_only"
+(1 row)
+
+select as_f26();
+ as_f26 
+--------
+ 
+(1 row)
+
+drop function as_f26();
 drop function as_f21();
 drop function as_f22();
 drop function as_f23();
