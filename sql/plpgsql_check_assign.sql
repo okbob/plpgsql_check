@@ -216,6 +216,53 @@ create trigger as_trg1 before update on as_tab1
 
 select * from plpgsql_check_function('as_trg1', relid => 'as_tab1'::regclass);
 
+-- FOREACH applies assignment casts to elements and slices, not array input.
+create function as_f15()
+returns int as $$
+declare
+  item int;
+  total int := 0;
+begin
+  foreach item in array array[1.6::numeric, 2.4::numeric] loop
+    total := total + item;
+  end loop;
+  return total;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('as_f15');
+select as_f15();
+
+create function as_f16()
+returns int[] as $$
+declare item int[];
+begin
+  foreach item slice 1 in array array[[1.6::numeric, 2.4::numeric]] loop
+    return item;
+  end loop;
+  return null;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('as_f16');
+select as_f16();
+
+-- Without an assignment cast, invalid textual input is still rejected.
+create function as_f17()
+returns void as $$
+declare item int;
+begin
+  foreach item in array array['not an integer'] loop
+    raise notice '%', item;
+  end loop;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('as_f17');
+
+drop function as_f15();
+drop function as_f16();
+drop function as_f17();
 drop function as_f1(int);
 drop function as_f2();
 drop function as_f4();

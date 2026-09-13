@@ -1516,8 +1516,15 @@ plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
 
 						typeid = use_element_type ? get_array_type(expected_typoid) : expected_typoid;
 
-						getTypeInputInfo(typeid, &infunc, &intypeioparam);
-						(void) OidInputFunctionCall(infunc, str, intypeioparam, -1);
+						/*
+						 * Assignment casts, including element casts in an
+						 * array, need not agree with textual input.
+						 */
+						if (!can_coerce_type(1, &expr_typoid, &typeid, COERCION_ASSIGNMENT))
+						{
+							getTypeInputInfo(typeid, &infunc, &intypeioparam);
+							(void) OidInputFunctionCall(infunc, str, intypeioparam, -1);
+						}
 					}
 				}
 			}
