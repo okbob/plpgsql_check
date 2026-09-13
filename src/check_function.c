@@ -509,9 +509,7 @@ passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_f
 			{
 				PLpgSQL_var *var = (PLpgSQL_var *) estate->datums[i];
 
-				saved_vars[i].value = var->value;
-				saved_vars[i].isnull = var->isnull;
-				saved_vars[i].freeval = var->freeval;
+				memcpy(&saved_vars[i], var, sizeof(PLpgSQL_var));
 
 				var->freeval = false;
 			}
@@ -587,9 +585,7 @@ passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_f
 			{
 				PLpgSQL_var *var = (PLpgSQL_var *) estate->datums[i];
 
-				var->value = saved_vars[i].value;
-				var->isnull = saved_vars[i].isnull;
-				var->freeval = saved_vars[i].freeval;
+				memcpy(var, &saved_vars[i], sizeof(PLpgSQL_var));
 			}
 		}
 
