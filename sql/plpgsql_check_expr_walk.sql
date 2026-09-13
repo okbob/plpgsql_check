@@ -501,6 +501,93 @@ $$ language plpgsql;
 
 select type, schema, name, params from plpgsql_show_dependency_tb('ew_f29');
 
+-- Explicit VARIADIC arrays supply their elements, not one array argument.
+create function ew_f30(p text)
+returns void as $$
+begin
+  raise notice '%', format('%s %s', variadic array['a', p]);
+  raise notice '%', format('%s %s', variadic '{a,b}'::text[]);
+  raise notice '%', format('%s %s', variadic '[0:1]={a,b}'::text[]);
+  raise notice '%', format('%s %s', variadic array[1, 2]);
+  raise notice '%', format('%s %s %s %s', variadic array[['a', p], ['b', p]]);
+  raise notice '%', format('plain', variadic array[]::text[]);
+  raise notice '%', format('plain', variadic null::text[]);
+  raise notice '%', format('%s%L', variadic array[null, null]::text[]);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('ew_f30', fatal_errors => false);
+
+-- Unknown array lengths do not disable format syntax validation.
+create function ew_f31(args text[])
+returns text as $$
+begin
+  return format('%s %s', variadic args);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('ew_f31');
+
+create function ew_f32()
+returns text as $$
+begin
+  return format('%s %s', variadic array['a']);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('ew_f32');
+
+create function ew_f33(args text[])
+returns text as $$
+begin
+  return format('%s %Q', variadic args);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('ew_f33');
+
+create function ew_f34()
+returns text as $$
+begin
+  return format('%s', variadic null::text[]);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('ew_f34');
+
+-- Constant synthesis uses the same expanded arguments, including NULLs.
+create function ew_f35()
+returns int as $$
+declare r record;
+begin
+  execute format('select %s%L::int as n', variadic array[null, '7']) into r;
+  return r.n;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('ew_f35');
+select ew_f35();
+
+create function ew_f36()
+returns int as $$
+declare r record;
+begin
+  execute format('select %L::int as n', variadic array[null]::text[]) into r;
+  return r.n;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('ew_f36');
+select ew_f36() is null;
+
+drop function ew_f30(text);
+drop function ew_f31(text[]);
+drop function ew_f32();
+drop function ew_f33(text[]);
+drop function ew_f34();
+drop function ew_f35();
+drop function ew_f36();
+
 drop function ew_f1(text);
 drop function ew_f2(text, int);
 drop function ew_f3(text);

@@ -305,7 +305,7 @@ extern bool plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate
 extern bool plpgsql_check_contain_volatile_functions(Node *clause, PLpgSQL_checkstate *cstate);
 extern bool plpgsql_check_contain_mutable_functions(Node *clause, PLpgSQL_checkstate *cstate);
 extern bool plpgsql_check_vardno_is_used_for_reading(Node *node, int dno);
-extern char *plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate, const char *fmt, List *args,
+extern char *plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate, const char *fmt, FuncExpr *fexpr,
 												bool *found_ident_placeholder, bool *found_literal_placeholder, bool *expr_is_const);
 
 /*

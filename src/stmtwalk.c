@@ -1937,7 +1937,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 			{
 				char	   *fstr;
 
-				fstr = plpgsql_check_get_formatted_string(cstate, fmt, fexpr->args,
+				fstr = plpgsql_check_get_formatted_string(cstate, fmt, fexpr,
 														  &found_ident_placeholder,
 														  &found_literal_placeholder,
 														  &_expr_is_const);

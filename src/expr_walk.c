@@ -11,6 +11,7 @@
 
 #include "plpgsql_check.h"
 
+#include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 
 #include "catalog/pg_class.h"
@@ -18,6 +19,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "nodes/nodeFuncs.h"
+#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 
@@ -35,6 +37,92 @@ static int	check_fmt_string(const char *fmt,
 							 bool *is_error,
 							 int *unsafe_expr_location,
 							 bool no_error);
+
+static bool
+append_format_array_args(Node *node, List **args)
+{
+	if (IsA(node, ArrayExpr))
+	{
+		ArrayExpr  *array = (ArrayExpr *) node;
+
+		if (array->multidims)
+		{
+			ListCell   *lc;
+
+			foreach(lc, array->elements)
+			{
+				if (!append_format_array_args(lfirst(lc), args))
+					return false;
+			}
+		}
+		else
+			*args = list_concat(*args, list_copy(array->elements));
+
+		return true;
+	}
+	else if (IsA(node, Const))
+	{
+		Const	   *c = (Const *) node;
+		ArrayType  *array;
+		Oid			elemtype;
+		int16		typlen;
+		bool		typbyval;
+		char		typalign;
+		Datum	   *values;
+		bool	   *nulls;
+		int			nelems;
+		int			i;
+
+		/* format() treats a NULL variadic array as an empty array. */
+		if (c->constisnull)
+			return true;
+
+		if (!OidIsValid(get_base_element_type(c->consttype)))
+			return false;
+
+		array = DatumGetArrayTypeP(c->constvalue);
+		elemtype = ARR_ELEMTYPE(array);
+		get_typlenbyvalalign(elemtype, &typlen, &typbyval, &typalign);
+		deconstruct_array(array, elemtype, typlen, typbyval, typalign,
+						  &values, &nulls, &nelems);
+
+		for (i = 0; i < nelems; i++)
+		{
+			Const	   *element;
+
+			element = makeConst(elemtype, -1, get_typcollation(elemtype),
+								typlen, values[i], nulls[i], typbyval);
+			element->location = c->location;
+			*args = lappend(*args, element);
+		}
+
+		pfree(values);
+		pfree(nulls);
+		return true;
+	}
+
+	return false;
+}
+
+/*
+ * Include the format string at index zero, as in an ordinary call.
+ * NIL means that the number and values of variadic arguments are unknown.
+ */
+static List *
+format_get_args(FuncExpr *fexpr)
+{
+	List	   *args;
+
+	if (!fexpr->funcvariadic)
+		return fexpr->args;
+
+	Assert(list_length(fexpr->args) == 2);
+	args = list_make1(linitial(fexpr->args));
+	if (!append_format_array_args(lsecond(fexpr->args), &args))
+		return NIL;
+
+	return args;
+}
 
 /*
  * Send to ouput all not yet displayed relations, operators and functions.
@@ -259,16 +347,17 @@ check_funcexpr_walker(Node *node, void *context)
 						if (c->consttype == TEXTOID && !c->constisnull)
 						{
 							char	   *fmt = TextDatumGetCString(c->constvalue);
+							List	   *args = format_get_args(fexpr);
 							check_funcexpr_walker_params *wp;
 							int			required_nargs;
 							bool		is_error;
 
 							wp = (check_funcexpr_walker_params *) context;
 
-							required_nargs = check_fmt_string(fmt, fexpr->args, c->location, wp, &is_error, NULL, false);
+							required_nargs = check_fmt_string(fmt, args, c->location, wp, &is_error, NULL, false);
 							if (!is_error && required_nargs != -1)
 							{
-								if (required_nargs + 1 != list_length(fexpr->args))
+								if (required_nargs + 1 != list_length(args))
 									plpgsql_check_put_error(wp->cstate,
 															0, 0,
 															"unused parameters of function \"format\"",
@@ -507,7 +596,7 @@ text_format_parse_format(const char *start_ptr,
 }
 
 #define TOO_FEW_ARGUMENTS_CHECK(arg, nargs) \
-	if ((arg) > (nargs)) \
+	if ((nargs) >= 0 && (arg) > (nargs)) \
 	{ \
 		if (wp) \
 			plpgsql_check_put_error(wp->cstate, \
@@ -529,7 +618,7 @@ text_format_parse_format(const char *start_ptr,
 char *
 plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 								   const char *fmt,
-								   List *args,
+								   FuncExpr *fexpr,
 								   bool *found_ident_placeholder,
 								   bool *found_literal_placeholder,
 								   bool *expr_is_const)
@@ -537,6 +626,7 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 	StringInfoData sinfo;
 	const char *cp;
 	const char *end_ptr = fmt + strlen(fmt);
+	List	   *args = format_get_args(fexpr);
 	int			nargs = list_length(args);
 	int			arg = 1;
 	int			_arg;
@@ -545,6 +635,12 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 	*found_ident_placeholder = false;
 	*found_literal_placeholder = false;
 	*expr_is_const = true;
+
+	if (!args)
+	{
+		*expr_is_const = false;
+		return NULL;
+	}
 
 	initStringInfo(&sinfo);
 
@@ -606,12 +702,19 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 		_arg = argpos >= 1 ? argpos + 1 : arg + 1;
 		if (_arg <= nargs)
 		{
+			Node	   *argnode = list_nth(args, _arg - 1);
 			char	   *str;
+			bool		isnull = IsA(argnode, Const) && ((Const *) argnode)->constisnull;
 
-			str = plpgsql_check_get_const_string(cstate, list_nth(args, _arg - 1), NULL);
+			str = plpgsql_check_get_const_string(cstate, argnode, NULL);
 
 			if (*cp == 'I')
 			{
+				if (isnull)
+				{
+					pfree(sinfo.data);
+					return NULL;
+				}
 				if (!str)
 				{
 					appendStringInfoString(&sinfo, "\"%I\"");
@@ -623,7 +726,9 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 			}
 			else if (*cp == 'L')
 			{
-				if (!str)
+				if (isnull)
+					appendStringInfoString(&sinfo, "NULL");
+				else if (!str)
 				{
 					/*
 					 * Original idea was used external parameter, but external
@@ -644,6 +749,9 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 			}
 			else
 			{
+				if (isnull)
+					str = "";
+
 				if (!str)
 				{
 					pfree(sinfo.data);
@@ -691,8 +799,8 @@ check_fmt_string(const char *fmt,
 {
 	const char *cp;
 	const char *end_ptr = fmt + strlen(fmt);
-	int			nargs = list_length(args);
-	int			required_nargs = 0;
+	int			nargs = args ? list_length(args) : -1;
+	int			required_nargs = args ? 0 : -1;
 	int			arg = 1;
 
 	*is_error = false;
@@ -999,11 +1107,12 @@ plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
 							 * constant
 							 */
 							char	   *fmt;
+							List	   *args = format_get_args(fexpr);
 							int			loc;
 
 							fmt = plpgsql_check_get_const_string(cstate, linitial(fexpr->args), &loc);
 
-							if (fmt)
+							if (fmt && args)
 							{
 								check_funcexpr_walker_params wp;
 								bool		is_error;
@@ -1013,7 +1122,7 @@ plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
 								wp.query_str = expr->query;
 
 								*location = -1;
-								check_fmt_string(fmt, fexpr->args, loc, &wp, &is_error, location, true);
+								check_fmt_string(fmt, args, loc, &wp, &is_error, location, true);
 
 								/*
 								 * only in this case, "format" function
