@@ -688,6 +688,7 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 					pfree(sinfo.data);
 					return NULL;
 				}
+				arg = widthpos + 1;
 			}
 			else
 			{
@@ -770,6 +771,7 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 				pfree(sinfo.data);
 				return NULL;
 			}
+			arg = argpos + 1;
 		}
 		else
 		{
@@ -868,6 +870,7 @@ check_fmt_string(const char *fmt,
 			if (widthpos > 0)
 			{
 				TOO_FEW_ARGUMENTS_CHECK(widthpos + 1, nargs);
+				arg = widthpos + 1;
 				required_nargs = -1;
 			}
 			else
@@ -907,6 +910,7 @@ check_fmt_string(const char *fmt,
 		if (argpos >= 1)
 		{
 			TOO_FEW_ARGUMENTS_CHECK(argpos + 1, nargs);
+			arg = argpos + 1;
 			required_nargs = -1;
 		}
 		else

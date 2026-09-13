@@ -580,6 +580,67 @@ $$ language plpgsql;
 select * from plpgsql_check_function('ew_f36');
 select ew_f36() is null;
 
+-- An explicit position resets subsequent implicit argument consumption.
+create function ew_f37(a text, b text)
+returns text as $$
+begin
+  return format('%s %s %1$s %s', a, b);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('ew_f37');
+select ew_f37('a', 'b');
+
+create function ew_f38()
+returns text as $$
+begin
+  return format('%s %s %*1$s', 3, 'a');
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('ew_f38');
+select ew_f38();
+
+create function ew_f39(a text, b text)
+returns text as $$
+begin
+  return format('%2$s %s', a, b);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('ew_f39');
+
+-- Synthesis must follow the same cursor for ordinary and VARIADIC calls.
+create function ew_f40()
+returns int as $$
+declare a int; b int;
+begin
+  execute format('select %s + %s + %1$s + %s', '1', '2') into a;
+  execute format('select %s + %s + %1$s + %s', variadic array['1', '2']) into b;
+  return a + b;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('ew_f40');
+select ew_f40();
+
+create function ew_f41()
+returns int as $$
+declare a int;
+begin
+  execute format('select %s + %s + %*1$s', 1, 2) into a;
+  return a;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('ew_f41');
+select ew_f41();
+
+drop function ew_f37(text, text);
+drop function ew_f38();
+drop function ew_f39(text, text);
+drop function ew_f40();
+drop function ew_f41();
 drop function ew_f30(text);
 drop function ew_f31(text[]);
 drop function ew_f32();

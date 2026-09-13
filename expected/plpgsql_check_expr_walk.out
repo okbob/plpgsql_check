@@ -810,6 +810,100 @@ select ew_f36() is null;
  t
 (1 row)
 
+-- An explicit position resets subsequent implicit argument consumption.
+create function ew_f37(a text, b text)
+returns text as $$
+begin
+  return format('%s %s %1$s %s', a, b);
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('ew_f37');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select ew_f37('a', 'b');
+ ew_f37  
+---------
+ a b a b
+(1 row)
+
+create function ew_f38()
+returns text as $$
+begin
+  return format('%s %s %*1$s', 3, 'a');
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('ew_f38');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select ew_f38();
+ ew_f38  
+---------
+ 3 a   a
+(1 row)
+
+create function ew_f39(a text, b text)
+returns text as $$
+begin
+  return format('%2$s %s', a, b);
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('ew_f39');
+               plpgsql_check_function                
+-----------------------------------------------------
+ error:22023:3:RETURN:too few arguments for format()
+ Query: format('%2$s %s', a, b)
+ --            ^
+(3 rows)
+
+-- Synthesis must follow the same cursor for ordinary and VARIADIC calls.
+create function ew_f40()
+returns int as $$
+declare a int; b int;
+begin
+  execute format('select %s + %s + %1$s + %s', '1', '2') into a;
+  execute format('select %s + %s + %1$s + %s', variadic array['1', '2']) into b;
+  return a + b;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('ew_f40');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select ew_f40();
+ ew_f40 
+--------
+     12
+(1 row)
+
+create function ew_f41()
+returns int as $$
+declare a int;
+begin
+  execute format('select %s + %s + %*1$s', 1, 2) into a;
+  return a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('ew_f41');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select ew_f41();
+ ew_f41 
+--------
+      5
+(1 row)
+
+drop function ew_f37(text, text);
+drop function ew_f38();
+drop function ew_f39(text, text);
+drop function ew_f40();
+drop function ew_f41();
 drop function ew_f30(text);
 drop function ew_f31(text[]);
 drop function ew_f32();
