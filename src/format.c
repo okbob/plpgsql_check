@@ -905,12 +905,13 @@ format_error_xml(StringInfo str,
 					 unpack_sql_state(sqlerrcode));
 	appendStringInfo(str, "    <Message>%s</Message>\n",
 					 escape_xml(message));
-	if (estate != NULL && estate->err_stmt != NULL)
+	if (estate != NULL && estate->err_stmt != NULL && estate->err_stmt->lineno > 0)
 		appendStringInfo(str, "    <Stmt lineno=\"%d\">%s</Stmt>\n",
 						 estate->err_stmt->lineno,
 						 plpgsql_check__stmt_typename_p(estate->err_stmt));
 
-	else if (strcmp(message, "unused declared variable") == 0)
+	else if (strncmp(message, UNUSED_VARIABLE_TEXT, UNUSED_VARIABLE_TEXT_CHECK_LENGTH) == 0 ||
+			 strncmp(message, NEVER_READ_VARIABLE_TEXT, NEVER_READ_VARIABLE_TEXT_CHECK_LENGTH) == 0)
 		appendStringInfo(str, "    <Stmt lineno=\"%d\">DECLARE</Stmt>\n",
 						 lineno);
 
@@ -961,12 +962,13 @@ format_error_json(StringInfo str,
 
 	escape_json(&sinfo, message);
 	appendStringInfo(str, "    \"message\":%s,\n", sinfo.data);
-	if (estate != NULL && estate->err_stmt != NULL)
+	if (estate != NULL && estate->err_stmt != NULL && estate->err_stmt->lineno > 0)
 		appendStringInfo(str, "    \"statement\":{\n\"lineNumber\":\"%d\",\n\"text\":\"%s\"\n},\n",
 						 estate->err_stmt->lineno,
 						 plpgsql_check__stmt_typename_p(estate->err_stmt));
 
-	else if (strcmp(message, "unused declared variable") == 0)
+	else if (strncmp(message, UNUSED_VARIABLE_TEXT, UNUSED_VARIABLE_TEXT_CHECK_LENGTH) == 0 ||
+			 strncmp(message, NEVER_READ_VARIABLE_TEXT, NEVER_READ_VARIABLE_TEXT_CHECK_LENGTH) == 0)
 		appendStringInfo(str, "    \"statement\":{\n\"lineNumber\":\"%d\",\n\"text\":\"DECLARE\"\n},",
 						 lineno);
 

@@ -201,6 +201,44 @@ select level, message from plpgsql_check_function_tb('tf_f2', without_warnings :
 -------+---------
 (0 rows)
 
+-- declaration locations must agree in tabular, JSON and XML output
+create function tf_declarations()
+returns void as $$
+declare
+  unused_value int;
+  written_value int;
+begin
+  written_value := 1;
+end;
+$$ language plpgsql;
+select lineno, statement, message
+  from plpgsql_check_function_tb('tf_declarations');
+ lineno | statement |               message               
+--------+-----------+-------------------------------------
+      3 | DECLARE   | unused variable "unused_value"
+      4 | DECLARE   | never read variable "written_value"
+(2 rows)
+
+select issue->'statement'->>'lineNumber' as lineno,
+       issue->'statement'->>'text' as statement,
+       issue->>'message' as message
+  from plpgsql_check_function('tf_declarations', format => 'json') as r(doc),
+       lateral jsonb_array_elements(doc::jsonb->'issues') as i(issue);
+ lineno | statement |               message               
+--------+-----------+-------------------------------------
+ 3      | DECLARE   | unused variable "unused_value"
+ 4      | DECLARE   | never read variable "written_value"
+(2 rows)
+
+select xpath('/Function/Issue/Stmt/@lineno', doc::xml) as linenos,
+       xpath('/Function/Issue/Stmt/text()', doc::xml) as statements
+  from plpgsql_check_function('tf_declarations', format => 'xml') as r(doc);
+ linenos |    statements     
+---------+-------------------
+ {3,4}   | {DECLARE,DECLARE}
+(1 row)
+
+drop function tf_declarations();
 --
 -- plpgsql_show_dependency_tb
 --

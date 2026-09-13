@@ -104,6 +104,32 @@ select * from plpgsql_check_function('tf_f2', without_warnings := true);
 select level, message from plpgsql_check_function_tb('tf_f2', all_warnings := true);
 select level, message from plpgsql_check_function_tb('tf_f2', without_warnings := true);
 
+-- declaration locations must agree in tabular, JSON and XML output
+create function tf_declarations()
+returns void as $$
+declare
+  unused_value int;
+  written_value int;
+begin
+  written_value := 1;
+end;
+$$ language plpgsql;
+
+select lineno, statement, message
+  from plpgsql_check_function_tb('tf_declarations');
+
+select issue->'statement'->>'lineNumber' as lineno,
+       issue->'statement'->>'text' as statement,
+       issue->>'message' as message
+  from plpgsql_check_function('tf_declarations', format => 'json') as r(doc),
+       lateral jsonb_array_elements(doc::jsonb->'issues') as i(issue);
+
+select xpath('/Function/Issue/Stmt/@lineno', doc::xml) as linenos,
+       xpath('/Function/Issue/Stmt/text()', doc::xml) as statements
+  from plpgsql_check_function('tf_declarations', format => 'xml') as r(doc);
+
+drop function tf_declarations();
+
 --
 -- plpgsql_show_dependency_tb
 --
