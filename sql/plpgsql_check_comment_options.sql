@@ -137,6 +137,46 @@ $$ language plpgsql;
 
 select * from co_check('co_blockcomment');
 
+-- tags before and after nested comments belong to the same outer comment
+create function co_nested_comment()
+returns void as $$
+/*
+ * @plpgsql_check_options: extra_warnings = off
+ /* inner description
+    /* deeper description */
+ */
+ * @plpgsql_check_options: other_warnings = off
+ */
+declare x int; y int;
+begin
+  x := 1;
+end;
+$$ language plpgsql;
+
+select * from co_check('co_nested_comment');
+select count(*) = 2 as warnings_without_options
+  from plpgsql_check_function_tb('co_nested_comment', use_incomment_options => false);
+
+drop function co_nested_comment();
+
+-- an inner terminator is not part of the tagged option on its line
+create function co_nested_inline_option()
+returns void as $$
+/*
+  /* @plpgsql_check_options: without_warnings */
+*/
+declare x int;
+begin
+  null;
+end;
+$$ language plpgsql;
+
+select * from co_check('co_nested_inline_option');
+select count(*) = 1 as warning_without_options
+  from plpgsql_check_function_tb('co_nested_inline_option', use_incomment_options => false);
+
+drop function co_nested_inline_option();
+
 -- The source code is scanned for the tag outside of the string
 -- literals, the quoted identifiers and the dollar quoted strings, so the
 -- tags written there are not options - if they were parsed, the check

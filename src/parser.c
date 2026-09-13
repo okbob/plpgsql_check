@@ -1783,22 +1783,32 @@ static char *
 search_comment_options_multilinecomment(char *src, plpgsql_check_info *cinfo)
 {
 	char	   *start = src;
+	int			depth = 1;
 
 	while (*src)
 	{
-		if (*src == '*' && src[1] == '/')
+		if (*src == '/' && src[1] == '*')
+		{
+			depth++;
+			src += 2;
+		}
+		else if (*src == '*' && src[1] == '/')
 		{
 			char	   *tag;
 
+			/* An inner terminator must not become part of its option line. */
 			tag = memmem(start, src - start,
 						 tagstr, strlen(tagstr));
 			if (tag)
 				comment_options_parsecontent(tag, src - tag, cinfo);
 
-			return src + 1;
+			src += 2;
+			if (--depth == 0)
+				return src;
+			start = src;
 		}
-
-		src += 1;
+		else
+			src += 1;
 	}
 
 	return src;
