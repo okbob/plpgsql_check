@@ -87,7 +87,7 @@ compiler = meson.get_compiler('c')
 compiler_name = compiler.get_id()
 compiler_version = compiler.version()
 
-coption = []
+coptions = []
 
 if pg_version_major >= 19
   if meson.get_compiler('c').get_id() == 'msvc'
