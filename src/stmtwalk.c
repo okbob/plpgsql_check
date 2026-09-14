@@ -2008,7 +2008,6 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 			if (is_ok && expr_is_const && !cstate->has_mp && (!params || !dsp.use_params))
 			{
-
 				/* probably useless dynamic command */
 				plpgsql_check_put_error(cstate,
 										0, 0,
