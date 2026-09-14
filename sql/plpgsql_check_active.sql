@@ -4696,3 +4696,61 @@ select plpgsql_coverage_statements('f_poly');
 select plpgsql_check_profiler(false);
 
 drop function f_poly;
+
+create or replace function repro04()
+returns void as $$
+begin
+  execute 'select 1';
+end
+$$ language plpgsql;
+
+select * from plpgsql_check_function('repro04()', performance_warnings => true);
+
+create or replace function repro04_into()
+returns int as $$
+declare r int;
+begin
+  execute 'select $1' into r using 1;
+  return r;
+end
+$$ language plpgsql;
+
+select * from plpgsql_check_function('repro04_into()', performance_warnings => true);
+
+create or replace function repro04_real_dynsql(p text)
+returns void as $$
+begin
+  execute 'select ' || quote_literal(p);
+end
+$$ language plpgsql;
+
+select * from plpgsql_check_function('repro04_real_dynsql(text)', performance_warnings => true);
+
+-- a multi statement command is real dynamic sql too, and this case was
+-- reported correctly even before the fix.
+create or replace function repro04_multi()
+returns void as $$
+begin
+  execute 'select 1; select 2';
+end
+$$ language plpgsql;
+
+select * from plpgsql_check_function('repro04_multi()', performance_warnings => true);
+
+create table repro04_multi_target(a int);
+
+create or replace function repro04_multi()
+returns void as $$
+begin
+  execute 'select 1; insert into repro04_multi_target values(10)';
+end
+$$ language plpgsql;
+
+select * from plpgsql_check_function('repro04_multi()', performance_warnings => true);
+
+drop table repro04_multi_target;
+
+drop function repro04();
+drop function repro04_into();
+drop function repro04_real_dynsql(text);
+drop function repro04_multi();

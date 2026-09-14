@@ -246,9 +246,8 @@ select * from plpgsql_check_function('rp_f12', performance_warnings => true);
  Detail: the EXECUTE command is not necessary probably
  Hint: Don't use dynamic SQL when you can use static SQL.
  performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
- Detail: attention: cannot to determine volatility of used dynamic SQL
  Hint: When you fix this issue, please, recheck other functions that uses this function.
-(6 rows)
+(5 rows)
 
 -- an immutable function is never reported
 create function rp_f13(a int)

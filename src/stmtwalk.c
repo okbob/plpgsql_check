@@ -1968,15 +1968,13 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		PLpgSQL_expr *dynexpr = NULL;
 		DynSQLParams dsp;
 		volatile bool is_ok = true;
-		volatile bool prev_has_execute_stmt = cstate->has_execute_stmt;
 
 		PG_TRY();
 		{
-			cstate->has_execute_stmt = true;
 			cstate->allow_mp = true;
 			cstate->is_dynsql = true;
 
-			cstate->has_mp = false;
+			cstate->found_mp = false;
 
 			dynexpr = palloc0(sizeof(PLpgSQL_expr));
 			dynexpr->expr_rw_param = NULL;
@@ -2004,9 +2002,11 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 																		  dynexpr,
 																		  (ParserSetupHook) dynsql_parser_setup,
 																		  &dsp);
+				if (!is_ok)
+					cstate->found_unknown_query = true;
 			}
 
-			if (is_ok && expr_is_const && !cstate->has_mp && (!params || !dsp.use_params))
+			if (is_ok && expr_is_const && !cstate->found_mp && (!params || !dsp.use_params))
 			{
 				/* probably useless dynamic command */
 				plpgsql_check_put_error(cstate,
@@ -2048,31 +2048,18 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 																		   &dsp);
 				}
 			}
-
-			cstate->allow_mp = false;
-			cstate->is_dynsql = false;
-
-			/*
-			 * this is not real dynamic SQL statement, in this case,
-			 * this cannot be parametrized.
-			 */
-			if (cstate->has_mp)
-				cstate->has_execute_stmt = prev_has_execute_stmt;
-
-			cstate->has_mp = false;
 		}
-		PG_CATCH();
+		PG_FINALLY();
 		{
 			cstate->allow_mp = false;
 			cstate->is_dynsql = false;
-
-			cstate->has_mp = false;
-			cstate->has_execute_stmt = prev_has_execute_stmt;
-
-			PG_RE_THROW();
+			cstate->found_mp = false;
 		}
 		PG_END_TRY();
 	}
+	else
+		/* when we have not dynquery, we cannot to do volatility check */
+		cstate->found_unknown_query = true;
 
 	if (!expr_is_const)
 	{

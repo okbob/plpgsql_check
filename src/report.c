@@ -470,7 +470,7 @@ plpgsql_check_report_too_high_volatility(PLpgSQL_checkstate *cstate)
 			plpgsql_check_put_error(cstate,
 									0, -1,
 									message.data,
-									cstate->has_execute_stmt ? "attention: cannot to determine volatility of used dynamic SQL" : NULL,
+									cstate->found_unknown_query ? "attention: cannot to determine volatility of used dynamic SQL" : NULL,
 									"When you fix this issue, please, recheck other functions that uses this function.",
 									PLPGSQL_CHECK_WARNING_PERFORMANCE,
 									0, NULL, NULL);

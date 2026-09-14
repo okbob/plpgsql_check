@@ -153,7 +153,7 @@ typedef struct PLpgSQL_checkstate
 	List	   *argnames;		/* function arg names */
 	char		decl_volatility;	/* declared function volatility */
 	char		volatility;		/* detected function volatility */
-	bool		has_execute_stmt;	/* detected dynamic SQL, disable
+	bool		found_unknown_query;	/* detected real dynamic SQL, disable
 									 * volatility check */
 	bool		skip_volatility_check;	/* don't do this test for trigger */
 	PLpgSQL_execstate *estate;	/* check state is estate extension */
@@ -187,7 +187,8 @@ typedef struct PLpgSQL_checkstate
 								 * is active */
 	bool		allow_mp;		/* true, when multiple plans in plancache are
 								 * allowed */
-	bool		has_mp;			/* true, when multiple plan was used */
+	bool		found_mp;		/* true, when multiple plan was used,
+								 * disable useless dynsql query warning */
 	bool		was_pragma;		/* true, when last expression was a
 								 * plpgsql_check pragma */
 	plpgsql_check_pragma_vector pragma_vector;

@@ -1247,7 +1247,7 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->ci_magic = CI_MAGIC;
 
 	cstate->decl_volatility = cinfo->volatility;
-	cstate->has_execute_stmt = false;
+	cstate->found_unknown_query = false;
 	cstate->volatility = PROVOLATILE_IMMUTABLE;
 	cstate->skip_volatility_check = (cinfo->rettype == TRIGGEROID ||
 									 cinfo->rettype == EVENT_TRIGGEROID ||
@@ -1284,7 +1284,7 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->stop_check = false;
 	cstate->allow_mp = false;
 	cstate->is_dynsql = false;
-	cstate->has_mp = false;
+	cstate->found_mp = false;
 	cstate->top_stmts = NULL;
 
 	cstate->pragma_vector.disable_check = false;

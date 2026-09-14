@@ -265,6 +265,44 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 	}
 	while (!plansource->is_valid);
 
+	if (list_length(expr->plan->plancache_list) > 1)
+	{
+		ListCell *lc;
+
+		/*
+		 * executed as EXECUTE ' ...; ...'
+		 *
+		 * in this case plpgsql_check_get_plan_source returns last subplan. But
+		 * we can collect volatility for all previous subplans.
+		 */
+		Assert(cstate->allow_mp && cstate->is_dynsql);
+
+		foreach(lc, expr->plan->plancache_list)
+		{
+			CachedPlanSource *plansourcesub = (CachedPlanSource *) lfirst(lc);
+
+			if (plansourcesub != (CachedPlanSource *) llast(expr->plan->plancache_list))
+			{
+				CachedPlan *cplan;
+
+				query = ExprGetQuery(cstate, expr, plansourcesub);
+				if (query)
+				{
+					plpgsql_check_funcexpr(cstate, query, expr->query);
+					collect_volatility(cstate, query);
+					plpgsql_check_detect_dependency(cstate, query);
+				}
+
+				cplan = GetCachedPlan(plansourcesub, NULL, NULL, NULL);
+
+				prohibit_write_plan(cstate, cplan, expr->query);
+
+				/* disallow BEGIN TRANS, COMMIT, ROLLBACK, .. */
+				prohibit_transaction_stmt(cstate, cplan, expr->query);
+			}
+		}
+	}
+
 	query = ExprGetQuery(cstate, expr, plansource);
 	if (!query)
 		return;
@@ -459,8 +497,6 @@ plpgsql_check_get_plan_source(PLpgSQL_checkstate *cstate, SPIPlanPtr plan)
 	if (plan == NULL || plan->magic != _SPI_PLAN_MAGIC)
 		elog(ERROR, "cached plan is not valid plan");
 
-	cstate->has_mp = false;
-
 	nplans = list_length(plan->plancache_list);
 	if (nplans > 1)
 	{
@@ -473,7 +509,7 @@ plpgsql_check_get_plan_source(PLpgSQL_checkstate *cstate, SPIPlanPtr plan)
 		{
 			/* take last */
 			plansource = (CachedPlanSource *) llast(plan->plancache_list);
-			cstate->has_mp = true;
+			cstate->found_mp = true;
 		}
 		else
 			elog(ERROR, "plan is not single execution plany");

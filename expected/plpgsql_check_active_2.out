@@ -6326,3 +6326,80 @@ NOTICE:  profiler is not active
 (1 row)
 
 drop function f_poly;
+create or replace function repro04()
+returns void as $$
+begin
+  execute 'select 1';
+end
+$$ language plpgsql;
+select * from plpgsql_check_function('repro04()', performance_warnings => true);
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:3:EXECUTE:immutable expression without parameters found
+ Detail: the EXECUTE command is not necessary probably
+ Hint: Don't use dynamic SQL when you can use static SQL.
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(5 rows)
+
+create or replace function repro04_into()
+returns int as $$
+declare r int;
+begin
+  execute 'select $1' into r using 1;
+  return r;
+end
+$$ language plpgsql;
+select * from plpgsql_check_function('repro04_into()', performance_warnings => true);
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
+
+create or replace function repro04_real_dynsql(p text)
+returns void as $$
+begin
+  execute 'select ' || quote_literal(p);
+end
+$$ language plpgsql;
+select * from plpgsql_check_function('repro04_real_dynsql(text)', performance_warnings => true);
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Detail: attention: cannot to determine volatility of used dynamic SQL
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(3 rows)
+
+-- a multi statement command is real dynamic sql too, and this case was
+-- reported correctly even before the fix.
+create or replace function repro04_multi()
+returns void as $$
+begin
+  execute 'select 1; select 2';
+end
+$$ language plpgsql;
+select * from plpgsql_check_function('repro04_multi()', performance_warnings => true);
+                                 plpgsql_check_function                                  
+-----------------------------------------------------------------------------------------
+ performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
+ Hint: When you fix this issue, please, recheck other functions that uses this function.
+(2 rows)
+
+create table repro04_multi_target(a int);
+create or replace function repro04_multi()
+returns void as $$
+begin
+  execute 'select 1; insert into repro04_multi_target values(10)';
+end
+$$ language plpgsql;
+select * from plpgsql_check_function('repro04_multi()', performance_warnings => true);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop table repro04_multi_target;
+drop function repro04();
+drop function repro04_into();
+drop function repro04_real_dynsql(text);
+drop function repro04_multi();
