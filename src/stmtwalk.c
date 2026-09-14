@@ -1048,6 +1048,11 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					if (stmt_raise->condname == NULL && stmt_raise->message == NULL &&
 						stmt_raise->options == NIL)
 					{
+						if (!is_inside_exception_handler(outer_stmt_stack))
+							ereport(ERROR,
+									(errcode(ERRCODE_STACKED_DIAGNOSTICS_ACCESSED_WITHOUT_ACTIVE_HANDLER),
+									 errmsg("RAISE without parameters cannot be used outside an exception handler")));
+
 						*closing = PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS;
 						/* should be enhanced in future */
 						*exceptions = list_make1_int(-2);	/* reRAISE */

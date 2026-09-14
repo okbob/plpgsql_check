@@ -515,3 +515,27 @@ drop function sw_f21(text);
 drop function sw_f21b(text);
 drop function sw_f22(text);
 drop table sw_tab1;
+
+-- Bare RAISE needs an active handler, including through nested blocks
+create function sw_bare_raise() returns int as $$
+begin
+  raise;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_bare_raise');
+
+create function sw_handler_raise() returns void as $$
+begin
+  raise division_by_zero;
+exception when division_by_zero then
+  begin
+    raise;
+  end;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_handler_raise');
+
+drop function sw_bare_raise();
+drop function sw_handler_raise();
