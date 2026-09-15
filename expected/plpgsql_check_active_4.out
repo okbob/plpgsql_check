@@ -4881,7 +4881,8 @@ select * from plpgsql_check_function('test_function');
                plpgsql_check_function                
 -----------------------------------------------------
  error:42601:3:EXECUTE:syntax error at or near "zzz"
-(1 row)
+ Query: create table zzz zzz(a int, b int)
+(2 rows)
 
 -- should to correctly detect type
 create or replace function test_function()

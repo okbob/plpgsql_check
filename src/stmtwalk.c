@@ -1936,6 +1936,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 			if (fmt)
 			{
 				char	   *fstr;
+				MemoryContext oldcxt;
 
 				fstr = plpgsql_check_get_formatted_string(cstate, fmt, fexpr,
 														  &found_ident_placeholder,
@@ -1952,8 +1953,25 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 				{
 					if (!found_literal_placeholder)
 					{
-						/* in this case we can do only basic parser check */
-						raw_parser(fstr, RAW_PARSE_DEFAULT);
+						oldcxt = CurrentMemoryContext;
+
+						PG_TRY();
+						{
+							raw_parser(fstr, RAW_PARSE_DEFAULT);
+						}
+						PG_CATCH();
+						{
+							ErrorData *errdata;
+
+							MemoryContextSwitchTo(oldcxt);
+
+							errdata = CopyErrorData();\
+							FlushErrorState();
+
+							errdata->internalquery = fstr;
+							ThrowErrorData(errdata);
+						}
+						PG_END_TRY();
 					}
 
 					if (!found_ident_placeholder)
