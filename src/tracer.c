@@ -871,36 +871,57 @@ tracer_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fextra
 }
 
 /*
+ * Skip pldbgapi3 aux error contexts
+ */
+static ErrorContextCallback *
+skip_plch_errcontext(ErrorContextCallback *econtext)
+{
+	while (econtext)
+	{
+		if (econtext->callback != tracer_plugin.plch_error_callback)
+			return econtext;
+		econtext = econtext->previous;
+	}
+
+	return econtext;
+}
+
+/*
  * get_caller_estate - try to returns near outer estate
  */
 static void
 get_outer_info(char **errcontextstr, int *frame_num)
 {
-	ErrorContextCallback *econtext;
+	ErrorContextCallback *ecxt;
+	ErrorContextCallback *top_ecxt;
 	MemoryContext oldcxt = CurrentMemoryContext;
 
 	*errcontextstr = NULL;
 	*frame_num = 0;
 
-	for (econtext = error_context_stack->previous;
-		 econtext != NULL;
-		 econtext = econtext->previous)
+	top_ecxt = skip_plch_errcontext(error_context_stack);
+
+	for (ecxt = top_ecxt->previous;
+		 ecxt != NULL;
+		 ecxt = ecxt->previous)
 	{
-		*frame_num += 1;
+		/* skip pldbgapi3 error context */
+		if (ecxt->callback != tracer_plugin.plch_error_callback)
+			*frame_num += 1;
 	}
 
 	if (plpgsql_check_tracer_verbosity >= PGERROR_DEFAULT &&
-		error_context_stack->previous)
+		top_ecxt->previous)
 	{
 		ErrorData  *edata;
 
-		econtext = error_context_stack->previous;
+		ecxt = skip_plch_errcontext(top_ecxt->previous);
 
 		errstart(ERROR, TEXTDOMAIN);
 
 		MemoryContextSwitchTo(oldcxt);
 
-		(*econtext->callback) (econtext->arg);
+		(*ecxt->callback) (ecxt->arg);
 
 		edata = CopyErrorData();
 		FlushErrorState();
@@ -1472,10 +1493,13 @@ trace_assert(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, tracer_info *tinfo)
 		/* Show stack and all variables in verbose mode */
 		if (plpgsql_check_trace_assert_verbosity >= PGERROR_DEFAULT)
 		{
-			for (econtext = error_context_stack->previous;
+			for (econtext = (skip_plch_errcontext(error_context_stack))->previous;
 				 econtext != NULL;
 				 econtext = econtext->previous)
 			{
+				if (econtext->callback == tracer_plugin.plch_error_callback)
+					continue;
+
 				frame_num -= 1;
 
 				/*

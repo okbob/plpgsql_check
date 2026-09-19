@@ -533,6 +533,8 @@ typedef struct plch_plugin
 							   Datum value, bool *isnull,
 							   Oid valtype, int32 valtypmod,
 							   Oid reqtype, int32 reqtypmod);
+	/* Functions pointers set by plpgsql_check */
+	void		(*plch_error_callback) (void *arg);
 } plch_plugin;
 
 extern void plch_init_plugin(void);

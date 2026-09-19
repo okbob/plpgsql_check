@@ -45,6 +45,19 @@ typedef struct plpgsql_plugin_info
 	Oid			fn_oid;
 	PLpgSQL_execstate *estate;
 
+	/*
+	 * Raising of any exception by errfinish collects
+	 * stacktrace. In own error context callback we can
+	 * persist error data.
+	 *
+	 * Note: we don't need to clean error_context_stack
+	 * it is done by plpgsql_handler.
+	 */
+	ErrorContextCallback plerrcontext;
+	MemoryContext mcxt;
+	ErrorData  *cur_error;
+	PLpgSQL_stmt *err_stmt;
+
 	plch_fextra *fextra;
 
 	void	   *plugin_info[MAX_PLUGINS];
@@ -89,6 +102,8 @@ static void func_end(PLpgSQL_execstate *estate, PLpgSQL_function *func);
 static void stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 static void stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
 
+static void plpgsql_check_error_callback(void *arg);
+
 static PLpgSQL_plugin plpgsql_plugin = {
 	.func_setup = func_setup,
 	.func_beg = func_beg,
@@ -116,35 +131,55 @@ abort_statements(PLpgSQL_stmt **stmts, int nstmts,
 	MemoryContext exec_mcxt = CurrentMemoryContext;
 	int			i;
 	int			j;
+	PLpgSQL_stmt *err_stmt = plugin_info->estate->err_stmt;
 
-	for (i = 0; i < nplugins; i++)
+	/*
+	 * overwrite estate->err_stmt - this field can be
+	 * overwritten already by exec_stmts - abort_statements
+	 * can be called from stmt_beg when an exception is
+	 * handled, and first statement of exception handler
+	 * is executed.
+	 */
+	plugin_info->estate->err_stmt = plugin_info->err_stmt;
+
+	PG_TRY();
 	{
-		if (plugin_info->is_active[i] && plugins[i]->stmt_abort)
+		for (i = 0; i < nplugins; i++)
 		{
-			plugin_info->estate->plugin_info = plugin_info->plugin_info[i];
+			if (plugin_info->is_active[i] && plugins[i]->stmt_abort)
+			{
+				plugin_info->estate->plugin_info = plugin_info->plugin_info[i];
 
-			if (from_top)
-			{
-				for (j = nstmts - 1; j >= 0; j--)
+				if (from_top)
 				{
-					MemoryContextSwitchTo(exec_mcxt);
-					plugins[i]->stmt_abort(plugin_info->estate,
-										   stmts[j],
-										   plugin_info->fextra);
+					for (j = nstmts - 1; j >= 0; j--)
+					{
+						MemoryContextSwitchTo(exec_mcxt);
+						plugins[i]->stmt_abort(plugin_info->estate,
+											   stmts[j],
+											   plugin_info->fextra);
+					}
 				}
-			}
-			else
-			{
-				for (j = 0; j < nstmts; j++)
+				else
 				{
-					MemoryContextSwitchTo(exec_mcxt);
-					plugins[i]->stmt_abort(plugin_info->estate,
-										   stmts[j],
-										   plugin_info->fextra);
+					for (j = 0; j < nstmts; j++)
+					{
+						MemoryContextSwitchTo(exec_mcxt);
+						plugins[i]->stmt_abort(plugin_info->estate,
+											   stmts[j],
+											   plugin_info->fextra);
+					}
 				}
 			}
 		}
 	}
+	PG_FINALLY();
+	{
+		/* return back err_stmt */
+		plugin_info->estate->err_stmt = err_stmt;
+	}
+	PG_END_TRY();
+
 }
 
 /*
@@ -198,6 +233,7 @@ plugin_info_reset(void *arg)
 	Assert(plch_use_count(plugin_info->fextra->func) > 0);
 
 	loc_estate.func = plugin_info->fextra->func;
+	loc_estate.cur_error = plugin_info->cur_error;
 
 	old_cur_estate = loc_estate.func->cur_estate;
 	loc_estate.func->cur_estate = &loc_estate;
@@ -251,6 +287,7 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	plugin_info->magic = PLUGIN_INFO_MAGIC;
 	plugin_info->fn_oid = func->fn_oid;
 	plugin_info->estate = estate;
+	plugin_info->mcxt = CurrentMemoryContext;
 
 	plugin_info->prev_pldbgapi_plugin_info = top_pldbgapi_plugin_info;
 	top_pldbgapi_plugin_info = plugin_info;
@@ -300,6 +337,7 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 #endif
 
+		plugins[i]->plch_error_callback =  plpgsql_check_error_callback;
 	}
 
 	if (plugin_info->fextra)
@@ -380,6 +418,30 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 }
 
 /*
+ * Every errfinish collects stacktrace. So this routine
+ * should be executed immediately before raising a error.
+ */
+static void
+plpgsql_check_error_callback(void *arg)
+{
+	plpgsql_plugin_info *plugin_info = (plpgsql_plugin_info *) arg;
+
+	if (top_pldbgapi_plugin_info == plugin_info &&
+		geterrcode() != 0)
+	{
+		MemoryContext oldcxt = MemoryContextSwitchTo(plugin_info->mcxt);
+
+		if (plugin_info->cur_error)
+			FreeErrorData(plugin_info->cur_error);
+
+		plugin_info->cur_error = CopyErrorData();
+		plugin_info->err_stmt = plugin_info->estate->err_stmt;
+
+		MemoryContextSwitchTo(oldcxt);
+	}
+}
+
+/*
  * for all active plugins and prev_plpgsql_plugins calls func_beg
  */
 static void
@@ -394,6 +456,11 @@ func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 	Assert(plugin_info->estate == estate);
 	Assert(plugin_info->fn_oid == func->fn_oid);
+
+	plugin_info->plerrcontext.callback = plpgsql_check_error_callback;
+	plugin_info->plerrcontext.arg = plugin_info;
+	plugin_info->plerrcontext.previous = error_context_stack;
+	error_context_stack = &plugin_info->plerrcontext;
 
 	PG_TRY();
 	{
