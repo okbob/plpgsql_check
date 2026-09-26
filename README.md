@@ -803,6 +803,9 @@ It can be used, although the assertions are disabled in plpgsql runtime.
     NOTICE:  #0 PL/pgSQL function inline_code_block line 1 at PERFORM
     DO
 
+Attention: When plpgsql assertions is enabled, then assert expression is evaluated
+2x times - first by plpgsql_check's tracer, second by plpgsql engine.
+
 Tracer can show usage of subtransaction buffer id (`nxids`). The displayed `tnl` number
 is transaction nesting level number (for plpgsql it depends on deep of blocks with
 exception's handlers).
