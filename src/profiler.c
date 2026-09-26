@@ -210,7 +210,8 @@ static plch_plugin profiler_plugin =
 	.func_abort = profiler_func_abort,
 	.stmt_beg = profiler_stmt_beg,
 	.stmt_end = profiler_stmt_end,
-	.stmt_abort = profiler_stmt_abort
+	.stmt_abort = profiler_stmt_abort,
+	.stmt_error = NULL,
 };
 
 static void init_func_hk(func_hk *hk, Oid fn_oid);

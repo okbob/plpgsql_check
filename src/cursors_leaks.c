@@ -65,8 +65,12 @@ static plch_plugin cursors_leaks_plugin =
 {
 	.is_active = is_active,
 	.func_setup = func_setup,
+	.func_beg = NULL,
 	.func_end = func_end,
+	.stmt_beg = NULL,
 	.stmt_end = stmt_end,
+	.stmt_abort = NULL,
+	.stmt_error = NULL,
 };
 
 static FunctionTrace *

@@ -81,6 +81,7 @@ static plch_plugin tracer_plugin =
 	.stmt_beg = tracer_stmt_beg,
 	.stmt_end = tracer_stmt_end,
 	.stmt_abort = tracer_stmt_abort,
+	.stmt_error = NULL,
 };
 
 /*

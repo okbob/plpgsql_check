@@ -55,6 +55,7 @@ typedef struct plpgsql_plugin_info
 	 */
 	ErrorContextCallback plerrcontext;
 	MemoryContext mcxt;
+	MemoryContext ErrorContext;
 	ErrorData  *cur_error;
 	PLpgSQL_stmt *err_stmt;
 
@@ -289,6 +290,12 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	plugin_info->estate = estate;
 	plugin_info->mcxt = CurrentMemoryContext;
 
+	plugin_info->ErrorContext = AllocSetContextCreate(plugin_info->mcxt,
+													  "ErrorContext",
+													  8 * 1024,
+													  8 * 1024,
+													  8 * 1024);
+
 	plugin_info->prev_pldbgapi_plugin_info = top_pldbgapi_plugin_info;
 	top_pldbgapi_plugin_info = plugin_info;
 
@@ -420,22 +427,68 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 /*
  * Every errfinish collects stacktrace. So this routine
  * should be executed immediately before raising a error.
+ *
+ * Do not raise any error, notifications or warnings in this
+ * routine, and nested routines!!!
  */
 static void
 plpgsql_check_error_callback(void *arg)
 {
 	plpgsql_plugin_info *plugin_info = (plpgsql_plugin_info *) arg;
 
+	/*
+	 * Attention - the callback can be raised from pl plugins,
+	 * and then estate->plugin_info should not be a reference
+	 * to pldbapi3 plugin.
+	 */
 	if (top_pldbgapi_plugin_info == plugin_info &&
 		geterrcode() != 0)
 	{
-		MemoryContext oldcxt = MemoryContextSwitchTo(plugin_info->mcxt);
+		/*
+		 * Use preallocated 8kB private error context. Then CopyErrorData()
+		 * should be safe operation. When some plugin needs more memory,
+		 * then should to use own preallocated own ErrorContext.
+		 */
+		MemoryContext oldcxt = MemoryContextSwitchTo(plugin_info->ErrorContext);
 
 		if (plugin_info->cur_error)
 			FreeErrorData(plugin_info->cur_error);
 
 		plugin_info->cur_error = CopyErrorData();
 		plugin_info->err_stmt = plugin_info->estate->err_stmt;
+
+		MemoryContextSwitchTo(oldcxt);
+
+		Assert(plugin_info->magic == PLUGIN_INFO_MAGIC);
+
+		if (plugin_info->fextra)
+		{
+			PLpgSQL_execstate *estate = plugin_info->estate;
+			PLpgSQL_stmt *err_stmt = estate->err_stmt;
+			void	   *old_plugin_info = estate->plugin_info;
+			int			i;
+
+			PG_TRY();
+			{
+				for (i = 0; i < nplugins; i++)
+				{
+					if (plugin_info->is_active[i] && plugins[i]->stmt_error)
+					{
+						estate->plugin_info = plugin_info->plugin_info[i];
+						MemoryContextSwitchTo(plugin_info->ErrorContext);
+						plugins[i]->stmt_error(estate, err_stmt, plugin_info->fextra);
+
+						plugin_info->plugin_info[i] = estate->plugin_info;
+					}
+				}
+			}
+			PG_FINALLY();
+			{
+				estate->plugin_info = old_plugin_info;
+				MemoryContextSwitchTo(oldcxt);
+			}
+			PG_END_TRY();
+		}
 
 		MemoryContextSwitchTo(oldcxt);
 	}

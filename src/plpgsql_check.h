@@ -516,6 +516,7 @@ typedef struct plch_plugin
 	void		(*stmt_beg) (PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra);
 	void		(*stmt_end) (PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra);
 	void		(*stmt_abort) (PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra);
+	void		(*stmt_error) (PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra);
 
 	/* Function pointers set by PL/pgSQL itself */
 	void		(*error_callback) (void *arg);
