@@ -592,3 +592,23 @@ $$ language plpgsql;
 select * from plpgsql_check_function('sw_exception_union(boolean)');
 
 drop function sw_exception_union(boolean);
+
+-- A first-handler rethrow keeps the caught SQLSTATE for outer handlers
+create function sw_nested_rethrow() returns int as $$
+begin
+  begin
+    begin
+      raise division_by_zero;
+    exception when division_by_zero then
+      raise;
+    end;
+  exception when division_by_zero then
+    null;
+  end;
+  return 1;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_nested_rethrow()');
+
+drop function sw_nested_rethrow();

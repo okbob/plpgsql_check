@@ -1643,6 +1643,23 @@ possibly_closed(int c)
 static int
 merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int err_code)
 {
+	if (c_local == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS && err_code != -1)
+	{
+		List	   *normalized = NIL;
+		ListCell   *lc;
+
+		/* replace reRAISE symbol (-2) by real err_code */
+		foreach(lc, exceptions_local)
+		{
+			int			t_err_code = lfirst_int(lc);
+
+			normalized = list_append_unique_int(normalized,
+												t_err_code != -2 ? t_err_code : err_code);
+		}
+
+		exceptions_local = normalized;
+	}
+
 	/*
 	 * initial state - result state is copy of local state
 	 */
@@ -1655,7 +1672,6 @@ merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int
 
 		return c_local;
 	}
-
 
 	/*
 	 * Do nothing when new state is UNKNOWN
@@ -1672,22 +1688,7 @@ merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int
 	{
 		if (c == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
 		{
-
-			if (err_code != -1)
-			{
-				ListCell   *lc;
-
-				/* replace reRAISE symbol (-2) by real err_code */
-				foreach(lc, exceptions_local)
-				{
-					int			t_err_code = lfirst_int(lc);
-
-					*exceptions = list_append_unique_int(*exceptions,
-														 t_err_code != -2 ? t_err_code : err_code);
-				}
-			}
-			else
-				*exceptions = list_concat_unique_int(*exceptions, exceptions_local);
+			*exceptions = list_concat_unique_int(*exceptions, exceptions_local);
 		}
 
 		return c_local;
