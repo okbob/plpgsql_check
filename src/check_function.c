@@ -1283,6 +1283,7 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->stop_check = false;
 	cstate->allow_mp = false;
 	cstate->is_dynsql = false;
+	cstate->dyn_stmt_open = NULL;
 	cstate->found_mp = false;
 	cstate->top_stmts = NULL;
 

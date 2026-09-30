@@ -204,6 +204,15 @@ typedef struct PLpgSQL_checkstate
 	 * of expr in USING list.
 	 */
 	bool		is_dynsql;
+
+	/*
+	 * Holds a pointer to OPEN statement, that was used for specific
+	 * dynamic cursor. This allow to assign result type to target
+	 * variable in FETCH statement when referenced cursor is dynamic.
+	 * When referenced cursor is static, then all necessary info are
+	 * in cursor variable.
+	 */
+	PLpgSQL_stmt_open **dyn_stmt_open;
 } PLpgSQL_checkstate;
 
 /*

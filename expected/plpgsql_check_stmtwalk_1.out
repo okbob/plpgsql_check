@@ -753,3 +753,77 @@ select exists (
 
 drop function sw_dead_flow();
 drop function sw_dead_expression();
+-- Check dynamic cursors before execution can prime record-field metadata
+create function sw_dynamic_cursor() returns int as $$
+declare c refcursor; r record;
+begin
+  open c for execute 'select 1 as a';
+  fetch c into r;
+  close c;
+  return r.a;
+end;
+$$ language plpgsql;
+create function sw_parameter_cursor(v int) returns int as $$
+declare c refcursor; r record;
+begin
+  open c for execute 'select $1::int as a' using v;
+  fetch c into r;
+  close c;
+  return r.a;
+end;
+$$ language plpgsql;
+-- A later static OPEN supersedes the earlier dynamic query
+create function sw_cursor_reopen(v int) returns int as $$
+declare c refcursor; r record;
+begin
+  open c for execute 'select $1::int as a' using v;
+  fetch c into r;
+  close c;
+  open c for select v as b;
+  fetch c into r;
+  close c;
+  return r.b;
+end;
+$$ language plpgsql;
+-- FETCH into scalar targets also invalidates their previous traced constants
+create function sw_dynamic_scalar() returns void as $$
+declare c refcursor; s text := 'select sw_missing_dynamic_column';
+begin
+  open c for execute $q$select 'select 1'::text$q$;
+  fetch c into s;
+  close c;
+  execute s;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('sw_dynamic_cursor()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function('sw_parameter_cursor(int)');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function('sw_cursor_reopen(int)');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function('sw_dynamic_scalar()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select sw_dynamic_cursor() = 1 and sw_parameter_cursor(3) = 3
+   and sw_cursor_reopen(4) = 4 as valid;
+ valid 
+-------
+ t
+(1 row)
+
+do $$ begin perform sw_dynamic_scalar(); end; $$;
+drop function sw_dynamic_cursor();
+drop function sw_parameter_cursor(int);
+drop function sw_cursor_reopen(int);
+drop function sw_dynamic_scalar();
