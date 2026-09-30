@@ -644,6 +644,36 @@ drop function sw_dead_flow();
 drop function sw_dead_expression();
 
 
+-- Pragmas in one branch or handler must not affect its siblings
+create function sw_pragma_siblings(p boolean) returns void as $$
+begin
+  if p then
+    perform plpgsql_check_pragma('disable:check');
+  else
+    perform sw_missing_else_column;
+  end if;
+  case when p then
+    perform plpgsql_check_pragma('disable:check');
+  else
+    perform sw_missing_case_column;
+  end case;
+  begin
+    raise division_by_zero;
+  exception
+    when unique_violation then
+      perform plpgsql_check_pragma('disable:check');
+    when division_by_zero then
+      perform sw_missing_handler_column;
+  end;
+end;
+$$ language plpgsql;
+
+select count(*) = 3 as sibling_checks
+from plpgsql_check_function_tb('sw_pragma_siblings(boolean)', fatal_errors => false)
+where sqlstate = '42703';
+
+drop function sw_pragma_siblings(boolean);
+
 -- Check dynamic cursors before execution can prime record-field metadata
 create function sw_dynamic_cursor() returns int as $$
 declare c refcursor; r record;

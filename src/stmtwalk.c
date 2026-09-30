@@ -1404,19 +1404,14 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 				}
 			}
 		}
-
-		invalidate_strconstvars(cstate);
-		cstate->top_stmts = current_stmts.outer;
 	}
-	PG_CATCH();
+	PG_FINALLY();
 	{
 		cstate->pragma_vector = prev_pragma_vector;
 		cstate->was_pragma = false;
 
 		invalidate_strconstvars(cstate);
 		cstate->top_stmts = current_stmts.outer;
-
-		PG_RE_THROW();
 	}
 	PG_END_TRY();
 }
