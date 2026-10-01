@@ -149,16 +149,41 @@ select funcoid, exec_count from plpgsql_profiler_functions_all()
 select stmtid, exec_stmts from plpgsql_profiler_function_statements_tb('pl_big')
  where stmtid = 1;
 
-set plpgsql_check.max_stats_size to default;
-
-select plpgsql_profiler_reset_all();
-
-select plpgsql_check_profiler(false);
-
 drop function pl_big();
 drop function pl_f3();
 drop function pl_f2();
 drop function pl_f1(int);
 drop table pl_t1;
+
+-- CASE does not have the hypothetical ELSE branch used for IF.
+create function pl_case(n int) returns int as $$
+begin
+  case n
+    when 1 then return 10;
+    when 2 then return 20;
+  end case;
+end;
+$$ language plpgsql;
+create function pl_case_else(n int) returns int as $$
+begin
+  case n
+    when 1 then return 10;
+    when 2 then return 20;
+    else return 0;
+  end case;
+end;
+$$ language plpgsql;
+select pl_case(1), pl_case(2);
+select pl_case_else(1), pl_case_else(2), pl_case_else(0);
+select plpgsql_coverage_branches('pl_case'),
+       plpgsql_coverage_branches('pl_case_else');
+drop function pl_case(int);
+drop function pl_case_else(int);
+
+select plpgsql_check_profiler(false);
+
+select plpgsql_profiler_reset_all();
+
+set plpgsql_check.max_stats_size to default;
 
 set plpgsql_check.use_shared_stats_when_it_possible to default;

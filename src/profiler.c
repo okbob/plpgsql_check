@@ -2463,7 +2463,16 @@ coverage_branches_walker(PLpgSQL_stmt *stmt, coverage_branches_context *context)
 			increment_branch_counters(context, stmts, NULL);
 		}
 
-		increment_branch_counters(context, stmt_case->else_stmts, NULL);
+		/*
+		 * The CASE in PL/pgSQL statement has not implicit ELSE path, because
+		 * when no one path is used, then the exception is raised. Example,
+		 * if we used a enum type, and if we write paths for all values in enums,
+		 * then all paths are covered - and we no able to to write legal code,
+		 * that can execute implicit else paths.
+		 */
+		if (stmt_case->have_else)
+			increment_branch_counters(context, stmt_case->else_stmts, NULL);
+
 
 		/*
 		 * CASE has not hypothetical else branch. In this case an exception is
