@@ -264,7 +264,9 @@ plpgsql_check_assign_to_target_type(PLpgSQL_checkstate *cstate,
 		(target_typoid == TEXTOID && value_typoid == UNKNOWNOID))
 		return;
 
-	if (type_is_rowtype(value_typoid) && !type_is_rowtype(target_typoid))
+	if (!isnull &&
+		type_is_rowtype(value_typoid) && !type_is_rowtype(target_typoid) &&
+		!can_coerce_type(1, &value_typoid, &target_typoid, COERCION_ASSIGNMENT))
 	{
 		StringInfoData str;
 

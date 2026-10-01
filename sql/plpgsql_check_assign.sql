@@ -231,4 +231,55 @@ drop function as_f13();
 drop function as_f14();
 drop trigger as_trg1 on as_tab1;
 drop function as_trg1();
+
+-- A composite source may have a valid scalar assignment cast, or be NULL.
+create type as_pair as (a int, b int);
+
+create function as_f18()
+returns text as $$
+declare value text;
+begin
+  select row(1, 2) into value;
+  return value;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('as_f18');
+select as_f18();
+
+create function as_f19()
+returns int as $$
+declare value int;
+begin
+  select null::as_tab1 into value;
+  return value;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('as_f19');
+select as_f19() is null;
+
+create function as_pair_to_int(p as_pair)
+returns int as $$ select p.a + p.b $$ language sql immutable;
+create cast (as_pair as int) with function as_pair_to_int(as_pair) as assignment;
+
+create function as_f20()
+returns int as $$
+declare value int;
+begin
+  select row(1, 2)::as_pair into value;
+  return value;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('as_f20');
+select as_f20();
+
+drop function as_f18();
+drop function as_f19();
+drop function as_f20();
+drop cast (as_pair as int);
+drop function as_pair_to_int(as_pair);
+drop type as_pair;
+
 drop table as_tab1;
