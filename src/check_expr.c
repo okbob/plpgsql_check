@@ -1240,7 +1240,10 @@ plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
 		 */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
-		tupdesc = plpgsql_check_expr_get_desc(cstate, expr, false, true, is_expression, &first_level_typ);
+		tupdesc = plpgsql_check_expr_get_desc(cstate, expr,
+											  false, is_expression,
+											  is_expression, &first_level_typ);
+
 		is_immutable_null = is_const_null_expr(cstate, expr);
 
 		/* try to identify obsolete return refcursor's value */

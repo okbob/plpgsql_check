@@ -282,4 +282,68 @@ drop cast (as_pair as int);
 drop function as_pair_to_int(as_pair);
 drop type as_pair;
 
+-- RETURN QUERY retains composite-valued columns; RETURN expands a row value.
+create type as_leaf as (n int);
+create type as_wrapper as (payload as_leaf);
+
+create function as_f21()
+returns setof as_wrapper as $$
+begin
+  return query select row(7)::as_leaf;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('as_f21');
+select (payload).n from as_f21();
+
+create function as_f22()
+returns setof as_wrapper as $$
+begin
+  return query execute 'select row(7)::as_leaf';
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('as_f22');
+select (payload).n from as_f22();
+
+create function as_f23()
+returns setof as_leaf as $$
+begin
+  return query select row(7)::as_leaf;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('as_f23');
+
+select * from as_f23();
+
+create function as_f24()
+returns as_leaf as $$
+begin
+  return row(7)::as_leaf;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('as_f24');
+select (as_f24()).n;
+
+create function as_f25()
+returns setof as_leaf as $$
+begin
+  return next row(7)::as_leaf;
+  return;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('as_f25');
+select * from as_f25();
+
+drop function as_f21();
+drop function as_f22();
+drop function as_f23();
+drop function as_f24();
+drop function as_f25();
+drop type as_wrapper;
+drop type as_leaf;
+
 drop table as_tab1;
