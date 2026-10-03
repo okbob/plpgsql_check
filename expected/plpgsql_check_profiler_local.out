@@ -353,6 +353,71 @@ select plpgsql_coverage_branches('pl_case'),
 
 drop function pl_case(int);
 drop function pl_case_else(int);
+-- Row counts belong to the SQL/fetch/return statements, not to subsequent
+-- assignments or enclosing control statements.
+create table pl_row_data(a int);
+create function pl_rows() returns setof int as $$
+declare n int; c refcursor;
+begin
+  insert into pl_row_data values (1), (2), (3);
+  n := 99;
+  if n > 0 then
+    perform * from pl_row_data;
+  end if;
+  update pl_row_data set a = a + 10 where a < 3;
+  delete from pl_row_data where a = 3;
+  execute 'select * from pl_row_data';
+  select count(*) into n from pl_row_data;
+  open c for select a from pl_row_data order by a;
+  fetch c into n;
+  move forward 1 from c;
+  fetch c into n;
+  close c;
+  return next n;
+  return query select a from pl_row_data order by a;
+  return query execute 'select 7';
+  return;
+end;
+$$ language plpgsql;
+select count(*) from pl_rows();
+ count 
+-------
+     4
+(1 row)
+
+select stmtid, stmtname, processed_rows
+  from plpgsql_profiler_function_statements_tb('pl_rows');
+ stmtid |    stmtname     | processed_rows 
+--------+-----------------+----------------
+      1 | statement block |              0
+      2 | SQL statement   |              3
+      3 | assignment      |              0
+      4 | IF              |              0
+      5 | PERFORM         |              3
+      6 | SQL statement   |              2
+      7 | SQL statement   |              1
+      8 | EXECUTE         |              2
+      9 | SQL statement   |              1
+     10 | OPEN            |              0
+     11 | FETCH           |              1
+     12 | MOVE            |              1
+     13 | FETCH           |              0
+     14 | CLOSE           |              0
+     15 | RETURN NEXT     |              1
+     16 | RETURN QUERY    |              2
+     17 | RETURN QUERY    |              1
+     18 | RETURN          |              0
+(18 rows)
+
+select sum(processed_rows[1]) as processed_rows
+  from plpgsql_profiler_function_tb('pl_rows');
+ processed_rows 
+----------------
+             18
+(1 row)
+
+drop function pl_rows();
+drop table pl_row_data;
 select plpgsql_check_profiler(false);
 NOTICE:  profiler is not active
  plpgsql_check_profiler 

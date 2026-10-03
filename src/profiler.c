@@ -1554,6 +1554,23 @@ profiler_stmt_end(PLpgSQL_execstate *estate,
 												   &sinstr->has_queryid,
 												   &sinstr->qparams);
 
+		/* Only these statements set a fresh processed-row count. */
+		switch (stmt->cmd_type)
+		{
+			case PLPGSQL_STMT_EXECSQL:
+			case PLPGSQL_STMT_DYNEXECUTE:
+			case PLPGSQL_STMT_PERFORM:
+			case PLPGSQL_STMT_RETURN_QUERY:
+			case PLPGSQL_STMT_FETCH:
+				sinstr->rows += estate->eval_processed;
+				break;
+			case PLPGSQL_STMT_RETURN_NEXT:
+				sinstr->rows++;
+				break;
+			default:
+				break;
+		}
+
 		_profiler_stmt_end(sinstr, false);
 	}
 }

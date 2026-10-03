@@ -180,6 +180,42 @@ select plpgsql_coverage_branches('pl_case'),
 drop function pl_case(int);
 drop function pl_case_else(int);
 
+-- Row counts belong to the SQL/fetch/return statements, not to subsequent
+-- assignments or enclosing control statements.
+create table pl_row_data(a int);
+create function pl_rows() returns setof int as $$
+declare n int; c refcursor;
+begin
+  insert into pl_row_data values (1), (2), (3);
+  n := 99;
+  if n > 0 then
+    perform * from pl_row_data;
+  end if;
+  update pl_row_data set a = a + 10 where a < 3;
+  delete from pl_row_data where a = 3;
+  execute 'select * from pl_row_data';
+  select count(*) into n from pl_row_data;
+  open c for select a from pl_row_data order by a;
+  fetch c into n;
+  move forward 1 from c;
+  fetch c into n;
+  close c;
+  return next n;
+  return query select a from pl_row_data order by a;
+  return query execute 'select 7';
+  return;
+end;
+$$ language plpgsql;
+
+select count(*) from pl_rows();
+select stmtid, stmtname, processed_rows
+  from plpgsql_profiler_function_statements_tb('pl_rows');
+select sum(processed_rows[1]) as processed_rows
+  from plpgsql_profiler_function_tb('pl_rows');
+
+drop function pl_rows();
+drop table pl_row_data;
+
 select plpgsql_check_profiler(false);
 
 select plpgsql_profiler_reset_all();
