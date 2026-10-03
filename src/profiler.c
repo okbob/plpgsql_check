@@ -1811,6 +1811,16 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, QParams 
  *
  ***************************************
  */
+static double
+fstats_stddev(FuncStats *fs)
+{
+	/* Use the Welford population variance */
+	if (fs->exec_count == 0)
+		return get_float8_nan();
+
+	return sqrt(fs->total_time_m2 / fs->exec_count);
+}
+
 static void
 local_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 {
@@ -1836,7 +1846,7 @@ local_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 													fs->exec_count_err,
 													(double) fs->total_time,
 													ceil(fs->total_time_mean),
-													ceil(sqrt(fs->total_time_m2 / fs->exec_count - 1)),
+													ceil(fstats_stddev(fs)),
 													(double) fs->min_time,
 													(double) fs->max_time);
 	}
@@ -1878,7 +1888,7 @@ shared_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 															fs->exec_count_err,
 															(double) fs->total_time,
 															ceil(fs->total_time_mean),
-															ceil(sqrt(fs->total_time_m2 / fs->exec_count - 1)),
+															ceil(fstats_stddev(fs)),
 															(double) fs->min_time,
 															(double) fs->max_time);
 
