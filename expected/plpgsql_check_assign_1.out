@@ -520,15 +520,15 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('as_f23');
-                              plpgsql_check_function                               
------------------------------------------------------------------------------------
+                                     plpgsql_check_function                                     
+------------------------------------------------------------------------------------------------
  error:42804:3:RETURN QUERY:structure of query does not match function result type
- Detail: Returned type as_leaf does not match expected type integer in column 1.
+ Detail: Returned type as_leaf does not match expected type integer in column "n" (position 1).
 (2 rows)
 
 select * from as_f23();
 ERROR:  structure of query does not match function result type
-DETAIL:  Returned type as_leaf does not match expected type integer in column 1.
+DETAIL:  Returned type as_leaf does not match expected type integer in column "n" (position 1).
 CONTEXT:  SQL statement "select row(7)::as_leaf"
 PL/pgSQL function as_f23() line 3 at RETURN QUERY
 create function as_f24()
