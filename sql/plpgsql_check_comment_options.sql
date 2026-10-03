@@ -238,25 +238,6 @@ $func$ language plpgsql;
 
 select * from co_check('co_standard_string');
 
-set standard_conforming_strings = off;
-set escape_string_warning = off;
-
-create function co_legacy_string()
-returns text as $func$
-declare
-  s text := 'can\'t';
-  x int;
-begin
-  -- @plpgsql_check_options: without_warnings
-  return s;
-end;
-$func$ language plpgsql;
-
-select * from co_check('co_legacy_string');
-
-reset escape_string_warning;
-reset standard_conforming_strings;
-
 drop function co_escape_string();
 drop function co_standard_string();
 drop function co_legacy_string();
@@ -724,3 +705,4 @@ drop function co_bool3();
 drop function co_bool2();
 drop function co_bool1();
 drop function co_check(text, regclass);
+

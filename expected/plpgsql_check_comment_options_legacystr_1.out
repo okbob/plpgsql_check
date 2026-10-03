@@ -1,0 +1,36 @@
+load 'plpgsql_check';
+set client_min_messages to warning;
+create extension if not exists plpgsql_check;
+set client_min_messages to notice;
+-- Some errors reported by the options parser contain the oid of the
+-- checked function. This wrapper replaces the oid, so the output is
+-- stable.
+create function co_check(fnname text, rel regclass default 0)
+returns setof text as $$
+begin
+  return query select * from plpgsql_check_function(fnname, rel);
+exception when others then
+  return next 'ERROR: ' || regexp_replace(sqlerrm, 'fnoid: [0-9]+', 'fnoid: NNN');
+end;
+$$ language plpgsql;
+set standard_conforming_strings = off;
+set escape_string_warning = off;
+create function co_legacy_string()
+returns text as $func$
+declare
+  s text := 'can\'t';
+  x int;
+begin
+  -- @plpgsql_check_options: without_warnings
+  return s;
+end;
+$func$ language plpgsql;
+select * from co_check('co_legacy_string');
+ co_check 
+----------
+(0 rows)
+
+reset escape_string_warning;
+reset standard_conforming_strings;
+drop function co_legacy_string();
+drop function co_check(text, regclass);

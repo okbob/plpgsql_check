@@ -1829,9 +1829,20 @@ plpgsql_check_search_comment_options(plpgsql_check_info *cinfo)
 
 		else if (*src == '\'')
 		{
+
+#if PG_VERSION_NUM < 190000
+
 			bool		backslash_escapes = !standard_conforming_strings ||
 				(src > srcstart && (src[-1] == 'e' || src[-1] == 'E') &&
 				 (src == srcstart + 1 || !is_ident_cont((unsigned char) src[-2])));
+
+#else
+
+			bool		backslash_escapes =
+				(src > srcstart && (src[-1] == 'e' || src[-1] == 'E') &&
+				 (src == srcstart + 1 || !is_ident_cont((unsigned char) src[-2])));
+
+#endif
 
 			src++;
 

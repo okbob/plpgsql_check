@@ -39,7 +39,8 @@ REGRESS = plpgsql_check_passive\
 		plpgsql_check_check_function\
 		plpgsql_check_pldbgapi3\
 		plpgsql_check_nocrash\
-		plpgsql_check_nocrash_unstable_01
+		plpgsql_check_nocrash_unstable_01\
+		plpgsql_check_comment_options_legacystr
 
 ifdef NO_PGXS
 subdir = contrib/plpgsql_check
