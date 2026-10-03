@@ -1204,8 +1204,8 @@ plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri,
 	else
 		SET_RESULT_INT32(Anum_profiler_statements_parent_stmtid, parent_stmtid);
 
-	if ((exec_stmts + exec_stmts_err) > 0)
-		SET_RESULT_FLOAT8(Anum_profiler_statements_avg_time, ceil(((float8) total_time) / (exec_stmts + exec_stmts_err)) / 1000.0);
+	if ((exec_stmts) > 0)
+		SET_RESULT_FLOAT8(Anum_profiler_statements_avg_time, ceil(((float8) total_time) / (exec_stmts)) / 1000.0);
 	else
 		SET_RESULT_NULL(Anum_profiler_statements_avg_time);
 

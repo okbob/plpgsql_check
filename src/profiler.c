@@ -2215,7 +2215,7 @@ profiler_report_walker(PLpgSQL_stmt *stmt, profiler_report_context *context)
 
 			context->total_time_abs = accum_float8(context, total_time_abs, sstats->us_total / 1000.0);
 
-			total_exec_count = sstats->exec_count + sstats->exec_count_err;
+			total_exec_count = sstats->exec_count;
 			if (total_exec_count > 0)
 				avg_time_us = ceil(((float8) sstats->us_total) / total_exec_count);
 			else

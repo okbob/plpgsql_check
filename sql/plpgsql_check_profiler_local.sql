@@ -216,6 +216,34 @@ select sum(processed_rows[1]) as processed_rows
 drop function pl_rows();
 drop table pl_row_data;
 
+-- Error counts are a subset of execution counts, not additional executions.
+create function pl_timing_error() returns int as $$
+begin
+  perform pg_sleep(0.01);
+  raise exception 'controlled timing error';
+end;
+$$ language plpgsql;
+create function pl_timing_catch() returns void as $$
+begin
+  perform pl_timing_error();
+exception when raise_exception then
+  null;
+end;
+$$ language plpgsql;
+
+select pl_timing_catch();
+select count(*) = 1 and bool_and(exec_stmts = 1 and exec_stmts_err = 1
+                                and total_time > 0 and avg_time = total_time) as correct_average
+  from plpgsql_profiler_function_statements_tb('pl_timing_catch')
+ where stmtname = 'PERFORM';
+select count(*) = 1 and bool_and(exec_stmts[1] = 1 and exec_stmts_err[1] = 1
+                                and total_time[1] > 0 and avg_time[1] = total_time[1]) as correct_average
+  from plpgsql_profiler_function_tb('pl_timing_catch')
+ where source like '%perform pl_timing_error%';
+
+drop function pl_timing_catch();
+drop function pl_timing_error();
+
 select plpgsql_check_profiler(false);
 
 select plpgsql_profiler_reset_all();
