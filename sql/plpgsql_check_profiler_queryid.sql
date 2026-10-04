@@ -87,13 +87,38 @@ select pq_f3();
 select queryids, lineno, stmt_lineno, exec_stmts, source
   from plpgsql_profiler_function_tb('pq_f3');
 
+select plpgsql_profiler_install_fake_queryid_hook();
+
+-- Skipping a statement must retain its last observed query identifier.
+create function pq_branch(take_branch boolean) returns void as $$
+begin
+  if take_branch then
+    perform 42;
+  end if;
+end;
+$$ language plpgsql;
+select pq_branch(true);
+select queryid, exec_stmts
+  from plpgsql_profiler_function_statements_tb('pq_branch')
+ where stmtname = 'PERFORM';
+select pq_branch(false);
+select queryid, exec_stmts
+  from plpgsql_profiler_function_statements_tb('pq_branch')
+ where stmtname = 'PERFORM';
+select queryids, exec_stmts
+  from plpgsql_profiler_function_tb('pq_branch')
+ where source like '%perform 42%';
+
 select plpgsql_profiler_reset_all();
 
 set plpgsql_check.profiler to off;
+
+select plpgsql_profiler_remove_fake_queryid_hook();
 
 drop function pq_f3();
 drop function pq_f2();
 drop function pq_f1();
 drop table pq_t1;
+drop function pq_branch(boolean);
 
 set plpgsql_check.use_shared_stats_when_it_possible to default;

@@ -1115,8 +1115,11 @@ merge_stmts_sstats(StmtStats *persist_ss, StmtStats *sstats, int nstatements)
 		_t = &persist_ss[i];
 		_s = &sstats[i];
 
-		_t->queryid = _s->queryid;
-		_t->has_queryid = _s->has_queryid;
+		if (_s->has_queryid)
+		{
+			_t->queryid = _s->queryid;
+			_t->has_queryid = _s->has_queryid;
+		}
 
 		if (_t->us_max < _s->us_max)
 			_t->us_max = _s->us_max;
