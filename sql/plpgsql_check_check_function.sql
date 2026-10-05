@@ -50,8 +50,55 @@ begin
 end;
 $$ language plpgsql;
 
--- anymultirange has no option, the fallback type is used for it
+-- anymultirange is derived from the anyrangetype option
 select * from plpgsql_check_function('cf_f4(anymultirange)');
+
+create function cf_multirange(a anymultirange) returns anyrange as $$
+begin
+  return range_merge(a);
+end;
+$$ language plpgsql;
+select cf_multirange('{[1,3)}'::int4multirange);
+select * from plpgsql_check_function('cf_multirange');
+select * from plpgsql_check_function('cf_multirange', anyrangetype => 'numrange');
+select * from plpgsql_check_function('cf_multirange', anyrangetype => 'int');
+
+create function cf_multirange_result(a anyrange) returns anymultirange as $$
+begin
+  return multirange(a);
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('cf_multirange_result');
+select * from plpgsql_check_function('cf_multirange_result', anyrangetype => 'numrange');
+
+-- Some supported core PL/pgSQL validators reject anycompatiblemultirange.
+set check_function_bodies = off;
+create function cf_compatible_multirange(a anycompatiblemultirange)
+returns anycompatiblerange as $$
+begin
+  return range_merge(a);
+end;
+$$ language plpgsql;
+create function cf_compatible_multirange_result(a anycompatiblerange)
+returns anycompatiblemultirange as $$
+begin
+  return multirange(a);
+end;
+$$ language plpgsql;
+reset check_function_bodies;
+select cf_compatible_multirange('{[1,3)}'::int4multirange);
+select * from plpgsql_check_function('cf_compatible_multirange');
+select * from plpgsql_check_function('cf_compatible_multirange',
+                                    anycompatiblerangetype => 'numrange');
+select * from plpgsql_check_function('cf_compatible_multirange',
+                                    anycompatiblerangetype => 'int');
+select * from plpgsql_check_function('cf_compatible_multirange_result');
+select * from plpgsql_check_function('cf_compatible_multirange_result',
+                                    anycompatiblerangetype => 'numrange');
+drop function cf_multirange(anymultirange);
+drop function cf_multirange_result(anyrange);
+drop function cf_compatible_multirange(anycompatiblemultirange);
+drop function cf_compatible_multirange_result(anycompatiblerange);
 
 -- when some argument is not an input argument, then the modes of all the
 -- arguments are read from the catalog

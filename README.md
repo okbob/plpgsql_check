@@ -170,11 +170,14 @@ You can set level of warnings via function's parameters:
 
 * `anyenumtype regtype DEFAULT '-'` - an actual type to be used when testing the anyenum type
 
-* `anyrangetype regtype DEFAULT 'int4range'` - an actual type to be used when testing the anyrange type
+* `anyrangetype regtype DEFAULT 'int4range'` - an actual type to be used when testing
+  `anyrange`; its associated multirange type is used for `anymultirange`
 
 * `anycompatibletype DEFAULT 'int'` - an actual type to be used when testing the anycompatible type
 
-* `anycompatiblerangetype DEFAULT 'int4range'` - an actual range type to be used when testing the anycompatible range type
+* `anycompatiblerangetype DEFAULT 'int4range'` - an actual range type to be used when
+  testing `anycompatiblerange`; its associated multirange type is used for
+  `anycompatiblemultirange`
 
 * `without_warnings DEFAULT false` - disable all warnings (Ignores all xxxx_warning parameters, a quick override)
 

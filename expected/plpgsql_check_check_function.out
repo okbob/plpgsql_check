@@ -60,13 +60,101 @@ begin
   return 1;
 end;
 $$ language plpgsql;
--- anymultirange has no option, the fallback type is used for it
+-- anymultirange is derived from the anyrangetype option
 select * from plpgsql_check_function('cf_f4(anymultirange)');
           plpgsql_check_function          
 ------------------------------------------
  warning extra:00000:unused parameter "a"
 (1 row)
 
+create function cf_multirange(a anymultirange) returns anyrange as $$
+begin
+  return range_merge(a);
+end;
+$$ language plpgsql;
+select cf_multirange('{[1,3)}'::int4multirange);
+ cf_multirange 
+---------------
+ [1,3)
+(1 row)
+
+select * from plpgsql_check_function('cf_multirange');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function('cf_multirange', anyrangetype => 'numrange');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function('cf_multirange', anyrangetype => 'int');
+ERROR:  type specified by anyrangetype option is not range
+create function cf_multirange_result(a anyrange) returns anymultirange as $$
+begin
+  return multirange(a);
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('cf_multirange_result');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function('cf_multirange_result', anyrangetype => 'numrange');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+-- Some supported core PL/pgSQL validators reject anycompatiblemultirange.
+set check_function_bodies = off;
+create function cf_compatible_multirange(a anycompatiblemultirange)
+returns anycompatiblerange as $$
+begin
+  return range_merge(a);
+end;
+$$ language plpgsql;
+create function cf_compatible_multirange_result(a anycompatiblerange)
+returns anycompatiblemultirange as $$
+begin
+  return multirange(a);
+end;
+$$ language plpgsql;
+reset check_function_bodies;
+select cf_compatible_multirange('{[1,3)}'::int4multirange);
+ cf_compatible_multirange 
+--------------------------
+ [1,3)
+(1 row)
+
+select * from plpgsql_check_function('cf_compatible_multirange');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function('cf_compatible_multirange',
+                                    anycompatiblerangetype => 'numrange');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function('cf_compatible_multirange',
+                                    anycompatiblerangetype => 'int');
+ERROR:  type specified by anycompatiblerangetype option is not range
+select * from plpgsql_check_function('cf_compatible_multirange_result');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function('cf_compatible_multirange_result',
+                                    anycompatiblerangetype => 'numrange');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function cf_multirange(anymultirange);
+drop function cf_multirange_result(anyrange);
+drop function cf_compatible_multirange(anycompatiblemultirange);
+drop function cf_compatible_multirange_result(anycompatiblerange);
 -- when some argument is not an input argument, then the modes of all the
 -- arguments are read from the catalog
 create function cf_f5(a anyelement, out b anyelement, out c int) as $$

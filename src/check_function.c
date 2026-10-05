@@ -856,6 +856,14 @@ replace_polymorphic_type(plpgsql_check_info *cinfo,
 				typ = is_variadic ? get_array_type(cinfo->anyrangeoid) : cinfo->anyrangeoid;
 				break;
 
+			case ANYMULTIRANGEOID:
+				typ = get_range_multirange(cinfo->anyrangeoid);
+				if (!OidIsValid(typ))
+					elog(ERROR, "type specified by anyrangetype option is not range");
+				if (is_variadic)
+					typ = get_array_type(typ);
+				break;
+
 			case ANYCOMPATIBLEOID:
 				typ = is_variadic ? anycompatible_array_oid : cinfo->anycompatibleoid;
 				break;
@@ -872,6 +880,14 @@ replace_polymorphic_type(plpgsql_check_info *cinfo,
 
 			case ANYCOMPATIBLERANGEOID:
 				typ = is_variadic ? get_array_type(cinfo->anycompatiblerangeoid) : cinfo->anycompatiblerangeoid;
+				break;
+
+			case ANYCOMPATIBLEMULTIRANGEOID:
+				typ = get_range_multirange(cinfo->anycompatiblerangeoid);
+				if (!OidIsValid(typ))
+					elog(ERROR, "type specified by anycompatiblerangetype option is not range");
+				if (is_variadic)
+					typ = get_array_type(typ);
 				break;
 
 			default:
