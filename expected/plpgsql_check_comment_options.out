@@ -434,6 +434,78 @@ select * from co_check('co_relid', 'co_trig_tab');
 ----------
 (0 rows)
 
+-- Validate the final options, so a comment can supply a required relid.
+select * from co_check('co_relid');
+ co_check 
+----------
+(0 rows)
+
+select * from plpgsql_check_function_tb('co_relid()'::regprocedure);
+ functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
+(0 rows)
+
+select * from plpgsql_check_function('co_relid', newtable => 'co_transition');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_make_pragma('co_relid()');
+ plpgsql_make_pragma 
+---------------------
+(0 rows)
+
+-- Conversely, a comment cannot attach trigger metadata to a nontrigger.
+create function co_relid_invalid() returns int as $$
+-- @plpgsql_check_options: relid = co_trig_tab
+begin
+  return 1;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('co_relid_invalid');
+ERROR:  function is not trigger
+HINT:  Trigger relation oid must not be valid for non dml trigger function.
+select * from plpgsql_check_function('co_relid_invalid()'::regprocedure);
+ERROR:  function is not trigger
+HINT:  Trigger relation oid must not be valid for non dml trigger function.
+select * from plpgsql_check_function_tb('co_relid_invalid');
+ERROR:  function is not trigger
+HINT:  Trigger relation oid must not be valid for non dml trigger function.
+select * from plpgsql_check_function_tb('co_relid_invalid()'::regprocedure);
+ERROR:  function is not trigger
+HINT:  Trigger relation oid must not be valid for non dml trigger function.
+select * from plpgsql_make_pragma('co_relid_invalid()');
+ERROR:  function is not trigger
+HINT:  Trigger relation oid must not be valid for non dml trigger function.
+select * from plpgsql_check_function('co_relid_invalid',
+                                    use_incomment_options => false);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function_tb('co_relid_invalid',
+                                       use_incomment_options => false);
+ functionid | lineno | statement | sqlstate | message | detail | hint | level | position | query | context 
+------------+--------+-----------+----------+---------+--------+------+-------+----------+-------+---------
+(0 rows)
+
+drop function co_relid_invalid();
+create function co_transition_invalid() returns int as $$
+-- @plpgsql_check_options: newtable = co_transition
+begin
+  return 1;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('co_transition_invalid');
+ERROR:  missing description of oldtable or newtable
+HINT:  Parameter relid is a empty.
+select * from plpgsql_check_function_tb('co_transition_invalid');
+ERROR:  missing description of oldtable or newtable
+HINT:  Parameter relid is a empty.
+select * from plpgsql_make_pragma('co_transition_invalid()');
+ERROR:  missing description of oldtable or newtable
+HINT:  Parameter relid is a empty.
+drop function co_transition_invalid();
 -- the value can be a qualified name, with quoted parts
 create function co_relid_qualified()
 returns trigger as $$

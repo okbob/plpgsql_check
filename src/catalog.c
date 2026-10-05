@@ -130,6 +130,12 @@ plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo)
 	/* profiler doesn't require trigger data check */
 	if (!cinfo->show_profile)
 	{
+		if ((cinfo->oldtable || cinfo->newtable) && !OidIsValid(cinfo->relid))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("missing description of oldtable or newtable"),
+					 errhint("Parameter relid is a empty.")));
+
 		/* dml trigger needs valid relid, others not */
 		if (cinfo->trigtype == PLPGSQL_DML_TRIGGER)
 		{

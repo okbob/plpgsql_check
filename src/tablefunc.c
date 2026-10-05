@@ -224,12 +224,6 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	else
 		cinfo.newtable = NameStr(*(PG_GETARG_NAME(10)));
 
-	if ((cinfo.oldtable || cinfo.newtable) && !OidIsValid(cinfo.relid))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("missing description of oldtable or newtable"),
-				 errhint("Parameter relid is a empty.")));
-
 	cinfo.anyelementoid = PG_GETARG_OID(11);
 	cinfo.anyenumoid = PG_GETARG_OID(12);
 	cinfo.anyrangeoid = PG_GETARG_OID(13);
@@ -241,10 +235,11 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 		elog(ERROR, "cache lookup failed for function %u", cinfo.fn_oid);
 
 	plpgsql_check_get_function_info(&cinfo);
-	plpgsql_check_precheck_conditions(&cinfo);
 
 	if (PG_GETARG_BOOL(18))
 		plpgsql_check_search_comment_options(&cinfo);
+
+	plpgsql_check_precheck_conditions(&cinfo);
 
 	plpgsql_check_init_ri(&ri, format, rsinfo);
 
@@ -381,22 +376,16 @@ check_function_tb_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	else
 		cinfo.newtable = NameStr(*(PG_GETARG_NAME(9)));
 
-	if ((cinfo.oldtable || cinfo.newtable) && !OidIsValid(cinfo.relid))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("missing description of oldtable or newtable"),
-				 errhint("Parameter relid is a empty.")));
-
 	cinfo.proctuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(cinfo.fn_oid));
 	if (!HeapTupleIsValid(cinfo.proctuple))
 		elog(ERROR, "cache lookup failed for function %u", cinfo.fn_oid);
 
 	plpgsql_check_get_function_info(&cinfo);
-	plpgsql_check_precheck_conditions(&cinfo);
 
 	if (PG_GETARG_BOOL(17))
 		plpgsql_check_search_comment_options(&cinfo);
 
+	plpgsql_check_precheck_conditions(&cinfo);
 
 	plpgsql_check_init_ri(&ri, PLPGSQL_CHECK_FORMAT_TABULAR, rsinfo);
 
@@ -652,9 +641,9 @@ plpgsql_make_pragma(PG_FUNCTION_ARGS)
 		elog(ERROR, "cache lookup failed for function %u", cinfo.fn_oid);
 
 	plpgsql_check_get_function_info(&cinfo);
-	plpgsql_check_precheck_conditions(&cinfo);
 
 	plpgsql_check_search_comment_options(&cinfo);
+	plpgsql_check_precheck_conditions(&cinfo);
 
 	/* no warnings should be raised in pragma generation mode */
 	plpgsql_check_set_without_warnings(&cinfo);

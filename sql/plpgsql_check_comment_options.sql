@@ -366,6 +366,41 @@ $$ language plpgsql;
 
 select * from co_check('co_relid', 'co_trig_tab');
 
+-- Validate the final options, so a comment can supply a required relid.
+select * from co_check('co_relid');
+select * from plpgsql_check_function_tb('co_relid()'::regprocedure);
+select * from plpgsql_check_function('co_relid', newtable => 'co_transition');
+select * from plpgsql_make_pragma('co_relid()');
+
+-- Conversely, a comment cannot attach trigger metadata to a nontrigger.
+create function co_relid_invalid() returns int as $$
+-- @plpgsql_check_options: relid = co_trig_tab
+begin
+  return 1;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('co_relid_invalid');
+select * from plpgsql_check_function('co_relid_invalid()'::regprocedure);
+select * from plpgsql_check_function_tb('co_relid_invalid');
+select * from plpgsql_check_function_tb('co_relid_invalid()'::regprocedure);
+select * from plpgsql_make_pragma('co_relid_invalid()');
+select * from plpgsql_check_function('co_relid_invalid',
+                                    use_incomment_options => false);
+select * from plpgsql_check_function_tb('co_relid_invalid',
+                                       use_incomment_options => false);
+drop function co_relid_invalid();
+
+create function co_transition_invalid() returns int as $$
+-- @plpgsql_check_options: newtable = co_transition
+begin
+  return 1;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('co_transition_invalid');
+select * from plpgsql_check_function_tb('co_transition_invalid');
+select * from plpgsql_make_pragma('co_transition_invalid()');
+drop function co_transition_invalid();
+
 -- the value can be a qualified name, with quoted parts
 create function co_relid_qualified()
 returns trigger as $$
@@ -705,4 +740,3 @@ drop function co_bool3();
 drop function co_bool2();
 drop function co_bool1();
 drop function co_check(text, regclass);
-
