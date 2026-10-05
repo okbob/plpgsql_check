@@ -23,7 +23,7 @@
 
 static void check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **exceptions);
 static PLpgSQL_stmt_stack_item *push_stmt_to_stmt_stack(PLpgSQL_checkstate *cstate);
-static void pop_stmt_from_stmt_stack(PLpgSQL_checkstate *cstate);
+static void pop_stmt_from_stmt_stack(PLpgSQL_checkstate *cstate, int *closing, List **exceptions);
 static bool is_any_loop_stmt(PLpgSQL_stmt *stmt);
 static bool is_inside_exception_handler(PLpgSQL_stmt_stack_item *current);
 static PLpgSQL_stmt *find_nearest_loop(PLpgSQL_stmt_stack_item *current);
@@ -1251,7 +1251,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				elog(ERROR, "unrecognized cmd_type: %d", stmt->cmd_type);
 		}
 
-		pop_stmt_from_stmt_stack(cstate);
+		pop_stmt_from_stmt_stack(cstate, closing, exceptions);
 
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
@@ -1269,7 +1269,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
 
-		pop_stmt_from_stmt_stack(cstate);
+		pop_stmt_from_stmt_stack(cstate, closing, exceptions);
 
 		if (!cstate->pragma_vector.disable_check)
 		{
@@ -1403,6 +1403,41 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 					*exceptions = NIL;
 				}
 			}
+
+			if (stmt->cmd_type == PLPGSQL_STMT_EXIT && !dead_code_alert)
+			{
+				PLpgSQL_stmt_exit *stmt_exit = (PLpgSQL_stmt_exit *) stmt;
+				PLpgSQL_stmt_stack_item *outer_target_stmt;
+
+				/*
+				 * the EXIT and the CONTINUE statements does jump out of
+				 * body, and this jump can overwrite exit status.
+				 *
+				 * In this moment, the outer_target_stmt should be correct,
+				 * because the stmt is already succesfully checked.
+				 */
+				outer_target_stmt = cstate->top_stmt_stack;
+				while (outer_target_stmt)
+				{
+					/* set has_exit for all inner bodies */
+					outer_target_stmt->has_exit = true;
+
+					if (stmt_exit->label)
+					{
+						if (outer_target_stmt->label &&
+							strcmp(stmt_exit->label, outer_target_stmt->label) == 0)
+						{
+							break;
+						}
+					}
+					else if (is_any_loop_stmt(outer_target_stmt->stmt))
+					{
+						break;
+					}
+
+					outer_target_stmt = outer_target_stmt->outer;
+				}
+			}
 		}
 	}
 	PG_FINALLY();
@@ -1506,12 +1541,21 @@ push_stmt_to_stmt_stack(PLpgSQL_checkstate *cstate)
 }
 
 static void
-pop_stmt_from_stmt_stack(PLpgSQL_checkstate *cstate)
+pop_stmt_from_stmt_stack(PLpgSQL_checkstate *cstate, int *closing, List **exceptions)
 {
 	PLpgSQL_stmt_stack_item *current = cstate->top_stmt_stack;
 
 	Assert(cstate->top_stmt_stack != NULL);
 
+	/*
+	 * Overwrite exit status, when statement was ended by EXIT statement.
+	 * In this case, the most valid exit state is UNKNOWN.
+	 */
+	if (cstate->top_stmt_stack->has_exit)
+	{
+		*closing = PLPGSQL_CHECK_UNKNOWN;
+		*exceptions = NIL;
+	}
 
 	cstate->top_stmt_stack = current->outer;
 	pfree(current);

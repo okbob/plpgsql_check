@@ -732,3 +732,179 @@ drop function sw_dynamic_cursor();
 drop function sw_parameter_cursor(int);
 drop function sw_cursor_reopen(int);
 drop function sw_dynamic_scalar();
+
+create function sw_exit_loop(p boolean)
+returns int as $$
+begin
+  loop
+    if p then
+      exit;
+    end if;
+    return 1;
+  end loop;
+  return 2;
+end;
+$$ language plpgsql;
+
+-- is ok
+select * from plpgsql_check_function('sw_exit_loop(boolean)');
+
+drop function sw_exit_loop(boolean);
+
+create function sw_exit_loop(p boolean)
+returns int as $$
+begin
+  loop
+    exit when p;
+    return 1;
+  end loop;
+  return 2;
+end;
+$$ language plpgsql;
+
+-- is ok
+select * from plpgsql_check_function('sw_exit_loop');
+
+drop function sw_exit_loop(boolean);
+
+create function sw_exit_nested(p boolean)
+returns int as $$
+begin
+  <<outer_loop>>
+  loop
+    loop
+      exit outer_loop when p;
+      return 1;
+    end loop;
+  end loop;
+  return 2;
+end;
+$$ language plpgsql;
+
+-- is ok
+select * from plpgsql_check_function('sw_exit_nested');
+
+drop function sw_exit_nested(boolean);
+
+create function sw_exit_block(p boolean)
+returns int as $$
+begin
+  <<target>>
+  begin
+    exit target when p;
+    return 1;
+  end;
+  return 2;
+end;
+$$ language plpgsql;
+
+-- is ok
+select * from plpgsql_check_function('sw_exit_block');
+
+drop function sw_exit_block(boolean);
+
+create function sw_exit_missing(p boolean)
+returns int as $$
+begin
+  loop
+    exit when p;
+    return 1;
+  end loop;
+  return 1;
+end;
+$$ language plpgsql;
+
+-- is ok
+select * from plpgsql_check_function('sw_exit_missing');
+
+drop function sw_exit_missing(boolean);
+
+create function sw_exit_inner()
+returns int as $$
+begin
+  loop
+    loop
+      exit;
+    end loop;
+    return 1;
+  end loop;
+  return 2;
+end;
+$$ language plpgsql;
+
+-- should be warning
+select * from plpgsql_check_function('sw_exit_inner');
+
+drop function sw_exit_inner();
+
+create function sw_continue_path()
+returns int as $$
+declare i int := 0;
+begin
+  loop
+    i := i + 1;
+    continue when i = 1;
+    return i;
+  end loop;
+  return 3;
+end;
+$$ language plpgsql;
+
+-- is ok
+select * from plpgsql_check_function('sw_continue_path');
+
+drop function sw_continue_path();
+
+create function sw_continue_outer()
+returns int as $$
+begin
+  <<outer_loop>>
+  for i in 1..2 loop
+    loop
+      continue outer_loop;
+    end loop;
+  end loop;
+  return 1;
+end;
+$$ language plpgsql;
+
+-- is ok
+select * from plpgsql_check_function('sw_continue_outer');
+
+drop function sw_continue_outer();
+
+create function sw_dead_exit()
+returns int as $$
+begin
+  loop
+    return 1;
+    exit;
+  end loop;
+  return 2;
+end;
+$$ language plpgsql;
+
+-- should be warning
+select * from plpgsql_check_function('sw_dead_exit');
+
+drop function sw_dead_exit();
+
+create function sw_handler_exit()
+returns int as $$
+begin
+  loop
+    begin
+      raise division_by_zero;
+    exception
+      when unique_violation then exit;
+      when division_by_zero then return 1;
+    end;
+  end loop;
+  return 2;
+end;
+$$ language plpgsql;
+
+-- is ok
+select * from plpgsql_check_function('sw_handler_exit');
+
+drop function sw_handler_exit();
