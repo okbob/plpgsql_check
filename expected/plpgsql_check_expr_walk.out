@@ -101,6 +101,28 @@ select * from plpgsql_check_function('ew_f6', fatal_errors => false);
  --            ^
 (3 rows)
 
+-- Adding the format-string argument must not overflow an INT_MAX position.
+create function ew_max_position(p text, args text[]) returns void as $$
+begin
+  execute format('SELECT %2147483647$s', p);
+  execute format('SELECT %1$*2147483647$s', p);
+  perform format('%2147483647$s', p);
+  perform format('%1$*2147483647$s', p);
+  execute format('SELECT %2147483647$s', variadic args);
+  execute format('SELECT %*2147483647$s %s', variadic args);
+end;
+$$ language plpgsql;
+select sqlstate, message from plpgsql_check_function_tb('ew_max_position',
+  fatal_errors => false, security_warnings => true) where level = 'error';
+ sqlstate |            message             
+----------+--------------------------------
+ 22023    | too few arguments for format()
+ 22023    | too few arguments for format()
+ 22023    | too few arguments for format()
+ 22023    | too few arguments for format()
+(4 rows)
+
+drop function ew_max_position(text, text[]);
 -- only s, I and L are known specifiers
 create function ew_f7(p text)
 returns void as $$

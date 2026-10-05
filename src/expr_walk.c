@@ -628,8 +628,8 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 	const char *end_ptr = fmt + strlen(fmt);
 	List	   *args = format_get_args(fexpr);
 	int			nargs = list_length(args);
-	int			arg = 1;
-	int			_arg;
+	int64		arg = 1;
+	int64		_arg;
 	bool		is_error;
 
 	*found_ident_placeholder = false;
@@ -683,12 +683,12 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 		{
 			if (widthpos > 0)
 			{
-				if (widthpos + 1 > nargs)
+				if ((int64) widthpos + 1 > nargs)
 				{
 					pfree(sinfo.data);
 					return NULL;
 				}
-				arg = widthpos + 1;
+				arg = (int64) widthpos + 1;
 			}
 			else
 			{
@@ -700,7 +700,7 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 			}
 		}
 
-		_arg = argpos >= 1 ? argpos + 1 : arg + 1;
+		_arg = argpos >= 1 ? (int64) argpos + 1 : arg + 1;
 		if (_arg <= nargs)
 		{
 			Node	   *argnode = list_nth(args, _arg - 1);
@@ -766,12 +766,12 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 
 		if (argpos >= 1)
 		{
-			if (argpos + 1 > nargs)
+			if ((int64) argpos + 1 > nargs)
 			{
 				pfree(sinfo.data);
 				return NULL;
 			}
-			arg = argpos + 1;
+			arg = (int64) argpos + 1;
 		}
 		else
 		{
@@ -803,7 +803,8 @@ check_fmt_string(const char *fmt,
 	const char *end_ptr = fmt + strlen(fmt);
 	int			nargs = args ? list_length(args) : -1;
 	int			required_nargs = args ? 0 : -1;
-	int			arg = 1;
+	/* Parsed positions can be INT_MAX; leave room for the format argument. */
+	int64		arg = 1;
 
 	*is_error = false;
 
@@ -869,8 +870,8 @@ check_fmt_string(const char *fmt,
 		{
 			if (widthpos > 0)
 			{
-				TOO_FEW_ARGUMENTS_CHECK(widthpos + 1, nargs);
-				arg = widthpos + 1;
+				TOO_FEW_ARGUMENTS_CHECK((int64) widthpos + 1, nargs);
+				arg = (int64) widthpos + 1;
 				required_nargs = -1;
 			}
 			else
@@ -886,7 +887,7 @@ check_fmt_string(const char *fmt,
 		{
 			if (*cp == 's')
 			{
-				int			argn = argpos >= 1 ? argpos + 1 : arg + 1;
+				int64		argn = argpos >= 1 ? (int64) argpos + 1 : arg + 1;
 
 				/*
 				 * this is usually called after format check, but better be
@@ -909,8 +910,8 @@ check_fmt_string(const char *fmt,
 
 		if (argpos >= 1)
 		{
-			TOO_FEW_ARGUMENTS_CHECK(argpos + 1, nargs);
-			arg = argpos + 1;
+			TOO_FEW_ARGUMENTS_CHECK((int64) argpos + 1, nargs);
+			arg = (int64) argpos + 1;
 			required_nargs = -1;
 		}
 		else
