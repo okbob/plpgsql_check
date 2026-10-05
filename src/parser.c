@@ -759,6 +759,8 @@ get_type_internal(TokenizerState *state, int32 *typmod, bool allow_rectype, bool
 			int32		_typmod;
 
 			_token = get_token(state, &token);
+			if (_token && _token->value == ')' && names == NIL)
+				break;
 			if (!_token ||
 				(_token->value != PRAGMA_TOKEN_IDENTIF &&
 				 _token->value != PRAGMA_TOKEN_QIDENTIF))

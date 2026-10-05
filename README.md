@@ -945,6 +945,9 @@ generated pragma - the pragma holds only column names and types, which is enough
 the static checks. In both cases no object survives the call, and repeated calls
 return the same result.
 
+Zero-column tables produce an empty column list, such as `table: target()`,
+which is accepted by the table pragma parser.
+
     create table gtp_src(a int, b text);
 
     create or replace function gtp_f1()

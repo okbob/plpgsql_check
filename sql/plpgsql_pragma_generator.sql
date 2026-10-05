@@ -186,6 +186,41 @@ select * from plpgsql_check_function('gtp_datetime()',
 
 drop function gtp_datetime();
 
+-- PostgreSQL tables and anonymous record types can have no attributes.
+create function gtp_empty() returns void as $$
+begin
+  create temp table gtp_empty1();
+  create temp table gtp_empty2 as select from gtp_src;
+  insert into gtp_empty1 default values;
+  insert into gtp_empty2 default values;
+end;
+$$ language plpgsql;
+select * from plpgsql_make_pragma('gtp_empty()');
+select * from plpgsql_check_function('gtp_empty()',
+          pragmas => array(select plpgsql_make_pragma('gtp_empty()')));
+drop function gtp_empty();
+
+create function gtp_empty_record() returns void as $$
+declare r record;
+begin
+  perform plpgsql_check_pragma('type: r ()');
+  perform r;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('gtp_empty_record()');
+drop function gtp_empty_record();
+
+-- Empty lists must not make missing columns or trailing commas legal.
+create function gtp_empty_invalid() returns void as $$
+begin
+  perform plpgsql_check_pragma('table: gtp_bad1(,)');
+  perform plpgsql_check_pragma('table: gtp_bad2(a int,)');
+  perform plpgsql_check_pragma('table: gtp_bad3(');
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('gtp_empty_invalid()');
+drop function gtp_empty_invalid();
+
 -- identifiers that require quoting
 create function gtp_f11()
 returns void as $$
@@ -334,8 +369,7 @@ select * from plpgsql_make_pragma('gtp_f19()');
 
 drop function gtp_f19();
 
--- zero column table - pragma is generated, but the table pragma
--- mechanism cannot to apply it (warning is expected)
+-- A zero-column table produces a usable empty column list.
 create function gtp_f20()
 returns void as $$
 begin
