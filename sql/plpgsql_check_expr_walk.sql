@@ -299,6 +299,52 @@ $$ language plpgsql;
 
 select * from plpgsql_check_function('ew_f17', fatal_errors => false, security_warnings => true);
 
+-- Padding can be required SQL syntax, including after multibyte characters.
+create table ew_width_source(U&"\00e9" int, "select" int);
+insert into ew_width_source values (1, 1);
+create function ew_widths() returns int as $$
+declare n int; w text := '1';
+begin
+  execute format('SELECT%1s1', '') into n;
+  execute format('SELECT%-1s1', '') into n;
+  execute format('SELECT%*s1', 1, '') into n;
+  execute format('SELECT%2$*1$s1', -1, '') into n;
+  execute format('SELECT%1$1s%1$1s1', '') into n;
+  execute format('SELECT%*s1', w, '') into n;
+  execute format('SELECT %-2sFROM ew_width_source', U&'\00e9') into n;
+  execute format('SELECT %-9IFROM ew_width_source', 'select') into n;
+  execute format('SELECT %5L::int', '1') into n;
+  execute format('SELECT%*s 1', null::int, '') into n;
+  return n;
+end;
+$$ language plpgsql;
+select ew_widths();
+select * from plpgsql_check_function('ew_widths');
+drop function ew_widths();
+drop table ew_width_source;
+
+-- An unknown width makes the reconstructed query unknown, not malformed.
+create function ew_unknown_width(w int) returns int as $$
+declare n int;
+begin
+  execute format('SELECT%*s1', w, '') into n;
+  return n;
+end;
+$$ language plpgsql;
+select ew_unknown_width(1);
+select level, message from plpgsql_check_function_tb('ew_unknown_width')
+ where level = 'error';
+drop function ew_unknown_width(int);
+
+create function ew_invalid_width() returns void as $$
+begin
+  execute format('SELECT%*s1', '-2147483648'::int, '');
+end;
+$$ language plpgsql;
+select sqlstate, message from plpgsql_check_function_tb('ew_invalid_width')
+ where level = 'error';
+drop function ew_invalid_width();
+
 -- a format string that cannot be evaluated makes the dynamic query
 -- unknown - the string ends by an unfinished specifier, it contains an
 -- unknown specifier, it needs more arguments than it gets, or it refers

@@ -435,9 +435,10 @@ that setting only in development or preproduction environments.</i>
 
 ## Dynamic SQL
 
-This module doesn't check queries that are assembled in runtime. It is not possible
-to identify results of dynamic queries - so <i>plpgsql_check</i> cannot to set correct type to record
-variables and cannot to check a dependent SQLs and expressions. 
+The checker can analyze dynamically executed queries when constant tracing or
+known `format()` arguments determine their text, including field widths and
+padding. When the query text or a format width is unknown, it cannot reliably
+infer the result's record type or check expressions depending on its fields.
 
 When type of record's variable is not know, you can assign it explicitly with pragma `type`:
 
