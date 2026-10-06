@@ -733,6 +733,28 @@ drop function sw_parameter_cursor(int);
 drop function sw_cursor_reopen(int);
 drop function sw_dynamic_scalar();
 
+-- FETCH from a cursor that is not opened in the function (so its query
+-- is unknown) has to be checked without crash, also when there is no
+-- OPEN FOR EXECUTE in the function. The passive mode does the same check.
+create function sw_fetch_unbound(c refcursor) returns int as $$
+declare v int;
+begin
+  fetch c into v;
+  return v;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_fetch_unbound(refcursor)');
+
+set plpgsql_check.mode = 'every_start';
+begin;
+declare sw_fetch_cur cursor for select 1;
+select sw_fetch_unbound('sw_fetch_cur');
+commit;
+reset plpgsql_check.mode;
+
+drop function sw_fetch_unbound(refcursor);
+
 create function sw_exit_loop(p boolean)
 returns int as $$
 begin

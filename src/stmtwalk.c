@@ -1167,7 +1167,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 							plpgsql_check_assignment_to_variable(cstate, var->cursor_explicit_expr,
 																 stmt_fetch->target, -1);
 						}
-						else
+						else if (cstate->dyn_stmt_open)
 						{
 							/* maybe, the cursor is dynamic */
 							PLpgSQL_stmt_open *stmt_open = cstate->dyn_stmt_open[var->dno];
