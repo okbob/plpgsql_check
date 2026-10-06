@@ -244,6 +244,57 @@ select count(*) = 1 and bool_and(exec_stmts[1] = 1 and exec_stmts_err[1] = 1
 drop function pl_timing_catch();
 drop function pl_timing_error();
 
+-- The types of the parameters of EXECUTE ... USING, which are cached for
+-- the computation of the query identifier, have to stay valid when all
+-- statistics are reset while the function is running. Else the types
+-- cached for the first EXECUTE would be overwritten by the types of the
+-- second one, and the first query would be analyzed with wrong types.
+-- The cached types are used again only while the query identifier is
+-- unknown, so this needs a server that does not compute query identifiers
+-- (the default). The next test does not depend on it.
+create function pl_reset_using() returns text as $$
+declare
+  r int;
+  t text;
+begin
+  perform plpgsql_profiler_reset_all();
+  for i in 1..2 loop
+    execute 'select $1 + 1' into r using i;
+    perform plpgsql_profiler_reset_all();
+    execute 'select $1 || $2' into t using 'a'::text, 'b'::text;
+  end loop;
+  return t || r;
+end;
+$$ language plpgsql;
+
+select pl_reset_using();
+
+drop function pl_reset_using();
+
+-- The statistics can be reset even while the profiler computes the query
+-- identifier, because it evaluates the expression of the query string,
+-- after the types of the parameters were cached.
+create function pl_reset_in_expr() returns text as $$
+begin
+  perform plpgsql_profiler_reset_all();
+  return '1';
+end;
+$$ language plpgsql stable;
+
+create function pl_reset_using_expr() returns int as $$
+declare
+  r int;
+begin
+  execute 'select $1 + ' || pl_reset_in_expr() into r using 41;
+  return r;
+end;
+$$ language plpgsql;
+
+select pl_reset_using_expr();
+
+drop function pl_reset_using_expr();
+drop function pl_reset_in_expr();
+
 select plpgsql_check_profiler(false);
 
 select plpgsql_profiler_reset_all();

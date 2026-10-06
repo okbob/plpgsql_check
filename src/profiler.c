@@ -142,6 +142,8 @@ typedef struct profiler_info
 	instr_time	start_time;
 	PLpgSQL_function *func;
 
+	MemoryContext mcxt;
+
 	/* reduce second searching lxcache when se update fstats */
 	LXCache    *lxcache;
 	LocalTransactionId lxcache_lxid;
@@ -181,7 +183,6 @@ PG_FUNCTION_INFO_V1(plpgsql_profiler_install_fake_queryid_hook);
 PG_FUNCTION_INFO_V1(plpgsql_profiler_remove_fake_queryid_hook);
 
 static void update_persistent_stmts_stats(profiler_info *pinfo);
-static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, bool *has_queryid, QParams **qparams);
 
 #if PG_VERSION_NUM >= 190000
 
@@ -220,7 +221,7 @@ static void init_fstats(FuncStats *fs);
 
 static pc_queryid profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, QParams *qparams);
 static pc_queryid profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
-									   bool *has_queryid, QParams **qparams);
+									   bool *has_queryid, QParams **qparams, MemoryContext mcxt);
 
 static void WelfordVarianceAdd(uint64 *count, float8 *mean, float8 *m2, float8 x);
 static void WelfordVarianceMerge(uint64 *count, float8 *mean, float8 *m2,
@@ -1433,6 +1434,8 @@ profiler_func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_fext
 		profiler_info *pinfo;
 
 		pinfo = palloc0(sizeof(profiler_info));
+		pinfo->mcxt = CurrentMemoryContext;
+
 		pinfo->nstatements = func->nstatements;
 		pinfo->sinstrs = palloc0(func->nstatements * sizeof(StmtInstr));
 		pinfo->sstats = palloc0(func->nstatements * sizeof(StmtStats));
@@ -1555,7 +1558,8 @@ profiler_stmt_end(PLpgSQL_execstate *estate,
 		if (sinstr->queryid == NOQUERYID)
 			sinstr->queryid = profiler_get_queryid(estate, stmt,
 												   &sinstr->has_queryid,
-												   &sinstr->qparams);
+												   &sinstr->qparams,
+												   pinfo->mcxt);
 
 		/* Only these statements set a fresh processed-row count. */
 		switch (stmt->cmd_type)
@@ -1625,7 +1629,8 @@ expr_is_volatile(PLpgSQL_expr *expr)
 /* Return the first queryid found in the given PLpgSQL_stmt, if any. */
 static pc_queryid
 profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
-					 bool *has_queryid, QParams **qparams)
+					 bool *has_queryid, QParams **qparams,
+					 MemoryContext mcxt)
 {
 	PLpgSQL_expr *expr;
 	bool		dynamic;
@@ -1660,13 +1665,11 @@ profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
 			QParams    *qps = NULL;
 			int			nparams = list_length(params);
 			int			paramno = 0;
-			MemoryContext oldcxt;
 			ListCell   *lc;
 
 			/* build array of Oid used like dynamic query parameters */
-			oldcxt = MemoryContextSwitchTo(profiler_mcxt);
-			qps = (QParams *) palloc(sizeof(Oid) * nparams + sizeof(int));
-			MemoryContextSwitchTo(oldcxt);
+			qps = (QParams *) MemoryContextAlloc(mcxt,
+												 sizeof(Oid) * nparams + sizeof(int));
 
 			foreach(lc, params)
 			{
