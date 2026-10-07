@@ -221,3 +221,64 @@ drop function pd_f4();
 drop function pd_f3(int);
 drop function pd_f2(int);
 drop function pd_f1(int);
+
+-- when no plugin is active for an aborted routine (the tracer and the
+-- profiler are disabled now), its entry has to be removed from the stack
+-- of the multiplexer too, else the stack would point to released memory
+-- when the outer routine continues
+create function pd_f7() returns void as $$
+begin
+  raise exception 'pd_f7 failed';
+end;
+$$ language plpgsql set plpgsql_check.cursors_leaks = off;
+
+create function pd_f8() returns text as $$
+begin
+  begin
+    perform pd_f7();
+  exception when others then
+    return 'handled: ' || sqlerrm;
+  end;
+  return 'not reached';
+end;
+$$ language plpgsql;
+
+select pd_f8();
+
+-- the same when the error is not handled at all: during the cleanup of the
+-- aborted transaction, the reset callback of the outer routine (with an
+-- active plugin) must not find the released entry of the inner routine
+-- on the stack
+create function pd_f10() returns text as $$
+begin
+  perform pd_f7();
+  return 'not reached';
+end;
+$$ language plpgsql;
+
+select pd_f10();
+
+-- an inline block without any active plugin, aborted by a routine with
+-- an active plugin, has to unwind the entry of that routine too
+create function pd_f9() returns void as $$
+begin
+  raise exception 'pd_f9 failed';
+end;
+$$ language plpgsql set plpgsql_check.cursors_leaks = on;
+
+set plpgsql_check.cursors_leaks to off;
+
+do $$
+begin
+  perform pd_f9();
+end;
+$$;
+
+set plpgsql_check.cursors_leaks to default;
+
+select pd_f8();
+
+drop function pd_f10();
+drop function pd_f9();
+drop function pd_f8();
+drop function pd_f7();

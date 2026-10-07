@@ -209,7 +209,12 @@ plugin_info_reset(void *arg)
 	 * here.
 	 */
 	if (!plugin_info->fextra)
+	{
+		if (top_pldbgapi_plugin_info == plugin_info)
+			top_pldbgapi_plugin_info = plugin_info->prev_pldbgapi_plugin_info;
+
 		return;
+	}
 
 	/*
 	 * When current plugin_info is not not top plugin_info, then memory is
@@ -347,37 +352,34 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 		plugins[i]->plch_error_callback =  plpgsql_check_error_callback;
 	}
 
-	if (plugin_info->fextra)
-	{
-		plugin_info->mcb.func = plugin_info_reset;
-		plugin_info->mcb.arg = plugin_info;
+	plugin_info->mcb.func = plugin_info_reset;
+	plugin_info->mcb.arg = plugin_info;
 
-		/*
-		 * Unfortunately, the caller context of inline block is released in
-		 * unstable order (after an exception). The other memory is cleaned
-		 * explicitly in plpgsql_inline_handler.
-		 *
-		 * The workaround - using context from simple_eval_estate is not nice,
-		 * because it enforce plugin_reset before final raising an exception.
-		 * inline block hash not use shared simple eval estate, and every
-		 * inline block has unique simple eval estate.
-		 *
-		 * The advantage of using es_query_cxt context instead caller context
-		 * is a fact, so this context is destroyed before related
-		 * PLpgSQL_function is released (including AST). Caller context is
-		 * released too late, and access to AST is broken due access to
-		 * already released memory.
-		 */
-		if (!OidIsValid(func->fn_oid))
-		{
-			MemoryContextRegisterResetCallback(estate->simple_eval_estate->es_query_cxt,
-											   &plugin_info->mcb);
-		}
-		else
-		{
-			MemoryContextRegisterResetCallback(CurrentMemoryContext,
-											   &plugin_info->mcb);
-		}
+	/*
+	 * Unfortunately, the caller context of inline block is released in
+	 * unstable order (after an exception). The other memory is cleaned
+	 * explicitly in plpgsql_inline_handler.
+	 *
+	 * The workaround - using context from simple_eval_estate is not nice,
+	 * because it enforce plugin_reset before final raising an exception.
+	 * inline block hash not use shared simple eval estate, and every
+	 * inline block has unique simple eval estate.
+	 *
+	 * The advantage of using es_query_cxt context instead caller context
+	 * is a fact, so this context is destroyed before related
+	 * PLpgSQL_function is released (including AST). Caller context is
+	 * released too late, and access to AST is broken due access to
+	 * already released memory.
+	 */
+	if (!OidIsValid(func->fn_oid))
+	{
+		MemoryContextRegisterResetCallback(estate->simple_eval_estate->es_query_cxt,
+										   &plugin_info->mcb);
+	}
+	else
+	{
+		MemoryContextRegisterResetCallback(CurrentMemoryContext,
+										   &plugin_info->mcb);
 	}
 
 	if (prev_plpgsql_plugin)
