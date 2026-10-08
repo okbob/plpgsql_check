@@ -302,8 +302,8 @@ plpgsql_check_report_unused_variables(PLpgSQL_checkstate *cstate)
 				bool		is_inout_procedure_param = false;
 
 				/*
-				 * procedure doesn't support only OUT parameters. Don't raise
-				 * warning if INOUT parameter is just modified in procedures.
+				 * An INOUT procedure parameter may be used only as output,
+				 * so do not warn merely because it is written but not read.
 				 */
 				is_inout_procedure_param = cstate->cinfo->is_procedure
 					&& bms_is_member(varno, cstate->out_variables);

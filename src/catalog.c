@@ -62,12 +62,11 @@ plpgsql_check_get_function_info(plpgsql_check_info *cinfo)
 	cinfo->is_procedure = proc->prokind == PROKIND_PROCEDURE;
 
 	/*
-	 * Disallow pseudotype result  except for TRIGGER, RECORD, VOID, or
-	 * polymorphic
+	 * Disallow pseudotype results except TRIGGER, EVENT_TRIGGER, RECORD,
+	 * VOID, or polymorphic types.
 	 */
 	if (functyptype == TYPTYPE_PSEUDO)
 	{
-		/* we assume OPAQUE with no arguments means a trigger */
 		if (proc->prorettype == TRIGGEROID)
 			cinfo->trigtype = PLPGSQL_DML_TRIGGER;
 		else if (proc->prorettype == EVENT_TRIGGEROID)

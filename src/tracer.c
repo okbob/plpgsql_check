@@ -44,7 +44,7 @@ PG_FUNCTION_INFO_V1(plpgsql_check_tracer_ctrl);
 #define STREXPR_START		0
 
 /*
- * This structure is used as pldbgapi2 extension parameter
+ * This structure is used as a pldbgapi3 extension parameter.
  */
 typedef struct tracer_info
 {
@@ -1501,7 +1501,7 @@ trace_assert(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, tracer_info *tinfo)
 
 		print_all_variables(estate);
 
-		/* Show stack and all variables in verbose mode */
+		/* Show outer frames by default, adding their variables in verbose mode. */
 		if (plpgsql_check_trace_assert_verbosity >= PGERROR_DEFAULT)
 		{
 			for (econtext = (skip_plch_errcontext(error_context_stack))->previous;

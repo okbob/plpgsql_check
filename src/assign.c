@@ -507,8 +507,7 @@ plpgsql_check_assign_tupdesc_row_or_rec(PLpgSQL_checkstate *cstate,
 /*
  * recval_init, recval_release, recval_assign_tupdesc
  *
- *   a set of functions designed to better portability between PostgreSQL 11
- *   with expanded records support and older PostgreSQL versions.
+ * Initialize, clear, and assign expanded-record values during checking.
  */
 void
 plpgsql_check_recval_init(PLpgSQL_rec *rec)

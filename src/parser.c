@@ -192,12 +192,6 @@ parse_name_or_signature(char *qualname, bool *is_signature)
 
 			len = nextp - curname;
 
-			/*
-			 * We don't implicitly truncate identifiers. This is useful for
-			 * allowing the user to check for specific parts of the identifier
-			 * being too long. It's easy enough for the user to get the
-			 * truncated names by casting our output to name[].
-			 */
 			downname = downcase_truncate_identifier(curname, (int) len, false);
 			result = lappend(result, makeString(downname));
 			missing_ident = false;

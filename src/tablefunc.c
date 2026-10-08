@@ -604,7 +604,7 @@ plpgsql_check_function_tb(PG_FUNCTION_ARGS)
 /*
  * plpgsql_make_pragma
  *
- * Returns table pragmas generated for CREATE TEMP TABLE ... AS statements
+ * Returns table pragmas generated for CREATE TEMP TABLE statements, including AS,
  * used inside the function's body.
  *
  */

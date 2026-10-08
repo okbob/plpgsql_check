@@ -281,7 +281,7 @@ static StmtStats *SharedStmtStatsArray = NULL;
  */
 
 /*
- * Calculate required size of shared memory for chunks
+ * Calculate shared memory for profiler state, hash tables, and statement stats.
  *
  */
 Size
@@ -454,7 +454,7 @@ plpgsql_check_profiler_ctrl(PG_FUNCTION_ARGS)
 }
 
 /*
- * clean all chunks used by profiler
+ * Reset all local and shared profiler statistics.
  */
 Datum
 plpgsql_profiler_reset_all(PG_FUNCTION_ARGS)
@@ -529,7 +529,7 @@ plpgsql_profiler_reset_all(PG_FUNCTION_ARGS)
 }
 
 /*
- * Clean chunks related to some function
+ * Remove a function's aggregate statistics and current statement profile.
  */
 Datum
 plpgsql_profiler_reset(PG_FUNCTION_ARGS)
@@ -1928,8 +1928,7 @@ plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri)
  *
  * Iterate over statement tree and fill tuplestore
  *
- * naturalid is calculated from scratch, because we want to remove
- * naturalid from fextra
+ * Use the cached natural statement IDs from fextra.
  */
 typedef struct statement_stats_report_context
 {

@@ -11,10 +11,9 @@ endif
 
 REGRESS_OPTS = --dbname=$(PL_TESTDB)
 
-# plpgsql_check_nocrash should be exuted with and without
-# preloaded plpgsql_check, but it is not possible enforce
-# from this makefile - installcheck doesn't support alter
-# system.
+# Run plpgsql_check_nocrash with and without shared preloading. installcheck
+# does not restart its target server, so these configurations must be started
+# separately.
 
 REGRESS = plpgsql_check_passive\
 		plpgsql_check_active\
