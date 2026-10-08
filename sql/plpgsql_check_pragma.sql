@@ -17,10 +17,7 @@ set client_min_messages to notice;
 -- compile time pragmas
 --
 
--- STATUS reports the current value of every switch. Note that the
--- keyword recognized by STATUS for the constants tracing switch is
--- "constants_trancing", while ENABLE and DISABLE use
--- "constants_tracing".
+-- STATUS reports the current value of every switch.
 create function prg_status()
 returns void as $$
 begin
@@ -31,7 +28,7 @@ begin
   perform plpgsql_check_pragma('status:extra_warnings');
   perform plpgsql_check_pragma('status:security_warnings');
   perform plpgsql_check_pragma('status:compatibility_warnings');
-  perform plpgsql_check_pragma('status:constants_trancing');
+  perform plpgsql_check_pragma('status:constants_tracing');
   -- spaces around the pragma name and its argument are ignored
   perform plpgsql_check_pragma('  status:  check');
 end;
@@ -59,7 +56,7 @@ begin
   perform plpgsql_check_pragma('status:extra_warnings');
   perform plpgsql_check_pragma('status:security_warnings');
   perform plpgsql_check_pragma('status:compatibility_warnings');
-  perform plpgsql_check_pragma('status:constants_trancing');
+  perform plpgsql_check_pragma('status:constants_tracing');
 end;
 $$ language plpgsql;
 
@@ -94,11 +91,25 @@ begin
   perform plpgsql_check_pragma('status:extra_warnings');
   perform plpgsql_check_pragma('status:security_warnings');
   perform plpgsql_check_pragma('status:compatibility_warnings');
-  perform plpgsql_check_pragma('status:constants_trancing');
+  perform plpgsql_check_pragma('status:constants_tracing');
 end;
 $$ language plpgsql;
 
 select * from plpgsql_check_function('prg_enable');
+
+create function prg_constants_scope(p boolean) returns void as $$
+begin
+  if p then
+    perform plpgsql_check_pragma('disable:constants_tracing');
+    perform plpgsql_check_pragma('status:constants_tracing');
+  else
+    perform plpgsql_check_pragma('status:constants_tracing');
+  end if;
+  perform plpgsql_check_pragma('status:constants_tracing');
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('prg_constants_scope');
+drop function prg_constants_scope(boolean);
 
 -- an unknown switch is reported for every pragma that takes a switch
 -- name, and an entirely unknown pragma is reported too
