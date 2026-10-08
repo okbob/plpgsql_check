@@ -1011,9 +1011,10 @@ end;
 $$ language plpgsql;
 -- is ok
 select * from plpgsql_check_function('sw_continue_path');
- plpgsql_check_function 
-------------------------
-(0 rows)
+            plpgsql_check_function             
+-----------------------------------------------
+ warning extra:00000:9:RETURN:unreachable code
+(1 row)
 
 drop function sw_continue_path();
 create function sw_continue_outer()

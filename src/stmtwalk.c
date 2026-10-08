@@ -1420,8 +1420,6 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 				while (outer_target_stmt)
 				{
 					/* set has_exit for all inner bodies */
-					outer_target_stmt->has_exit = true;
-
 					if (stmt_exit->label)
 					{
 						if (outer_target_stmt->label &&
@@ -1435,7 +1433,18 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 						break;
 					}
 
+					outer_target_stmt->has_exit = true;
 					outer_target_stmt = outer_target_stmt->outer;
+				}
+
+				if (outer_target_stmt)
+				{
+					/* CONTINUE for LOOP cycle doesn't force cycle leaving */
+					if (stmt_exit->is_exit ||
+						outer_target_stmt->stmt->cmd_type != PLPGSQL_STMT_LOOP)
+					{
+						outer_target_stmt->has_exit = true;
+					}
 				}
 			}
 		}
