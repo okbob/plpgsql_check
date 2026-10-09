@@ -520,15 +520,15 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('as_f23');
-                                     plpgsql_check_function                                     
-------------------------------------------------------------------------------------------------
+                              plpgsql_check_function                               
+-----------------------------------------------------------------------------------
  error:42804:3:RETURN QUERY:structure of query does not match function result type
- Detail: Returned type as_leaf does not match expected type integer in column "n" (position 1).
+ Detail: Returned type as_leaf does not match expected type integer in column 1.
 (2 rows)
 
 select * from as_f23();
 ERROR:  structure of query does not match function result type
-DETAIL:  Returned type as_leaf does not match expected type integer in column "n" (position 1).
+DETAIL:  Returned type as_leaf does not match expected type integer in column 1.
 CONTEXT:  SQL statement "select row(7)::as_leaf"
 PL/pgSQL function as_f23() line 3 at RETURN QUERY
 create function as_f24()
@@ -606,3 +606,43 @@ drop function as_f25();
 drop type as_wrapper;
 drop type as_leaf;
 drop table as_tab1;
+create type point2 as (x int, y int);
+create domain dpoint as point2 check ((value).x is not null);
+-- a) domain-over-composite as a parameter
+create function dom_param(p dpoint)
+returns int
+language plpgsql as $$
+begin
+  return p.x;
+end;
+$$;
+-- b) domain-over-composite as an initialized local variable
+create function dom_var()
+returns int
+language plpgsql as $$
+declare
+  r dpoint := row(1, 2)::dpoint;
+begin
+  return r.x;
+end;
+$$;
+select count(*) = 0
+     from plpgsql_check_function_tb('dom_param(dpoint)', fatal_errors => false)
+    where message like '%violates check constraint%';
+ ?column? 
+----------
+ t
+(1 row)
+
+select count(*) = 0
+     from plpgsql_check_function_tb('dom_var()', fatal_errors => false)
+    where message like '%violates check constraint%';
+ ?column? 
+----------
+ t
+(1 row)
+
+drop function dom_var;
+drop function dom_param;
+drop type point2 cascade;
+NOTICE:  drop cascades to type dpoint

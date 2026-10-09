@@ -418,3 +418,38 @@ drop type as_wrapper;
 drop type as_leaf;
 
 drop table as_tab1;
+
+create type point2 as (x int, y int);
+create domain dpoint as point2 check ((value).x is not null);
+
+-- a) domain-over-composite as a parameter
+create function dom_param(p dpoint)
+returns int
+language plpgsql as $$
+begin
+  return p.x;
+end;
+$$;
+
+-- b) domain-over-composite as an initialized local variable
+create function dom_var()
+returns int
+language plpgsql as $$
+declare
+  r dpoint := row(1, 2)::dpoint;
+begin
+  return r.x;
+end;
+$$;
+
+select count(*) = 0
+     from plpgsql_check_function_tb('dom_param(dpoint)', fatal_errors => false)
+    where message like '%violates check constraint%';
+
+select count(*) = 0
+     from plpgsql_check_function_tb('dom_var()', fatal_errors => false)
+    where message like '%violates check constraint%';
+
+drop function dom_var;
+drop function dom_param;
+drop type point2 cascade;

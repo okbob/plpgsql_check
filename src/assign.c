@@ -561,7 +561,21 @@ plpgsql_check_recval_assign_tupdesc(PLpgSQL_checkstate *cstate, PLpgSQL_rec *rec
 	 */
 	if (rec->rectypeid != RECORDOID)
 	{
-		newerh = make_expanded_record_from_typeid(rec->rectypeid, -1,
+		Oid			rectypeid = rec->rectypeid;
+
+		/*
+		 * rec->rectypeid can be a domain over a composite type.  Building an
+		 * expanded record for the domain and then setting its fields with
+		 * constraint checking enabled (below) would evaluate the domain's
+		 * CHECK constraints against the freshly made, all-NULL dummy row and
+		 * report a bogus "violates check constraint" error while merely
+		 * analysing the function.  The checker only needs the row structure,
+		 * so look through the domain to its base composite type.
+		 */
+		if (get_typtype(rectypeid) == TYPTYPE_DOMAIN)
+			rectypeid = getBaseType(rectypeid);
+
+		newerh = make_expanded_record_from_typeid(rectypeid, -1,
 												  mcontext);
 	}
 	else
