@@ -1583,8 +1583,17 @@ plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
 						/*
 						 * Assignment casts, including element casts in an
 						 * array, need not agree with textual input.
+						 *
+						 * get_array_type() returns InvalidOid when no array
+						 * type exists for expected_typoid - for instance when
+						 * the loop variable of a FOREACH ... IN ARRAY is itself
+						 * an array type.  There is then no target type to probe,
+						 * and getTypeInputInfo(InvalidOid) would fail with an
+						 * internal "cache lookup failed for type 0", so skip the
+						 * probe.
 						 */
-						if (!can_coerce_type(1, &expr_typoid, &typeid, COERCION_ASSIGNMENT))
+						if (OidIsValid(typeid) &&
+							!can_coerce_type(1, &expr_typoid, &typeid, COERCION_ASSIGNMENT))
 						{
 							getTypeInputInfo(typeid, &infunc, &intypeioparam);
 							(void) OidInputFunctionCall(infunc, str, intypeioparam, -1);

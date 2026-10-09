@@ -453,3 +453,21 @@ select count(*) = 0
 drop function dom_var;
 drop function dom_param;
 drop type point2 cascade;
+
+create function foreach_arrvar()
+returns int
+language plpgsql as $$
+declare
+  item  int[];
+  total int := 0;
+begin
+  foreach item in array '{"{1,2}","{3}"}'::text[] loop
+    total := total + cardinality(item);
+  end loop;
+  return total;
+end;
+$$;
+
+select message from plpgsql_check_function_tb('foreach_arrvar()', fatal_errors => false);
+
+drop function foreach_arrvar();
