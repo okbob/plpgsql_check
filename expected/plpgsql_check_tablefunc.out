@@ -38,7 +38,7 @@ select * from plpgsql_check_function('tf_f1', other_warnings := null);
 ERROR:  the option "other_warnings" is NULL
 HINT:  this option should not be NULL
 select * from plpgsql_check_function('tf_f1', performance_warnings := null);
-ERROR:  the option "performance warnings" is NULL
+ERROR:  the option "performance_warnings" is NULL
 HINT:  this option should not be NULL
 select * from plpgsql_check_function('tf_f1', extra_warnings := null);
 ERROR:  the option "extra_warnings" is NULL

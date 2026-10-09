@@ -147,7 +147,7 @@ check_function_internal(Oid fnoid, FunctionCallInfo fcinfo)
 	if (PG_ARGISNULL(4))
 		ERR_NULL_OPTION("other_warnings");
 	if (PG_ARGISNULL(5))
-		ERR_NULL_OPTION("performance warnings");
+		ERR_NULL_OPTION("performance_warnings");
 	if (PG_ARGISNULL(6))
 		ERR_NULL_OPTION("extra_warnings");
 	if (PG_ARGISNULL(7))
