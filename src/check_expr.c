@@ -261,7 +261,11 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 		if (!plansource)
 			return;
 		if (!plansource->is_valid)
+		{
+			SPI_freeplan(expr->plan);
 			expr->plan = NULL;
+			cstate->exprs = list_delete_last(cstate->exprs);
+		}
 	}
 	while (!plansource->is_valid);
 
