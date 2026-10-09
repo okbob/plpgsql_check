@@ -81,6 +81,7 @@ typedef struct StmtInstr
 	uint64		rows;
 	uint64		exec_count;
 	uint64		exec_count_err;
+	uint64		exec_count_cond_err;
 	instr_time	start_time;
 	instr_time	total;
 	QParams    *qparams;
@@ -95,6 +96,7 @@ typedef struct StmtStats
 	uint64		rows;
 	uint64		exec_count;
 	uint64		exec_count_err;
+	uint64		exec_count_cond_err;
 } StmtStats;
 
 #define		FUNC_STATS_COUNT				20000
@@ -1129,6 +1131,7 @@ merge_stmts_sstats(StmtStats *persist_ss, StmtStats *sstats, int nstatements)
 		_t->rows += _s->rows;
 		_t->exec_count += _s->exec_count;
 		_t->exec_count_err += _s->exec_count_err;
+		_t->exec_count_cond_err += _s->exec_count_cond_err;
 	}
 }
 
@@ -1152,6 +1155,7 @@ init_stmts_sstats(StmtStats *sstats, int nstatements)
 		_s->rows = 0;
 		_s->exec_count = 0;
 		_s->exec_count_err = 0;
+		_s->exec_count_cond_err = 0;
 	}
 }
 
@@ -1406,6 +1410,7 @@ count_stmt_exec_time_walker(PLpgSQL_stmt *stmt, count_stmt_exec_time_context *co
 	sstats->rows = sinstr->rows;
 	sstats->exec_count = sinstr->exec_count;
 	sstats->exec_count_err = sinstr->exec_count_err;
+	sstats->exec_count_cond_err = sinstr->exec_count_cond_err;
 }
 
 
@@ -1592,6 +1597,10 @@ profiler_stmt_abort(PLpgSQL_execstate *estate,
 	if (pinfo)
 	{
 		StmtInstr  *sinstr = &pinfo->sinstrs[stmt->stmtid - 1];
+
+		/* A failing child statement means that a real branch was entered. */
+		if (stmt->cmd_type == PLPGSQL_STMT_IF && estate->err_stmt == stmt)
+			sinstr->exec_count_cond_err++;
 
 		_profiler_stmt_end(sinstr, true);
 	}
@@ -2479,13 +2488,15 @@ coverage_branches_walker(PLpgSQL_stmt *stmt, coverage_branches_context *context)
 			 * When IF has not ELSE branch, we have to calculate it with
 			 * hypothetical else branch. In this case we have a little problem
 			 * how to detect if this branch was executed. We can derived it
-			 * from IF statements execution and all real branch execution.
+			 * from IF statements execution and all real branch execution,
+			 * excluding attempts that failed while evaluating a condition.
 			 */
 			if (context->sstats)
 			{
+				StmtStats  *sstats = &context->sstats[stmt->stmtid - 1];
 				int64		hyp_exec_count;
 
-				hyp_exec_count = context->sstats[stmt->stmtid - 1].exec_count - sum_exec_count;
+				hyp_exec_count = sstats->exec_count - sstats->exec_count_cond_err - sum_exec_count;
 
 				if (hyp_exec_count > 0)
 					context->nexecuted_branches += 1;

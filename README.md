@@ -680,6 +680,9 @@ plpgsql_check provides two functions:
 
 The coverage data are collected only when profiling is active.
 
+An exception while evaluating an `IF` or `ELSIF` condition does not cover a
+branch, including an implicit `ELSE`. An exception after entering a branch
+does count as reaching that branch.
 
 ## Note
 

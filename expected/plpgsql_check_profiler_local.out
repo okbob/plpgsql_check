@@ -526,4 +526,163 @@ select plpgsql_profiler_reset_all();
 (1 row)
 
 set plpgsql_check.max_stats_size to default;
+-- Condition errors enter neither branch; errors in a body do enter it.
+set plpgsql_check.profiler = on;
+create function pl_condition(n int) returns int as $$
+begin
+  if 1 / n > 0 then
+    return 1;
+  end if;
+  return 0;
+end;
+$$ language plpgsql;
+create function pl_body_error(n int) returns int as $$
+begin
+  if n > 0 then
+    perform 1 / (n - 1);
+    return 1;
+  end if;
+  return 0;
+end;
+$$ language plpgsql;
+create function pl_elsif_error(n int) returns int as $$
+begin
+  if n = 2 then
+    return 2;
+  elsif 1 / n > 0 then
+    return 1;
+  end if;
+  return 0;
+end;
+$$ language plpgsql;
+create function pl_caught_condition(n int) returns int as $$
+begin
+  if 1 / n > 0 then
+    return 1;
+  end if;
+  return 0;
+exception when division_by_zero then
+  return -1;
+end;
+$$ language plpgsql;
+create function pl_coverage_calls() returns void as $$
+begin
+  begin
+    perform pl_condition(0);
+  exception when division_by_zero then null;
+  end;
+  begin
+    perform pl_body_error(1);
+  exception when division_by_zero then null;
+  end;
+  perform pl_body_error(0);
+  begin
+    perform pl_elsif_error(0);
+  exception when division_by_zero then null;
+  end;
+  perform pl_caught_condition(0);
+end;
+$$ language plpgsql;
+select pl_coverage_calls();
+ pl_coverage_calls 
+-------------------
+ 
+(1 row)
+
+select plpgsql_coverage_branches('pl_condition') = 0 as condition_ok,
+       plpgsql_coverage_branches('pl_body_error') = 1 as body_ok,
+       plpgsql_coverage_branches('pl_elsif_error') = 0 as elsif_ok,
+       plpgsql_coverage_branches('pl_caught_condition') = 0.5 as caught_ok;
+ condition_ok | body_ok | elsif_ok | caught_ok 
+--------------+---------+----------+-----------
+ t            | t       | t        | t
+(1 row)
+
+select pl_condition(1), pl_condition(-1),
+       pl_elsif_error(2), pl_elsif_error(1), pl_elsif_error(-1);
+ pl_condition | pl_condition | pl_elsif_error | pl_elsif_error | pl_elsif_error 
+--------------+--------------+----------------+----------------+----------------
+            1 |            0 |              2 |              1 |              0
+(1 row)
+
+select plpgsql_coverage_branches('pl_condition') = 1 as complete_if,
+       plpgsql_coverage_branches('pl_elsif_error') = 1 as complete_elsif;
+ complete_if | complete_elsif 
+-------------+----------------
+ t           | t
+(1 row)
+
+select plpgsql_profiler_reset_all();
+ plpgsql_profiler_reset_all 
+----------------------------
+ 
+(1 row)
+
+-- Exercise both shared merge paths when the library is preloaded.
+set plpgsql_check.use_shared_stats_when_it_possible = on;
+set plpgsql_check.use_lxcache = off;
+select pl_coverage_calls();
+ pl_coverage_calls 
+-------------------
+ 
+(1 row)
+
+select plpgsql_coverage_branches('pl_condition') = 0 as condition_ok,
+       plpgsql_coverage_branches('pl_body_error') = 1 as body_ok,
+       plpgsql_coverage_branches('pl_elsif_error') = 0 as elsif_ok,
+       plpgsql_coverage_branches('pl_caught_condition') = 0.5 as caught_ok;
+ condition_ok | body_ok | elsif_ok | caught_ok 
+--------------+---------+----------+-----------
+ t            | t       | t        | t
+(1 row)
+
+select plpgsql_profiler_reset_all();
+ plpgsql_profiler_reset_all 
+----------------------------
+ 
+(1 row)
+
+set plpgsql_check.use_lxcache = on;
+select pl_coverage_calls();
+ pl_coverage_calls 
+-------------------
+ 
+(1 row)
+
+select plpgsql_coverage_branches('pl_condition') = 0 as condition_ok,
+       plpgsql_coverage_branches('pl_body_error') = 1 as body_ok,
+       plpgsql_coverage_branches('pl_elsif_error') = 0 as elsif_ok,
+       plpgsql_coverage_branches('pl_caught_condition') = 0.5 as caught_ok;
+ condition_ok | body_ok | elsif_ok | caught_ok 
+--------------+---------+----------+-----------
+ t            | t       | t        | t
+(1 row)
+
+select pl_condition(1), pl_condition(-1),
+       pl_elsif_error(2), pl_elsif_error(1), pl_elsif_error(-1);
+ pl_condition | pl_condition | pl_elsif_error | pl_elsif_error | pl_elsif_error 
+--------------+--------------+----------------+----------------+----------------
+            1 |            0 |              2 |              1 |              0
+(1 row)
+
+select plpgsql_coverage_branches('pl_condition') = 1 as complete_if,
+       plpgsql_coverage_branches('pl_elsif_error') = 1 as complete_elsif;
+ complete_if | complete_elsif 
+-------------+----------------
+ t           | t
+(1 row)
+
+set plpgsql_check.profiler = off;
+select plpgsql_profiler_reset_all();
+ plpgsql_profiler_reset_all 
+----------------------------
+ 
+(1 row)
+
+drop function pl_condition(int);
+drop function pl_body_error(int);
+drop function pl_elsif_error(int);
+drop function pl_caught_condition(int);
+drop function pl_coverage_calls();
+set plpgsql_check.use_lxcache = default;
 set plpgsql_check.use_shared_stats_when_it_possible to default;
