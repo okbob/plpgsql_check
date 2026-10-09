@@ -2106,13 +2106,11 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		dsp.cstate = cstate;
 		dsp.use_params = false;
 
-
 		PG_TRY();
 		{
 			cstate->allow_mp = true;
 			cstate->is_dynsql = true;
 			cstate->found_mp = false;
-
 
 			if (expr_is_const)
 			{
