@@ -943,7 +943,17 @@ plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 			TargetEntry *tle;
 
 			tle = (TargetEntry *) linitial(_plan->targetlist);
-			result = (Node *) tle->expr;
+
+			/*
+			 * plpgsql_check in active mode doesn't generate one shot plans,
+			 * so there should not be a risk of memory releasing plan context
+			 * by ReleaseCachedPlan, and poisoning memory referenced by result
+			 * pointer. On second hand, return direct pointer is dirty (when
+			 * plan is "released" immediately. Using copyObject is probabably
+			 * not necessary, but it is more robust, safe and reduces possible
+			 * bugs in future.
+			 */
+			result = copyObject((Node *) tle->expr);
 		}
 	}
 
