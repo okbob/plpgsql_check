@@ -2179,9 +2179,6 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		}
 		PG_FINALLY();
 		{
-			if (dynexpr->plan)
-				SPI_freeplan(dynexpr->plan);
-
 			cstate->allow_mp = false;
 			cstate->is_dynsql = false;
 			cstate->found_mp = false;
