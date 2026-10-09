@@ -203,6 +203,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 	MemoryContext oldCxt = CurrentMemoryContext;
 	PLpgSQL_stmt_stack_item *outer_stmt_stack;
 	plpgsql_check_pragma_vector pragma_vector;
+	const char *save_err_text;
 
 	if (stmt == NULL)
 		return;
@@ -215,6 +216,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 	func = cstate->estate->func;
 	pragma_vector = cstate->pragma_vector;
+	save_err_text = cstate->estate->err_text;
 
 	/*
 	 * Attention - returns NULL, when there are not any outer level
@@ -1283,6 +1285,16 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 			else
 				plpgsql_check_put_error_edata(cstate, edata);
 		}
+
+		/*
+		 * Restore err_text saved on entry.  A statement handler may set
+		 * estate->err_text (for instance the assignment target context) and
+		 * clear it again when it returns normally.  When analysing the
+		 * statement threw and we caught it here, that reset was skipped, so the
+		 * stale context would otherwise be attached to every later, unrelated
+		 * diagnostic (e.g. an unused-variable warning).
+		 */
+		cstate->estate->err_text = save_err_text;
 
 		MemoryContextSwitchTo(oldCxt);
 	}

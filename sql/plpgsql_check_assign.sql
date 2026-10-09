@@ -471,3 +471,19 @@ $$;
 select message from plpgsql_check_function_tb('foreach_arrvar()', fatal_errors => false);
 
 drop function foreach_arrvar();
+
+create function stale_ctx()
+returns int
+language plpgsql as $$
+declare
+  r record;
+  unused_v int;          -- produces an "unused variable" warning
+begin
+  r.a := 10;             -- fails: record "r" is not assigned yet; sets err_text
+  return 1;
+end;
+$$;
+
+select * from plpgsql_check_function('stale_ctx', fatal_errors => false);
+
+drop function stale_ctx();
