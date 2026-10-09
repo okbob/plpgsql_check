@@ -1150,3 +1150,24 @@ SELECT count(*) >= 0
 
 DROP TABLE uaf_t;
 DROP FUNCTION uaf_f;
+CREATE TABLE tt_tab (a int);
+CREATE FUNCTION tt_trg()
+RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  RETURN NULL;
+END;
+$$;
+DO $$
+BEGIN
+  PERFORM *
+     FROM plpgsql_check_function('tt_trg()', 'tt_tab',
+                                 oldtable => 'dup', newtable => 'dup');
+EXCEPTION WHEN OTHERS THEN
+  -- A clean error is the fixed behaviour; we only require that the backend
+  -- did not crash.
+  NULL;
+END;
+$$;
+DROP TABLE IF EXISTS tt_tab;
+DROP FUNCTION tt_trg();

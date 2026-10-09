@@ -136,6 +136,12 @@ plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo)
 					 errmsg("missing description of oldtable or newtable"),
 					 errhint("Parameter relid is a empty.")));
 
+		if (cinfo->oldtable && cinfo->newtable &&
+			strcmp(cinfo->oldtable, cinfo->newtable) == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("OLD TABLE name and NEW TABLE name cannot be the same")));
+
 		/* dml trigger needs valid relid, others not */
 		if (cinfo->trigtype == PLPGSQL_DML_TRIGGER)
 		{

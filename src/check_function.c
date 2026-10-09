@@ -1213,7 +1213,7 @@ setup_estate(PLpgSQL_execstate *estate,
 	if (cinfo->oldtable)
 	{
 		EphemeralNamedRelation enr = palloc(sizeof(EphemeralNamedRelationData));
-		int			rc PG_USED_FOR_ASSERTS_ONLY;
+		int			rc;
 
 		enr->md.name = cinfo->oldtable;
 		enr->md.reliddesc = cinfo->relid;
@@ -1223,13 +1223,15 @@ setup_estate(PLpgSQL_execstate *estate,
 		enr->reldata = NULL;
 
 		rc = SPI_register_relation(enr);
-		Assert(rc >= 0);
+		if (rc < 0)
+			elog(ERROR, "SPI_register_relation failed for \"%s\": %s",
+				 cinfo->oldtable, SPI_result_code_string(rc));
 	}
 
 	if (cinfo->newtable)
 	{
 		EphemeralNamedRelation enr = palloc(sizeof(EphemeralNamedRelationData));
-		int			rc PG_USED_FOR_ASSERTS_ONLY;
+		int			rc;
 
 		enr->md.name = cinfo->newtable;
 		enr->md.reliddesc = cinfo->relid;
@@ -1239,7 +1241,9 @@ setup_estate(PLpgSQL_execstate *estate,
 		enr->reldata = NULL;
 
 		rc = SPI_register_relation(enr);
-		Assert(rc >= 0);
+		if (rc < 0)
+			elog(ERROR, "SPI_register_relation failed for \"%s\": %s",
+				 cinfo->newtable, SPI_result_code_string(rc));
 	}
 
 	estate->err_stmt = NULL;
