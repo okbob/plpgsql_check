@@ -175,7 +175,10 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 		else if (strcasecmp(pragma_str, "CONSTANTS_TRACING") == 0)
 			pv->disable_constants_tracing = true;
 		else
+		{
 			elog(WARNING, "unsuported pragma: %s", pragma_str);
+			is_valid = false;
+		}
 	}
 	else if (strncasecmp(pragma_str, "TYPE:", 5) == 0)
 	{
