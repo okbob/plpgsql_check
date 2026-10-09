@@ -438,7 +438,7 @@ select lineno, stmt_lineno, queryids, exec_stmts, source
      21 |             |          |            |     null;
      22 |             |          |            |   end loop;
      23 |             |          |            | 
-     24 |          24 | {1}      | {1}        |   for r in execute 'select a from ' || tabname loop
+     24 |          24 | {NULL}   | {1}        |   for r in execute 'select a from ' || tabname loop
      25 |             |          |            |     null;
      26 |             |          |            |   end loop;
      27 |             |          |            | 
@@ -446,11 +446,11 @@ select lineno, stmt_lineno, queryids, exec_stmts, source
      29 |          29 |          | {1}        |   fetch c into i;
      30 |          30 |          | {1}        |   close c;
      31 |             |          |            | 
-     32 |          32 | {1}      | {1}        |   open c for execute 'select a from ' || tabname;
+     32 |          32 | {NULL}   | {1}        |   open c for execute 'select a from ' || tabname;
      33 |          33 |          | {1}        |   fetch c into i;
      34 |          34 |          | {1}        |   close c;
      35 |             |          |            | 
-     36 |          36 | {4}      | {1}        |   execute 'delete from ' || tabname || ' where a = $1' using -1;
+     36 |          36 | {NULL}   | {1}        |   execute 'delete from ' || tabname || ' where a = $1' using -1;
      37 |             |          |            | end;
 (37 rows)
 
@@ -463,7 +463,7 @@ select lineno, stmt_lineno, queryids, exec_stmts, source
       3 |             |          |            |   tabname text = 'swt_tab';
       4 |           4 |          | {1}        | begin
       5 |           5 | {1}      | {1}        |   return query select a from swt_tab order by a;
-      6 |           6 | {1}      | {1}        |   return query execute 'select b from ' || tabname || ' order by b';
+      6 |           6 | {NULL}   | {1}        |   return query execute 'select b from ' || tabname || ' order by b';
       7 |             |          |            | end;
 (7 rows)
 

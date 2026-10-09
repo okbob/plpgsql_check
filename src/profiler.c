@@ -256,6 +256,7 @@ bool		plpgsql_check_profiler = false;
 bool		plch_use_shared_stats_when_it_possible = true;
 bool		plch_use_lxcache = true;
 int			plch_max_stat_size = 20480;
+bool		plch_report_dynquery_queryid = false;
 
 static int	used_stmt_stats_count = 0;
 static int	estimated_stmt_stats_count = 0;
@@ -1657,6 +1658,9 @@ profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
 	{
 		Assert(expr);
 
+		if (!plch_report_dynquery_queryid)
+			return NOQUERYID;
+
 		/*
 		 * Attention - the expression used in EXECUTE commands is executed 2x.
 		 * Unfortunatelly there is not any other way how to get queryid of
@@ -1665,7 +1669,6 @@ profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
 		 * can be detected. In this case the computed queryid can be false,
 		 * and looks so can be better in this case don't compute queryid.
 		 */
-
 		if (expr_is_volatile(expr))
 			return NOQUERYID;
 

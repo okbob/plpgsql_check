@@ -599,6 +599,10 @@ There are some limitations to the query identifier retrieval:
 * a query identifier is retrieved only for instructions containing
   expressions.  This means that plpgsql_profiler_function_tb() function can
   report less query identifier than instructions on a single line.
+* query_id of dynamically executed queries are reported only when
+  `plpgsql_check.profiler_show_dynquery_query_id` is on (default is off).
+  Attention: in this case, the expression that produce query string is
+  executed second by profiler.
 
 Attention: An update of shared profiles can decrease performance on servers under higher load.
 

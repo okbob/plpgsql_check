@@ -402,6 +402,7 @@ extern int	plpgsql_check_profiler_max_shared_chunks;
 extern int	plch_max_stat_size;
 extern bool plch_use_shared_stats_when_it_possible;
 extern bool plch_use_lxcache;
+extern bool plch_report_dynquery_queryid;
 
 extern needs_fmgr_hook_type plpgsql_check_next_needs_fmgr_hook;
 extern fmgr_hook_type plpgsql_check_next_fmgr_hook;

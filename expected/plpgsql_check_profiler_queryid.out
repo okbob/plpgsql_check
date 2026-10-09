@@ -5,10 +5,8 @@ set client_min_messages to notice;
 -- Tests of the collection of the query identifiers by the profiler.
 --
 -- The profiler remembers the identifier of the query executed by a
--- statement. The identifier is assigned by an extension like
--- pg_stat_statements, which is not available here, so a fake hook, which
--- assigns the type of the command as the identifier, is installed
--- instead.
+-- statement. A fake hook assigns the command type as its identifier so
+-- the expected output does not depend on PostgreSQL's query jumbling.
 --
 set plpgsql_check.use_shared_stats_when_it_possible to off;
 set plpgsql_check.profiler to on;
@@ -20,9 +18,8 @@ select plpgsql_profiler_install_fake_queryid_hook();
 
 create table pq_t1(a int, b int);
 -- the queryid of a static query is taken from the cached plan of the
--- expression; the queryid of a dynamic query is calculated by parsing of
--- the query string, and the types of the parameters passed by USING are
--- deduced from the expressions
+-- expression. Dynamic SQL has no retained plan, so its identifier is
+-- unavailable rather than reconstructed by evaluating application code.
 create function pq_f1()
 returns void as $$
 declare
@@ -61,6 +58,42 @@ select queryids, lineno, stmt_lineno, exec_stmts, source
  {2}      |      7 |           7 | {1}        |   update pq_t1 set a = 10;
  {1}      |      8 |           8 | {1}        |   select count(*) into c from pq_t1;
  {4}      |      9 |           9 | {1}        |   delete from pq_t1;
+ {NULL}   |     10 |          10 | {1}        |   execute 'insert into pq_t1 values($1, $2)' using n, n + 1;
+ {NULL}   |     11 |          11 | {1}        |   execute 'update pq_t1 set a = $1' using n;
+ {NULL}   |     12 |          12 | {1}        |   execute 'delete from pq_t1';
+          |     13 |             |            |   -- an empty dynamic query and a dynamic query with more than one
+          |     14 |             |            |   -- statement have no identifier
+ {NULL}   |     15 |          15 | {1}        |   execute '';
+ {NULL}   |     16 |          16 | {1}        |   execute 'select 1; select 2';
+          |     17 |             |            | end;
+(17 rows)
+
+select plpgsql_profiler_reset_all();
+ plpgsql_profiler_reset_all 
+----------------------------
+ 
+(1 row)
+
+set plpgsql_check.profiler_show_dynquery_query_id to on;
+select pq_f1();
+ pq_f1 
+-------
+ 
+(1 row)
+
+select queryids, lineno, stmt_lineno, exec_stmts, source
+  from plpgsql_profiler_function_tb('pq_f1');
+ queryids | lineno | stmt_lineno | exec_stmts |                               source                               
+----------+--------+-------------+------------+--------------------------------------------------------------------
+          |      1 |             |            | 
+          |      2 |             |            | declare
+          |      3 |             |            |   n int = 1;
+          |      4 |             |            |   c int;
+          |      5 |           5 | {1}        | begin
+ {3}      |      6 |           6 | {1}        |   insert into pq_t1 values(1, 2);
+ {2}      |      7 |           7 | {1}        |   update pq_t1 set a = 10;
+ {1}      |      8 |           8 | {1}        |   select count(*) into c from pq_t1;
+ {4}      |      9 |           9 | {1}        |   delete from pq_t1;
  {3}      |     10 |          10 | {1}        |   execute 'insert into pq_t1 values($1, $2)' using n, n + 1;
  {2}      |     11 |          11 | {1}        |   execute 'update pq_t1 set a = $1' using n;
  {4}      |     12 |          12 | {1}        |   execute 'delete from pq_t1';
@@ -71,8 +104,14 @@ select queryids, lineno, stmt_lineno, exec_stmts, source
           |     17 |             |            | end;
 (17 rows)
 
--- when the type of a parameter of a dynamic query cannot be deduced,
--- the query is not parsed and the statement has no identifier
+select plpgsql_profiler_reset_all();
+ plpgsql_profiler_reset_all 
+----------------------------
+ 
+(1 row)
+
+set plpgsql_check.profiler_show_dynquery_query_id to off;
+-- Profiling must not re-evaluate SQL text or USING expressions.
 create function pq_f2()
 returns void as $$
 declare r pq_t1;
@@ -101,6 +140,60 @@ select queryids, lineno, stmt_lineno, exec_stmts, source
           |      6 |             |            | end;
 (6 rows)
 
+create function pq_into() returns text as $$
+declare sql_text text := 'SELECT 42';
+begin
+  execute sql_text into sql_text;
+  return sql_text;
+end;
+$$ language plpgsql;
+create function pq_loop() returns int as $$
+declare sql_text text := 'SELECT 42'; n int;
+begin
+  for n in execute sql_text loop
+    sql_text := 'not sql';
+  end loop;
+  return n;
+end;
+$$ language plpgsql;
+create function pq_open() returns int as $$
+declare c refcursor; n int;
+begin
+  open c for execute coalesce(c::text, 'SELECT 42');
+  fetch c into n;
+  close c;
+  return n;
+end;
+$$ language plpgsql;
+create function pq_return() returns setof int as $$
+begin
+  return query execute case when found then 'not sql' else 'SELECT 42' end;
+end;
+$$ language plpgsql;
+select pq_into(), pq_loop(), pq_open();
+ pq_into | pq_loop | pq_open 
+---------+---------+---------
+ 42      |      42 |      42
+(1 row)
+
+select * from pq_return();
+ pq_return 
+-----------
+        42
+(1 row)
+
+select stmtname, queryid, exec_stmts
+  from plpgsql_profiler_function_statements_tb('pq_into')
+ where stmtname = 'EXECUTE';
+ stmtname | queryid | exec_stmts 
+----------+---------+------------
+ EXECUTE  |         |          1
+(1 row)
+
+drop function pq_into();
+drop function pq_loop();
+drop function pq_open();
+drop function pq_return();
 select plpgsql_profiler_remove_fake_queryid_hook();
  plpgsql_profiler_remove_fake_queryid_hook 
 -------------------------------------------

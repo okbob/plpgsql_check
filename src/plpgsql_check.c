@@ -338,6 +338,15 @@ _PG_init(void)
 							 PGC_USERSET, 0,
 							 NULL, NULL, NULL);
 
+	DefineCustomBoolVariable("plpgsql_check.profiler_show_dynquery_query_id",
+							 "when is true, then queryid of dynamic queries are displayed",
+							 NULL,
+							 &plch_report_dynquery_queryid,
+							 false,
+							 PGC_USERSET, 0,
+							 NULL, NULL, NULL);
+
+
 	DefineCustomBoolVariable("plpgsql_check.enable_tracer",
 							 "when is true, then tracer's functionality is enabled",
 							 NULL,
