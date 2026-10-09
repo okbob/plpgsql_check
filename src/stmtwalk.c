@@ -1298,8 +1298,8 @@ static void
 invalidate_strconstvars(PLpgSQL_checkstate *cstate)
 {
 	/*
-	 * We cannot to safely use string constant when we leave related path
-	 * (maybe we can, but it needs deeper analyze ensure so we will provess
+	 * We cannot safely use string constant when we leave related path
+	 * (maybe we can, but it needs deeper analyze ensure so we will process
 	 * all possible variants).
 	 */
 	if (cstate->top_stmts->invalidate_strconstvars)

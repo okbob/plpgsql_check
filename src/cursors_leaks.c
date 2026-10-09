@@ -94,7 +94,7 @@ get_function_trace(PLpgSQL_function *func)
 		ctl.entrysize = sizeof(FunctionTrace);
 		ctl.hcxt = traces_mcxt;
 
-		traces = hash_create("plpgsql_checj - cursors leaks detection",
+		traces = hash_create("plpgsql_check - cursors leaks detection",
 							 FUNCS_PER_USER,
 							 &ctl,
 							 HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);

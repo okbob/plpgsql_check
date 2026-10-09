@@ -75,7 +75,7 @@ static void
 pin_func(PLpgSQL_function *func)
 {
 	/*
-	 * We cannot to pin inline block due two reasons:
+	 * We cannot pin inline block due to two reasons:
 	 *
 	 * 1. After error, the Assert(func->cfunc.use_count == 0); is executed
 	 * before exec memory is released and our abort callback is raised.
