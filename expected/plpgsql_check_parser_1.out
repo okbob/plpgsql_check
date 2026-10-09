@@ -240,9 +240,9 @@ end;
 $$ language plpgsql;
 select * from plpgsql_check_function('pr_settype');
 WARNING:  Pragma "type" on line 6 is not processed.
-DETAIL:  Cannot to find variable "missing_var" used in settype pragma
+DETAIL:  Cannot find variable "missing_var" used in type pragma
 WARNING:  Pragma "type" on line 7 is not processed.
-DETAIL:  Pragma "settype" can be applied only on variable of record type
+DETAIL:  Pragma "type" can be applied only on variable of record type
 WARNING:  Pragma "type" on line 8 is not processed.
 DETAIL:  Syntax error (expected identifier)
 WARNING:  Pragma "type" on line 9 is not processed.

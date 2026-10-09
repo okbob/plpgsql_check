@@ -1097,11 +1097,11 @@ plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate,
 
 		names = get_qualified_identifier(&tstate, NULL);
 		if ((target_dno = get_varno(ns, names)) == -1)
-			elog(ERROR, "Cannot to find variable %s used in settype pragma", get_name(names));
+			elog(ERROR, "Cannot find variable %s used in type pragma", get_name(names));
 
 		target = cstate->estate->datums[target_dno];
 		if (target->dtype != PLPGSQL_DTYPE_REC)
-			elog(ERROR, "Pragma \"settype\" can be applied only on variable of record type");
+			elog(ERROR, "Pragma \"type\" can be applied only on variable of record type");
 
 		typtype = get_type(&tstate, &typmod, true);
 
