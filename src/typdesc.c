@@ -551,7 +551,7 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 		 * plan if it is just function call and if it is then we can try to
 		 * derive a tupledes from function's description.
 		 */
-		cplan = GetCachedPlan(plansource, NULL, NULL, NULL);
+		cplan = GetCachedPlan(plansource, NULL, CurrentResourceOwner, NULL);
 		_stmt = (PlannedStmt *) linitial(cplan->stmt_list);
 
 		if (IsA(_stmt, PlannedStmt) && _stmt->commandType == CMD_SELECT)
@@ -682,7 +682,7 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 			}
 		}
 
-		ReleaseCachedPlan(cplan, NULL);
+		ReleaseCachedPlan(cplan, CurrentResourceOwner);
 	}
 	return tupdesc;
 }

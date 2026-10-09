@@ -2097,20 +2097,22 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		DynSQLParams dsp;
 		volatile bool is_ok = true;
 
+		dynexpr = palloc0(sizeof(PLpgSQL_expr));
+
+		dynexpr->expr_rw_param = NULL;
+		dynexpr->query = dynquery;
+
+		dsp.args = params;
+		dsp.cstate = cstate;
+		dsp.use_params = false;
+
+
 		PG_TRY();
 		{
 			cstate->allow_mp = true;
 			cstate->is_dynsql = true;
-
 			cstate->found_mp = false;
 
-			dynexpr = palloc0(sizeof(PLpgSQL_expr));
-			dynexpr->expr_rw_param = NULL;
-			dynexpr->query = dynquery;
-
-			dsp.args = params;
-			dsp.cstate = cstate;
-			dsp.use_params = false;
 
 			if (expr_is_const)
 			{
@@ -2179,6 +2181,9 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		}
 		PG_FINALLY();
 		{
+			if (dynexpr->plan)
+				SPI_freeplan(dynexpr->plan);
+
 			cstate->allow_mp = false;
 			cstate->is_dynsql = false;
 			cstate->found_mp = false;
