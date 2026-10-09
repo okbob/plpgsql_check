@@ -466,7 +466,7 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 		if (is_expression && first_level_typoid != NULL)
 			*first_level_typoid = elemtype;
 
-		/* when elemtype is not composity, prepare single field tupdesc */
+		/* when elemtype is not composite, prepare single field tupdesc */
 		if (!type_is_rowtype(elemtype))
 		{
 			TupleDesc	rettupdesc;
@@ -504,8 +504,8 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 	}
 
 	/*
-	 * One spacial case is when record is assigned to composite type, then we
-	 * should to unpack composite type.
+	 * One special case is when record is assigned to composite type, then we
+	 * should unpack composite type.
 	 */
 	if (tupdesc->tdtypeid == RECORDOID &&
 		tupdesc->tdtypmod == -1 &&
@@ -525,9 +525,9 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 	}
 
 	/*
-	 * There is special case, when returned tupdesc contains only unpined
-	 * record: rec := func_with_out_parameters(). IN this case we must to dig
-	 * more deep - we have to find oid of function and get their parameters,
+	 * There is special case, when returned tupdesc contains only unpinned
+	 * record: rec := func_with_out_parameters(). In this case we must dig
+	 * deeper - we have to find oid of function and get their parameters,
 	 *
 	 * This is support for assign statement recvar :=
 	 * func_with_out_parameters(..)

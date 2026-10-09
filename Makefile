@@ -52,7 +52,7 @@ PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 endif
 
-# temorary fix of compilation with gcc 15
+# temporary fix of compilation with gcc 15
 override CFLAGS += -Wno-error=incompatible-pointer-types -I$(top_builddir)/src/pl/plpgsql/src -Wall -g
 
 plpgsql_check.typedefs: $(OBJS)

@@ -1447,7 +1447,7 @@ plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
 		plpgsql_check_target(cstate, targetdno, &expected_typoid, &expected_typmod);
 
 		/*
-		 * When target variable is not compossite, then we should not to
+		 * When target variable is not composite, then we should not
 		 * expand result tupdesc.
 		 */
 		if (!type_is_rowtype(expected_typoid))
@@ -1919,7 +1919,7 @@ plpgsql_check_expr_as_sqlstmt_data(PLpgSQL_checkstate *cstate, PLpgSQL_expr *exp
 }
 
 /*
- * Check a SQL statement, can (not) returs data. Returns true
+ * Check a SQL statement, can (not) return data. Returns true
  * when statement returns data - we are able to get tuple descriptor.
  */
 bool
