@@ -4754,3 +4754,57 @@ drop function repro04();
 drop function repro04_into();
 drop function repro04_real_dynsql(text);
 drop function repro04_multi();
+
+create table repro_foreach_tab(a int, b int);
+
+-- the target of FOREACH ARRAY holds an element of the array, so the array
+-- expression must not be traced as a constant value of the target variable
+create or replace function repro_foreach()
+returns void as $$
+declare
+  cols text[] := array['a', 'b'];
+  c text;
+  r int;
+begin
+  foreach c in array cols loop
+    execute format('select %I from repro_foreach_tab', c) into r;
+  end loop;
+end
+$$ language plpgsql;
+
+select * from plpgsql_check_function('repro_foreach()');
+
+-- with SLICE the target holds an array, and tracing of a composite value
+-- is not supported anyway
+create or replace function repro_foreach_slice()
+returns void as $$
+declare
+  cols text[] := array[['a'], ['b']];
+  c text[];
+  r int;
+begin
+  foreach c slice 1 in array cols loop
+    execute format('select %I from repro_foreach_tab', c[1]) into r;
+  end loop;
+end
+$$ language plpgsql;
+
+select * from plpgsql_check_function('repro_foreach_slice()');
+
+-- plain assignment is still traced
+create or replace function repro_foreach_const()
+returns void as $$
+declare
+  c text := 'unknown_column';
+  r int;
+begin
+  execute format('select %I from repro_foreach_tab', c) into r;
+end
+$$ language plpgsql;
+
+select * from plpgsql_check_function('repro_foreach_const()');
+
+drop function repro_foreach();
+drop function repro_foreach_slice();
+drop function repro_foreach_const();
+drop table repro_foreach_tab;
