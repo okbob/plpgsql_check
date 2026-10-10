@@ -1008,11 +1008,8 @@ plpgsql_check_pragma_assert(PLpgSQL_checkstate *cstate,
 	{
 		ErrorData  *edata;
 
-		MemoryContextSwitchTo(cstate->check_cxt);
-		edata = CopyErrorData();
-		FlushErrorState();
-
 		MemoryContextSwitchTo(oldCxt);
+		edata = CopyErrorData();
 		FlushErrorState();
 
 		RollbackAndReleaseCurrentSubTransaction();
@@ -1023,6 +1020,8 @@ plpgsql_check_pragma_assert(PLpgSQL_checkstate *cstate,
 		ereport(WARNING,
 				(errmsg("\"%s\" on line %d is not processed.", pragma_assert_name(pat), lineno),
 				 errdetail("%s", edata->message)));
+
+		FreeErrorData(edata);
 
 		result = false;
 	}
@@ -1121,11 +1120,8 @@ plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate,
 	{
 		ErrorData  *edata;
 
-		MemoryContextSwitchTo(cstate->check_cxt);
-		edata = CopyErrorData();
-		FlushErrorState();
-
 		MemoryContextSwitchTo(oldCxt);
+		edata = CopyErrorData();
 		FlushErrorState();
 
 		RollbackAndReleaseCurrentSubTransaction();
@@ -1136,6 +1132,8 @@ plpgsql_check_pragma_type(PLpgSQL_checkstate *cstate,
 		ereport(WARNING,
 				(errmsg("Pragma \"type\" on line %d is not processed.", lineno),
 				 errdetail("%s", edata->message)));
+
+		FreeErrorData(edata);
 
 		result = false;
 	}
@@ -1225,11 +1223,8 @@ plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int line
 	{
 		ErrorData  *edata;
 
-		MemoryContextSwitchTo(cstate->check_cxt);
-		edata = CopyErrorData();
-		FlushErrorState();
-
 		MemoryContextSwitchTo(oldCxt);
+		edata = CopyErrorData();
 		FlushErrorState();
 
 		RollbackAndReleaseCurrentSubTransaction();
@@ -1240,6 +1235,8 @@ plpgsql_check_pragma_table(PLpgSQL_checkstate *cstate, const char *str, int line
 		ereport(WARNING,
 				(errmsg("Pragma \"table\" on line %d is not processed.", lineno),
 				 errdetail("%s", edata->message)));
+
+		FreeErrorData(edata);
 
 		result = false;
 	}
@@ -1319,11 +1316,8 @@ plpgsql_check_pragma_sequence(PLpgSQL_checkstate *cstate, const char *str, int l
 	{
 		ErrorData  *edata;
 
-		MemoryContextSwitchTo(cstate->check_cxt);
-		edata = CopyErrorData();
-		FlushErrorState();
-
 		MemoryContextSwitchTo(oldCxt);
+		edata = CopyErrorData();
 		FlushErrorState();
 
 		RollbackAndReleaseCurrentSubTransaction();
@@ -1334,6 +1328,8 @@ plpgsql_check_pragma_sequence(PLpgSQL_checkstate *cstate, const char *str, int l
 		ereport(WARNING,
 				(errmsg("Pragma \"sequence\" on line %d is not processed.", lineno),
 				 errdetail("%s", edata->message)));
+
+		FreeErrorData(edata);
 
 		result = false;
 	}

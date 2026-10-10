@@ -1212,8 +1212,10 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
 		 */
 		if (cstate->cinfo->fatal_errors)
 			ReThrowError(edata);
-		else
-			plpgsql_check_put_error_edata(cstate, edata);
+
+		plpgsql_check_put_error_edata(cstate, edata);
+		FreeErrorData(edata);
+
 		MemoryContextSwitchTo(oldCxt);
 	}
 	PG_END_TRY();
@@ -1371,8 +1373,10 @@ plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
 		 */
 		if (cstate->cinfo->fatal_errors)
 			ReThrowError(edata);
-		else
-			plpgsql_check_put_error_edata(cstate, edata);
+
+		plpgsql_check_put_error_edata(cstate, edata);
+		FreeErrorData(edata);
+
 		MemoryContextSwitchTo(oldCxt);
 	}
 	PG_END_TRY();
@@ -1873,8 +1877,10 @@ no_other_check:
 		 */
 		if (cstate->cinfo->fatal_errors)
 			ReThrowError(edata);
-		else
-			plpgsql_check_put_error_edata(cstate, edata);
+
+		plpgsql_check_put_error_edata(cstate, edata);
+		FreeErrorData(edata);
+
 		MemoryContextSwitchTo(oldCxt);
 	}
 	PG_END_TRY();
@@ -1975,8 +1981,10 @@ plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 		 */
 		if (cstate->cinfo->fatal_errors)
 			ReThrowError(edata);
-		else
-			plpgsql_check_put_error_edata(cstate, edata);
+
+		plpgsql_check_put_error_edata(cstate, edata);
+		FreeErrorData(edata);
+
 		MemoryContextSwitchTo(oldCxt);
 	}
 	PG_END_TRY();
