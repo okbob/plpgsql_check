@@ -1736,7 +1736,8 @@ plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
 			 */
 			free_string_constant(cstate, targetrow);
 		}
-		else if (cstate->cinfo->constants_tracing && targetdno != -1)
+		else if (cstate->cinfo->constants_tracing && targetdno != -1 &&
+				 !use_element_type)
 		{
 			PLpgSQL_var *var = (PLpgSQL_var *) cstate->estate->datums[targetdno];
 
