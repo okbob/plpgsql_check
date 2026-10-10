@@ -1731,6 +1731,7 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, QParams 
 	char	   *query_string = NULL;
 	Oid		   *paramtypes = NULL;
 	int			nparams = 0;
+	pc_queryid	result_qid;
 
 	if (qparams)
 	{
@@ -1759,7 +1760,6 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, QParams 
 													  ALLOCSET_DEFAULT_MAXSIZE);
 
 	oldcxt = MemoryContextSwitchTo(profiler_queryid_mcxt);
-	MemoryContextSwitchTo(oldcxt);
 
 	profiler_plugin.assign_expr(estate, (PLpgSQL_datum *) &result, expr);
 
@@ -1816,10 +1816,12 @@ profiler_get_dyn_queryid(PLpgSQL_execstate *estate, PLpgSQL_expr *expr, QParams 
 	if (snapshot_set)
 		PopActiveSnapshot();
 
+	result_qid = query->queryId;
+
 	MemoryContextSwitchTo(oldcxt);
 	MemoryContextReset(profiler_queryid_mcxt);
 
-	return query->queryId;
+	return result_qid;
 }
 
 
