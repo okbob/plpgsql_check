@@ -4754,3 +4754,21 @@ drop function repro04();
 drop function repro04_into();
 drop function repro04_real_dynsql(text);
 drop function repro04_multi();
+
+create or replace function unpriv_issue4_rowexpr() returns void as $$
+declare
+  r record;
+begin
+  select (row(1, 'hello'::text)).* into r;
+  raise notice '%', r.f1;
+  select row(1, 'hello') into r;
+  raise notice '%', r.row;
+end;
+$$ language plpgsql;
+
+select unpriv_issue4_rowexpr();
+
+-- there should not be any false errors
+select * from plpgsql_check_function_tb('unpriv_issue4_rowexpr()');
+
+drop function unpriv_issue4_rowexpr();
