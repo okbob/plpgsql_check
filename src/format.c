@@ -37,7 +37,8 @@ static void format_error_xml(StringInfo str, PLpgSQL_execstate *estate, int sqle
 							 const char *message, const char *detail, const char *hint, int level, int position, const char *query, const char *context);
 
 static void format_error_json(StringInfo str, PLpgSQL_execstate *estate, int sqlerrcode, int lineno,
-							  const char *message, const char *detail, const char *hint, int level, int position, const char *query, const char *context);
+							  const char *message, const char *detail, const char *hint, int level, int position, const char *query, const char *context,
+							  bool is_first_item);
 
 static void put_error_tabular(plpgsql_check_result_info *ri, PLpgSQL_execstate *estate, Oid fn_oid, int sqlerrcode, int lineno,
 							  const char *message, const char *detail, const char *hint, int level, int position, const char *query, const char *context);
@@ -260,6 +261,8 @@ plpgsql_check_init_ri(plpgsql_check_result_info *ri,
 	rsinfo->returnMode = SFRM_Materialize;
 	rsinfo->setResult = ri->tuple_store;
 	rsinfo->setDesc = ri->tupdesc;
+
+	ri->is_first_item = true;
 }
 
 /*
@@ -511,7 +514,8 @@ plpgsql_check_put_error_internal(PLpgSQL_checkstate *cstate,
 			case PLPGSQL_CHECK_FORMAT_JSON:
 				format_error_json(ri->sinfo, estate,
 								  sqlerrcode, lineno, message, detail,
-								  hint, level, position, query, context);
+								  hint, level, position, query, context,
+								  ri->is_first_item);
 				break;
 		}
 
@@ -543,6 +547,8 @@ plpgsql_check_put_error_internal(PLpgSQL_checkstate *cstate,
 				 (position != 0) ? internalerrposition(position) : 0,
 				 (context != NULL) ? errcontext("%s", context) : 0));
 	}
+
+	ri->is_first_item = false;
 }
 
 /*
@@ -847,9 +853,9 @@ init_tag(plpgsql_check_result_info *ri, Oid fn_oid)
 		{
 			/* create a initial tag */
 			if (plpgsql_check_regress_test_mode)
-				appendStringInfo(ri->sinfo, "{ \"issues\":[\n");
+				appendStringInfo(ri->sinfo, "{\n  \"issues\": [\n");
 			else
-				appendStringInfo(ri->sinfo, "{ \"function\":\"%d\",\n\"issues\":[\n", fn_oid);
+				appendStringInfo(ri->sinfo, "{\n  \"function\": \"%d\",\n  \"issues\": [\n", fn_oid);
 		}
 	}
 }
@@ -869,11 +875,7 @@ close_and_save(plpgsql_check_result_info *ri)
 	}
 	else if (ri->format == PLPGSQL_CHECK_FORMAT_JSON)
 	{
-		if (ri->sinfo->len > 1 && ri->sinfo->data[ri->sinfo->len - 1] == ',')
-		{
-			ri->sinfo->data[ri->sinfo->len - 1] = '\n';
-		}
-		appendStringInfoString(ri->sinfo, "\n]\n}");
+		appendStringInfoString(ri->sinfo, "\n  ]\n}");
 
 		put_text_line(ri, ri->sinfo->data, ri->sinfo->len);
 	}
@@ -949,7 +951,8 @@ format_error_json(StringInfo str,
 				  int level,
 				  int position,
 				  const char *query,
-				  const char *context)
+				  const char *context,
+				  bool is_first_item)
 {
 	const char *level_str = error_level_str(level);
 	StringInfoData sinfo;		/* Holds escaped json */
@@ -959,55 +962,60 @@ format_error_json(StringInfo str,
 	initStringInfo(&sinfo);
 
 	/* flush tag */
-	appendStringInfoString(str, "  {\n");
-	appendStringInfo(str, "    \"level\":\"%s\",\n", level_str);
+
+	if (is_first_item)
+		appendStringInfoString(str, "    {\n");
+	else
+		appendStringInfoString(str, ",\n    {\n");
+
+	appendStringInfo(str, "      \"level\": \"%s\",\n", level_str);
 
 	escape_json(&sinfo, message);
-	appendStringInfo(str, "    \"message\":%s,\n", sinfo.data);
+	appendStringInfo(str, "      \"message\":%s,\n", sinfo.data);
 	if (estate != NULL && estate->err_stmt != NULL && estate->err_stmt->lineno > 0)
-		appendStringInfo(str, "    \"statement\":{\n\"lineNumber\":\"%d\",\n\"text\":\"%s\"\n},\n",
+		appendStringInfo(str, "      \"statement\": {\n        \"lineNumber\": \"%d\",\n         \"text\": \"%s\"\n      },\n",
 						 estate->err_stmt->lineno,
 						 plpgsql_check__stmt_typename_p(estate->err_stmt));
 
 	else if (strncmp(message, UNUSED_VARIABLE_TEXT, UNUSED_VARIABLE_TEXT_CHECK_LENGTH) == 0 ||
 			 strncmp(message, NEVER_READ_VARIABLE_TEXT, NEVER_READ_VARIABLE_TEXT_CHECK_LENGTH) == 0)
-		appendStringInfo(str, "    \"statement\":{\n\"lineNumber\":\"%d\",\n\"text\":\"DECLARE\"\n},\n",
+		appendStringInfo(str, "      \"statement\": {\n        \"lineNumber\": \"%d\",\n        \"text\": \"DECLARE\"\n      },\n",
 						 lineno);
 
 	if (hint != NULL)
 	{
 		resetStringInfo(&sinfo);
 		escape_json(&sinfo, hint);
-		appendStringInfo(str, "    \"hint\":%s,\n", sinfo.data);
+		appendStringInfo(str, "      \"hint\": %s,\n", sinfo.data);
 	}
 	if (detail != NULL)
 	{
 		resetStringInfo(&sinfo);
 		escape_json(&sinfo, detail);
-		appendStringInfo(str, "    \"detail\":%s,\n", sinfo.data);
+		appendStringInfo(str, "      \"detail\": %s,\n", sinfo.data);
 	}
 	if (query != NULL)
 	{
 		resetStringInfo(&sinfo);
 		escape_json(&sinfo, query);
-		appendStringInfo(str, "    \"query\":{\n\"position\":\"%d\",\n\"text\":%s\n},\n", position, sinfo.data);
+		appendStringInfo(str, "      \"query\": {\n        \"position\": \"%d\",\n        \"text\": %s\n      },\n", position, sinfo.data);
 	}
 
 	if (context != NULL)
 	{
 		resetStringInfo(&sinfo);
 		escape_json(&sinfo, context);
-		appendStringInfo(str, "    \"context\":%s,\n", sinfo.data);
+		appendStringInfo(str, "      \"context\": %s,\n", sinfo.data);
 	}
 
 	/* placing this property last as to avoid a trailing comma */
-	appendStringInfo(str, "    \"sqlState\":\"%s\"\n", unpack_sql_state(sqlerrcode));
+	appendStringInfo(str, "      \"sqlState\": \"%s\"\n", unpack_sql_state(sqlerrcode));
 
 	/*
 	 * flush closing tag. Needs comman jus in case there is more than one
 	 * issue. Comma removed in epilog
 	 */
-	appendStringInfoString(str, "  },");
+	appendStringInfoString(str, "    }");
 }
 
 /*

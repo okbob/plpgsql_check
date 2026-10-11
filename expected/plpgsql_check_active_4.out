@@ -4714,24 +4714,24 @@ select * from plpgsql_check_function('test_function', format => 'xml');
 (1 row)
 
 select * from plpgsql_check_function('test_function', format => 'json');
-                     plpgsql_check_function                      
------------------------------------------------------------------
- { "issues":[                                                   +
-   {                                                            +
-     "level":"error",                                           +
-     "message":"relation \"non_existing_table\" does not exist",+
-     "statement":{                                              +
- "lineNumber":"3",                                              +
- "text":"SQL statement"                                         +
- },                                                             +
-     "query":{                                                  +
- "position":"13",                                               +
- "text":"insert into non_existing_table values (1)"             +
- },                                                             +
-     "sqlState":"42P01"                                         +
-   }                                                            +
-                                                                +
- ]                                                              +
+                      plpgsql_check_function                       
+-------------------------------------------------------------------
+ {                                                                +
+   "issues": [                                                    +
+     {                                                            +
+       "level": "error",                                          +
+       "message":"relation \"non_existing_table\" does not exist",+
+       "statement": {                                             +
+         "lineNumber": "3",                                       +
+          "text": "SQL statement"                                 +
+       },                                                         +
+       "query": {                                                 +
+         "position": "13",                                        +
+         "text": "insert into non_existing_table values (1)"      +
+       },                                                         +
+       "sqlState": "42P01"                                        +
+     }                                                            +
+   ]                                                              +
  }
 (1 row)
 

@@ -94,6 +94,7 @@ typedef struct plpgsql_check_result_info
 	StringInfo	sinfo;			/* buffer for multi line one value output
 								 * formats */
 	bool		init_tag;		/* true, when init tag should be created */
+	bool		is_first_item;	/* true, when first error is printed */
 } plpgsql_check_result_info;
 
 typedef struct plpgsql_check_info
