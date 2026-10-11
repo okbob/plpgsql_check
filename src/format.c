@@ -581,7 +581,9 @@ plpgsql_check_put_error(PLpgSQL_checkstate *cstate,
 	 * errors (and warnings) have to have same transformation for position to
 	 * correct display caret (for trapped and reraised, and raised errors)
 	 */
-	if (position != -1 && query)
+	if (position < 0)
+		position = 0;
+	else if (query)
 		position = pg_mbstrlen_with_len(query, position) + 1;
 
 	plpgsql_check_put_error_internal(cstate,
