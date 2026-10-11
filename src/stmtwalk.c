@@ -1871,7 +1871,7 @@ dynsql_param_ref(ParseState *pstate, ParamRef *pref)
 										  true,
 										  NULL);
 
-	if (tupdesc)
+	if (tupdesc && tupdesc->natts > 0)
 	{
 		param = makeNode(Param);
 		param->paramkind = PARAM_EXTERN;

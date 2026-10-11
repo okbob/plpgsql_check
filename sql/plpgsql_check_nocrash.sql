@@ -941,3 +941,32 @@ $$;
 
 DROP TABLE IF EXISTS tt_tab;
 DROP FUNCTION tt_trg();
+
+CREATE TYPE empty_comp AS ();
+
+CREATE FUNCTION oob_if() RETURNS int LANGUAGE plpgsql AS $$
+DECLARE
+  r empty_comp;
+BEGIN
+  IF r THEN
+    RETURN 1;
+  END IF;
+  RETURN 0;
+END;
+$$;
+
+CREATE FUNCTION oob_ret() RETURNS int LANGUAGE plpgsql AS $$
+DECLARE
+  r empty_comp;
+BEGIN
+  RETURN (r);
+END;
+$$;
+
+SELECT * FROM plpgsql_check_function('oob_if()', fatal_errors => false);
+SELECT * FROM plpgsql_check_function('oob_ret()', fatal_errors => false);
+
+DROP FUNCTION oob_if;
+DROP FUNCTION oob_ret;
+
+DROP TYPE empty_comp;

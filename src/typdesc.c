@@ -453,7 +453,11 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 							tupdesc->natts)));
 
 		/* check the type of the expression - must be an array */
-		elemtype = get_element_type(TupleDescAttr(tupdesc, 0)->atttypid);
+		if (tupdesc->natts > 0)
+			elemtype = get_element_type(TupleDescAttr(tupdesc, 0)->atttypid);
+		else
+			elemtype = InvalidOid;
+
 		if (!OidIsValid(elemtype))
 		{
 			ereport(ERROR,
@@ -684,5 +688,8 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 
 		ReleaseCachedPlan(cplan, CurrentResourceOwner);
 	}
+
+	/* attention: returned tupdesc can have zero columns */
+
 	return tupdesc;
 }

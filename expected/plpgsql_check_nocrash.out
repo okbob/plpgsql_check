@@ -1171,3 +1171,35 @@ END;
 $$;
 DROP TABLE IF EXISTS tt_tab;
 DROP FUNCTION tt_trg();
+CREATE TYPE empty_comp AS ();
+CREATE FUNCTION oob_if() RETURNS int LANGUAGE plpgsql AS $$
+DECLARE
+  r empty_comp;
+BEGIN
+  IF r THEN
+    RETURN 1;
+  END IF;
+  RETURN 0;
+END;
+$$;
+CREATE FUNCTION oob_ret() RETURNS int LANGUAGE plpgsql AS $$
+DECLARE
+  r empty_comp;
+BEGIN
+  RETURN (r);
+END;
+$$;
+SELECT * FROM plpgsql_check_function('oob_if()', fatal_errors => false);
+                 plpgsql_check_function                  
+---------------------------------------------------------
+ error:42804:5:IF:expression doesn't return scalar value
+(1 row)
+
+SELECT * FROM plpgsql_check_function('oob_ret()', fatal_errors => false);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+DROP FUNCTION oob_if;
+DROP FUNCTION oob_ret;
+DROP TYPE empty_comp;

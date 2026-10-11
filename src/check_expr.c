@@ -1185,11 +1185,18 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
 		{
 			/* when we know value or type */
 			if (!is_immutable_null)
+			{
+				if (tupdesc->natts != 1)
+					ereport(ERROR,
+							(errcode(ERRCODE_DATATYPE_MISMATCH),
+							 errmsg("expression doesn't return scalar value")));
+
 				plpgsql_check_assign_to_target_type(cstate,
 													expected_typoid, -1,
 													TupleDescAttr(tupdesc, 0)->atttypid,
 													is_immutable_null,
 													-1);
+			}
 
 			ReleaseTupleDesc(tupdesc);
 		}
@@ -1301,7 +1308,7 @@ plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
 										0, NULL, NULL);
 		}
 
-		if (tupdesc)
+		if (tupdesc && tupdesc->natts > 0)
 		{
 			/* enforce check for trigger function - result must be composit */
 			if (func->fn_retistuple && is_expression
