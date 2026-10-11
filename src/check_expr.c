@@ -1189,7 +1189,7 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
 				if (tupdesc->natts != 1)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATATYPE_MISMATCH),
-							 errmsg("expression doesn't return scalar value")));
+							 errmsg("unexpected non-scalar value")));
 
 				plpgsql_check_assign_to_target_type(cstate,
 													expected_typoid, -1,
@@ -1306,6 +1306,38 @@ plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
 										NULL,
 										PLPGSQL_CHECK_WARNING_COMPATIBILITY,
 										0, NULL, NULL);
+		}
+
+		if (!func->fn_retistuple && is_expression && type_is_rowtype(first_level_typ))
+		{
+			/*
+			 * PL/pgSQL try to use IO conversion, so we are not sure, how
+			 * this conversion is strict. But We can be sure so any composite
+			 * cannot be converted to any numeric.
+			 */
+			if (!is_immutable_null)
+			{
+				bool		typispreferred;
+				char		typcategory;
+				Oid			base_rettype;
+
+				base_rettype = getBaseType(func->fn_rettype);
+
+				get_type_category_preferred(base_rettype, &typcategory, &typispreferred);
+
+				/*
+				 * when source type is composite, and target is numeric, then
+				 * there is a high probability of some error.
+				 */
+				if (typcategory == 'N')
+					plpgsql_check_put_error(cstate,
+											ERRCODE_DATATYPE_MISMATCH, 0,
+											"cannot return composite value from function returning number",
+											NULL,
+											NULL,
+											PLPGSQL_CHECK_ERROR,
+											0, NULL, NULL);
+			}
 		}
 
 		if (tupdesc && tupdesc->natts > 0)

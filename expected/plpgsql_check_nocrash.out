@@ -1190,15 +1190,16 @@ BEGIN
 END;
 $$;
 SELECT * FROM plpgsql_check_function('oob_if()', fatal_errors => false);
-                 plpgsql_check_function                  
----------------------------------------------------------
- error:42804:5:IF:expression doesn't return scalar value
+            plpgsql_check_function            
+----------------------------------------------
+ error:42804:5:IF:unexpected non-scalar value
 (1 row)
 
 SELECT * FROM plpgsql_check_function('oob_ret()', fatal_errors => false);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                              plpgsql_check_function                               
+-----------------------------------------------------------------------------------
+ error:42804:5:RETURN:cannot return composite value from function returning number
+(1 row)
 
 DROP FUNCTION oob_if;
 DROP FUNCTION oob_ret;
