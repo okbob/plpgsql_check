@@ -253,6 +253,7 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 {
 	Query	   *query;
 	CachedPlanSource *plansource = NULL;
+	bool		is_valid;
 
 	do
 	{
@@ -260,14 +261,18 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 		plansource = plpgsql_check_get_plan_source(cstate, expr->plan);
 		if (!plansource)
 			return;
-		if (!plansource->is_valid)
+
+		is_valid = plansource->is_valid;
+
+		if (!is_valid)
 		{
+			/* replan plan because it is invalid */
+			cstate->exprs = list_delete(cstate->exprs, expr->plan);
 			SPI_freeplan(expr->plan);
 			expr->plan = NULL;
-			cstate->exprs = list_delete_last(cstate->exprs);
 		}
 	}
-	while (!plansource->is_valid);
+	while (!is_valid);
 
 	if (list_length(expr->plan->plancache_list) > 1)
 	{

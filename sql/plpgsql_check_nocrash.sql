@@ -891,3 +891,28 @@ SELECT repro03_run();
 -- buggy: 2 - the profiler evaluated repro03_gen() a second time
 SELECT currval('repro03_seq') AS "nextval calls with profiler on";
 
+
+-- Use-after-free and NULL-pointer dereference in prepare_plan()'s retry loop.
+CREATE TABLE uaf_t (a int);
+
+CREATE FUNCTION uaf_f() RETURNS int LANGUAGE plpgsql AS $$
+DECLARE
+  v int;
+BEGIN
+  SELECT count(*) INTO v FROM uaf_t;
+  RETURN v;
+END;
+$$;
+
+-- Execute the function so PL/pgSQL caches its run-time plan in expr->plan.
+SELECT uaf_f();
+
+-- Invalidate that cached plan with ordinary DDL.
+ALTER TABLE uaf_t ADD COLUMN b int;
+
+-- should not crash
+SELECT count(*) >= 0
+     FROM plpgsql_check_function('uaf_f()');
+
+DROP TABLE uaf_t;
+DROP FUNCTION uaf_f;
