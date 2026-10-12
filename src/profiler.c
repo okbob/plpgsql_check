@@ -170,7 +170,7 @@ enum
 typedef struct LXCache_info
 {
 	MemoryContext lxcache_mcxt;
-	HTAB		   *lxcache_ht;
+	HTAB	   *lxcache_ht;
 	MemoryContextCallback lxcache_mcb;
 } LXCache_info;
 
@@ -267,7 +267,7 @@ static int	estimated_stmt_stats_count = 0;
  * don't want to persistenting the content of lxcache.
  * A flag skip_cirrent_lxcache signalize this case.
  */
-static bool	skip_current_lxcache = false;
+static bool skip_current_lxcache = false;
 
 static ProfilerSharedState *profiler_ss = NULL;
 static StmtStats *SharedStmtStatsArray = NULL;
@@ -508,9 +508,9 @@ plpgsql_profiler_reset_all(PG_FUNCTION_ARGS)
 	if (lxcache_mcxt)
 	{
 		/*
-		 * More robust solution can be remove MemoryContextResetCallback
-		 * and destroy context locally. But this possibility is not on
-		 * available on all supported releases.
+		 * More robust solution can be remove MemoryContextResetCallback and
+		 * destroy context locally. But this possibility is not on available
+		 * on all supported releases.
 		 */
 		skip_current_lxcache = true;
 
@@ -819,9 +819,8 @@ get_lxcache(profiler_info *pinfo)
 		return pinfo->lxcache;
 
 	/*
-	 * When we lost current lxid (due aborted state), we it is better
-	 * don't create new lxcache - in this moment nothing new can be
-	 * executed.
+	 * When we lost current lxid (due aborted state), we it is better don't
+	 * create new lxcache - in this moment nothing new can be executed.
 	 */
 	if (thislxid == InvalidLocalTransactionId)
 		return NULL;
@@ -866,8 +865,8 @@ lxcache_reset_callback(void *arg)
 	if (skip_current_lxcache && lxcache_mcxt == lxcinfo->lxcache_mcxt)
 	{
 		/*
-		 * when the callback is from plpgsql_profiler_reset_all,
-		 * we just clean memory.
+		 * when the callback is from plpgsql_profiler_reset_all, we just clean
+		 * memory.
 		 */
 		hash_destroy(lxcinfo->lxcache_ht);
 
@@ -900,14 +899,14 @@ lxcache_reset_callback(void *arg)
 		hash_destroy(lxcinfo->lxcache_ht);
 
 		/*
-		 * Invalidate static variables if referenced to
-		 * currently resetted (released) lxcache.
+		 * Invalidate static variables if referenced to currently resetted
+		 * (released) lxcache.
 		 */
 		if (lxcache_mcxt == lxcinfo->lxcache_mcxt)
 		{
 			/*
-			 * Invalidate static variables if referenced to
-			 * currently resetted (released) lxcache.
+			 * Invalidate static variables if referenced to currently resetted
+			 * (released) lxcache.
 			 */
 			lxcache_mcxt = NULL;
 			lxcache_ht = NULL;
@@ -1615,18 +1614,18 @@ profiler_stmt_abort(PLpgSQL_execstate *estate,
 static bool
 expr_is_volatile(PLpgSQL_expr *expr)
 {
-  List	   *plan_sources;
-  CachedPlanSource *plan_source;
+	List	   *plan_sources;
+	CachedPlanSource *plan_source;
 
-  plan_sources = SPI_plan_get_plan_sources(expr->plan);
-  if (!plan_sources)
-	return true;
+	plan_sources = SPI_plan_get_plan_sources(expr->plan);
+	if (!plan_sources)
+		return true;
 
-  plan_source = (CachedPlanSource *) linitial(plan_sources);
-  if (!plan_source->query_list)
-	return true;
+	plan_source = (CachedPlanSource *) linitial(plan_sources);
+	if (!plan_source->query_list)
+		return true;
 
-  return contain_volatile_functions((Node *) linitial_node(Query, plan_source->query_list));
+	return contain_volatile_functions((Node *) linitial_node(Query, plan_source->query_list));
 }
 
 /***************************************
@@ -2034,8 +2033,8 @@ local_statements_stats_report(plch_fidentity_hk *hk,
 static StmtStats *
 statement_stats_local_copy(FuncStmtsStats *fss)
 {
-	size_t			ss_size = fss->nstatements * sizeof(StmtStats);
-	StmtStats	   *result;
+	size_t		ss_size = fss->nstatements * sizeof(StmtStats);
+	StmtStats  *result;
 
 	result = palloc(ss_size);
 
@@ -2058,7 +2057,7 @@ shared_statements_stats_report(plch_fidentity_hk *hk,
 {
 	FuncStmtsStats *fss;
 	bool		found;
-	StmtStats   *loc_sstats = NULL;
+	StmtStats  *loc_sstats = NULL;
 
 	LWLockAcquire(profiler_ss->func_stmts_stats_lock, LW_SHARED);
 
@@ -2520,8 +2519,8 @@ coverage_branches_walker(PLpgSQL_stmt *stmt, coverage_branches_context *context)
 
 		/*
 		 * The CASE in PL/pgSQL statement has not implicit ELSE path, because
-		 * when no one path is used, then the exception is raised. Example,
-		 * if we used a enum type, and if we write paths for all values in enums,
+		 * when no one path is used, then the exception is raised. Example, if
+		 * we used a enum type, and if we write paths for all values in enums,
 		 * then all paths are covered - and we no able to to write legal code,
 		 * that can execute implicit else paths.
 		 */

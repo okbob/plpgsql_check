@@ -276,13 +276,13 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 
 	if (list_length(expr->plan->plancache_list) > 1)
 	{
-		ListCell *lc;
+		ListCell   *lc;
 
 		/*
 		 * executed as EXECUTE ' ...; ...'
 		 *
-		 * in this case plpgsql_check_get_plan_source returns last subplan. But
-		 * we can collect volatility for all previous subplans.
+		 * in this case plpgsql_check_get_plan_source returns last subplan.
+		 * But we can collect volatility for all previous subplans.
 		 */
 		Assert(cstate->allow_mp && cstate->is_dynsql);
 
@@ -1265,8 +1265,8 @@ plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
 
 		/*
 		 * record all variables used by the query, should be after
-		 * prepare_plan.
-		 * Note: expr->paramnos should be empty for dynamic queries.
+		 * prepare_plan. Note: expr->paramnos should be empty for dynamic
+		 * queries.
 		 */
 		cstate->used_variables = bms_add_members(cstate->used_variables, expr->paramnos);
 
@@ -1311,8 +1311,8 @@ plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
 		if (!func->fn_retistuple && is_expression && type_is_rowtype(first_level_typ))
 		{
 			/*
-			 * PL/pgSQL try to use IO conversion, so we are not sure, how
-			 * this conversion is strict. But We can be sure so any composite
+			 * PL/pgSQL try to use IO conversion, so we are not sure, how this
+			 * conversion is strict. But We can be sure so any composite
 			 * cannot be converted to any numeric.
 			 */
 			if (!is_immutable_null)
@@ -1495,8 +1495,8 @@ plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
 		plpgsql_check_target(cstate, targetdno, &expected_typoid, &expected_typmod);
 
 		/*
-		 * When target variable is not composite, then we should not
-		 * expand result tupdesc.
+		 * When target variable is not composite, then we should not expand
+		 * result tupdesc.
 		 */
 		if (!type_is_rowtype(expected_typoid))
 			expand = false;
@@ -1586,11 +1586,11 @@ plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
 						 *
 						 * get_array_type() returns InvalidOid when no array
 						 * type exists for expected_typoid - for instance when
-						 * the loop variable of a FOREACH ... IN ARRAY is itself
-						 * an array type.  There is then no target type to probe,
-						 * and getTypeInputInfo(InvalidOid) would fail with an
-						 * internal "cache lookup failed for type 0", so skip the
-						 * probe.
+						 * the loop variable of a FOREACH ... IN ARRAY is
+						 * itself an array type.  There is then no target type
+						 * to probe, and getTypeInputInfo(InvalidOid) would
+						 * fail with an internal "cache lookup failed for type
+						 * 0", so skip the probe.
 						 */
 						if (OidIsValid(typeid) &&
 							!can_coerce_type(1, &expr_typoid, &typeid, COERCION_ASSIGNMENT))
@@ -1833,7 +1833,7 @@ plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
 
 					if (top_stmts)
 						top_stmts->invalidate_strconstvars =
-											bms_add_member(top_stmts->invalidate_strconstvars, targetdno);
+							bms_add_member(top_stmts->invalidate_strconstvars, targetdno);
 
 					MemoryContextSwitchTo(oldcxt);
 				}

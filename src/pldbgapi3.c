@@ -46,12 +46,11 @@ typedef struct plpgsql_plugin_info
 	PLpgSQL_execstate *estate;
 
 	/*
-	 * Raising of any exception by errfinish collects
-	 * stacktrace. In own error context callback we can
-	 * persist error data.
+	 * Raising of any exception by errfinish collects stacktrace. In own error
+	 * context callback we can persist error data.
 	 *
-	 * Note: we don't need to clean error_context_stack
-	 * it is done by plpgsql_handler.
+	 * Note: we don't need to clean error_context_stack it is done by
+	 * plpgsql_handler.
 	 */
 	ErrorContextCallback plerrcontext;
 	MemoryContext mcxt;
@@ -135,11 +134,10 @@ abort_statements(PLpgSQL_stmt **stmts, int nstmts,
 	PLpgSQL_stmt *err_stmt = plugin_info->estate->err_stmt;
 
 	/*
-	 * overwrite estate->err_stmt - this field can be
-	 * overwritten already by exec_stmts - abort_statements
-	 * can be called from stmt_beg when an exception is
-	 * handled, and first statement of exception handler
-	 * is executed.
+	 * overwrite estate->err_stmt - this field can be overwritten already by
+	 * exec_stmts - abort_statements can be called from stmt_beg when an
+	 * exception is handled, and first statement of exception handler is
+	 * executed.
 	 */
 	plugin_info->estate->err_stmt = plugin_info->err_stmt;
 
@@ -314,17 +312,18 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 				plugin_info->fextra = plch_get_fextra(func);
 
 			/*
-			 * The size of stmt_stack is constant. We know max deep of AST
-			 * of plpgsql function. The one stack is per one function call.
-			 * When function call self recursively, then new stack is created.
-			 * Because AST is tree always - and the PLpgSQL is based on iteration
-			 * over AST, then there is not the possibility how the execution
-			 * can across max_deep size.
+			 * The size of stmt_stack is constant. We know max deep of AST of
+			 * plpgsql function. The one stack is per one function call. When
+			 * function call self recursively, then new stack is created.
+			 * Because AST is tree always - and the PLpgSQL is based on
+			 * iteration over AST, then there is not the possibility how the
+			 * execution can across max_deep size.
 			 *
-			 * After an exception pldbgapi reduces stack how it is necessary, so
-			 * under pldbgapi - the number of calls of stmt_beg should be same like
-			 * number of calls of stmt_end (because stmt_end is called after any
-			 * abort before an execution of any statement from same function).
+			 * After an exception pldbgapi reduces stack how it is necessary,
+			 * so under pldbgapi - the number of calls of stmt_beg should be
+			 * same like number of calls of stmt_end (because stmt_end is
+			 * called after any abort before an execution of any statement
+			 * from same function).
 			 */
 			plugin_info->stmts_stack = palloc((plugin_info->fextra->max_deep + 1) * sizeof(PLpgSQL_stmt *));
 			plugin_info->stmts_buf = palloc((plugin_info->fextra->max_deep + 1) * sizeof(PLpgSQL_stmt *));
@@ -349,7 +348,7 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 
 #endif
 
-		plugins[i]->plch_error_callback =  plpgsql_check_error_callback;
+		plugins[i]->plch_error_callback = plpgsql_check_error_callback;
 	}
 
 	plugin_info->mcb.func = plugin_info_reset;
@@ -362,14 +361,13 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	 *
 	 * The workaround - using context from simple_eval_estate is not nice,
 	 * because it enforce plugin_reset before final raising an exception.
-	 * inline block hash not use shared simple eval estate, and every
-	 * inline block has unique simple eval estate.
+	 * inline block hash not use shared simple eval estate, and every inline
+	 * block has unique simple eval estate.
 	 *
-	 * The advantage of using es_query_cxt context instead caller context
-	 * is a fact, so this context is destroyed before related
-	 * PLpgSQL_function is released (including AST). Caller context is
-	 * released too late, and access to AST is broken due access to
-	 * already released memory.
+	 * The advantage of using es_query_cxt context instead caller context is a
+	 * fact, so this context is destroyed before related PLpgSQL_function is
+	 * released (including AST). Caller context is released too late, and
+	 * access to AST is broken due access to already released memory.
 	 */
 	if (!OidIsValid(func->fn_oid))
 	{
@@ -439,17 +437,16 @@ plpgsql_check_error_callback(void *arg)
 	plpgsql_plugin_info *plugin_info = (plpgsql_plugin_info *) arg;
 
 	/*
-	 * Attention - the callback can be raised from pl plugins,
-	 * and then estate->plugin_info should not be a reference
-	 * to pldbapi3 plugin.
+	 * Attention - the callback can be raised from pl plugins, and then
+	 * estate->plugin_info should not be a reference to pldbapi3 plugin.
 	 */
 	if (top_pldbgapi_plugin_info == plugin_info &&
 		geterrcode() != 0)
 	{
 		/*
 		 * Use preallocated 8kB private error context. Then CopyErrorData()
-		 * should be safe operation. When some plugin needs more memory,
-		 * then should to use own preallocated own ErrorContext.
+		 * should be safe operation. When some plugin needs more memory, then
+		 * should to use own preallocated own ErrorContext.
 		 */
 		MemoryContext oldcxt = MemoryContextSwitchTo(plugin_info->ErrorContext);
 

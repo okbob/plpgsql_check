@@ -727,8 +727,8 @@ print_all_variables(PLpgSQL_execstate *estate)
 		}
 
 		if (refname && (
-			((strcmp(refname, "*internal*") == 0) ||
-			 (strcmp(refname, "(unnamed row)") == 0))))
+						((strcmp(refname, "*internal*") == 0) ||
+						 (strcmp(refname, "(unnamed row)") == 0))))
 			refname = NULL;
 
 		if (refname)
@@ -1501,7 +1501,10 @@ trace_assert(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, tracer_info *tinfo)
 
 		print_all_variables(estate);
 
-		/* Show outer frames by default, adding their variables in verbose mode. */
+		/*
+		 * Show outer frames by default, adding their variables in verbose
+		 * mode.
+		 */
 		if (plpgsql_check_trace_assert_verbosity >= PGERROR_DEFAULT)
 		{
 			for (econtext = (skip_plch_errcontext(error_context_stack))->previous;

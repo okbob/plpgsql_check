@@ -314,10 +314,9 @@ pofce_get_desc(PLpgSQL_checkstate *cstate,
 				Assert(inargno < procStruct->pronargs);
 
 				/*
-				 * fn->args are transformated already, so items
-				 * in this list must match fields in proargtypes.
-				 * This matching is fundamental prerequsity of
-				 * this routine.
+				 * fn->args are transformated already, so items in this list
+				 * must match fields in proargtypes. This matching is
+				 * fundamental prerequsity of this routine.
 				 */
 				arg = list_nth(fn->args, inargno);
 

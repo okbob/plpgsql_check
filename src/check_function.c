@@ -132,10 +132,13 @@ reports_used_rowtypes_dependency(PLpgSQL_function *func, PLpgSQL_checkstate *cst
 		if (var->dtype == PLPGSQL_DTYPE_REC)
 		{
 			PLpgSQL_rec *rec = (PLpgSQL_rec *) var;
-			Oid		typrelid;
-			char	relkind;
+			Oid			typrelid;
+			char		relkind;
 
-			/* datatype can be NULL, when rectypeid is RECORDOID (trigger NEW/OLD) */
+			/*
+			 * datatype can be NULL, when rectypeid is RECORDOID (trigger
+			 * NEW/OLD)
+			 */
 			if (!rec->datatype)
 				continue;
 

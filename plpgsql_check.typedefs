@@ -2,6 +2,7 @@ A_Const
 AclMode
 Alias
 ArrayBuildState
+ArrayExpr
 ArrayIterator
 ArrayMetaState
 ArrayType
@@ -84,8 +85,6 @@ Float
 FmgrInfo
 ForBothState
 ForEachState
-ForPortionOfExpr
-ForPortionOfState
 ForkNumber
 FormData_pg_attribute
 FormData_pg_class
@@ -106,10 +105,6 @@ FuncStmtsStats
 FunctionCallInfo
 FunctionCallInfoBaseData
 FunctionTrace
-GraphElementPattern
-GraphElementPatternKind
-GraphPattern
-GraphTableParseState
 GucAction
 GucBoolAssignHook
 GucBoolCheckHook
@@ -139,6 +134,9 @@ IOStats
 Index
 IndexBuildCallback
 IndexInfo
+IndexScanDesc
+IndexTuple
+IndexTupleData
 Integer
 IntoClause
 ItemPointer
@@ -154,6 +152,7 @@ LWLock
 LWLockMode
 LWLockPadded
 LXCache
+LXCache_info
 Latch
 LimitOption
 List
@@ -184,6 +183,7 @@ NullableDatum
 ObjectType
 OffsetNumber
 Oid
+Oid8
 OnCommitAction
 OnConflictAction
 OnConflictActionState
@@ -387,7 +387,6 @@ TypeFuncClass
 TypeName
 VacuumParams
 ValidateIndexState
-Var
 VarReturningType
 WithClause
 WorkerNodeInstrumentation

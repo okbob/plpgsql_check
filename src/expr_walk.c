@@ -852,6 +852,7 @@ check_fmt_string(const char *fmt,
 	const char *end_ptr = fmt + strlen(fmt);
 	int			nargs = args ? list_length(args) : -1;
 	int			required_nargs = args ? 0 : -1;
+
 	/* Parsed positions can be INT_MAX; leave room for the format argument. */
 	int64		arg = 1;
 

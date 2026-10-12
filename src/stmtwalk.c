@@ -41,8 +41,8 @@ typedef struct DynSQLParams
 	PLpgSQL_checkstate *cstate;
 
 	/*
-	 * When dynamic query uses params, then this flag
-	 * will be set to true by dynsql_param_ref callback
+	 * When dynamic query uses params, then this flag will be set to true by
+	 * dynsql_param_ref callback
 	 */
 	bool		use_params;
 } DynSQLParams;
@@ -500,9 +500,10 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						{
 							/*
 							 * When expected datatype is different from real,
-							 * change it. Note that what we're modifying here is
-							 * an execution copy of the datum, so this doesn't
-							 * affect the originally stored function parse tree.
+							 * change it. Note that what we're modifying here
+							 * is an execution copy of the datum, so this
+							 * doesn't affect the originally stored function
+							 * parse tree.
 							 */
 							if (t_var->datatype->typoid != result_oid)
 
@@ -1290,9 +1291,9 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 		 * Restore err_text saved on entry.  A statement handler may set
 		 * estate->err_text (for instance the assignment target context) and
 		 * clear it again when it returns normally.  When analysing the
-		 * statement threw and we caught it here, that reset was skipped, so the
-		 * stale context would otherwise be attached to every later, unrelated
-		 * diagnostic (e.g. an unused-variable warning).
+		 * statement threw and we caught it here, that reset was skipped, so
+		 * the stale context would otherwise be attached to every later,
+		 * unrelated diagnostic (e.g. an unused-variable warning).
 		 */
 		cstate->estate->err_text = save_err_text;
 
@@ -1310,9 +1311,9 @@ static void
 invalidate_strconstvars(PLpgSQL_checkstate *cstate)
 {
 	/*
-	 * We cannot safely use string constant when we leave related path
-	 * (maybe we can, but it needs deeper analyze ensure so we will process
-	 * all possible variants).
+	 * We cannot safely use string constant when we leave related path (maybe
+	 * we can, but it needs deeper analyze ensure so we will process all
+	 * possible variants).
 	 */
 	if (cstate->top_stmts->invalidate_strconstvars)
 	{
@@ -1422,8 +1423,8 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 				PLpgSQL_stmt_stack_item *outer_target_stmt;
 
 				/*
-				 * the EXIT and the CONTINUE statements does jump out of
-				 * body, and this jump can overwrite exit status.
+				 * the EXIT and the CONTINUE statements does jump out of body,
+				 * and this jump can overwrite exit status.
 				 *
 				 * In this moment, the outer_target_stmt should be correct,
 				 * because the stmt is already succesfully checked.
@@ -1569,8 +1570,8 @@ pop_stmt_from_stmt_stack(PLpgSQL_checkstate *cstate, int *closing, List **except
 	Assert(cstate->top_stmt_stack != NULL);
 
 	/*
-	 * Overwrite exit status, when statement was ended by EXIT statement.
-	 * In this case, the most valid exit state is UNKNOWN.
+	 * Overwrite exit status, when statement was ended by EXIT statement. In
+	 * this case, the most valid exit state is UNKNOWN.
 	 */
 	if (cstate->top_stmt_stack->has_exit)
 	{
@@ -1775,9 +1776,8 @@ merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int
 		return c;
 
 	/*
-	 * When both first and second path has same closing state, the
-	 * result is same. Concat exceptions when closing state is an
-	 * exception.
+	 * When both first and second path has same closing state, the result is
+	 * same. Concat exceptions when closing state is an exception.
 	 */
 	if (c == c_local)
 	{
@@ -1790,10 +1790,10 @@ merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int
 	}
 
 	/*
-	 * When one path ending by RETURN and second by an exception,
-	 * then we know, so the result is closed paths. It is more
-	 * practical to return PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS,
-	 * because we don't lost a list of exceptions.
+	 * When one path ending by RETURN and second by an exception, then we
+	 * know, so the result is closed paths. It is more practical to return
+	 * PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS, because we don't lost a list of
+	 * exceptions.
 	 */
 	if (c == PLPGSQL_CHECK_CLOSED || c_local == PLPGSQL_CHECK_CLOSED)
 	{
@@ -1811,9 +1811,8 @@ merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int
 	*exceptions = NIL;
 
 	/*
-	 * common combination is CLOSED and UNCLOSED, maybe
-	 * there is a possibility to be more accurate, but
-	 * the result can be some between.
+	 * common combination is CLOSED and UNCLOSED, maybe there is a possibility
+	 * to be more accurate, but the result can be some between.
 	 */
 	return PLPGSQL_CHECK_POSSIBLY_CLOSED;
 }
@@ -2029,9 +2028,8 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	expr_node = plpgsql_check_expr_get_node(cstate, query, false);
 
 	/*
-	 * The query is checked before by PL/pgSQL parser. And then
-	 * result of plpgsql_check_expr_get_node should be not NULL
-	 * every time.
+	 * The query is checked before by PL/pgSQL parser. And then result of
+	 * plpgsql_check_expr_get_node should be not NULL every time.
 	 */
 	Assert(expr_node);
 
@@ -2078,7 +2076,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 						}
 						PG_CATCH();
 						{
-							ErrorData *errdata;
+							ErrorData  *errdata;
 
 							MemoryContextSwitchTo(oldcxt);
 
@@ -2134,10 +2132,11 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 			else
 			{
 				/*
-				 * When dynquery is not really constant, then there are possible false
-				 * alarms because we try to replace string literal by parameter, so we
-				 * can use it just for type detection when check is ok.
-	`			 */
+				 * When dynquery is not really constant, then there are
+				 * possible false alarms because we try to replace string
+				 * literal by parameter, so we can use it just for type
+				 * detection when check is ok. `
+				 */
 				is_ok = plpgsql_check_expr_generic_with_parser_setup_safe(cstate,
 																		  dynexpr,
 																		  (ParserSetupHook) dynsql_parser_setup,

@@ -156,7 +156,7 @@ typedef struct PLpgSQL_checkstate
 	char		decl_volatility;	/* declared function volatility */
 	char		volatility;		/* detected function volatility */
 	bool		found_unknown_query;	/* detected real dynamic SQL, disable
-									 * volatility check */
+										 * volatility check */
 	bool		skip_volatility_check;	/* don't do this test for trigger */
 	PLpgSQL_execstate *estate;	/* check state is estate extension */
 	MemoryContext check_cxt;
@@ -189,8 +189,8 @@ typedef struct PLpgSQL_checkstate
 								 * is active */
 	bool		allow_mp;		/* true, when multiple plans in plancache are
 								 * allowed */
-	bool		found_mp;		/* true, when multiple plan was used,
-								 * disable useless dynsql query warning */
+	bool		found_mp;		/* true, when multiple plan was used, disable
+								 * useless dynsql query warning */
 	bool		was_pragma;		/* true, when last expression was a
 								 * plpgsql_check pragma */
 	plpgsql_check_pragma_vector pragma_vector;
@@ -200,19 +200,18 @@ typedef struct PLpgSQL_checkstate
 	PLpgSQL_statements *top_stmts;	/* pointer to current statement group */
 
 	/*
-	 * is_dynsql is true if currently processed query is executed by
-	 * EXECUTE command. In this case, we cannot to derive estate variable
-	 * from Param nodes. In this case, the Param node reference is a number
-	 * of expr in USING list.
+	 * is_dynsql is true if currently processed query is executed by EXECUTE
+	 * command. In this case, we cannot to derive estate variable from Param
+	 * nodes. In this case, the Param node reference is a number of expr in
+	 * USING list.
 	 */
 	bool		is_dynsql;
 
 	/*
-	 * Holds a pointer to OPEN statement, that was used for specific
-	 * dynamic cursor. This allow to assign result type to target
-	 * variable in FETCH statement when referenced cursor is dynamic.
-	 * When referenced cursor is static, then all necessary info are
-	 * in cursor variable.
+	 * Holds a pointer to OPEN statement, that was used for specific dynamic
+	 * cursor. This allow to assign result type to target variable in FETCH
+	 * statement when referenced cursor is dynamic. When referenced cursor is
+	 * static, then all necessary info are in cursor variable.
 	 */
 	PLpgSQL_stmt_open **dyn_stmt_open;
 } PLpgSQL_checkstate;
@@ -340,7 +339,7 @@ extern void plpgsql_check_expr_generic(PLpgSQL_checkstate *cstate, PLpgSQL_expr 
 extern void plpgsql_check_expr_generic_with_parser_setup(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 														 ParserSetupHook parser_setup, void *arg);
 extern void plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
-											  bool is_expression, ParserSetupHook parser_setup, void *arg);
+														  bool is_expression, ParserSetupHook parser_setup, void *arg);
 extern void plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 														   PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow, int targetdno,
 														   bool use_element_type, bool is_expression,

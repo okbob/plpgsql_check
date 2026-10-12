@@ -168,10 +168,10 @@ plch_get_fextra(PLpgSQL_function *func)
 		fextra = (plch_fextra *) hash_search(fextra_ht, (void *) &hk, HASH_ENTER, &found);
 
 		/*
-		 * Although, there are not threads, there can be "semi parallel" access
-		 * to fextra_ht due fextra_CacheObjectCallback, that can be emitted by
-		 * any catalog operations. So immediately set fields, that can be checked
-		 * used by fextra_CacheObjectCallback.
+		 * Although, there are not threads, there can be "semi parallel"
+		 * access to fextra_ht due fextra_CacheObjectCallback, that can be
+		 * emitted by any catalog operations. So immediately set fields, that
+		 * can be checked used by fextra_CacheObjectCallback.
 		 */
 		if (!found)
 		{
@@ -185,12 +185,16 @@ plch_get_fextra(PLpgSQL_function *func)
 	{
 		/*
 		 * one shot fextra for anonymous blocks. These structures are not
-		 * stored in fextra_ht, so there is not risk with fextra_CacheObjectCallback
-		*/
+		 * stored in fextra_ht, so there is not risk with
+		 * fextra_CacheObjectCallback
+		 */
 		fextra = palloc0(sizeof(plch_fextra));
 	}
 
-	/* pin entry first as protection against dropping in fextra_CacheObjectCallback */
+	/*
+	 * pin entry first as protection against dropping in
+	 * fextra_CacheObjectCallback
+	 */
 	fextra->use_count++;
 
 	PG_TRY();
@@ -213,7 +217,7 @@ plch_get_fextra(PLpgSQL_function *func)
 														 ALLOCSET_DEFAULT_SIZES);
 
 					fextra->hashValue = GetSysCacheHashValue1(PROCOID,
-														  ObjectIdGetDatum(func->fn_oid));
+															  ObjectIdGetDatum(func->fn_oid));
 				}
 				else
 					fextra->mcxt = CurrentMemoryContext;
