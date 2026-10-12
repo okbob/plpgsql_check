@@ -1882,28 +1882,22 @@ plpgsql_check_search_comment_options(plpgsql_check_info *cinfo)
 				while (*src != '$' && is_ident_cont((unsigned char) *src));
 			}
 
+			/* found ending $ of starting tag */
 			if (*src == '$')
 			{
-				size_t		cust_str_length = 0;
+				/* size of custom string separator (include dolars) */
+				size_t		cust_str_length = src - start + 1;
 
-				cust_str_length = src - start + 1;
-
-		next_char:
-
-				src += 1;
-
-				if (*src)
+				while (*src != '\0')
 				{
-					size_t		i;
-
-					for (i = 0; i < cust_str_length; i++)
+					if (strncmp(src, start, cust_str_length) == 0)
 					{
-						if (src[i] != start[i])
-							goto next_char;
+						/* found complete custom string separator */
+						src += cust_str_length;
+						break;
 					}
 
-					/* found complete custom string separator */
-					src += cust_str_length;
+					src += 1;
 				}
 			}
 			else

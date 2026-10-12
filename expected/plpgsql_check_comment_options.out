@@ -276,7 +276,7 @@ select count(*) = 1 as unused_without_options
 create function co_standard_string()
 returns text as $func$
 declare
-  s name := name'backslash\';
+  s name := name'backslash\'; --'
   x int;
 begin
   -- @plpgsql_check_options: without_warnings
@@ -921,3 +921,21 @@ drop function co_bool3();
 drop function co_bool2();
 drop function co_bool1();
 drop function co_check(text, regclass);
+-- disable body check so postgresql allows storing function with unclosed dollar tag
+set check_function_bodies = off;
+create or replace function unpriv_issue1_dollar_overread() returns void as $body$
+$test_custom_tag_1234567890$
+abc
+$test_custom_tag_123456789$body$ language plpgsql;
+-- trigger plpgsql_check_search_comment_options on the function's prosrc
+select * from plpgsql_check_function('unpriv_issue1_dollar_overread()');
+                                 plpgsql_check_function                                 
+----------------------------------------------------------------------------------------
+ error:42601:unterminated dollar-quoted string at or near "$test_custom_tag_1234567890$+
+ abc                                                                                   +
+ $test_custom_tag_123456789"
+ Context: compilation of PL/pgSQL function "unpriv_issue1_dollar_overread" near line 1
+(2 rows)
+
+drop function unpriv_issue1_dollar_overread();
+set check_function_bodies = on;
