@@ -2082,7 +2082,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 							MemoryContextSwitchTo(oldcxt);
 
-							errdata = CopyErrorData();\
+							errdata = CopyErrorData();
 							FlushErrorState();
 
 							errdata->internalquery = fstr;
