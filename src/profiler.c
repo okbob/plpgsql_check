@@ -50,6 +50,7 @@ typedef struct FuncStats
 	slock_t		mutex;
 	uint64		exec_count;
 	uint64		exec_count_err;
+	uint64		raised_errors;
 	uint64		total_time;
 	double		total_time_mean;
 	double		total_time_m2;
@@ -71,6 +72,12 @@ typedef struct QParams
  * PLpgSQL statement instrumentation
  * Attention - the commands that can contains nestested commands
  * has attached own time and nested statements time too.
+ *
+ * The exec_count_err contains a number of abort_stmt executions.
+ * The err_count counter is incremented only if the error was
+ * raised directly in this statement. err_count counts every
+ * raised exception - regardless of whether the exception was
+ * caught or not
  */
 typedef struct StmtInstr
 {
@@ -82,6 +89,7 @@ typedef struct StmtInstr
 	uint64		exec_count;
 	uint64		exec_count_err;
 	uint64		exec_count_cond_err;
+	uint64		raised_errors;
 	instr_time	start_time;
 	instr_time	total;
 	QParams    *qparams;
@@ -97,6 +105,7 @@ typedef struct StmtStats
 	uint64		exec_count;
 	uint64		exec_count_err;
 	uint64		exec_count_cond_err;
+	uint64		raised_errors;
 } StmtStats;
 
 #define		FUNC_STATS_COUNT				20000
@@ -143,6 +152,8 @@ typedef struct profiler_info
 	int			nstatements;
 	instr_time	start_time;
 	PLpgSQL_function *func;
+
+	uint64		raised_errors;
 
 	MemoryContext mcxt;
 
@@ -203,6 +214,7 @@ static void profiler_func_abort(PLpgSQL_execstate *estate, PLpgSQL_function *fun
 static void profiler_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra);
 static void profiler_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra);
 static void profiler_stmt_abort(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra);
+static void profiler_stmt_error(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra, ErrorData *cur_error);
 
 static plch_plugin profiler_plugin =
 {
@@ -214,7 +226,7 @@ static plch_plugin profiler_plugin =
 	.stmt_beg = profiler_stmt_beg,
 	.stmt_end = profiler_stmt_end,
 	.stmt_abort = profiler_stmt_abort,
-	.stmt_error = NULL,
+	.stmt_error = profiler_stmt_error,
 };
 
 static void init_func_hk(func_hk *hk, Oid fn_oid);
@@ -930,6 +942,7 @@ init_fstats(FuncStats *fs)
 
 	fs->exec_count = 0;
 	fs->exec_count_err = 0;
+	fs->raised_errors = 0;
 	fs->total_time = 0;
 	fs->total_time_mean = 0.0;
 	fs->total_time_m2 = 0.0;
@@ -938,7 +951,7 @@ init_fstats(FuncStats *fs)
 }
 
 static void
-update_fstats(FuncStats *fs, uint64 elapsed, bool aborted)
+update_fstats(FuncStats *fs, uint64 elapsed, bool aborted, uint64 raised_errors)
 {
 	fs->total_time += elapsed;
 
@@ -951,6 +964,8 @@ update_fstats(FuncStats *fs, uint64 elapsed, bool aborted)
 
 	if (aborted)
 		fs->exec_count_err += 1;
+
+	fs->raised_errors += raised_errors;
 
 	WelfordVarianceAdd(&fs->exec_count,
 					   &fs->total_time_mean, &fs->total_time_m2,
@@ -970,6 +985,7 @@ merge_fstats(FuncStats *a, FuncStats *b)
 
 	a->exec_count = ab_exec_count;
 	a->exec_count_err += b->exec_count_err;
+	a->raised_errors += b->raised_errors;
 
 	a->total_time += b->total_time;
 	a->total_time_mean = ab_total_time_mean;
@@ -986,7 +1002,8 @@ merge_fstats(FuncStats *a, FuncStats *b)
 static void
 update_local_persistent_fstats(profiler_info *pinfo,
 							   uint64 elapsed,
-							   bool aborted)
+							   bool aborted,
+							   uint64 raised_errors)
 {
 	func_hk		hk;
 	FuncStats  *fs;
@@ -1002,13 +1019,14 @@ update_local_persistent_fstats(profiler_info *pinfo,
 	if (!found)
 		init_fstats(fs);
 
-	update_fstats(fs, elapsed, aborted);
+	update_fstats(fs, elapsed, aborted, raised_errors);
 }
 
 static void
 update_shared_persistent_fstats(profiler_info *pinfo,
 								uint64 elapsed,
-								bool aborted)
+								bool aborted,
+								uint64 raised_errors)
 {
 	func_hk		hk;
 	FuncStats  *fs;
@@ -1025,7 +1043,7 @@ update_shared_persistent_fstats(profiler_info *pinfo,
 
 		if (lxcache)
 		{
-			update_fstats(&lxcache->fstats, elapsed, aborted);
+			update_fstats(&lxcache->fstats, elapsed, aborted, raised_errors);
 			return;
 		}
 	}
@@ -1061,7 +1079,7 @@ update_shared_persistent_fstats(profiler_info *pinfo,
 		SpinLockInit(&fs->mutex);
 	}
 
-	update_fstats(fs, elapsed, aborted);
+	update_fstats(fs, elapsed, aborted, raised_errors);
 
 	if (unlock_mutex)
 		SpinLockRelease(&fs->mutex);
@@ -1072,12 +1090,13 @@ update_shared_persistent_fstats(profiler_info *pinfo,
 static void
 update_persistent_fstats(profiler_info *pinfo,
 						 uint64 elapsed,
-						 bool aborted)
+						 bool aborted,
+						 uint64 raised_errors)
 {
 	if (USE_SHARED_FUNC_STATS)
-		update_shared_persistent_fstats(pinfo, elapsed, aborted);
+		update_shared_persistent_fstats(pinfo, elapsed, aborted, raised_errors);
 	else
-		update_local_persistent_fstats(pinfo, elapsed, aborted);
+		update_local_persistent_fstats(pinfo, elapsed, aborted, raised_errors);
 }
 
 /* It is executed under exclusive lock */
@@ -1132,6 +1151,7 @@ merge_stmts_sstats(StmtStats *persist_ss, StmtStats *sstats, int nstatements)
 		_t->exec_count += _s->exec_count;
 		_t->exec_count_err += _s->exec_count_err;
 		_t->exec_count_cond_err += _s->exec_count_cond_err;
+		_t->raised_errors += _s->raised_errors;
 	}
 }
 
@@ -1156,6 +1176,7 @@ init_stmts_sstats(StmtStats *sstats, int nstatements)
 		_s->exec_count = 0;
 		_s->exec_count_err = 0;
 		_s->exec_count_cond_err = 0;
+		_s->raised_errors = 0;
 	}
 }
 
@@ -1411,6 +1432,7 @@ count_stmt_exec_time_walker(PLpgSQL_stmt *stmt, count_stmt_exec_time_context *co
 	sstats->exec_count = sinstr->exec_count;
 	sstats->exec_count_err = sinstr->exec_count_err;
 	sstats->exec_count_cond_err = sinstr->exec_count_cond_err;
+	sstats->raised_errors = sinstr->raised_errors;
 }
 
 
@@ -1476,7 +1498,7 @@ _profiler_func_end(profiler_info *pinfo, Oid fn_oid, bool is_aborted, plch_fextr
 	count_stmt_exec_time_walker((PLpgSQL_stmt *) pinfo->func->action, &loccontext);
 
 	update_persistent_stmts_stats(pinfo);
-	update_persistent_fstats(pinfo, elapsed, is_aborted);
+	update_persistent_fstats(pinfo, elapsed, is_aborted, pinfo->raised_errors);
 }
 
 static void
@@ -1503,6 +1525,30 @@ profiler_func_abort(PLpgSQL_execstate *estate,
 		return;
 
 	_profiler_func_end(pinfo, func->fn_oid, true, fextra);
+}
+
+static void
+profiler_stmt_error(PLpgSQL_execstate *estate,
+					PLpgSQL_stmt *stmt,
+					plch_fextra *fextra,
+					ErrorData *cur_error)
+{
+	profiler_info *pinfo = (profiler_info *) estate->plugin_info;
+
+	if (pinfo)
+	{
+		if (cur_error && cur_error->elevel >= ERROR)
+		{
+			if (stmt)
+			{
+				StmtInstr  *sinstr = &pinfo->sinstrs[stmt->stmtid - 1];
+
+				sinstr->raised_errors += 1;
+			}
+
+			pinfo->raised_errors += 1;
+		}
+	}
 }
 
 static void
@@ -1863,6 +1909,7 @@ local_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 													fs->hk.fn_oid,
 													fs->exec_count,
 													fs->exec_count_err,
+													fs->raised_errors,
 													(double) fs->total_time,
 													ceil(fs->total_time_mean),
 													ceil(fstats_stddev(fs)),
@@ -1909,6 +1956,7 @@ shared_iterate_over_all_profiles(plpgsql_check_result_info *ri)
 														fs->hk.fn_oid,
 														fs->exec_count,
 														fs->exec_count_err,
+														fs->raised_errors,
 														(double) fs->total_time,
 														ceil(fs->total_time_mean),
 														ceil(fstats_stddev(fs)),
@@ -1980,6 +2028,7 @@ statement_stats_report_walker(PLpgSQL_stmt *stmt, statement_stats_report_context
 												stmt->lineno,
 												sstats->exec_count,
 												sstats->exec_count_err,
+												sstats->raised_errors,
 												sstats->us_total,
 												sstats->us_max,
 												sstats->rows,
@@ -2134,6 +2183,7 @@ typedef struct profiler_report_context
 	ArrayBuildState *queryids_abs;
 	ArrayBuildState *exec_count_abs;
 	ArrayBuildState *exec_count_err_abs;
+	ArrayBuildState *raised_errors_abs;
 	ArrayBuildState *total_time_abs;
 	ArrayBuildState *avg_time_abs;
 	ArrayBuildState *max_time_abs;
@@ -2164,7 +2214,7 @@ put_profiler_report_row(profiler_report_context *context)
 		if (context->lineno < context->buffered_stmt_lineno)
 		{
 			plpgsql_check_put_profile(context->ri,
-									  (Datum) 0, context->lineno, -1, -1, (Datum) 0, (Datum) 0,
+									  (Datum) 0, context->lineno, -1, -1, (Datum) 0, (Datum) 0, (Datum) 0,
 									  (Datum) 0, (Datum) 0, (Datum) 0, (Datum) 0, srcrow);
 		}
 	}
@@ -2181,6 +2231,7 @@ put_profiler_report_row(profiler_report_context *context)
 								  context->cmds_on_row,
 								  NullableArray(context, exec_count_abs),
 								  NullableArray(context, exec_count_err_abs),
+								  NullableArray(context, raised_errors_abs),
 								  NullableArray(context, total_time_abs),
 								  NullableArray(context, avg_time_abs),
 								  NullableArray(context, max_time_abs),
@@ -2192,6 +2243,7 @@ put_profiler_report_row(profiler_report_context *context)
 		context->queryids_abs = NULL;
 		context->exec_count_abs = NULL;
 		context->exec_count_err_abs = NULL;
+		context->raised_errors_abs = NULL;
 		context->total_time_abs = NULL;
 		context->avg_time_abs = NULL;
 		context->max_time_abs = NULL;
@@ -2202,7 +2254,7 @@ put_profiler_report_row(profiler_report_context *context)
 	else
 	{
 		plpgsql_check_put_profile(context->ri,
-								  (Datum) 0, context->lineno, -1, -1, (Datum) 0, (Datum) 0,
+								  (Datum) 0, context->lineno, -1, -1, (Datum) 0, (Datum) 0, (Datum) 0,
 								  (Datum) 0, (Datum) 0, (Datum) 0, (Datum) 0, srcrow);
 	}
 }
@@ -2247,6 +2299,7 @@ profiler_report_walker(PLpgSQL_stmt *stmt, profiler_report_context *context)
 
 			context->exec_count_abs = accum_int64(context, exec_count_abs, sstats->exec_count);
 			context->exec_count_err_abs = accum_int64(context, exec_count_err_abs, sstats->exec_count_err);
+			context->raised_errors_abs = accum_int64(context, raised_errors_abs, sstats->raised_errors);
 
 			context->total_time_abs = accum_float8(context, total_time_abs, sstats->us_total / 1000.0);
 
@@ -2286,7 +2339,7 @@ show_profile(PLpgSQL_function *func, profiler_report_context *context)
 			context->src = cutline(context->src, &srcrow);
 			context->lineno++;
 			plpgsql_check_put_profile(context->ri,
-									  (Datum) 0, context->lineno, -1, -1, (Datum) 0, (Datum) 0,
+									  (Datum) 0, context->lineno, -1, -1, (Datum) 0, (Datum) 0, (Datum) 0,
 									  (Datum) 0, (Datum) 0, (Datum) 0, (Datum) 0, srcrow);
 		}
 	}

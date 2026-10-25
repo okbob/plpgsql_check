@@ -1308,4 +1308,24 @@ drop trigger t1_insert on t1;
 drop function test_trg;
 drop table t1;
 
+create function fx_outer()
+returns void as $$
+begin
+  perform fx_inner();
+end;
+$$ language plpgsql;
+
+create function fx_inner()
+returns void as $$
+begin
+  raise exception 'some error';
+end;
+$$ language plpgsql;
+
+select fx_outer();
+
+select exec_stmts, exec_stmts_err, raised_errors, source from plpgsql_profiler_function_tb('fx_outer');
+select exec_stmts, exec_stmts_err, raised_errors, source from plpgsql_profiler_function_tb('fx_inner');
+
+
 set plpgsql_check.profiler to off;

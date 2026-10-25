@@ -3670,4 +3670,39 @@ select stmt_lineno, exec_stmts, exec_stmts_err, source from plpgsql_profiler_fun
 drop trigger t1_insert on t1;
 drop function test_trg;
 drop table t1;
+create function fx_outer()
+returns void as $$
+begin
+  perform fx_inner();
+end;
+$$ language plpgsql;
+create function fx_inner()
+returns void as $$
+begin
+  raise exception 'some error';
+end;
+$$ language plpgsql;
+select fx_outer();
+ERROR:  some error
+CONTEXT:  PL/pgSQL function fx_inner() line 3 at RAISE
+SQL statement "SELECT fx_inner()"
+PL/pgSQL function fx_outer() line 3 at PERFORM
+select exec_stmts, exec_stmts_err, raised_errors, source from plpgsql_profiler_function_tb('fx_outer');
+ exec_stmts | exec_stmts_err | raised_errors |        source         
+------------+----------------+---------------+-----------------------
+            |                |               | 
+ {1}        | {1}            | {0}           | begin
+ {1}        | {1}            | {0}           |   perform fx_inner();
+            |                |               | end;
+(4 rows)
+
+select exec_stmts, exec_stmts_err, raised_errors, source from plpgsql_profiler_function_tb('fx_inner');
+ exec_stmts | exec_stmts_err | raised_errors |             source              
+------------+----------------+---------------+---------------------------------
+            |                |               | 
+ {1}        | {1}            | {0}           | begin
+ {1}        | {1}            | {1}           |   raise exception 'some error';
+            |                |               | end;
+(4 rows)
+
 set plpgsql_check.profiler to off;

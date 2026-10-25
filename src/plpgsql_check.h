@@ -246,14 +246,14 @@ extern void plch_put_text_line(plpgsql_check_result_info *ri, const char *messag
 extern void plpgsql_check_put_dependency(plpgsql_check_result_info *ri, char *type, Oid oid, char *schema, char *name, char *params);
 
 extern void plpgsql_check_put_profile(plpgsql_check_result_info *ri, Datum queryids_array, int lineno, int stmt_lineno,
-									  int cmds_on_row, Datum exec_count_array, Datum exec_count_err_array, Datum total_time_array,
+									  int cmds_on_row, Datum exec_count_array, Datum exec_count_err_array, Datum raised_errors_array, Datum total_time_array,
 									  Datum avg_time_array, Datum max_time_array, Datum processed_rows_array, char *source_row);
 extern void plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri, pc_queryid queryid, int stmtid, int parent_stmtid, int block_num, int lineno,
-												int64 exec_stmts, int64 exec_count_err, double total_time, double max_time, int64 processed_rows, const char *stmtname);
+												int64 exec_stmts, int64 exec_count_err, int64 raised_errors, double total_time, double max_time, int64 processed_rows, const char *stmtname);
 extern void plpgsql_check_put_profile_statement_no_stats(plpgsql_check_result_info *ri, int stmtid, int parent_stmtid,
 														 int block_num, int lineno, const char *stmtname);
 
-extern void plpgsql_check_put_profiler_functions_all_tb(plpgsql_check_result_info *ri, Oid funcoid, int64 exec_count, int64 exec_count_err,
+extern void plpgsql_check_put_profiler_functions_all_tb(plpgsql_check_result_info *ri, Oid funcoid, int64 exec_count, int64 exec_count_err, int64 raised_errors,
 														double total_time, double avg_time, double stddev_time, double min_time, double max_time);
 extern char *plpgsql_check_prepare_err_text_with_target_vardecl(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int varno);
 
@@ -527,7 +527,7 @@ typedef struct plch_plugin
 	void		(*stmt_beg) (PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra);
 	void		(*stmt_end) (PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra);
 	void		(*stmt_abort) (PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra);
-	void		(*stmt_error) (PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra);
+	void		(*stmt_error) (PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, plch_fextra *fextra, ErrorData *cur_error);
 
 	/* Function pointers set by PL/pgSQL itself */
 	void		(*error_callback) (void *arg);

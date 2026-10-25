@@ -475,7 +475,7 @@ plpgsql_check_error_callback(void *arg)
 					{
 						estate->plugin_info = plugin_info->plugin_info[i];
 						MemoryContextSwitchTo(plugin_info->ErrorContext);
-						plugins[i]->stmt_error(estate, err_stmt, plugin_info->fextra);
+						plugins[i]->stmt_error(estate, err_stmt, plugin_info->fextra, plugin_info->cur_error);
 
 						plugin_info->plugin_info[i] = estate->plugin_info;
 					}

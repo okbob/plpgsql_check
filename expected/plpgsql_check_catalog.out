@@ -84,12 +84,12 @@ HINT:  Trigger relation oid must not be valid for non dml trigger function.
 -- the profiler does not check the triggering relation, it only reads the
 -- collected statistics
 select * from plpgsql_profiler_function_tb('cat_trg1');
- lineno | stmt_lineno | queryids | cmds_on_row | exec_stmts | exec_stmts_err | total_time | avg_time | max_time | processed_rows |    source     
---------+-------------+----------+-------------+------------+----------------+------------+----------+----------+----------------+---------------
-      1 |             |          |             |            |                |            |          |          |                | 
-      2 |           2 |          |           1 |            |                |            |          |          |                | begin
-      3 |           3 |          |           1 |            |                |            |          |          |                |   return new;
-      4 |             |          |             |            |                |            |          |          |                | end;
+ lineno | stmt_lineno | queryids | cmds_on_row | exec_stmts | exec_stmts_err | raised_errors | total_time | avg_time | max_time | processed_rows |    source     
+--------+-------------+----------+-------------+------------+----------------+---------------+------------+----------+----------+----------------+---------------
+      1 |             |          |             |            |                |               |            |          |          |                | 
+      2 |           2 |          |           1 |            |                |               |            |          |          |                | begin
+      3 |           3 |          |           1 |            |                |               |            |          |          |                |   return new;
+      4 |             |          |             |            |                |               |            |          |          |                | end;
 (4 rows)
 
 --
