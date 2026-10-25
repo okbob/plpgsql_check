@@ -114,6 +114,8 @@ static PLpgSQL_plugin plpgsql_plugin = {
 
 static PLpgSQL_plugin *prev_plpgsql_plugin = NULL;
 
+static MemoryContext plugin_ErrorContext = NULL;
+
 /*
  * For all statements from buffer for all plugins calls
  * stmt_abort callback. This can be used on stmts_stack
@@ -443,17 +445,38 @@ plpgsql_check_error_callback(void *arg)
 	if (top_pldbgapi_plugin_info == plugin_info &&
 		geterrcode() != 0)
 	{
+		ErrorData  *cur_error;
+		int			elevel;
+		MemoryContext oldcxt;
+
+		/*
+		 * Use preallocated 8kB private static error context. Then CopyErrorData()
+		 * should be safe operation.
+		 */
+		oldcxt = MemoryContextSwitchTo(plugin_ErrorContext);
+
+		/* we don't want to store warnings, notifications, .. */
+		cur_error = CopyErrorData();
+		elevel = cur_error->elevel;
+		FreeErrorData(cur_error);
+		MemoryContextSwitchTo(oldcxt);
+
+		if (elevel < ERROR)
+			return;
+
 		/*
 		 * Use preallocated 8kB private error context. Then CopyErrorData()
 		 * should be safe operation. When some plugin needs more memory, then
 		 * should to use own preallocated own ErrorContext.
 		 */
-		MemoryContext oldcxt = MemoryContextSwitchTo(plugin_info->ErrorContext);
+		oldcxt = MemoryContextSwitchTo(plugin_info->ErrorContext);
 
 		if (plugin_info->cur_error)
 			FreeErrorData(plugin_info->cur_error);
 
-		plugin_info->cur_error = CopyErrorData();
+		cur_error = CopyErrorData();
+
+		plugin_info->cur_error = cur_error;
 		plugin_info->err_stmt = plugin_info->estate->err_stmt;
 
 		MemoryContextSwitchTo(oldcxt);
@@ -475,7 +498,7 @@ plpgsql_check_error_callback(void *arg)
 					{
 						estate->plugin_info = plugin_info->plugin_info[i];
 						MemoryContextSwitchTo(plugin_info->ErrorContext);
-						plugins[i]->stmt_error(estate, err_stmt, plugin_info->fextra, plugin_info->cur_error);
+						plugins[i]->stmt_error(estate, err_stmt, plugin_info->fextra, cur_error);
 
 						plugin_info->plugin_info[i] = estate->plugin_info;
 					}
@@ -796,6 +819,12 @@ plch_init_plugin(void)
 	plugin_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
 	prev_plpgsql_plugin = *plugin_ptr;
 	*plugin_ptr = &plpgsql_plugin;
+
+	plugin_ErrorContext = AllocSetContextCreate(TopMemoryContext,
+												"ErrorContext",
+												8 * 1024,
+												8 * 1024,
+												8 * 1024);
 
 	inited = true;
 }

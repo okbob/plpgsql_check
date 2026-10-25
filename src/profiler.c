@@ -1537,17 +1537,14 @@ profiler_stmt_error(PLpgSQL_execstate *estate,
 
 	if (pinfo)
 	{
-		if (cur_error && cur_error->elevel >= ERROR)
+		if (stmt)
 		{
-			if (stmt)
-			{
-				StmtInstr  *sinstr = &pinfo->sinstrs[stmt->stmtid - 1];
+			StmtInstr  *sinstr = &pinfo->sinstrs[stmt->stmtid - 1];
 
-				sinstr->raised_errors += 1;
-			}
-
-			pinfo->raised_errors += 1;
+			sinstr->raised_errors += 1;
 		}
+
+		pinfo->raised_errors += 1;
 	}
 }
 
