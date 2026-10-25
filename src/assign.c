@@ -195,6 +195,7 @@ plpgsql_check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid
 				PLpgSQL_rec *rec;
 				int			fno;
 
+
 				rec = (PLpgSQL_rec *) (cstate->estate->datums[recfield->recparentno]);
 
 				/*
@@ -202,7 +203,7 @@ plpgsql_check_target(PLpgSQL_checkstate *cstate, int varno, Oid *expected_typoid
 				 * that because records don't have any predefined field
 				 * structure.
 				 */
-				if (!HeapTupleIsValid(recvar_tuple(rec)))
+				if (!recvar_tupdesc(rec))
 					ereport(ERROR,
 							(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 							 errmsg("record \"%s\" is not assigned to tuple structure",

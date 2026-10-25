@@ -332,3 +332,57 @@ do $$
 begin
 end;
 $$;
+
+create table t(a int, b text);
+create type ct as (p int, q text);
+
+create or replace function trg_fn() returns trigger as $$
+begin
+  new.a := new.a + 1;
+  return new;
+end $$ language plpgsql;
+
+create trigger t_trg before insert on t for each row execute function trg_fn();
+
+create or replace function local_rowvar() returns text as $$
+declare
+  r t;
+  r2 t%rowtype;
+  c ct;
+begin
+  r.b := 'x';
+  r2.b := 'y';
+  c.q := 'z';
+  return r.b || r2.b || c.q;
+end $$ language plpgsql;
+
+create or replace function composite_arg(p ct) returns text as $$
+begin
+  p.q := 'w';
+  return p.q;
+end $$ language plpgsql;
+
+-- and everything works without passive checking
+set plpgsql_check.mode = 'by_function';
+insert into t values (1, 'a') returning *;
+select local_rowvar();
+select composite_arg(row(1, 'a'));
+
+-- should work: passive mode must not break valid functions
+-- (fresh_start first: it checks a function only once per compiled version,
+-- so it has to run before every_start marks the functions as checked)
+set plpgsql_check.mode = 'fresh_start';
+insert into t values (1, 'a') returning *;
+select local_rowvar();
+select composite_arg(row(1, 'a'));
+
+set plpgsql_check.mode = 'every_start';
+insert into t values (1, 'a') returning *;
+select local_rowvar();
+select composite_arg(row(1, 'a'));
+
+drop function composite_arg;
+drop function local_rowvar;
+drop table t;
+drop function trg_fn;
+drop type ct;

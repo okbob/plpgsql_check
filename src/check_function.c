@@ -507,7 +507,10 @@ passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_f
 					/* work with dummy copy */
 					rec->erh = make_expanded_record_from_exprecord(rec->erh, cstate.check_cxt);
 				}
-
+				else
+				{
+					plpgsql_check_recval_assign_tupdesc(&cstate, rec, NULL, false);
+				}
 			}
 			else if (estate->datums[i]->dtype == PLPGSQL_DTYPE_VAR)
 			{
