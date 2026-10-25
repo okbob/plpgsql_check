@@ -1813,12 +1813,12 @@ plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
 				str = plpgsql_check_expr_get_string(cstate, expr, NULL);
 
 				/*
-				 * We are not able take an alement from an array string.
-				 * We don't trace typid, so we are not able to do correct
-				 * deserialization. It is necessary for correct casting
-				 * to target element type, because simple IO casting can
-				 * fail for common case numeric[] -> integer. So don't
-				 * try to open this box now, and just invalidate str.
+				 * We are not able take an alement from an array string. We
+				 * don't trace typid, so we are not able to do correct
+				 * deserialization. It is necessary for correct casting to
+				 * target element type, because simple IO casting can fail for
+				 * common case numeric[] -> integer. So don't try to open this
+				 * box now, and just invalidate str.
 				 */
 				if (use_element_type)
 					str = NULL;
