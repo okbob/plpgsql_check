@@ -562,6 +562,32 @@ $$ language plpgsql;
 
 select type, schema, name, params from plpgsql_show_dependency_tb('ew_f29');
 
+-- a view used by a query is a dependency of the routine, like the relations
+-- used by the view
+create view ew_view1 as select a from ew_tab1;
+
+create function ew_f29a()
+returns int as $$
+begin
+  return (select a from ew_view1 limit 1);
+end;
+$$ language plpgsql;
+
+select type, schema, name, params from plpgsql_show_dependency_tb('ew_f29a');
+
+-- a routine that reads a view cannot be IMMUTABLE, even when the view
+-- doesn't use any relation
+create view ew_view2 as select 1 as a;
+
+create function ew_f29b()
+returns int as $$
+begin
+  return (select a from ew_view2);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('ew_f29b', performance_warnings => true);
+
 -- Explicit VARIADIC arrays supply their elements, not one array argument.
 create function ew_f30(p text)
 returns void as $$
@@ -755,6 +781,10 @@ drop function ew_f25(bigint);
 drop function ew_f26(bigint);
 drop function ew_f27(bigint);
 drop function ew_f29(int);
+drop function ew_f29a();
+drop function ew_f29b();
+drop view ew_view1;
+drop view ew_view2;
 drop function ew_id(text);
 drop operator @# (none, int);
 drop function ew_neg(int);

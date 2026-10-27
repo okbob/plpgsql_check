@@ -126,6 +126,19 @@ format_get_args(FuncExpr *fexpr)
 }
 
 /*
+ * Returns true when the RTE references a relation. Since PostgreSQL 16, the
+ * rewriter converts the RTE of a view to a subquery RTE, that keeps the relid
+ * of the view (older releases clear the relid, but the view is still
+ * referenced from the range table of the subquery).
+ */
+static bool
+rte_is_relation(RangeTblEntry *rte)
+{
+	return rte->rtekind == RTE_RELATION ||
+		(rte->rtekind == RTE_SUBQUERY && OidIsValid(rte->relid));
+}
+
+/*
  * Send to ouput all not yet displayed relations, operators and functions.
  */
 static bool
@@ -146,7 +159,7 @@ detect_dependency_walker(Node *node, void *context)
 		{
 			RangeTblEntry *rt = (RangeTblEntry *) lfirst(lc);
 
-			if (rt->rtekind == RTE_RELATION)
+			if (rte_is_relation(rt))
 			{
 				if (!bms_is_member(rt->relid, cstate->rel_oids))
 				{
@@ -996,7 +1009,7 @@ has_rtable_walker(Node *node, void *context)
 		{
 			RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
 
-			if (rte->rtekind == RTE_RELATION)
+			if (rte_is_relation(rte))
 			{
 				has_relation = true;
 				break;
