@@ -102,6 +102,16 @@ get_function_trace(PLpgSQL_function *func)
 		traces_lxid = thislxid;
 	}
 
+	/*
+	 * Inline blocks have no identity (all of them have invalid fn_oid), so
+	 * they cannot share one trace (the statement ids of different blocks
+	 * would be mixed). Every execution of an inline block is a new function,
+	 * so it gets its own private trace.
+	 */
+	if (!OidIsValid(func->fn_oid))
+		return (FunctionTrace *) MemoryContextAllocZero(traces_mcxt,
+														sizeof(FunctionTrace));
+
 	plch_init_fidentity_hk(&hk, func);
 
 	ftrace = (FunctionTrace *) hash_search(traces,
@@ -197,6 +207,25 @@ func_end(PLpgSQL_execstate *estate,
 				ct->curname = NULL;
 			}
 		}
+	}
+
+	/*
+	 * The private trace of an inline block cannot be used by any other call,
+	 * so release it.
+	 */
+	if (!OidIsValid(func->fn_oid))
+	{
+		for (i = 0; i < ftrace->ncursors; i++)
+		{
+			if (ftrace->cursors_traces[i].curname)
+				pfree(ftrace->cursors_traces[i].curname);
+		}
+
+		if (ftrace->cursors_traces)
+			pfree(ftrace->cursors_traces);
+
+		pfree(ftrace);
+		pinfo->ftrace = NULL;
 	}
 }
 

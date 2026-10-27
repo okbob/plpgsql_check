@@ -237,6 +237,69 @@ exception when invalid_cursor_state then
 end;
 $$;
 
+-- inline blocks have no identity, but they must not share the traces
+set plpgsql_check.strict_cursors_leaks to off;
+
+begin;
+
+do $$
+declare c refcursor := 'pd_do_cursor';
+begin
+  open c for select 1;
+end;
+$$;
+
+-- no false alarm (the statement ids of both blocks are the same)
+do $$
+declare d refcursor;
+begin
+  open d for select 2;
+  close d;
+end;
+$$;
+
+fetch all from pd_do_cursor;
+
+commit;
+
+-- but the leaks in inline blocks are still detected
+do $$
+declare c refcursor;
+begin
+  for i in 1..2 loop
+    c := 'pd_do_cursor_' || i;
+    open c for select 1;
+  end loop;
+exception when invalid_cursor_state then
+  raise notice 'cursor leak in inline block detected: %', sqlerrm;
+end;
+$$;
+
+set plpgsql_check.strict_cursors_leaks to on;
+
+do $$
+begin
+  begin
+    execute 'do $y$ declare c refcursor; begin open c for select 1; end $y$';
+  exception when invalid_cursor_state then
+    raise notice 'cursor leak in inline block detected: %', sqlerrm;
+  end;
+end;
+$$;
+
+-- the trace of inline block is renewed after the end of transaction
+do $$
+declare c refcursor;
+begin
+  for i in 1..2 loop
+    open c for select 1;
+    close c;
+    commit;
+  end loop;
+  open c for select 1;
+end;
+$$;
+
 set plpgsql_check.strict_cursors_leaks to default;
 set plpgsql_check.cursors_leaks_errlevel to default;
 set plpgsql_check.cursors_leaks to default;
