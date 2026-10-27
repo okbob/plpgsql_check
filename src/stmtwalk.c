@@ -595,6 +595,14 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					if (stmt_fori->step)
 						plpgsql_check_assignment(cstate, stmt_fori->step, NULL, NULL, dno);
 
+					/*
+					 * The values of the bounds and of the step are not the
+					 * values of the loop variable (the variable gets all the
+					 * values between the bounds), so they must not be traced
+					 * as its constant value.
+					 */
+					plpgsql_check_reset_strconstvar(cstate, dno);
+
 					/* this variable should not be updated */
 					cstate->protected_variables = bms_add_member(cstate->protected_variables, dno);
 					cstate->auto_variables = bms_add_member(cstate->auto_variables, dno);
@@ -683,6 +691,14 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 																  NULL, NULL,
 																  stmt_foreach_a->varno,
 																  use_element_type);
+
+					/*
+					 * The loop variable gets the elements or the slices of
+					 * the array, never the array itself, so the value of the
+					 * array expression must not be traced as its constant
+					 * value.
+					 */
+					plpgsql_check_reset_strconstvar(cstate, stmt_foreach_a->varno);
 
 					check_stmts(cstate, stmt_foreach_a->body, &closing_local, &exceptions_local);
 					*closing = possibly_closed(closing_local);

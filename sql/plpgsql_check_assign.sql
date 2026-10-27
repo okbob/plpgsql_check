@@ -577,3 +577,27 @@ select * from plpgsql_check_function('as_foreach_rw()');
 select as_foreach_rw();
 
 drop function as_foreach_rw();
+
+-- the bounds of an integer FOR loop are not constant values of the loop
+-- variable
+create table as_fori_tab_1(a int);
+create table as_fori_tab_2(a int);
+
+create function as_fori_const()
+returns void as $$
+begin
+  for i in 1..3
+  loop
+    if i < 3 then
+      execute format('select a from as_fori_tab_%s', i);
+    end if;
+  end loop;
+end;
+$$ language plpgsql;
+
+select as_fori_const();
+select * from plpgsql_check_function('as_fori_const()');
+
+drop function as_fori_const();
+drop table as_fori_tab_1;
+drop table as_fori_tab_2;

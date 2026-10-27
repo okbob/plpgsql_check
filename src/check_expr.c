@@ -1818,6 +1818,20 @@ plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate,
 }
 
 /*
+ * Forget the traced constant value of the variable (when the variable
+ * gets a value that is not known at check time).
+ */
+void
+plpgsql_check_reset_strconstvar(PLpgSQL_checkstate *cstate, int dno)
+{
+	if (cstate->strconstvars && cstate->strconstvars[dno])
+	{
+		pfree(cstate->strconstvars[dno]);
+		cstate->strconstvars[dno] = NULL;
+	}
+}
+
+/*
  * Release all string constants related to variables from row variable
  */
 static void

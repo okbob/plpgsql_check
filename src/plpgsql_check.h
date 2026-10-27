@@ -337,6 +337,7 @@ extern char *plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate, cons
  */
 extern char *plpgsql_check_expr_get_string(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, int *location);
 extern char *plpgsql_check_get_const_string(PLpgSQL_checkstate *cstate, Node *node, int *location);
+extern void plpgsql_check_reset_strconstvar(PLpgSQL_checkstate *cstate, int dno);
 extern void plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, Oid expected_typoid, bool required);
 extern void plpgsql_check_returned_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool is_expression);
 extern void plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
