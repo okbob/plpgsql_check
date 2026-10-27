@@ -1048,3 +1048,76 @@ drop function ew_id(text);
 drop operator @# (none, int);
 drop function ew_neg(int);
 drop table ew_tab1;
+-- a variable assigned by INTO, by FETCH, by GET DIAGNOSTICS or by FOREACH
+-- is not known to be sanitized
+create table ew_sanit_tab(a text);
+create function ew_sanit(p text, arr text[])
+returns void as $$
+declare
+  x text;
+  c cursor for select a from ew_sanit_tab;
+begin
+  x := quote_ident(p);
+  select a into x from ew_sanit_tab;
+  execute 'select * from ' || x;
+
+  x := quote_ident(p);
+  execute 'select a from ew_sanit_tab where a = $1' into x using p;
+  execute 'select * from ' || x;
+
+  x := quote_ident(p);
+  open c;
+  fetch c into x;
+  close c;
+  execute 'select * from ' || x;
+
+  x := quote_ident(p);
+  begin
+    perform p::int;
+  exception when others then
+    get stacked diagnostics x = message_text;
+  end;
+  execute 'select * from ' || x;
+
+  foreach x in array arr
+  loop
+    execute 'select * from ' || x;
+  end loop;
+
+  -- sanitized
+  x := quote_ident(p);
+  execute 'select * from ' || x;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('ew_sanit', security_warnings => true);
+                           plpgsql_check_function                            
+-----------------------------------------------------------------------------
+ security:00000:8:EXECUTE:text type variable is not sanitized
+ Query: 'select * from ' || x
+ --                         ^
+ Detail: The EXECUTE expression is SQL injection vulnerable.
+ Hint: Use quote_ident, quote_literal or format function to secure variable.
+ security:00000:12:EXECUTE:text type variable is not sanitized
+ Query: 'select * from ' || x
+ --                         ^
+ Detail: The EXECUTE expression is SQL injection vulnerable.
+ Hint: Use quote_ident, quote_literal or format function to secure variable.
+ security:00000:18:EXECUTE:text type variable is not sanitized
+ Query: 'select * from ' || x
+ --                         ^
+ Detail: The EXECUTE expression is SQL injection vulnerable.
+ Hint: Use quote_ident, quote_literal or format function to secure variable.
+ security:00000:26:EXECUTE:text type variable is not sanitized
+ Query: 'select * from ' || x
+ --                         ^
+ Detail: The EXECUTE expression is SQL injection vulnerable.
+ Hint: Use quote_ident, quote_literal or format function to secure variable.
+ security:00000:30:EXECUTE:text type variable is not sanitized
+ Query: 'select * from ' || x
+ --                         ^
+ Detail: The EXECUTE expression is SQL injection vulnerable.
+ Hint: Use quote_ident, quote_literal or format function to secure variable.
+(25 rows)
+
+drop function ew_sanit(text, text[]);
+drop table ew_sanit_tab;

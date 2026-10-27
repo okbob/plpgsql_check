@@ -2179,13 +2179,25 @@ plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
 				get_type_category_preferred(var->datatype->typoid, &typcategory, &typispreferred);
 				if (typcategory == 'S')
 				{
-					Node	   *node = plpgsql_check_expr_get_node(cstate, expr, false);
-					int			location;
+					bool		is_safe = false;
 
-					if (plpgsql_check_is_sql_injection_vulnerable(cstate, expr, node, &location))
-						cstate->safe_variables = bms_del_member(cstate->safe_variables, targetdno);
-					else
+					/*
+					 * When the target gets an element of an array (FOREACH),
+					 * the check of the array expression says nothing about
+					 * the content of the element.
+					 */
+					if (!use_element_type)
+					{
+						Node	   *node = plpgsql_check_expr_get_node(cstate, expr, false);
+						int			location;
+
+						is_safe = !plpgsql_check_is_sql_injection_vulnerable(cstate, expr, node, &location);
+					}
+
+					if (is_safe)
 						cstate->safe_variables = bms_add_member(cstate->safe_variables, targetdno);
+					else
+						cstate->safe_variables = bms_del_member(cstate->safe_variables, targetdno);
 				}
 			}
 		}

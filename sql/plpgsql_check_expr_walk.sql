@@ -759,3 +759,51 @@ drop function ew_id(text);
 drop operator @# (none, int);
 drop function ew_neg(int);
 drop table ew_tab1;
+
+-- a variable assigned by INTO, by FETCH, by GET DIAGNOSTICS or by FOREACH
+-- is not known to be sanitized
+create table ew_sanit_tab(a text);
+
+create function ew_sanit(p text, arr text[])
+returns void as $$
+declare
+  x text;
+  c cursor for select a from ew_sanit_tab;
+begin
+  x := quote_ident(p);
+  select a into x from ew_sanit_tab;
+  execute 'select * from ' || x;
+
+  x := quote_ident(p);
+  execute 'select a from ew_sanit_tab where a = $1' into x using p;
+  execute 'select * from ' || x;
+
+  x := quote_ident(p);
+  open c;
+  fetch c into x;
+  close c;
+  execute 'select * from ' || x;
+
+  x := quote_ident(p);
+  begin
+    perform p::int;
+  exception when others then
+    get stacked diagnostics x = message_text;
+  end;
+  execute 'select * from ' || x;
+
+  foreach x in array arr
+  loop
+    execute 'select * from ' || x;
+  end loop;
+
+  -- sanitized
+  x := quote_ident(p);
+  execute 'select * from ' || x;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('ew_sanit', security_warnings => true);
+
+drop function ew_sanit(text, text[]);
+drop table ew_sanit_tab;
