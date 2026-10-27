@@ -155,6 +155,37 @@ drop function cf_multirange(anymultirange);
 drop function cf_multirange_result(anyrange);
 drop function cf_compatible_multirange(anycompatiblemultirange);
 drop function cf_compatible_multirange_result(anycompatiblerange);
+-- the types specified by options should be valid for all used polymorphic
+-- types (there is not an array type for an array, the range type should
+-- be range)
+create function cf_poly_array(a anyelement, b anyarray) returns int as $$
+begin
+  return 1;
+end;
+$$ language plpgsql;
+create function cf_poly_compatible_array(a anycompatiblearray) returns int as $$
+begin
+  return 1;
+end;
+$$ language plpgsql;
+create function cf_poly_range(a anyrange, b anycompatiblerange) returns int as $$
+begin
+  return 1;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('cf_poly_array', anyelememttype => 'int[]');
+ERROR:  could not find array type for data type integer[]
+DETAIL:  The data type is specified by anyelementtype option.
+select * from plpgsql_check_function('cf_poly_compatible_array', anycompatibletype => 'int[]');
+ERROR:  could not find array type for data type integer[]
+DETAIL:  The data type is specified by anycompatibletype option.
+select * from plpgsql_check_function('cf_poly_range', anyrangetype => 'int');
+ERROR:  type specified by anyrangetype option is not range
+select * from plpgsql_check_function('cf_poly_range', anycompatiblerangetype => 'int');
+ERROR:  type specified by anycompatiblerangetype option is not range
+drop function cf_poly_array(anyelement, anyarray);
+drop function cf_poly_compatible_array(anycompatiblearray);
+drop function cf_poly_range(anyrange, anycompatiblerange);
 -- when some argument is not an input argument, then the modes of all the
 -- arguments are read from the catalog
 create function cf_f5(a anyelement, out b anyelement, out c int) as $$

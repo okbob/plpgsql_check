@@ -22,6 +22,7 @@
 #endif
 
 #include "nodes/makefuncs.h"
+#include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/lsyscache.h"
@@ -891,10 +892,20 @@ replace_polymorphic_type(plpgsql_check_info *cinfo,
 				break;
 
 			case ANYARRAYOID:
+				if (!OidIsValid(anyelement_array_oid))
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("could not find array type for data type %s",
+									format_type_be(cinfo->anyelementoid)),
+							 errdetail("The data type is specified by anyelementtype option.")));
 				typ = anyelement_array_oid;
 				break;
 
 			case ANYRANGEOID:
+				if (!type_is_range(cinfo->anyrangeoid))
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("type specified by anyrangetype option is not range")));
 				typ = is_variadic ? get_array_type(cinfo->anyrangeoid) : cinfo->anyrangeoid;
 				break;
 
@@ -917,10 +928,20 @@ replace_polymorphic_type(plpgsql_check_info *cinfo,
 				break;
 
 			case ANYCOMPATIBLEARRAYOID:
+				if (!OidIsValid(anycompatible_array_oid))
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("could not find array type for data type %s",
+									format_type_be(cinfo->anycompatibleoid)),
+							 errdetail("The data type is specified by anycompatibletype option.")));
 				typ = anycompatible_array_oid;
 				break;
 
 			case ANYCOMPATIBLERANGEOID:
+				if (!type_is_range(cinfo->anycompatiblerangeoid))
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("type specified by anycompatiblerangetype option is not range")));
 				typ = is_variadic ? get_array_type(cinfo->anycompatiblerangeoid) : cinfo->anycompatiblerangeoid;
 				break;
 
