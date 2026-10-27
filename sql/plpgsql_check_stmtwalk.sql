@@ -1050,3 +1050,52 @@ select * from plpgsql_check_function('sw_others2');
 
 drop function sw_others1(int);
 drop function sw_others2(int);
+
+-- returned value or query without columns
+create function sw_rq0()
+returns table(a int) as $$
+begin
+  return query select;
+end;
+$$ language plpgsql;
+
+-- should fail, the structure of query doesn't match
+select * from plpgsql_check_function('sw_rq0');
+
+create type sw_rr_type as (a int, b int);
+
+create function sw_rr0()
+returns sw_rr_type as $$
+begin
+  return row();
+end;
+$$ language plpgsql;
+
+-- should fail, the structure of returned record doesn't match
+select * from plpgsql_check_function('sw_rr0');
+
+create function sw_rr1()
+returns record as $$
+begin
+  return row();
+end;
+$$ language plpgsql;
+
+-- is ok
+select * from plpgsql_check_function('sw_rr1');
+
+create function sw_rr2()
+returns text as $$
+begin
+  return row();
+end;
+$$ language plpgsql;
+
+-- is ok
+select * from plpgsql_check_function('sw_rr2');
+
+drop function sw_rq0();
+drop function sw_rr0();
+drop function sw_rr1();
+drop function sw_rr2();
+drop type sw_rr_type;

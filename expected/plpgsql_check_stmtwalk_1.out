@@ -1279,3 +1279,62 @@ select * from plpgsql_check_function('sw_others2');
 
 drop function sw_others1(int);
 drop function sw_others2(int);
+-- returned value or query without columns
+create function sw_rq0()
+returns table(a int) as $$
+begin
+  return query select;
+end;
+$$ language plpgsql;
+-- should fail, the structure of query doesn't match
+select * from plpgsql_check_function('sw_rq0');
+                              plpgsql_check_function                               
+-----------------------------------------------------------------------------------
+ error:42804:3:RETURN QUERY:structure of query does not match function result type
+ Detail: Number of returned columns (0) does not match expected column count (1).
+(2 rows)
+
+create type sw_rr_type as (a int, b int);
+create function sw_rr0()
+returns sw_rr_type as $$
+begin
+  return row();
+end;
+$$ language plpgsql;
+-- should fail, the structure of returned record doesn't match
+select * from plpgsql_check_function('sw_rr0');
+                              plpgsql_check_function                              
+----------------------------------------------------------------------------------
+ error:42804:3:RETURN:returned record type does not match expected record type
+ Detail: Number of returned columns (0) does not match expected column count (2).
+(2 rows)
+
+create function sw_rr1()
+returns record as $$
+begin
+  return row();
+end;
+$$ language plpgsql;
+-- is ok
+select * from plpgsql_check_function('sw_rr1');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+create function sw_rr2()
+returns text as $$
+begin
+  return row();
+end;
+$$ language plpgsql;
+-- is ok
+select * from plpgsql_check_function('sw_rr2');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function sw_rq0();
+drop function sw_rr0();
+drop function sw_rr1();
+drop function sw_rr2();
+drop type sw_rr_type;

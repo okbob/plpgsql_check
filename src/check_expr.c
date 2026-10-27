@@ -1723,11 +1723,11 @@ plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
 			}
 		}
 
-		if (tupdesc && tupdesc->natts > 0)
+		if (tupdesc)
 		{
 			/* enforce check for trigger function - result must be composit */
 			if (func->fn_retistuple && is_expression
-				&& !(type_is_rowtype(TupleDescAttr(tupdesc, 0)->atttypid) ||
+				&& !((tupdesc->natts > 0 && type_is_rowtype(TupleDescAttr(tupdesc, 0)->atttypid)) ||
 					 type_is_rowtype(first_level_typ) || tupdesc->natts > 1))
 			{
 				/* but we should to allow NULL */
@@ -1761,7 +1761,7 @@ plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
 						free_conversion_map(tupmap);
 				}
 			}
-			else
+			else if (tupdesc->natts > 0)
 			{
 				/* returns scalar */
 				if (!IsPolymorphicType(func->fn_rettype))
