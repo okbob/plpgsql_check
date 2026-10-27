@@ -52,3 +52,25 @@ set search_path = 'pg_catalog';
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 4);
 
 drop function fx_extra_security();
+
+create or replace function fx_extra_security()
+returns text as $$
+begin
+  return 'hello'::text;
+end;
+$$ language plpgsql
+set search_path = 'pg_catalog';
+
+select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
+
+create or replace function fx_extra_security()
+returns text as $$
+begin
+  return 'hello'::pg_catalog.text;
+end;
+$$ language plpgsql
+set search_path = 'pg_catalog';
+
+select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
+
+drop function fx_extra_security();

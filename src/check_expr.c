@@ -270,6 +270,21 @@ detect_unqualified_identifiers_walker(Node *node, void *context)
 										exprLocation(node), expr->query, NULL);
 		}
 	}
+	else if (IsA(node, TypeName))
+	{
+		TypeName *typname = (TypeName *) node;
+
+		if (!OidIsValid(typname->typeOid) && list_length(typname->names) == 1)
+		{
+			if (esw_level >= 2)
+				plpgsql_check_put_error(cstate,
+										0, 0,
+										"type identifier is not qualified",
+										NULL, NULL,
+										PLPGSQL_CHECK_WARNING_EXTRA_SECURITY,
+										exprLocation(node), expr->query, NULL);
+		}
+	}
 	else if (IsA(node, ColumnRef))
 	{
 		if (list_length( ((ColumnRef *) node)->fields) == 1)

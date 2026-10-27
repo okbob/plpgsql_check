@@ -84,3 +84,31 @@ select * from plpgsql_check_function('fx_extra_security', extra_security_warning
 (0 rows)
 
 drop function fx_extra_security();
+create or replace function fx_extra_security()
+returns text as $$
+begin
+  return 'hello'::text;
+end;
+$$ language plpgsql
+set search_path = 'pg_catalog';
+select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
+                     plpgsql_check_function                     
+----------------------------------------------------------------
+ security extra:00000:3:RETURN:type identifier is not qualified
+ Query: 'hello'::text
+ --              ^
+(3 rows)
+
+create or replace function fx_extra_security()
+returns text as $$
+begin
+  return 'hello'::pg_catalog.text;
+end;
+$$ language plpgsql
+set search_path = 'pg_catalog';
+select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function fx_extra_security();
