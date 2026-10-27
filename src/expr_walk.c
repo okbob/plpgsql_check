@@ -139,6 +139,106 @@ rte_is_relation(RangeTblEntry *rte)
 }
 
 /*
+ * Returns the list of the types of the expressions.
+ */
+static List *
+get_expr_types(List *exprs)
+{
+	List	   *result = NIL;
+	ListCell   *lc;
+
+	foreach(lc, exprs)
+		result = lappend_oid(result, exprType((Node *) lfirst(lc)));
+
+	return result;
+}
+
+/*
+ * Send to output the function (procedure, aggregate), when it is not
+ * from pg_catalog and it was not displayed yet. argtypes is the list
+ * of the types of the arguments.
+ */
+static void
+put_function_dependency(PLpgSQL_checkstate *cstate, Oid funcid, List *argtypes)
+{
+	StringInfoData str;
+	ListCell   *lc;
+	bool		is_first = true;
+	char		prokind;
+
+	if (get_func_namespace(funcid) == PG_CATALOG_NAMESPACE ||
+		list_member_oid(cstate->func_oids, funcid))
+		return;
+
+	prokind = get_func_prokind(funcid);
+
+	initStringInfo(&str);
+	appendStringInfoChar(&str, '(');
+	foreach(lc, argtypes)
+	{
+		if (!is_first)
+			appendStringInfoChar(&str, ',');
+		else
+			is_first = false;
+
+		appendStringInfoString(&str, format_type_be(lfirst_oid(lc)));
+	}
+	appendStringInfoChar(&str, ')');
+
+	plpgsql_check_put_dependency(cstate->result_info,
+								 prokind == PROKIND_PROCEDURE ? "PROCEDURE" : "FUNCTION",
+								 funcid,
+								 get_namespace_name(get_func_namespace(funcid)),
+								 get_func_name(funcid),
+								 str.data);
+
+	pfree(str.data);
+
+	cstate->func_oids = lappend_oid(cstate->func_oids, funcid);
+}
+
+/*
+ * Send to output the operator, when it is not from pg_catalog and it
+ * was not displayed yet.
+ */
+static void
+put_operator_dependency(PLpgSQL_checkstate *cstate, Oid opno)
+{
+	StringInfoData str;
+	Oid			lefttype;
+	Oid			righttype;
+
+	if (plpgsql_check_get_op_namespace(opno) == PG_CATALOG_NAMESPACE ||
+		list_member_oid(cstate->op_oids, opno))
+		return;
+
+	op_input_types(opno, &lefttype, &righttype);
+
+	initStringInfo(&str);
+	appendStringInfoChar(&str, '(');
+	if (lefttype != InvalidOid)
+		appendStringInfoString(&str, format_type_be(lefttype));
+	else
+		appendStringInfoChar(&str, '-');
+	appendStringInfoChar(&str, ',');
+	if (righttype != InvalidOid)
+		appendStringInfoString(&str, format_type_be(righttype));
+	else
+		appendStringInfoChar(&str, '-');
+	appendStringInfoChar(&str, ')');
+
+	plpgsql_check_put_dependency(cstate->result_info,
+								 "OPERATOR",
+								 opno,
+								 get_namespace_name(plpgsql_check_get_op_namespace(opno)),
+								 get_opname(opno),
+								 str.data);
+	pfree(str.data);
+
+	cstate->op_oids = lappend_oid(cstate->op_oids, opno);
+}
+
+/*
  * Send to ouput all not yet displayed relations, operators and functions.
  */
 static bool
@@ -191,80 +291,38 @@ detect_dependency_walker(Node *node, void *context)
 	{
 		FuncExpr   *fexpr = (FuncExpr *) node;
 
-		if (get_func_namespace(fexpr->funcid) != PG_CATALOG_NAMESPACE)
-		{
-			if (!list_member_oid(cstate->func_oids, fexpr->funcid))
-			{
-				StringInfoData str;
-				ListCell   *lc;
-				bool		is_first = true;
-				char		prokind = get_func_prokind(fexpr->funcid);
-
-				initStringInfo(&str);
-				appendStringInfoChar(&str, '(');
-				foreach(lc, fexpr->args)
-				{
-					Node	   *expr = (Node *) lfirst(lc);
-
-					if (!is_first)
-						appendStringInfoChar(&str, ',');
-					else
-						is_first = false;
-
-					appendStringInfoString(&str, format_type_be(exprType(expr)));
-				}
-				appendStringInfoChar(&str, ')');
-
-				plpgsql_check_put_dependency(ri,
-											 prokind == PROKIND_PROCEDURE ? "PROCEDURE" : "FUNCTION",
-											 fexpr->funcid,
-											 get_namespace_name(get_func_namespace(fexpr->funcid)),
-											 get_func_name(fexpr->funcid),
-											 str.data);
-
-				pfree(str.data);
-
-				cstate->func_oids = lappend_oid(cstate->func_oids, fexpr->funcid);
-			}
-		}
+		put_function_dependency(cstate, fexpr->funcid,
+								get_expr_types(fexpr->args));
 	}
-
-	if (IsA(node, OpExpr))
+	else if (IsA(node, Aggref))
 	{
-		OpExpr	   *opexpr = (OpExpr *) node;
+		Aggref	   *aggref = (Aggref *) node;
 
-		if (plpgsql_check_get_op_namespace(opexpr->opno) != PG_CATALOG_NAMESPACE &&
-			!list_member_oid(cstate->op_oids, opexpr->opno))
-		{
-			StringInfoData str;
-			Oid			lefttype;
-			Oid			righttype;
+		put_function_dependency(cstate, aggref->aggfnoid,
+								aggref->aggargtypes);
+	}
+	else if (IsA(node, WindowFunc))
+	{
+		WindowFunc *wfunc = (WindowFunc *) node;
 
-			op_input_types(opexpr->opno, &lefttype, &righttype);
+		put_function_dependency(cstate, wfunc->winfnoid,
+								get_expr_types(wfunc->args));
+	}
+	else if (IsA(node, OpExpr) ||
+			 IsA(node, DistinctExpr) ||
+			 IsA(node, NullIfExpr))
+	{
+		/* DistinctExpr and NullIfExpr are OpExpr with another node tag */
+		put_operator_dependency(cstate, ((OpExpr *) node)->opno);
+	}
+	else if (IsA(node, ScalarArrayOpExpr))
+		put_operator_dependency(cstate, ((ScalarArrayOpExpr *) node)->opno);
+	else if (IsA(node, RowCompareExpr))
+	{
+		ListCell   *lc;
 
-			initStringInfo(&str);
-			appendStringInfoChar(&str, '(');
-			if (lefttype != InvalidOid)
-				appendStringInfoString(&str, format_type_be(lefttype));
-			else
-				appendStringInfoChar(&str, '-');
-			appendStringInfoChar(&str, ',');
-			if (righttype != InvalidOid)
-				appendStringInfoString(&str, format_type_be(righttype));
-			else
-				appendStringInfoChar(&str, '-');
-			appendStringInfoChar(&str, ')');
-
-			plpgsql_check_put_dependency(ri,
-										 "OPERATOR",
-										 opexpr->opno,
-										 get_namespace_name(plpgsql_check_get_op_namespace(opexpr->opno)),
-										 get_opname(opexpr->opno),
-										 str.data);
-			pfree(str.data);
-
-			cstate->op_oids = lappend_oid(cstate->op_oids, opexpr->opno);
-		}
+		foreach(lc, ((RowCompareExpr *) node)->opnos)
+			put_operator_dependency(cstate, lfirst_oid(lc));
 	}
 
 	return expression_tree_walker(node, detect_dependency_walker, context);
