@@ -1864,6 +1864,15 @@ plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
 	Oid			expected_typoid = InvalidOid;
 	int			expected_typmod = InvalidOid;
 
+	/*
+	 * The expression belongs to the (cached) compiled function, and the
+	 * PL/pgSQL executor uses target_param to decide if the target variable
+	 * can be modified in place (an optimization of expanded objects). We set
+	 * it for the time of the check only (for statements like FOREACH or
+	 * integer FOR, PL/pgSQL doesn't set it), so we have to restore it.
+	 */
+	int			save_target_param = expr->target_param;
+
 	if (targetdno != -1)
 	{
 		plpgsql_check_target(cstate, targetdno, &expected_typoid, &expected_typmod);
@@ -2309,6 +2318,8 @@ no_other_check:
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
 
+		expr->target_param = save_target_param;
+
 		/*
 		 * If fatal_errors is true, we just propagate the error up to the
 		 * highest level. Otherwise the error is appended to our current list
@@ -2323,6 +2334,8 @@ no_other_check:
 		MemoryContextSwitchTo(oldCxt);
 	}
 	PG_END_TRY();
+
+	expr->target_param = save_target_param;
 }
 
 void
