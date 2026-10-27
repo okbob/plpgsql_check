@@ -806,6 +806,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 						switch (retvar->dtype)
 						{
+							case PLPGSQL_DTYPE_PROMISE:
 							case PLPGSQL_DTYPE_VAR:
 								{
 									PLpgSQL_var *var = (PLpgSQL_var *) retvar;

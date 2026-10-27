@@ -1184,3 +1184,21 @@ drop function sw_rn_record();
 drop function sw_rn_record_scalar();
 drop function sw_rn_onecol();
 drop type sw_onecol;
+
+--
+-- RETURN of trigger variable (PROMISE datum) should be checked
+-- like RETURN of any other scalar variable
+--
+create table sw_trg_t(a int);
+
+create function sw_trg_ret_promise()
+returns trigger as $$
+begin
+  return tg_op;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_trg_ret_promise()', 'sw_trg_t');
+
+drop function sw_trg_ret_promise();
+drop table sw_trg_t;
