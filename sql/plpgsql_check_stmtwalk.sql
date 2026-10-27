@@ -1099,3 +1099,21 @@ drop function sw_rr0();
 drop function sw_rr1();
 drop function sw_rr2();
 drop type sw_rr_type;
+
+-- the plan checks should be raised only once
+create table sw_plan_tab(a int primary key);
+
+create function sw_plan_checks(p int)
+returns int as $$
+declare x int;
+begin
+  x := (select a from sw_plan_tab where a = p for update);
+  raise exception using errcode = (select 'P0001' from sw_plan_tab where a = p for update);
+  return x;
+end;
+$$ language plpgsql stable;
+
+select * from plpgsql_check_function('sw_plan_checks', fatal_errors => false);
+
+drop function sw_plan_checks(int);
+drop table sw_plan_tab;

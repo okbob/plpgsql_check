@@ -1467,15 +1467,18 @@ plpgsql_check_get_const_string(PLpgSQL_checkstate *cstate, Node *node, int *loca
 }
 
 /*
- * Returns string for any not null constant. isnull is true,
- * when constant is null.
+ * Returns string representation of the value of the expression, when the
+ * expression is a not null constant or a variable with traced constant
+ * value. Otherwise returns NULL.
  *
+ * The plan checks are not done here. The expression should be checked
+ * before (and the plan checks would be raised twice).
  */
 char *
 plpgsql_check_expr_get_string(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, int *location)
 {
 
-	Node	   *node = plpgsql_check_expr_get_node(cstate, expr, true);
+	Node	   *node = plpgsql_check_expr_get_node(cstate, expr, false);
 
 	if (!node)
 		return NULL;
