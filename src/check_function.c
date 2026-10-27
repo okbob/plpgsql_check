@@ -212,7 +212,7 @@ do_search_path_assignment_warning(PLpgSQL_checkstate *cstate)
 									"The function has not assigned SEARCH_PATH configuration variable",
 									NULL,
 									NULL,
-									PLPGSQL_CHECK_WARNING_EXTRA,
+									PLPGSQL_CHECK_WARNING_EXTRA_SECURITY,
 									0, NULL, NULL);
 	}
 }

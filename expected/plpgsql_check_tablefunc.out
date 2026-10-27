@@ -179,10 +179,11 @@ $$ language plpgsql;
 select * from plpgsql_check_function('tf_f2', all_warnings := true);
                                  plpgsql_check_function                                  
 -----------------------------------------------------------------------------------------
+ security extra:00000:The function has not assigned SEARCH_PATH configuration variable
  warning extra:00000:3:DECLARE:never read variable "v"
  performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
  Hint: When you fix this issue, please, recheck other functions that uses this function.
-(3 rows)
+(4 rows)
 
 select * from plpgsql_check_function('tf_f2', without_warnings := true);
  plpgsql_check_function 
@@ -190,11 +191,12 @@ select * from plpgsql_check_function('tf_f2', without_warnings := true);
 (0 rows)
 
 select level, message from plpgsql_check_function_tb('tf_f2', all_warnings := true);
-     level     |                      message                       
----------------+----------------------------------------------------
- warning extra | never read variable "v"
- performance   | routine is marked as VOLATILE, should be IMMUTABLE
-(2 rows)
+     level      |                             message                              
+----------------+------------------------------------------------------------------
+ security extra | The function has not assigned SEARCH_PATH configuration variable
+ warning extra  | never read variable "v"
+ performance    | routine is marked as VOLATILE, should be IMMUTABLE
+(3 rows)
 
 select level, message from plpgsql_check_function_tb('tf_f2', without_warnings := true);
  level | message 

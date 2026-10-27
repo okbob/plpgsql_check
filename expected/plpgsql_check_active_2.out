@@ -6145,14 +6145,15 @@ begin
 end;
 $$ language plpgsql immutable;
 select * from plpgsql_check_function('test_bad_assign()', all_warnings=>true);
-                         plpgsql_check_function                         
-------------------------------------------------------------------------
+                                plpgsql_check_function                                 
+---------------------------------------------------------------------------------------
+ security extra:00000:The function has not assigned SEARCH_PATH configuration variable
  performance:00000:4:SQL statement:detected "SELECT expr INTO variable"
  Query: select 0
  --     ^
  Detail: This obsolete syntax of assigning can be slow.
  Hint: Use syntax "variable := expr" instead.
-(5 rows)
+(6 rows)
 
 drop function test_bad_assign;
 create or replace function volatility_check()

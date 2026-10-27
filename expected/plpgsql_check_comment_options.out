@@ -101,10 +101,11 @@ $$ language plpgsql;
 select * from co_check('co_all_warnings');
                                         co_check                                         
 -----------------------------------------------------------------------------------------
+ security extra:00000:The function has not assigned SEARCH_PATH configuration variable
  warning extra:00000:3:DECLARE:never read variable "x"
  performance:00000:routine is marked as VOLATILE, should be IMMUTABLE
  Hint: When you fix this issue, please, recheck other functions that uses this function.
-(3 rows)
+(4 rows)
 
 create function co_without_warnings()
 returns void as $$

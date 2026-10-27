@@ -242,12 +242,28 @@ end;
 $$ language plpgsql;
 select * from plpgsql_check_function('dynamic_sql_forms(text)',
                                      all_warnings => true);
-                          plpgsql_check_function                           
----------------------------------------------------------------------------
+                                plpgsql_check_function                                 
+---------------------------------------------------------------------------------------
+ security extra:00000:The function has not assigned SEARCH_PATH configuration variable
+ security extra:00000:5:EXECUTE:column identifier is not qualified
+ Query: select * from dynsql_tab
+ --            ^
+ security extra:00000:5:EXECUTE:table identifier is not qualified
+ Query: select * from dynsql_tab
+ --                   ^
  performance:00000:5:EXECUTE:immutable expression without parameters found
  Detail: the EXECUTE command is not necessary probably
  Hint: Don't use dynamic SQL when you can use static SQL.
-(3 rows)
+ security extra:00000:6:EXECUTE:function identifier is not qualified
+ Query: format('select * from %I', tname)
+ --     ^
+ security extra:00000:6:EXECUTE:column identifier is not qualified
+ Query: format('select * from %I', tname)
+ --                                ^
+ security extra:00000:8:EXECUTE:column identifier is not qualified
+ Query: query
+ --     ^
+(19 rows)
 
 drop function dynamic_sql_forms(text);
 drop table dynsql_tab;
@@ -260,9 +276,16 @@ end;
 $$ language plpgsql;
 select * from plpgsql_check_function('uninitialized_is_mp(text)',
                                      all_warnings => true);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                                plpgsql_check_function                                 
+---------------------------------------------------------------------------------------
+ security extra:00000:The function has not assigned SEARCH_PATH configuration variable
+ security extra:00000:5:EXECUTE:function identifier is not qualified
+ Query: format('select * from missing_table where a = %L', v)
+ --     ^
+ security extra:00000:5:EXECUTE:column identifier is not qualified
+ Query: format('select * from missing_table where a = %L', v)
+ --                                                        ^
+(7 rows)
 
 drop function uninitialized_is_mp(text);
 create table traced_tab(a int);

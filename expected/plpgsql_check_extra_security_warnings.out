@@ -9,15 +9,15 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 1);
-                                plpgsql_check_function                                
---------------------------------------------------------------------------------------
- warning extra:00000:The function has not assigned SEARCH_PATH configuration variable
+                                plpgsql_check_function                                 
+---------------------------------------------------------------------------------------
+ security extra:00000:The function has not assigned SEARCH_PATH configuration variable
 (1 row)
 
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
-                                plpgsql_check_function                                
---------------------------------------------------------------------------------------
- warning extra:00000:The function has not assigned SEARCH_PATH configuration variable
+                                plpgsql_check_function                                 
+---------------------------------------------------------------------------------------
+ security extra:00000:The function has not assigned SEARCH_PATH configuration variable
  security extra:00000:3:RETURN:function identifier is not qualified
  Query: (select count(relname) + 1 from pg_class)
  --             ^

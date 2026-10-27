@@ -78,6 +78,7 @@ plpgsql_check_set_all_warnings(plpgsql_check_info *cinfo)
 	cinfo->extra_warnings = true;
 	cinfo->security_warnings = true;
 	cinfo->compatibility_warnings = true;
+	cinfo->extra_security_warnings_level = 4;
 }
 
 void
@@ -88,6 +89,7 @@ plpgsql_check_set_without_warnings(plpgsql_check_info *cinfo)
 	cinfo->extra_warnings = false;
 	cinfo->security_warnings = false;
 	cinfo->compatibility_warnings = false;
+	cinfo->extra_security_warnings_level = 0;
 }
 
 /*
