@@ -504,7 +504,44 @@ detect_unqualified_identifiers_walker(Node *node, void *context)
 	{
 		A_Expr *a_expr = (A_Expr *) node;
 
-		if (a_expr->kind == AEXPR_OP && list_length(a_expr->name) == 1)
+		/*
+		 * Operators of other kinds (IN, LIKE, BETWEEN, NULLIF, ...) are
+		 * implied by syntax, and cannot be qualified.
+		 */
+		if ((a_expr->kind == AEXPR_OP ||
+			 a_expr->kind == AEXPR_OP_ANY ||
+			 a_expr->kind == AEXPR_OP_ALL) &&
+			list_length(a_expr->name) == 1)
+		{
+			if (esw_level >= 4)
+				plpgsql_check_put_error(cstate,
+										0, 0,
+										"operator identifier is not qualified",
+										NULL, NULL,
+										PLPGSQL_CHECK_WARNING_EXTRA_SECURITY,
+										exprLocation(node), expr->query, NULL);
+		}
+	}
+	else if (IsA(node, SubLink))
+	{
+		/* operator of ANY, ALL or row comparison sublink (IN has not any) */
+		if (list_length(((SubLink *) node)->operName) == 1)
+		{
+			if (esw_level >= 4)
+				plpgsql_check_put_error(cstate,
+										0, 0,
+										"operator identifier is not qualified",
+										NULL, NULL,
+										PLPGSQL_CHECK_WARNING_EXTRA_SECURITY,
+										exprLocation(node), expr->query, NULL);
+		}
+	}
+	else if (IsA(node, SortBy))
+	{
+		SortBy	   *sortby = (SortBy *) node;
+
+		/* ORDER BY ... USING operator */
+		if (sortby->sortby_dir == SORTBY_USING && list_length(sortby->useOp) == 1)
 		{
 			if (esw_level >= 4)
 				plpgsql_check_put_error(cstate,

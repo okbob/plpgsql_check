@@ -245,3 +245,37 @@ select * from plpgsql_check_function('fx_extra_security', extra_security_warning
 
 drop function fx_extra_security();
 drop procedure fx_extra_security_proc(int);
+
+-- operators of ANY/ALL expressions, sublinks and ORDER BY USING
+-- should be qualified too
+create or replace function fx_extra_security(arr int[])
+returns boolean as $$
+begin
+  if 1 = any (fx_extra_security.arr) then return true; end if;
+  if 2 <> all (fx_extra_security.arr) then return true; end if;
+  if 0 < any (select u.u from pg_catalog.unnest(fx_extra_security.arr) u) then return true; end if;
+  return (select u.u from pg_catalog.unnest(fx_extra_security.arr) u order by u.u using < limit 1) is not null;
+end;
+$$ language plpgsql
+set search_path = pg_catalog;
+
+select * from plpgsql_check_function('fx_extra_security(int[])', extra_security_warnings_level => 4);
+
+-- qualified operators and operators implied by syntax should not be reported
+create or replace function fx_extra_security(arr int[])
+returns boolean as $$
+begin
+  if 1 operator(pg_catalog.=) any (fx_extra_security.arr) then return true; end if;
+  if 2 operator(pg_catalog.<>) all (fx_extra_security.arr) then return true; end if;
+  if 0 operator(pg_catalog.<) any (select u.u from pg_catalog.unnest(fx_extra_security.arr) u) then return true; end if;
+  if 1 in (select u.u from pg_catalog.unnest(fx_extra_security.arr) u) then return true; end if;
+  if 1 in (2, 3) or 1 between 2 and 3 or 1 is distinct from 2 then return true; end if;
+  if 'a'::pg_catalog.text like 'b' then return true; end if;
+  return (select u.u from pg_catalog.unnest(fx_extra_security.arr) u order by u.u using operator(pg_catalog.<) limit 1) is not null;
+end;
+$$ language plpgsql
+set search_path = pg_catalog;
+
+select * from plpgsql_check_function('fx_extra_security(int[])', extra_security_warnings_level => 4);
+
+drop function fx_extra_security(int[]);
