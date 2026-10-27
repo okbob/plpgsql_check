@@ -1239,3 +1239,19 @@ select * from plpgsql_check_function('sw_found_var()');
 
 drop function sw_found_param(int);
 drop function sw_found_var();
+
+-- the label used by EXIT and CONTINUE is not checked again
+create function sw_label_keyword()
+returns void as $$
+begin
+  <<table>>
+  loop
+    exit table when random() > 0.5;
+    continue table;
+  end loop;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_label_keyword()');
+
+drop function sw_label_keyword();

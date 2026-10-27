@@ -1628,10 +1628,6 @@ push_stmt_to_stmt_stack(PLpgSQL_checkstate *cstate)
 			stmt_stack_item->label = ((PLpgSQL_stmt_block *) stmt)->label;
 			break;
 
-		case PLPGSQL_STMT_EXIT:
-			stmt_stack_item->label = ((PLpgSQL_stmt_exit *) stmt)->label;
-			break;
-
 		case PLPGSQL_STMT_LOOP:
 			stmt_stack_item->label = ((PLpgSQL_stmt_loop *) stmt)->label;
 			break;
