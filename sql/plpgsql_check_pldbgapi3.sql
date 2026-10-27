@@ -210,11 +210,39 @@ exception when invalid_cursor_state then
 end;
 $$;
 
+-- the leak is detected even when a previous call, which opened the cursor
+-- of the same name, was aborted
+set plpgsql_check.strict_cursors_leaks to on;
+
+create function pd_cursor_named(fail bool) returns void as $$
+declare c refcursor := 'pd_named_cursor';
+begin
+  open c for select 1;
+  if fail then
+    raise exception 'pd_cursor_named failed';
+  end if;
+end;
+$$ language plpgsql;
+
+do $$
+begin
+  begin
+    perform pd_cursor_named(true);
+  exception when others then
+    raise notice '%', sqlerrm;
+  end;
+  perform pd_cursor_named(false);
+exception when invalid_cursor_state then
+  raise notice 'cursor leak detected after aborted call';
+end;
+$$;
+
 set plpgsql_check.strict_cursors_leaks to default;
 set plpgsql_check.cursors_leaks_errlevel to default;
 set plpgsql_check.cursors_leaks to default;
 
 drop function pd_cursor_recursive(int);
+drop function pd_cursor_named(bool);
 drop function pd_f6();
 drop function pd_f5();
 drop function pd_f4();
