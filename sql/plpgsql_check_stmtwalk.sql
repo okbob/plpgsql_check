@@ -1202,3 +1202,40 @@ select * from plpgsql_check_function('sw_trg_ret_promise()', 'sw_trg_t');
 
 drop function sw_trg_ret_promise();
 drop table sw_trg_t;
+
+--
+-- the FOUND variable is declared only once, in the namespace of the
+-- function
+--
+
+-- the shadowing of the parameter is reported only once
+create function sw_found_param(found int)
+returns int as $$
+begin
+  begin
+    return 1;
+  end;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_found_param(int)');
+
+-- the local variable shadows the FOUND variable
+create function sw_found_var()
+returns int as $$
+declare found boolean := false;
+begin
+  begin
+    perform 1;
+  end;
+  if not found then
+    return 0;
+  end if;
+  return 1;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_found_var()');
+
+drop function sw_found_param(int);
+drop function sw_found_var();

@@ -194,7 +194,13 @@ check_variable_name(PLpgSQL_checkstate *cstate,
 			}
 		}
 
-		if (found_shadowed_variable(refname, outer_stmt_stack, cstate))
+		/*
+		 * The FOUND variable is declared in the namespace of the function
+		 * (like parameters), so any variable of the same name shadows it.
+		 */
+		if (found_shadowed_variable(refname, outer_stmt_stack, cstate) ||
+			(dno != cstate->estate->found_varno &&
+			 strcmp(refname, ((PLpgSQL_var *) cstate->estate->func->datums[cstate->estate->found_varno])->refname) == 0))
 		{
 			StringInfoData str;
 
@@ -292,7 +298,13 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						check_variable_name(cstate, outer_stmt_stack, d->dno);
 					}
 
-					check_variable_name(cstate, outer_stmt_stack, cstate->estate->found_varno);
+					/*
+					 * The FOUND variable is declared only once, in the
+					 * namespace of the function, so check it only for the
+					 * outermost block.
+					 */
+					if (!outer_stmt_stack)
+						check_variable_name(cstate, outer_stmt_stack, cstate->estate->found_varno);
 
 					check_stmts(cstate, stmt_block->body, closing, exceptions);
 
