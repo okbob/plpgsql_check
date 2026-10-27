@@ -234,6 +234,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 	PLpgSQL_stmt_stack_item *outer_stmt_stack;
 	plpgsql_check_pragma_vector pragma_vector;
 	const char *save_err_text;
+	PLpgSQL_stmt *save_err_stmt;
 
 	if (stmt == NULL)
 		return;
@@ -241,6 +242,14 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 	if (cstate->stop_check)
 		return;
 
+	/*
+	 * The err_stmt is restored when the check of the statement finished, so
+	 * the diagnostics raised after the check of nested statements (like the
+	 * check of ELSIF conditions) are related to the right statement (like
+	 * at runtime). When the error is propagated, the err_stmt is not
+	 * restored, so the error is related to the statement that raised it.
+	 */
+	save_err_stmt = cstate->estate->err_stmt;
 	cstate->estate->err_stmt = stmt;
 	cstate->was_pragma = false;
 
@@ -1412,6 +1421,8 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 	}
 	PG_END_TRY();
 
+	cstate->estate->err_stmt = save_err_stmt;
+
 	if (!cstate->was_pragma)
 		cstate->pragma_vector = pragma_vector;
 	else
@@ -1486,6 +1497,11 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 			/* raise dead_code_alert only for visible statements */
 			if (dead_code_alert && stmt->lineno > 0)
 			{
+				PLpgSQL_stmt *save_err_stmt = cstate->estate->err_stmt;
+
+				/* the warning is related to the unreachable statement */
+				cstate->estate->err_stmt = stmt;
+
 				plpgsql_check_put_error(cstate,
 										0, stmt->lineno,
 										"unreachable code",
@@ -1493,6 +1509,9 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 										NULL,
 										PLPGSQL_CHECK_WARNING_EXTRA,
 										0, NULL, NULL);
+
+				cstate->estate->err_stmt = save_err_stmt;
+
 				/* don't raise this warning every line */
 				dead_code_alert = false;
 			}

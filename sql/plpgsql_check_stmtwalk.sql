@@ -1255,3 +1255,29 @@ $$ language plpgsql;
 select * from plpgsql_check_function('sw_label_keyword()');
 
 drop function sw_label_keyword();
+
+-- the diagnostics raised after the check of nested statements are
+-- related to the right statement
+create function sw_err_stmt(a int)
+returns int as $$
+begin
+  return 1;
+  if a > 0 then
+    a := a + 1;
+    a := a + 2;
+  end if;
+  case
+    when a > 0 then
+      a := a + 1;
+    when a + nonexisting_col > 0 then
+      a := 0;
+    else
+      null;
+  end case;
+  return a;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_err_stmt(int)', fatal_errors => false);
+
+drop function sw_err_stmt(int);

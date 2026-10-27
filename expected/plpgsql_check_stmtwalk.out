@@ -193,10 +193,10 @@ $$ language plpgsql;
 select * from plpgsql_check_function('sw_f7');
                                 plpgsql_check_function                                
 --------------------------------------------------------------------------------------
- warning:42804:4:RETURN:target type is different type than source type
+ warning:42804:3:IF:target type is different type than source type
  Detail: cast "integer" value to "boolean" type
  Hint: The input expression type does not have an assignment cast to the target type.
- Context: at RETURN
+ Context: at IF
 (4 rows)
 
 --
@@ -1523,3 +1523,34 @@ select * from plpgsql_check_function('sw_label_keyword()');
 (2 rows)
 
 drop function sw_label_keyword();
+-- the diagnostics raised after the check of nested statements are
+-- related to the right statement
+create function sw_err_stmt(a int)
+returns int as $$
+begin
+  return 1;
+  if a > 0 then
+    a := a + 1;
+    a := a + 2;
+  end if;
+  case
+    when a > 0 then
+      a := a + 1;
+    when a + nonexisting_col > 0 then
+      a := 0;
+    else
+      null;
+  end case;
+  return a;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('sw_err_stmt(int)', fatal_errors => false);
+                   plpgsql_check_function                   
+------------------------------------------------------------
+ warning extra:00000:4:IF:unreachable code
+ error:42703:8:CASE:column "nonexisting_col" does not exist
+ Query: a + nonexisting_col > 0
+ --         ^
+(4 rows)
+
+drop function sw_err_stmt(int);
