@@ -76,3 +76,90 @@ select * from plpgsql_check_function('fx_extra_security', extra_security_warning
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 5);
 
 drop function fx_extra_security();
+
+
+-- names of CTE, transition tables and relations in FOR UPDATE OF
+-- clause cannot be qualified, so they should not be reported
+create table fx_extra_security_t(a int);
+
+create or replace function fx_extra_security()
+returns int as $$
+declare r int;
+begin
+  with x as (select 1 as a), y as (select x.a from x)
+    select y.a into r from y where y.a in (select x.a from x);
+
+  with recursive z(n) as (select 1 union all select z.n + 1 from z where z.n < 3)
+    select z.n into r from z order by z.n desc limit 1;
+
+  select s.a into r from (with w as (select 1 as a) select w.a from w) s;
+
+  select t.a into r from public.fx_extra_security_t t for update of t;
+
+  with u as (update public.fx_extra_security_t set a = 1 returning a)
+    insert into public.fx_extra_security_t select u.a from u;
+
+  return r;
+end;
+$$ language plpgsql
+set search_path = pg_catalog, public;
+
+select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
+
+-- but tables should be reported, although there is a CTE with same name
+create or replace function fx_extra_security()
+returns int as $$
+declare r int;
+begin
+  -- CTE doesn't hide the table for target of DML statement
+  with fx_extra_security_t as (select 1 as a)
+    delete from fx_extra_security_t where a in (select c.a from fx_extra_security_t c);
+
+  -- not recursive CTE cannot see following CTE
+  with x as (select y.a from fx_extra_security_t y), fx_extra_security_t as (select 1 as a)
+    select x.a into r from x;
+
+  -- CTE is not visible outside of the statement
+  select s.a into r
+    from (with fx_extra_security_t as (select 1 as a) select c.a from fx_extra_security_t c) s,
+         fx_extra_security_t;
+
+  return r;
+end;
+$$ language plpgsql
+set search_path = pg_catalog, public;
+
+select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
+
+drop function fx_extra_security();
+
+create or replace function fx_extra_security_trg()
+returns trigger as $$
+declare n int;
+begin
+  select pg_catalog.count(*) into n from newtab;
+  raise notice 'rows: %', n;
+  return null;
+end;
+$$ language plpgsql
+set search_path = 'pg_catalog';
+
+select * from plpgsql_check_function('fx_extra_security_trg()', 'fx_extra_security_t',
+                                     newtable => 'newtab',
+                                     extra_security_warnings_level => 2);
+
+-- passive mode, transition table is registered by executor
+create trigger fx_extra_security_tg after insert on fx_extra_security_t
+  referencing new table as newtab
+  for each statement execute function fx_extra_security_trg();
+
+set plpgsql_check.mode = 'every_start';
+set plpgsql_check.extra_security_warnings_level = 2;
+
+insert into fx_extra_security_t values(1);
+
+reset plpgsql_check.extra_security_warnings_level;
+reset plpgsql_check.mode;
+
+drop table fx_extra_security_t;
+drop function fx_extra_security_trg();

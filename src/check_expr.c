@@ -242,7 +242,101 @@ typedef struct detect_unqualified_identifiers_walker_context
 {
 	PLpgSQL_checkstate *cstate;
 	PLpgSQL_expr *expr;
+	List	   *ctenames;		/* names of CTEs visible in the current scope */
+	List	   *targets;		/* target relations (RangeVar) of DML statements */
 } detect_unqualified_identifiers_walker_context;
+
+/*
+ * Returns WITH clause of DML statement (raw parse tree) or NULL
+ */
+static WithClause *
+get_with_clause(Node *node)
+{
+	switch (nodeTag(node))
+	{
+		case T_SelectStmt:
+			return ((SelectStmt *) node)->withClause;
+		case T_InsertStmt:
+			return ((InsertStmt *) node)->withClause;
+		case T_UpdateStmt:
+			return ((UpdateStmt *) node)->withClause;
+		case T_DeleteStmt:
+			return ((DeleteStmt *) node)->withClause;
+
+#if PG_VERSION_NUM >= 150000
+
+		case T_MergeStmt:
+			return ((MergeStmt *) node)->withClause;
+
+#endif
+
+		default:
+			return NULL;
+	}
+}
+
+/*
+ * Returns target relation of DML statement (raw parse tree) or NULL
+ */
+static RangeVar *
+get_target_relation(Node *node)
+{
+	switch (nodeTag(node))
+	{
+		case T_InsertStmt:
+			return ((InsertStmt *) node)->relation;
+		case T_UpdateStmt:
+			return ((UpdateStmt *) node)->relation;
+		case T_DeleteStmt:
+			return ((DeleteStmt *) node)->relation;
+
+#if PG_VERSION_NUM >= 150000
+
+		case T_MergeStmt:
+			return ((MergeStmt *) node)->relation;
+
+#endif
+
+		default:
+			return NULL;
+	}
+}
+
+/*
+ * Returns true, when the unqualified relation name is a name of visible
+ * CTE or a name of transition table (ephemeral named relation).
+ */
+static bool
+is_cte_or_transition_table(detect_unqualified_identifiers_walker_context *context,
+						   const char *relname)
+{
+	PLpgSQL_checkstate *cstate = context->cstate;
+	ListCell   *lc;
+
+	foreach(lc, context->ctenames)
+	{
+		if (strcmp((char *) lfirst(lc), relname) == 0)
+			return true;
+	}
+
+	/* transition tables specified by oldtable and newtable options */
+	if ((cstate->cinfo->oldtable && strcmp(cstate->cinfo->oldtable, relname) == 0) ||
+		(cstate->cinfo->newtable && strcmp(cstate->cinfo->newtable, relname) == 0))
+		return true;
+
+	/* transition tables of executed trigger (passive mode) */
+	if (cstate->estate && cstate->estate->trigdata &&
+		cstate->estate->trigdata->tg_trigger)
+	{
+		Trigger    *trigger = cstate->estate->trigdata->tg_trigger;
+
+		if ((trigger->tgoldtable && strcmp(trigger->tgoldtable, relname) == 0) ||
+			(trigger->tgnewtable && strcmp(trigger->tgnewtable, relname) == 0))
+			return true;
+	}
+
+	return false;
+}
 
 static bool
 detect_unqualified_identifiers_walker(Node *node, void *context)
@@ -251,11 +345,77 @@ detect_unqualified_identifiers_walker(Node *node, void *context)
 	PLpgSQL_checkstate *cstate = _context->cstate;
 	PLpgSQL_expr *expr = _context->expr;
 	int			esw_level = cstate->cinfo->extra_security_warnings_level;
+	WithClause *withClause;
+	RangeVar   *target;
 
 	if (node == NULL)
 		return false;
 
-	if (IsA(node, FuncCall))
+	target = get_target_relation(node);
+	if (target)
+		_context->targets = lappend(_context->targets, target);
+
+	withClause = get_with_clause(node);
+	if (withClause)
+	{
+		int			nctenames = list_length(_context->ctenames);
+		ListCell   *lc;
+
+		/* the names of CTEs are visible in the whole statement */
+		foreach(lc, withClause->ctes)
+		{
+			CommonTableExpr *cte = lfirst_node(CommonTableExpr, lc);
+
+			_context->ctenames = lappend(_context->ctenames, cte->ctename);
+		}
+
+		(void) raw_expression_tree_walker(node,
+										  detect_unqualified_identifiers_walker,
+										  context);
+
+		_context->ctenames = list_truncate(_context->ctenames, nctenames);
+
+		return false;
+	}
+
+	if (IsA(node, WithClause))
+	{
+		WithClause *wc = (WithClause *) node;
+		List	   *ctenames = _context->ctenames;
+		int			nouter = list_length(ctenames) - list_length(wc->ctes);
+		ListCell   *lc;
+
+		/*
+		 * The names of CTEs of this WITH clause are at the end of ctenames
+		 * list (pushed there by the statement that owns this clause). The
+		 * query of not recursive CTE can see only preceding CTEs.
+		 */
+		Assert(nouter >= 0);
+
+		foreach(lc, wc->ctes)
+		{
+			CommonTableExpr *cte = lfirst_node(CommonTableExpr, lc);
+
+			if (!wc->recursive)
+				_context->ctenames = list_truncate(list_copy(ctenames),
+												   nouter + foreach_current_index(lc));
+
+			(void) detect_unqualified_identifiers_walker(cte->ctequery, context);
+		}
+
+		_context->ctenames = ctenames;
+
+		return false;
+	}
+	else if (IsA(node, LockingClause))
+	{
+		/*
+		 * FOR UPDATE OF clause references relations by unqualified names
+		 * (or aliases) from FROM clause.
+		 */
+		return false;
+	}
+	else if (IsA(node, FuncCall))
 	{
 		if (list_length( ((FuncCall *) node)->funcname) == 1)
 		{
@@ -300,7 +460,14 @@ detect_unqualified_identifiers_walker(Node *node, void *context)
 	{
 		RangeVar *rv = (RangeVar *) node;
 
-		if (!rv->schemaname)
+		/*
+		 * CTE or transition table cannot be qualified. But CTE doesn't hide
+		 * the table, when it is used as target of DML statement (and
+		 * transition table cannot be target of DML statement).
+		 */
+		if (!rv->schemaname &&
+			(list_member_ptr(_context->targets, rv) ||
+			 !is_cte_or_transition_table(_context, rv->relname)))
 		{
 			if (esw_level >= 2)
 				plpgsql_check_put_error(cstate,
@@ -344,6 +511,8 @@ detect_unqualified_objects(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 
 	context.cstate = cstate;
 	context.expr = expr;
+	context.ctenames = NIL;
+	context.targets = NIL;
 
 	foreach(lc, expr->plan->plancache_list)
 	{
