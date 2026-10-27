@@ -338,6 +338,23 @@ is_cte_or_transition_table(detect_unqualified_identifiers_walker_context *contex
 	return false;
 }
 
+/*
+ * Returns true, when the unqualified name used in the expression is
+ * resolved to PL/pgSQL variable. When variable_conflict is use_column,
+ * the name can be resolved to a column, and then we cannot to decide it
+ * from raw parse tree. The expression of dynamic SQL has not a namespace.
+ */
+static bool
+is_plpgsql_variable(PLpgSQL_expr *expr, const char *name)
+{
+	if (!expr->ns || !expr->func ||
+		expr->func->resolve_option == PLPGSQL_RESOLVE_COLUMN)
+		return false;
+
+	return plpgsql_check__ns_lookup_p(expr->ns, false,
+									  name, NULL, NULL, NULL) != NULL;
+}
+
 static bool
 detect_unqualified_identifiers_walker(Node *node, void *context)
 {
@@ -445,7 +462,12 @@ detect_unqualified_identifiers_walker(Node *node, void *context)
 	}
 	else if (IsA(node, ColumnRef))
 	{
-		if (list_length( ((ColumnRef *) node)->fields) == 1)
+		ColumnRef  *cref = (ColumnRef *) node;
+
+		/* the star (all columns) and PL/pgSQL variables are not columns */
+		if (list_length(cref->fields) == 1 &&
+			!IsA(linitial(cref->fields), A_Star) &&
+			!is_plpgsql_variable(expr, strVal(linitial(cref->fields))))
 		{
 			if (esw_level >= 3)
 				plpgsql_check_put_error(cstate,

@@ -163,3 +163,52 @@ reset plpgsql_check.mode;
 
 drop table fx_extra_security_t;
 drop function fx_extra_security_trg();
+
+-- PL/pgSQL variables and star are not columns
+create table fx_extra_security_t(a int, b int);
+
+create or replace function fx_extra_security(p int)
+returns int as $$
+declare
+  r int;
+  rec record;
+begin
+  select t.a into r from public.fx_extra_security_t t where t.b = p;
+  if found and r > 10 then
+    return 1;
+  end if;
+
+  for rec in select * from public.fx_extra_security_t t
+  loop
+    raise notice '%', rec.a;
+  end loop;
+
+  -- should be reported
+  select b into r from public.fx_extra_security_t t;
+
+  -- should be reported, variables are not visible in dynamic SQL
+  execute 'select r from (select 1 as r) s';
+
+  return r;
+end;
+$$ language plpgsql
+set search_path = pg_catalog;
+
+select * from plpgsql_check_function('fx_extra_security(int)', extra_security_warnings_level => 3);
+
+-- variable can be a column, when variable_conflict is use_column
+create or replace function fx_extra_security(p int)
+returns int as $$
+#variable_conflict use_column
+declare r int;
+begin
+  select t.a into r from public.fx_extra_security_t t where t.b = p;
+  return r;
+end;
+$$ language plpgsql
+set search_path = pg_catalog;
+
+select * from plpgsql_check_function('fx_extra_security(int)', extra_security_warnings_level => 3);
+
+drop function fx_extra_security(int);
+drop table fx_extra_security_t;
