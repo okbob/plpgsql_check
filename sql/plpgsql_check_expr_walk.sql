@@ -543,6 +543,31 @@ $$ language plpgsql;
 select * from plpgsql_check_function('ew_f27', performance_warnings => true);
 
 --
+-- volatility of XML expressions
+--
+
+-- XMLELEMENT calls the output function of the argument, so the result
+-- depends on TimeZone and the routine cannot be IMMUTABLE
+create function ew_f28(p timestamptz)
+returns xml as $$
+begin
+  return xmlelement(name a, p);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('ew_f28', performance_warnings => true);
+
+-- XMLCONCAT is immutable
+create function ew_f28a(p xml)
+returns xml as $$
+begin
+  return xmlconcat(p, p);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('ew_f28a', performance_warnings => true);
+
+--
 -- collecting of the dependencies
 --
 
@@ -853,6 +878,8 @@ drop function ew_f24(text);
 drop function ew_f25(bigint);
 drop function ew_f26(bigint);
 drop function ew_f27(bigint);
+drop function ew_f28(timestamptz);
+drop function ew_f28a(xml);
 drop function ew_f29(int);
 drop function ew_f29a();
 drop function ew_f29b();

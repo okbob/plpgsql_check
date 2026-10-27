@@ -24,6 +24,19 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 
+#if PG_VERSION_NUM >= 160000
+
+#include "utils/json.h"
+#include "utils/jsonb.h"
+
+#endif
+
+#if PG_VERSION_NUM >= 170000
+
+#include "utils/jsonpath.h"
+
+#endif
+
 typedef struct check_funcexpr_walker_params
 {
 	PLpgSQL_checkstate *cstate;
@@ -1433,8 +1446,9 @@ contain_volatile_functions_walker(Node *node, void *context)
 
 	/*
 	 * See notes in contain_mutable_functions_walker about why we treat
-	 * MinMaxExpr, XmlExpr, and CoerceToDomain as immutable, while
-	 * SQLValueFunction is stable.  Hence, none of them are of interest here.
+	 * MinMaxExpr and CoerceToDomain as immutable.  SQLValueFunction is
+	 * stable, and XmlExpr might be immutable or stable, but it should never
+	 * be volatile.  Hence, none of them are of interest here.
 	 */
 
 	/* Recurse to check arguments */
@@ -1449,6 +1463,38 @@ contain_volatile_functions_walker(Node *node, void *context)
 								  context);
 }
 
+/*
+ * True if this XmlExpr node represents immutable processing (considering
+ * just the node itself, not its arguments). This is a copy of the
+ * PostgreSQL 19 function (older releases treat all XmlExpr nodes as
+ * immutable). XMLELEMENT and XMLFOREST call output functions of the
+ * arguments, so the result can depend on settings like TimeZone or
+ * DateStyle in any release.
+ */
+static bool
+xmlexpr_is_immutable(XmlExpr *xexpr)
+{
+	switch (xexpr->op)
+	{
+		case IS_XMLCONCAT:
+		case IS_XMLPARSE:
+		case IS_XMLPI:
+		case IS_XMLROOT:
+		case IS_XMLSERIALIZE:
+		case IS_DOCUMENT:
+			/* These variants manipulate XML text in a self-contained way */
+			return true;
+
+		case IS_XMLELEMENT:
+		case IS_XMLFOREST:
+			/* These variants can be only stable */
+			return false;
+	}
+
+	/* We shouldn't get here, but if we do, say "not immutable" */
+	return false;
+}
+
 static bool
 contain_mutable_functions_walker(Node *node, void *context)
 {
@@ -1460,10 +1506,70 @@ contain_mutable_functions_walker(Node *node, void *context)
 								context))
 		return true;
 
+#if PG_VERSION_NUM >= 160000
+
+	if (IsA(node, JsonConstructorExpr))
+	{
+		const JsonConstructorExpr *ctor = (JsonConstructorExpr *) node;
+		ListCell   *lc;
+		bool		is_jsonb;
+
+		is_jsonb = ctor->returning->format->format_type == JS_FORMAT_JSONB;
+
+		/*
+		 * Check argument_type => json[b] conversions specifically (the
+		 * result can depend on TimeZone, for example). We still recurse to
+		 * check 'args' below.
+		 */
+		foreach(lc, ctor->args)
+		{
+			Oid			typid = exprType(lfirst(lc));
+
+			if (is_jsonb ?
+				!to_jsonb_is_immutable(typid) :
+				!to_json_is_immutable(typid))
+				return true;
+		}
+
+		/* Check all subnodes */
+	}
+
+#endif
+
+#if PG_VERSION_NUM >= 170000
+
+	if (IsA(node, JsonExpr))
+	{
+		JsonExpr   *jexpr = castNode(JsonExpr, node);
+		Const	   *cnst;
+
+		if (!IsA(jexpr->path_spec, Const))
+			return true;
+
+		cnst = castNode(Const, jexpr->path_spec);
+
+		Assert(cnst->consttype == JSONPATHOID);
+		if (cnst->constisnull)
+			return false;
+
+		if (jspIsMutable(DatumGetJsonPathP(cnst->constvalue),
+						 jexpr->passing_names, jexpr->passing_values))
+			return true;
+	}
+
+#endif
+
 	if (IsA(node, SQLValueFunction))
 	{
 		/* all variants of SQLValueFunction are stable */
 		return true;
+	}
+
+	if (IsA(node, XmlExpr))
+	{
+		/* some variants of XmlExpr are only stable */
+		if (!xmlexpr_is_immutable((XmlExpr *) node))
+			return true;
 	}
 
 	if (IsA(node, NextValueExpr))
@@ -1475,11 +1581,10 @@ contain_mutable_functions_walker(Node *node, void *context)
 	/*
 	 * It should be safe to treat MinMaxExpr as immutable, because it will
 	 * depend on a non-cross-type btree comparison function, and those should
-	 * always be immutable.  Treating XmlExpr as immutable is more dubious,
-	 * and treating CoerceToDomain as immutable is outright dangerous.  But we
-	 * have done so historically, and changing this would probably cause more
-	 * problems than it would fix.  In practice, if you have a non-immutable
-	 * domain constraint you are in for pain anyhow.
+	 * always be immutable.  Treating CoerceToDomain as immutable is outright
+	 * dangerous, but we have done so historically, and changing this would
+	 * probably cause more problems than it would fix.  In practice, if you
+	 * have a non-immutable domain constraint you are in for pain anyhow.
 	 */
 
 	/* Recurse to check arguments */
