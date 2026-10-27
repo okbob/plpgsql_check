@@ -1005,9 +1005,8 @@ update_fstats(FuncStats *fs, uint64 elapsed, bool aborted, uint64 raised_errors)
 {
 	fs->total_time += elapsed;
 
-	if (fs->min_time > 0)
-		fs->min_time = fs->min_time < elapsed ? fs->min_time : elapsed;
-	else
+	/* min_time is not valid before the first execution (it can be zero) */
+	if (fs->exec_count == 0 || elapsed < fs->min_time)
 		fs->min_time = elapsed;
 
 	fs->max_time = fs->max_time > elapsed ? fs->max_time : elapsed;
@@ -1029,6 +1028,16 @@ merge_fstats(FuncStats *a, FuncStats *b)
 	float8		ab_total_time_mean;
 	float8		ab_total_time_m2;
 
+	/* nothing to merge, and min_time of b is not valid */
+	if (b->exec_count == 0)
+		return;
+
+	/* min_time of a is not valid before the first execution */
+	if (a->exec_count == 0 || b->min_time < a->min_time)
+		a->min_time = b->min_time;
+
+	a->max_time = a->max_time > b->max_time ? a->max_time : b->max_time;
+
 	WelfordVarianceMerge(&ab_exec_count, &ab_total_time_mean, &ab_total_time_m2,
 						 a->exec_count, a->total_time_mean, a->total_time_m2,
 						 b->exec_count, b->total_time_mean, b->total_time_m2);
@@ -1040,13 +1049,6 @@ merge_fstats(FuncStats *a, FuncStats *b)
 	a->total_time += b->total_time;
 	a->total_time_mean = ab_total_time_mean;
 	a->total_time_m2 = ab_total_time_m2;
-
-	if (a->min_time > 0)
-		a->min_time = a->min_time < b->min_time ? a->min_time : b->min_time;
-	else
-		a->min_time = b->min_time;
-
-	a->max_time = a->max_time > b->max_time ? a->max_time : b->max_time;
 }
 
 static void
