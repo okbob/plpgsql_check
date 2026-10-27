@@ -400,3 +400,46 @@ drop function pl_coverage_calls();
 set plpgsql_check.use_lxcache = default;
 
 set plpgsql_check.use_shared_stats_when_it_possible to default;
+
+-- Errors raised by nested functions abort the statement that called them.
+set plpgsql_check.profiler = on;
+create function pl_nested_error() returns boolean as $$
+begin
+  raise exception 'nested error';
+end;
+$$ language plpgsql;
+create function pl_nested_condition() returns int as $$
+begin
+  if pl_nested_error() then
+    return 1;
+  end if;
+  return 0;
+exception when others then
+  return -1;
+end;
+$$ language plpgsql;
+create function pl_nested_body() returns int as $$
+declare i int; n int := 0;
+begin
+  foreach i in array array[0, 1, -1]
+  loop
+    begin
+      if 1 / i > 0 then
+        perform pl_nested_error();
+      end if;
+    exception when others then
+      n := n + 1;
+    end;
+  end loop;
+  return n;
+end;
+$$ language plpgsql;
+select pl_nested_condition();
+select pl_nested_body();
+select plpgsql_coverage_branches('pl_nested_condition') = 0.5 as condition_ok,
+       plpgsql_coverage_branches('pl_nested_body') = 1 as body_ok;
+set plpgsql_check.profiler = off;
+select plpgsql_profiler_reset_all();
+drop function pl_nested_condition();
+drop function pl_nested_body();
+drop function pl_nested_error();

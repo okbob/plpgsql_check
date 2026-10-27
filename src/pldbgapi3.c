@@ -438,12 +438,9 @@ plpgsql_check_error_callback(void *arg)
 {
 	plpgsql_plugin_info *plugin_info = (plpgsql_plugin_info *) arg;
 
-	/*
-	 * Attention - the callback can be raised from pl plugins, and then
-	 * estate->plugin_info should not be a reference to pldbapi3 plugin.
-	 */
-	if (top_pldbgapi_plugin_info == plugin_info &&
-		geterrcode() != 0)
+	Assert(plugin_info->magic == PLUGIN_INFO_MAGIC);
+
+	if (geterrcode() != 0)
 	{
 		ErrorData  *cur_error;
 		int			elevel;
@@ -458,30 +455,44 @@ plpgsql_check_error_callback(void *arg)
 		/* we don't want to store warnings, notifications, .. */
 		cur_error = CopyErrorData();
 		elevel = cur_error->elevel;
-		FreeErrorData(cur_error);
 		MemoryContextSwitchTo(oldcxt);
 
 		if (elevel < ERROR)
+		{
+			FreeErrorData(cur_error);
+
 			return;
+		}
+
+		/*
+		 * Attention - the callback can be raised from pl plugins, and then
+		 * estate->plugin_info should not be a reference to pldbapi3 plugin.
+		 */
+		if (top_pldbgapi_plugin_info != plugin_info)
+		{
+			/*
+			 * The error was raised by some nested function. When the nested
+			 * function doesn't handle it, the error aborts the statement of
+			 * this function that is executed now (the statement that called
+			 * the nested function), and abort_statements needs to know it.
+			 */
+			plugin_info->err_stmt = plugin_info->estate->err_stmt;
+
+			FreeErrorData(cur_error);
+
+			return;
+		}
 
 		/*
 		 * Use preallocated 8kB private error context. Then CopyErrorData()
 		 * should be safe operation. When some plugin needs more memory, then
 		 * should to use own preallocated own ErrorContext.
 		 */
-		oldcxt = MemoryContextSwitchTo(plugin_info->ErrorContext);
-
 		if (plugin_info->cur_error)
 			FreeErrorData(plugin_info->cur_error);
 
-		cur_error = CopyErrorData();
-
 		plugin_info->cur_error = cur_error;
 		plugin_info->err_stmt = plugin_info->estate->err_stmt;
-
-		MemoryContextSwitchTo(oldcxt);
-
-		Assert(plugin_info->magic == PLUGIN_INFO_MAGIC);
 
 		if (plugin_info->fextra)
 		{
@@ -822,9 +833,9 @@ plch_init_plugin(void)
 
 	plugin_ErrorContext = AllocSetContextCreate(TopMemoryContext,
 												"ErrorContext",
-												8 * 1024,
-												8 * 1024,
-												8 * 1024);
+												16 * 1024,
+												16 * 1024,
+												16 * 1024);
 
 	inited = true;
 }
