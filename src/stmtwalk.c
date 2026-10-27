@@ -563,8 +563,23 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 												 -1);
 					}
 					else
-						/* is not ensured all path evaluation */
-						*closing = possibly_closed(closing_all_paths);
+					{
+						/*
+						 * When no WHEN branch matches, then the CASE_NOT_FOUND
+						 * exception is raised. So when all branches are
+						 * closed, the statement is closed too. Else it is not
+						 * ensured all path evaluation.
+						 */
+						if (closing_all_paths == PLPGSQL_CHECK_CLOSED ||
+							closing_all_paths == PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS)
+							*closing = merge_closing(closing_all_paths,
+													 PLPGSQL_CHECK_CLOSED_BY_EXCEPTIONS,
+													 exceptions,
+													 list_make1_int(ERRCODE_CASE_NOT_FOUND),
+													 -1);
+						else
+							*closing = possibly_closed(closing_all_paths);
+					}
 				}
 				break;
 

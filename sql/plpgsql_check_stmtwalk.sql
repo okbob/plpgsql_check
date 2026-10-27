@@ -102,8 +102,9 @@ select * from plpgsql_check_function('sw_f4c');
 -- CASE statement
 --
 
--- when the CASE has no ELSE part, the execution path is closed only
--- possibly, although every WHEN part returns
+-- when the CASE has no ELSE part, and no WHEN part matches, then the
+-- CASE_NOT_FOUND exception is raised, so the execution path is closed
+-- when every WHEN part returns
 create function sw_f5(n int)
 returns int as $$
 begin
@@ -115,6 +116,22 @@ end;
 $$ language plpgsql;
 
 select * from plpgsql_check_function('sw_f5');
+
+-- the CASE_NOT_FOUND exception can be handled
+create function sw_f5b(n int)
+returns int as $$
+begin
+  begin
+    case n
+      when 1 then return 10;
+    end case;
+  exception when case_not_found then
+    return -1;
+  end;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_f5b');
 
 -- with the ELSE part the path is closed
 create function sw_f6(n int)
@@ -489,6 +506,7 @@ drop function sw_f4(int);
 drop function sw_f4b(int);
 drop function sw_f4c(int);
 drop function sw_f5(int);
+drop function sw_f5b(int);
 drop function sw_f6(int);
 drop function sw_f7(int);
 drop function sw_f8(int);
