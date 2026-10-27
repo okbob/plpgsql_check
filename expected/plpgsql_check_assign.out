@@ -830,3 +830,46 @@ select * from plpgsql_check_function('as_fori_const()');
 drop function as_fori_const();
 drop table as_fori_tab_1;
 drop table as_fori_tab_2;
+-- a variable assigned by dynamic SQL, by FETCH or by GET DIAGNOSTICS
+-- has not a traced constant value
+create table as_stale_tab_1(a int);
+create function as_stale_const(t text)
+returns void as $$
+declare
+  x text := '3';
+  c refcursor;
+begin
+  execute 'select ' || quote_literal(t) into x;
+  execute format('select a from as_stale_tab_%s', x);
+
+  x := '3';
+  for x in execute 'select ' || quote_literal(t)
+  loop
+    execute format('select a from as_stale_tab_%s', x);
+  end loop;
+
+  x := '3';
+  open c for execute 'select ' || quote_literal(t);
+  fetch c into x;
+  close c;
+  execute format('select a from as_stale_tab_%s', x);
+
+  x := '3';
+  perform 1;
+  get diagnostics x = row_count;
+  execute format('select a from as_stale_tab_%s', x);
+end;
+$$ language plpgsql;
+select as_stale_const('1');
+ as_stale_const 
+----------------
+ 
+(1 row)
+
+select * from plpgsql_check_function('as_stale_const(text)', fatal_errors => false);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function as_stale_const(text);
+drop table as_stale_tab_1;

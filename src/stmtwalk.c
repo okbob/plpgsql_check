@@ -79,6 +79,13 @@ check_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var)
 				continue;
 
 			plpgsql_check_target(cstate, row->varnos[fnum], NULL, NULL);
+
+			/*
+			 * The target gets a value from a query (or a cursor), and this
+			 * value is not traced. The fields of the target have not traced
+			 * constant values after the assignment.
+			 */
+			plpgsql_check_reset_strconstvar(cstate, row->varnos[fnum]);
 		}
 		plpgsql_check_record_variable_usage(cstate, row->dno, true);
 
@@ -1175,6 +1182,9 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						PLpgSQL_diag_item *diag_item = (PLpgSQL_diag_item *) lfirst(lc);
 
 						plpgsql_check_target(cstate, diag_item->target, NULL, NULL);
+
+						/* the diagnostics item is not known at check time */
+						plpgsql_check_reset_strconstvar(cstate, diag_item->target);
 
 						/*
 						 * Using GET DIAGNOSTICS stack = PG_CONTEXT is like
