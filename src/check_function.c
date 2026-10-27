@@ -786,8 +786,14 @@ trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate)
 	}
 	else if (IsA(tdata, EventTriggerData))
 	{
+		/* protect event trigger variables (TG_EVENT, TG_TAG) */
+		for (i = 0; i < func->ndatums; i++)
+		{
+			PLpgSQL_datum *datum = func->datums[i];
 
-		/* do nothing */
+			if (datum->dtype == PLPGSQL_DTYPE_PROMISE)
+				init_datum_dno(cstate, datum->dno, true, true);
+		}
 	}
 	else
 		elog(ERROR, "unexpected environment");

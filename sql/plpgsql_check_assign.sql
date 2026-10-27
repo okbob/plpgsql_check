@@ -36,6 +36,16 @@ $$ language plpgsql;
 
 select * from plpgsql_check_function('as_f2', extra_warnings => true);
 
+-- the same for the variables of an event trigger
+create function as_f3()
+returns event_trigger as $$
+begin
+  tg_tag := 'x';
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('as_f3', extra_warnings => true);
+
 --
 -- assignment to a constant
 --
@@ -265,6 +275,7 @@ drop function as_f16();
 drop function as_f17();
 drop function as_f1(int);
 drop function as_f2();
+drop function as_f3();
 drop function as_f4();
 drop function as_f5();
 drop function as_f6();
