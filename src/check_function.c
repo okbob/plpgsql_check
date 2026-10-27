@@ -1348,6 +1348,7 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 
 	cstate->func_oids = NIL;
 	cstate->rel_oids = NIL;
+	cstate->op_oids = NIL;
 
 	cstate->check_cxt = AllocSetContextCreate(CurrentMemoryContext,
 											  "plpgsql_check temporary cxt",

@@ -179,6 +179,7 @@ typedef struct PLpgSQL_checkstate
 										 * QUERY EXECUTE */
 	List	   *func_oids;		/* list of used (and displayed) functions */
 	List	   *rel_oids;		/* list of used (and displayed) relations */
+	List	   *op_oids;		/* list of used (and displayed) operators */
 	bool		fake_rtd;		/* true when functions returns record */
 	plpgsql_check_result_info *result_info;
 	plpgsql_check_info *cinfo;

@@ -233,7 +233,8 @@ detect_dependency_walker(Node *node, void *context)
 	{
 		OpExpr	   *opexpr = (OpExpr *) node;
 
-		if (plpgsql_check_get_op_namespace(opexpr->opno) != PG_CATALOG_NAMESPACE)
+		if (plpgsql_check_get_op_namespace(opexpr->opno) != PG_CATALOG_NAMESPACE &&
+			!list_member_oid(cstate->op_oids, opexpr->opno))
 		{
 			StringInfoData str;
 			Oid			lefttype;
@@ -261,6 +262,8 @@ detect_dependency_walker(Node *node, void *context)
 										 get_opname(opexpr->opno),
 										 str.data);
 			pfree(str.data);
+
+			cstate->op_oids = lappend_oid(cstate->op_oids, opexpr->opno);
 		}
 	}
 

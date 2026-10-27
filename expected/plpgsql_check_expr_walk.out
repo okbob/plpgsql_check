@@ -786,6 +786,19 @@ select type, schema, name, params from plpgsql_show_dependency_tb('ew_f29');
  OPERATOR | public | @#   | (-,integer)
 (1 row)
 
+-- an operator is listed once, even when it is used repeatedly
+create function ew_f29c(n int)
+returns int as $$
+begin
+  return @# (@# n);
+end;
+$$ language plpgsql;
+select type, schema, name, params from plpgsql_show_dependency_tb('ew_f29c');
+   type   | schema | name |   params    
+----------+--------+------+-------------
+ OPERATOR | public | @#   | (-,integer)
+(1 row)
+
 -- a view used by a query is a dependency of the routine, like the relations
 -- used by the view
 create view ew_view1 as select a from ew_tab1;
@@ -1078,6 +1091,7 @@ drop function ew_f27(bigint);
 drop function ew_f29(int);
 drop function ew_f29a();
 drop function ew_f29b();
+drop function ew_f29c(int);
 drop view ew_view1;
 drop view ew_view2;
 drop function ew_id(text);
