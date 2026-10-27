@@ -852,7 +852,7 @@ init_tag(plpgsql_check_result_info *ri, Oid fn_oid)
 			if (plpgsql_check_regress_test_mode)
 				appendStringInfo(ri->sinfo, "<Function>\n");
 			else
-				appendStringInfo(ri->sinfo, "<Function oid=\"%d\">\n", fn_oid);
+				appendStringInfo(ri->sinfo, "<Function oid=\"%u\">\n", fn_oid);
 		}
 		else if (ri->format == PLPGSQL_CHECK_FORMAT_JSON)
 		{
@@ -860,7 +860,7 @@ init_tag(plpgsql_check_result_info *ri, Oid fn_oid)
 			if (plpgsql_check_regress_test_mode)
 				appendStringInfo(ri->sinfo, "{\n  \"issues\": [\n");
 			else
-				appendStringInfo(ri->sinfo, "{\n  \"function\": \"%d\",\n  \"issues\": [\n", fn_oid);
+				appendStringInfo(ri->sinfo, "{\n  \"function\": \"%u\",\n  \"issues\": [\n", fn_oid);
 		}
 	}
 }

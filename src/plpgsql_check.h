@@ -177,8 +177,8 @@ typedef struct PLpgSQL_checkstate
 	bool		found_return_query; /* true, when code contains RETURN query */
 	bool		found_return_dyn_query; /* true, when code contains RETURN
 										 * QUERY EXECUTE */
-	Bitmapset  *func_oids;		/* list of used (and displayed) functions */
-	Bitmapset  *rel_oids;		/* list of used (and displayed) relations */
+	List	   *func_oids;		/* list of used (and displayed) functions */
+	List	   *rel_oids;		/* list of used (and displayed) relations */
 	bool		fake_rtd;		/* true when functions returns record */
 	plpgsql_check_result_info *result_info;
 	plpgsql_check_info *cinfo;

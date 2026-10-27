@@ -161,7 +161,7 @@ detect_dependency_walker(Node *node, void *context)
 
 			if (rte_is_relation(rt))
 			{
-				if (!bms_is_member(rt->relid, cstate->rel_oids))
+				if (!list_member_oid(cstate->rel_oids, rt->relid))
 				{
 					plpgsql_check_put_dependency(ri,
 												 "RELATION",
@@ -170,7 +170,7 @@ detect_dependency_walker(Node *node, void *context)
 												 get_rel_name(rt->relid),
 												 NULL);
 
-					cstate->rel_oids = bms_add_member(cstate->rel_oids, rt->relid);
+					cstate->rel_oids = lappend_oid(cstate->rel_oids, rt->relid);
 				}
 			}
 		}
@@ -193,7 +193,7 @@ detect_dependency_walker(Node *node, void *context)
 
 		if (get_func_namespace(fexpr->funcid) != PG_CATALOG_NAMESPACE)
 		{
-			if (!bms_is_member(fexpr->funcid, cstate->func_oids))
+			if (!list_member_oid(cstate->func_oids, fexpr->funcid))
 			{
 				StringInfoData str;
 				ListCell   *lc;
@@ -224,7 +224,7 @@ detect_dependency_walker(Node *node, void *context)
 
 				pfree(str.data);
 
-				cstate->func_oids = bms_add_member(cstate->func_oids, fexpr->funcid);
+				cstate->func_oids = lappend_oid(cstate->func_oids, fexpr->funcid);
 			}
 		}
 	}

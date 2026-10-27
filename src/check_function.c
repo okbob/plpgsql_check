@@ -147,7 +147,7 @@ reports_used_rowtypes_dependency(PLpgSQL_function *func, PLpgSQL_checkstate *cst
 			typrelid = get_typ_typrelid(rec->datatype->typoid);
 			relkind = get_rel_relkind(typrelid);
 
-			if (!bms_is_member(typrelid, cstate->rel_oids))
+			if (!list_member_oid(cstate->rel_oids, typrelid))
 			{
 				if (relkind == RELKIND_COMPOSITE_TYPE)
 				{
@@ -158,7 +158,7 @@ reports_used_rowtypes_dependency(PLpgSQL_function *func, PLpgSQL_checkstate *cst
 												 get_rel_name(typrelid),
 												 NULL);
 
-					cstate->rel_oids = bms_add_member(cstate->rel_oids, typrelid);
+					cstate->rel_oids = lappend_oid(cstate->rel_oids, typrelid);
 				}
 				else if (relkind == RELKIND_RELATION ||
 						 relkind == RELKIND_PARTITIONED_TABLE ||
@@ -173,7 +173,7 @@ reports_used_rowtypes_dependency(PLpgSQL_function *func, PLpgSQL_checkstate *cst
 												 get_rel_name(typrelid),
 												 NULL);
 
-					cstate->rel_oids = bms_add_member(cstate->rel_oids, typrelid);
+					cstate->rel_oids = lappend_oid(cstate->rel_oids, typrelid);
 				}
 			}
 		}
@@ -1346,8 +1346,8 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 
 	cstate->is_active_mode = is_active_mode;
 
-	cstate->func_oids = NULL;
-	cstate->rel_oids = NULL;
+	cstate->func_oids = NIL;
+	cstate->rel_oids = NIL;
 
 	cstate->check_cxt = AllocSetContextCreate(CurrentMemoryContext,
 											  "plpgsql_check temporary cxt",
