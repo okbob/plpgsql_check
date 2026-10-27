@@ -1939,6 +1939,12 @@ plpgsql_check_search_comment_options(plpgsql_check_info *cinfo)
 				/* size of custom string separator (include dolars) */
 				size_t		cust_str_length = src - start + 1;
 
+				/*
+				 * Skip the ending $ of the starting tag, so it cannot be
+				 * taken as the first char of the closing tag.
+				 */
+				src += 1;
+
 				while (*src != '\0')
 				{
 					if (strncmp(src, start, cust_str_length) == 0)

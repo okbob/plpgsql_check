@@ -283,9 +283,24 @@ $func$ language plpgsql;
 
 select * from co_check('co_dollar_literal');
 
+-- the closing delimiter is searched only after the opening delimiter
+create function co_dollar_overlap()
+returns text as $func$
+declare
+  x int;
+begin
+  -- @plpgsql_check_options: without_warnings
+  return $$$5 -- @plpgsql_check_options: nonsense$$ ||
+         $t$t$ -- @plpgsql_check_options: nonsense$t$;
+end;
+$func$ language plpgsql;
+
+select * from co_check('co_dollar_overlap');
+
 drop function co_dollar_parameters(int, int);
 drop function co_dollar_identifier();
 drop function co_dollar_literal();
+drop function co_dollar_overlap();
 
 -- end of source terminates a line comment just like a newline
 create function co_final_comment()
