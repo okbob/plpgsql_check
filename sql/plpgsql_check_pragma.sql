@@ -29,6 +29,7 @@ begin
   perform plpgsql_check_pragma('status:security_warnings');
   perform plpgsql_check_pragma('status:compatibility_warnings');
   perform plpgsql_check_pragma('status:constants_tracing');
+  perform plpgsql_check_pragma('status:extra_security_warnings');
   -- spaces around the pragma name and its argument are ignored
   perform plpgsql_check_pragma('  status:  check');
 end;
@@ -48,6 +49,8 @@ begin
   perform plpgsql_check_pragma('disable:security_warnings');
   perform plpgsql_check_pragma('disable:compatibility_warnings');
   perform plpgsql_check_pragma('disable:constants_tracing');
+  perform plpgsql_check_pragma('disable:extra_security_warnings');
+
 
   perform plpgsql_check_pragma('status:check');
   perform plpgsql_check_pragma('status:tracer');
@@ -57,6 +60,7 @@ begin
   perform plpgsql_check_pragma('status:security_warnings');
   perform plpgsql_check_pragma('status:compatibility_warnings');
   perform plpgsql_check_pragma('status:constants_tracing');
+  perform plpgsql_check_pragma('status:extra_security_warnings');
 end;
 $$ language plpgsql;
 
@@ -74,6 +78,7 @@ begin
   perform plpgsql_check_pragma('disable:security_warnings');
   perform plpgsql_check_pragma('disable:compatibility_warnings');
   perform plpgsql_check_pragma('disable:constants_tracing');
+  perform plpgsql_check_pragma('disable:extra_security_warnings');
 
   perform plpgsql_check_pragma('  enable:  check');
   perform plpgsql_check_pragma('enable:tracer');
@@ -83,6 +88,7 @@ begin
   perform plpgsql_check_pragma('enable:security_warnings');
   perform plpgsql_check_pragma('enable:compatibility_warnings');
   perform plpgsql_check_pragma('enable:constants_tracing');
+  perform plpgsql_check_pragma('enable:extra_security_warnings');
 
   perform plpgsql_check_pragma('status:check');
   perform plpgsql_check_pragma('status:tracer');
@@ -92,6 +98,7 @@ begin
   perform plpgsql_check_pragma('status:security_warnings');
   perform plpgsql_check_pragma('status:compatibility_warnings');
   perform plpgsql_check_pragma('status:constants_tracing');
+  perform plpgsql_check_pragma('status:extra_security_warnings');
 end;
 $$ language plpgsql;
 

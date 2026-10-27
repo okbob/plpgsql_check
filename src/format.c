@@ -654,6 +654,8 @@ error_level_str(int level)
 			return "security";
 		case PLPGSQL_CHECK_WARNING_COMPATIBILITY:
 			return "compatibility";
+		case PLPGSQL_CHECK_WARNING_EXTRA_SECURITY:
+			return "security extra";
 		default:
 			return "???";
 	}

@@ -110,6 +110,9 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 		else if (strcasecmp(pragma_str, "SECURITY_WARNINGS") == 0)
 			elog(NOTICE, "security_warnings is %s",
 				 pv->disable_security_warnings ? "disabled" : "enabled");
+		else if (strcasecmp(pragma_str, "EXTRA_SECURITY_WARNINGS") == 0)
+			elog(NOTICE, "extra_security_warnings is %s",
+				 pv->disable_extra_security_warnings ? "disabled" : "enabled");
 		else if (strcasecmp(pragma_str, "COMPATIBILITY_WARNINGS") == 0)
 			elog(NOTICE, "compatibility_warnings is %s",
 				 pv->disable_compatibility_warnings ? "disabled" : "enabled");
@@ -141,6 +144,8 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 			pv->disable_extra_warnings = false;
 		else if (strcasecmp(pragma_str, "SECURITY_WARNINGS") == 0)
 			pv->disable_security_warnings = false;
+		else if (strcasecmp(pragma_str, "EXTRA_SECURITY_WARNINGS") == 0)
+			pv->disable_extra_security_warnings = false;
 		else if (strcasecmp(pragma_str, "COMPATIBILITY_WARNINGS") == 0)
 			pv->disable_compatibility_warnings = false;
 		else if (strcasecmp(pragma_str, "CONSTANTS_TRACING") == 0)
@@ -170,6 +175,8 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 			pv->disable_extra_warnings = true;
 		else if (strcasecmp(pragma_str, "SECURITY_WARNINGS") == 0)
 			pv->disable_security_warnings = true;
+		else if (strcasecmp(pragma_str, "EXTRA_SECURITY_WARNINGS") == 0)
+			pv->disable_extra_security_warnings = true;
 		else if (strcasecmp(pragma_str, "COMPATIBILITY_WARNINGS") == 0)
 			pv->disable_compatibility_warnings = true;
 		else if (strcasecmp(pragma_str, "CONSTANTS_TRACING") == 0)

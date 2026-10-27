@@ -19,6 +19,7 @@
 #include "parser/scansup.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
+#include "utils/float.h"
 #include "utils/lsyscache.h"
 #include "utils/regproc.h"
 
@@ -1381,6 +1382,52 @@ get_boolean_comment_option(TokenizerState *tstate, const char *name, plpgsql_che
 	return false;
 }
 
+static int
+get_int_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_info *cinfo)
+{
+	PragmaTokenType token,
+			   *_token;
+
+	_token = get_token(tstate, &token);
+	if (!_token)
+		return true;
+
+	if (_token->value == '=')
+	{
+		char	   *str;
+		double		val;
+		char	   *endptr;
+
+		_token = get_token(tstate, &token);
+		if (!_token || _token->value != PRAGMA_TOKEN_NUMBER)
+			elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected int value after \"=\")",
+				 name, cinfo->fn_oid);
+
+		str = make_string(_token);
+		errno = 0;
+
+		val = strtod(str, &endptr);
+		if (errno != 0 || *endptr != '\0')
+			elog(ERROR, "internal error");
+
+		val = rint(val);
+
+		/* Range check */
+		if (unlikely(isnan(val) || !FLOAT8_FITS_IN_INT32(val)))
+			elog(ERROR, "integer out of range");
+
+		return (int) val;
+	}
+	else
+		elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected int value)",
+			 name, cinfo->fn_oid);
+
+	/* fix warning C4715 on msvc */
+	Assert(0);
+	return false;
+}
+
+
 static char *
 get_name_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_info *cinfo)
 {
@@ -1614,6 +1661,10 @@ comment_options_parser(char *str, plpgsql_check_info *cinfo)
 		else if (token_is_keyword(_token, "security_warnings"))
 		{
 			cinfo->security_warnings = get_boolean_comment_option(&tstate, "security_warnings", cinfo);
+		}
+		else if (token_is_keyword(_token, "extra_security_warnings_level"))
+		{
+			cinfo->extra_security_warnings_level = get_int_comment_option(&tstate, "extra_security_warnings_level", cinfo);
 		}
 		else if (token_is_keyword(_token, "compatibility_warnings"))
 		{

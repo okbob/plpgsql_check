@@ -27,6 +27,8 @@
 #include "tcop/utility.h"
 #include "utils/lsyscache.h"
 
+#include "nodes/print.h"
+
 static void collect_volatility(PLpgSQL_checkstate *cstate, Query *query);
 static Query *ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, CachedPlanSource *plansource);
 static void check_pure_expr(PLpgSQL_checkstate *cstate, Query *query, char *query_str);
@@ -238,6 +240,128 @@ _prepare_plan(PLpgSQL_checkstate *cstate,
 	}
 }
 
+typedef struct detect_unqualified_identifiers_walker_context
+{
+	PLpgSQL_checkstate *cstate;
+	PLpgSQL_expr *expr;
+} detect_unqualified_identifiers_walker_context;
+
+static bool
+detect_unqualified_identifiers_walker(Node *node, void *context)
+{
+	detect_unqualified_identifiers_walker_context *_context = (detect_unqualified_identifiers_walker_context *) context;
+	PLpgSQL_checkstate *cstate = _context->cstate;
+	PLpgSQL_expr *expr = _context->expr;
+	int			esw_level = cstate->cinfo->extra_security_warnings_level;
+
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, FuncCall))
+	{
+		if (list_length( ((FuncCall *) node)->funcname) == 1)
+		{
+			if (esw_level >= 2)
+				plpgsql_check_put_error(cstate,
+										0, 0,
+										"function identifier is not qualified",
+										NULL, NULL,
+										PLPGSQL_CHECK_WARNING_EXTRA_SECURITY,
+										exprLocation(node), expr->query, NULL);
+		}
+	}
+	else if (IsA(node, ColumnRef))
+	{
+		if (list_length( ((ColumnRef *) node)->fields) == 1)
+		{
+			if (esw_level >= 3)
+				plpgsql_check_put_error(cstate,
+										0, 0,
+										"column identifier is not qualified",
+										NULL, NULL,
+										PLPGSQL_CHECK_WARNING_EXTRA_SECURITY,
+										exprLocation(node), expr->query, NULL);
+		}
+	}
+	else if (IsA(node, RangeVar))
+	{
+		RangeVar *rv = (RangeVar *) node;
+
+		if (!rv->schemaname)
+		{
+			if (esw_level >= 2)
+				plpgsql_check_put_error(cstate,
+										0, 0,
+										"table identifier is not qualified",
+										NULL, NULL,
+										PLPGSQL_CHECK_WARNING_EXTRA_SECURITY,
+										exprLocation(node), expr->query, NULL);
+		}
+	}
+	else if (IsA(node, A_Expr))
+	{
+		A_Expr *a_expr = (A_Expr *) node;
+
+		if (a_expr->kind == AEXPR_OP && list_length(a_expr->name) == 1)
+		{
+			if (esw_level >= 4)
+				plpgsql_check_put_error(cstate,
+										0, 0,
+										"operator identifier is not qualified",
+										NULL, NULL,
+										PLPGSQL_CHECK_WARNING_EXTRA_SECURITY,
+										exprLocation(node), expr->query, NULL);
+		}
+	}
+
+	return raw_expression_tree_walker(node,
+									  detect_unqualified_identifiers_walker,
+									  context);
+}
+
+static void
+detect_unqualified_objects(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+{
+	detect_unqualified_identifiers_walker_context context;
+	ListCell *lc;
+
+	if (cstate->pragma_vector.disable_extra_security_warnings ||
+		cstate->cinfo->extra_security_warnings_level == 0)
+		return;
+
+	context.cstate = cstate;
+	context.expr = expr;
+
+	foreach(lc, expr->plan->plancache_list)
+	{
+		CachedPlanSource *cps = (CachedPlanSource *) lfirst(lc);
+
+		if (cps->raw_parse_tree)
+		{
+			Node *parseTree = cps->raw_parse_tree->stmt;
+
+			switch (nodeTag(parseTree))
+			{
+				case T_InsertStmt:
+				case T_DeleteStmt:
+				case T_UpdateStmt:
+
+#if PG_VERSION_NUM > 150000
+
+				case T_MergeStmt:
+
+#endif
+
+				case T_SelectStmt:
+					detect_unqualified_identifiers_walker(parseTree, &context);
+					break;
+				default:
+					break;
+			}
+		}
+	}
+}
+
 /*
  * Generate a prepared plan - this is simplified copy from pl_exec.c Is not
  * necessary to check simple plan. The planning is forced when plancache is
@@ -319,6 +443,7 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 		return;
 
 	/* there checks are common on every expr/query */
+	detect_unqualified_objects(cstate, expr);
 	plpgsql_check_funcexpr(cstate, query, expr->query);
 	collect_volatility(cstate, query);
 	plpgsql_check_detect_dependency(cstate, query);

@@ -1,0 +1,86 @@
+load 'plpgsql_check';
+set client_min_messages to warning;
+create extension if not exists plpgsql_check;
+set client_min_messages to notice;
+create or replace function fx_extra_security()
+returns int as $$
+begin
+  return (select count(relname) + 1 from pg_class);
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 1);
+                                plpgsql_check_function                                
+--------------------------------------------------------------------------------------
+ warning extra:00000:The function has not assigned SEARCH_PATH configuration variable
+(1 row)
+
+select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
+                                plpgsql_check_function                                
+--------------------------------------------------------------------------------------
+ warning extra:00000:The function has not assigned SEARCH_PATH configuration variable
+ security extra:00000:3:RETURN:function identifier is not qualified
+ Query: (select count(relname) + 1 from pg_class)
+ --             ^
+ security extra:00000:3:RETURN:table identifier is not qualified
+ Query: (select count(relname) + 1 from pg_class)
+ --                                     ^
+(7 rows)
+
+create or replace function fx_extra_security()
+returns int as $$
+begin
+  return (select pg_catalog.count(relname) + 1 from pg_catalog.pg_class);
+end;
+$$ language plpgsql
+set search_path = 'pg_catalog';
+select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 1);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 3);
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ security extra:00000:3:RETURN:column identifier is not qualified
+ Query: (select pg_catalog.count(relname) + 1 from pg_catalog.pg_class)
+ --                              ^
+(3 rows)
+
+create or replace function fx_extra_security()
+returns int as $$
+begin
+  return (select pg_catalog.count(c.relname) + 1 from pg_catalog.pg_class c);
+end;
+$$ language plpgsql
+set search_path = 'pg_catalog';
+select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 3);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 4);
+                           plpgsql_check_function                           
+----------------------------------------------------------------------------
+ security extra:00000:3:RETURN:operator identifier is not qualified
+ Query: (select pg_catalog.count(c.relname) + 1 from pg_catalog.pg_class c)
+ --             ^
+(3 rows)
+
+create or replace function fx_extra_security()
+returns int as $$
+begin
+  return (select pg_catalog.count(c.relname) OPERATOR(pg_catalog.+) 1 from pg_catalog.pg_class c);
+end;
+$$ language plpgsql
+set search_path = 'pg_catalog';
+select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 4);
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+drop function fx_extra_security();

@@ -25,8 +25,11 @@ enum
 	PLPGSQL_CHECK_WARNING_EXTRA,	/* check shadowed variables */
 	PLPGSQL_CHECK_WARNING_PERFORMANCE,	/* invisible cast check */
 	PLPGSQL_CHECK_WARNING_SECURITY, /* sql injection check */
-	PLPGSQL_CHECK_WARNING_COMPATIBILITY /* obsolete setting of cursor's or
+	PLPGSQL_CHECK_WARNING_COMPATIBILITY, /* obsolete setting of cursor's or
 										 * refcursor's variable */
+	PLPGSQL_CHECK_WARNING_EXTRA_SECURITY /* extra check like test of assigned search path
+										  * or searching unqualified identifiers */
+
 };
 
 enum
@@ -117,6 +120,7 @@ typedef struct plpgsql_check_info
 	bool		performance_warnings;
 	bool		extra_warnings;
 	bool		security_warnings;
+	int			extra_security_warnings_level;
 	bool		compatibility_warnings;
 	bool		constants_tracing;
 	bool		show_profile;
@@ -144,6 +148,7 @@ typedef struct plpgsql_check_pragma_vector
 	unsigned int disable_security_warnings:1;
 	unsigned int disable_compatibility_warnings:1;
 	unsigned int disable_constants_tracing:1;
+	unsigned int disable_extra_security_warnings:1;
 } plpgsql_check_pragma_vector;
 
 #define CI_MAGIC		2023042922
@@ -263,6 +268,7 @@ extern char *plpgsql_check_prepare_err_text_with_target_vardecl(PLpgSQL_checksta
 extern bool plpgsql_check_is_eventtriggeroid(Oid typoid);
 extern void plpgsql_check_get_function_info(plpgsql_check_info *cinfo);
 extern void plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo);
+extern bool plch_has_config(plpgsql_check_info *cinfo, char *name);
 extern char *plpgsql_check_get_src(HeapTuple procTuple);
 extern Oid	plpgsql_check_pragma_func_oid(void);
 extern bool plpgsql_check_is_plpgsql_function(Oid foid);
@@ -303,6 +309,7 @@ extern bool plpgsql_check_compatibility_warnings;
 extern bool plpgsql_check_fatal_errors;
 extern bool plpgsql_check_constants_tracing;
 extern int	plpgsql_check_mode;
+extern int	plch_extra_security_warnings_level;
 
 /*
  * functions from expr_walk.c

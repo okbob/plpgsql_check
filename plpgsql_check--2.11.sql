@@ -21,7 +21,8 @@ CREATE FUNCTION plpgsql_check_function_tb(funcoid regprocedure,
                                        use_incomment_options boolean DEFAULT true,
                                        incomment_options_usage_warning boolean DEFAULT false,
                                        constant_tracing boolean DEFAULT true,
-                                       pragmas text[] DEFAULT NULL)
+                                       pragmas text[] DEFAULT NULL,
+                                       extra_security_warnings_level int DEFAULT 0)
 RETURNS TABLE(functionid regproc,
               lineno int,
               statement text,
@@ -57,7 +58,8 @@ CREATE FUNCTION plpgsql_check_function(funcoid regprocedure,
                                        use_incomment_options boolean DEFAULT true,
                                        incomment_options_usage_warning boolean DEFAULT false,
                                        constant_tracing boolean DEFAULT true,
-                                       pragmas text[] DEFAULT NULL)
+                                       pragmas text[] DEFAULT NULL,
+                                       extra_security_warnings_level int DEFAULT 0)
 RETURNS SETOF text
 AS 'MODULE_PATHNAME','plpgsql_check_function'
 LANGUAGE C;
@@ -82,7 +84,8 @@ CREATE FUNCTION plpgsql_check_function_tb(name text,
                                        use_incomment_options boolean DEFAULT true,
                                        incomment_options_usage_warning boolean DEFAULT false,
                                        constant_tracing boolean DEFAULT true,
-                                       pragmas text[] DEFAULT NULL)
+                                       pragmas text[] DEFAULT NULL,
+                                       extra_security_warnings_level int DEFAULT 0)
 RETURNS TABLE(functionid regproc,
               lineno int,
               statement text,
@@ -118,7 +121,8 @@ CREATE FUNCTION plpgsql_check_function(name text,
                                        use_incomment_options boolean DEFAULT true,
                                        incomment_options_usage_warning boolean DEFAULT false,
                                        constant_tracing boolean DEFAULT true,
-                                       pragmas text[] DEFAULT NULL)
+                                       pragmas text[] DEFAULT NULL,
+                                       extra_security_warnings_level int DEFAULT 0)
 RETURNS SETOF text
 AS 'MODULE_PATHNAME','plpgsql_check_function_name'
 LANGUAGE C;

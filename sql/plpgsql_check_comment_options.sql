@@ -739,7 +739,6 @@ drop function co_bool4();
 drop function co_bool3();
 drop function co_bool2();
 drop function co_bool1();
-drop function co_check(text, regclass);
 
 -- disable body check so postgresql allows storing function with unclosed dollar tag
 set check_function_bodies = off;
@@ -755,3 +754,27 @@ select * from plpgsql_check_function('unpriv_issue1_dollar_overread()');
 drop function unpriv_issue1_dollar_overread();
 
 set check_function_bodies = on;
+
+create or replace function fx()
+returns int as $$
+-- @plpgsql_check_options: extra_security_warnings_level = 0, other_warnings = yes
+begin
+  return (select count(relname) from pg_class);
+end;
+$$ language plpgsql;
+
+select * from co_check('fx()');
+
+create or replace function fx()
+returns int as $$
+-- @plpgsql_check_options: extra_security_warnings_level = xxx
+begin
+  return (select count(relname) from pg_class);
+end;
+$$ language plpgsql;
+
+select * from co_check('fx()');
+
+drop function fx();
+
+drop function co_check(text, regclass);

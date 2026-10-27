@@ -81,7 +81,8 @@ tests = [ 'plpgsql_check_active',
           'plpgsql_check_pldbgapi3',
           'plpgsql_check_nocrash',
           'plpgsql_check_nocrash_unstable_01',
-          'plpgsql_check_comment_options_legacystr' ]
+          'plpgsql_check_comment_options_legacystr',
+          'plpgsql_check_extra_security_warnings' ]
 
 compiler = meson.get_compiler('c')
 

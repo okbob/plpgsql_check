@@ -40,6 +40,7 @@ bool		plpgsql_check_compatibility_warnings = false;
 bool		plpgsql_check_fatal_errors = true;
 bool		plpgsql_check_constants_tracing = true;
 int			plpgsql_check_mode = PLPGSQL_CHECK_MODE_BY_FUNCTION;
+int			plch_extra_security_warnings_level = 0;
 
 /* ----------
  * Hash table for checked functions
@@ -194,6 +195,28 @@ return_is_required(plpgsql_check_info *cinfo)
 	return true;
 }
 
+static void
+do_search_path_assignment_warning(PLpgSQL_checkstate *cstate)
+{
+	plpgsql_check_info *cinfo = cstate->cinfo;
+
+	if (cstate->pragma_vector.disable_extra_security_warnings ||
+		cinfo->extra_security_warnings_level == 0)
+		return;
+
+	if (OidIsValid(cinfo->fn_oid))
+	{
+		if (!plch_has_config(cinfo, "search_path"))
+			plpgsql_check_put_error(cstate,
+									0, 0,
+									"The function has not assigned SEARCH_PATH configuration variable",
+									NULL,
+									NULL,
+									PLPGSQL_CHECK_WARNING_EXTRA,
+									0, NULL, NULL);
+	}
+}
+
 /*
  * own implementation - active mode
  *
@@ -317,6 +340,9 @@ plpgsql_check_function_internal(plpgsql_check_result_info *ri,
 					plpgsql_check_pragma_apply(&cstate, pragma_str, NULL, 0);
 				}
 			}
+
+			/* raise warning if search_path is not assigned */
+			do_search_path_assignment_warning(&cstate);
 
 			/* Create a fake runtime environment and process check */
 			switch (cinfo->trigtype)
@@ -461,20 +487,18 @@ passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_f
 
 			plpgsql_check_get_function_info(&cinfo);
 
-			ReleaseSysCache(cinfo.proctuple);
-			cinfo.proctuple = NULL;
-
 			cinfo.fn_oid = func->fn_oid;
 		}
 		else
 			cinfo.volatility = PROVOLATILE_VOLATILE;
 
-		cinfo.fatal_errors = plpgsql_check_fatal_errors,
-			cinfo.other_warnings = plpgsql_check_other_warnings,
-			cinfo.performance_warnings = plpgsql_check_performance_warnings,
-			cinfo.extra_warnings = plpgsql_check_extra_warnings,
-			cinfo.compatibility_warnings = plpgsql_check_compatibility_warnings;
+		cinfo.fatal_errors = plpgsql_check_fatal_errors;
+		cinfo.other_warnings = plpgsql_check_other_warnings;
+		cinfo.performance_warnings = plpgsql_check_performance_warnings;
+		cinfo.extra_warnings = plpgsql_check_extra_warnings;
+		cinfo.compatibility_warnings = plpgsql_check_compatibility_warnings;
 		cinfo.constants_tracing = plpgsql_check_constants_tracing;
+		cinfo.extra_security_warnings_level = plch_extra_security_warnings_level;
 
 		ri.format = PLPGSQL_CHECK_FORMAT_ELOG;
 
@@ -530,6 +554,9 @@ passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_f
 		 */
 		oldcontext = CurrentMemoryContext;
 		oldowner = CurrentResourceOwner;
+
+		/* raise warning if search_path is not assigned */
+		do_search_path_assignment_warning(&cstate);
 
 		PG_TRY();
 		{
@@ -598,6 +625,9 @@ passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_f
 
 		MemoryContextSwitchTo(old_cxt);
 		MemoryContextDelete(cstate.check_cxt);
+
+		if (cinfo.proctuple)
+			ReleaseSysCache(cinfo.proctuple);
 	}
 }
 
@@ -1318,6 +1348,7 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->pragma_vector.disable_performance_warnings = false;
 	cstate->pragma_vector.disable_extra_warnings = false;
 	cstate->pragma_vector.disable_security_warnings = false;
+	cstate->pragma_vector.disable_extra_security_warnings = false;
 	cstate->pragma_vector.disable_compatibility_warnings = false;
 	cstate->pragma_vector.disable_constants_tracing = false;
 	cstate->pragma_vector.disable_tracer = false;

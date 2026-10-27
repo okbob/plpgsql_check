@@ -18,6 +18,7 @@
 #include "catalog/pg_type.h"
 #include "commands/extension.h"
 #include "commands/proclang.h"
+#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/catcache.h"
 #include "utils/fmgroids.h"
@@ -97,6 +98,53 @@ plpgsql_check_get_src(HeapTuple procTuple)
 		elog(ERROR, "null prosrc");
 
 	return TextDatumGetCString(prosrcdatum);
+}
+
+bool
+plch_has_config(plpgsql_check_info *cinfo, char *name)
+{
+	Datum		proconfig;
+	ArrayType  *a;
+	int			i;
+	bool		isnull;
+
+	if (!cinfo->proctuple)
+		return false;
+
+	proconfig = SysCacheGetAttr(PROCOID, cinfo->proctuple,
+								Anum_pg_proc_proconfig, &isnull);
+
+	if (isnull)
+		return false;
+
+	a = DatumGetArrayTypeP(proconfig);
+
+	for (i = 0; i <= ARR_DIMS(a)[0]; i++)
+	{
+		Datum		d;
+
+		d = array_ref(a, 1, &i,
+					  -1 /* varlenarray */ ,
+					  -1 /* TEXT's typlen */ ,
+					  false /* TEXT's typbyval */ ,
+					  TYPALIGN_INT /* TEXT's typalign */ ,
+					  &isnull);
+		if (!isnull)
+		{
+			char	   *configitem = TextDatumGetCString(d);
+			char	   *pos;
+
+			pos = strchr(configitem, '=');
+			if (pos == NULL)
+				continue;
+
+			*pos++ = '\0';
+			if (strcmp(name, configitem) == 0)
+				return true;
+		}
+	}
+
+	return false;
 }
 
 /*
