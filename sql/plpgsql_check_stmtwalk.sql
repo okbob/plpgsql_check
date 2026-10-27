@@ -1117,3 +1117,52 @@ select * from plpgsql_check_function('sw_plan_checks', fatal_errors => false);
 
 drop function sw_plan_checks(int);
 drop table sw_plan_tab;
+
+
+-- the structure of result of function returning setof record is not
+-- known, and the scalar value is casted to the column of composite type
+-- with one column
+create type sw_onecol as (a int);
+
+create function sw_rn_record()
+returns setof record as $$
+declare r record;
+begin
+  for r in select 1 as a, 2 as b
+  loop
+    return next r;
+  end loop;
+  return;
+end;
+$$ language plpgsql;
+
+create function sw_rn_record_scalar()
+returns setof record as $$
+declare v int := 1;
+begin
+  return next v;
+  return;
+end;
+$$ language plpgsql;
+
+create function sw_rn_onecol()
+returns setof sw_onecol as $$
+declare
+  v int := 1;
+  d date := current_date;
+begin
+  return next v;
+  -- should be reported
+  return next d;
+  return;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_rn_record()');
+select * from plpgsql_check_function('sw_rn_record_scalar()');
+select * from plpgsql_check_function('sw_rn_onecol()');
+
+drop function sw_rn_record();
+drop function sw_rn_record_scalar();
+drop function sw_rn_onecol();
+drop type sw_onecol;

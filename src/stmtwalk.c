@@ -20,6 +20,7 @@
 #include "parser/parse_node.h"
 #include "parser/parser.h"
 #include "common/keywords.h"
+#include "utils/lsyscache.h"
 
 static void check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **exceptions);
 static PLpgSQL_stmt_stack_item *push_stmt_to_stmt_stack(PLpgSQL_checkstate *cstate);
@@ -907,9 +908,27 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 												(errcode(ERRCODE_DATATYPE_MISMATCH),
 												 errmsg("wrong result type supplied in RETURN NEXT")));
 
-									plpgsql_check_assign_to_target_type(cstate,
-																		cstate->estate->func->fn_rettype, -1,
-																		var->datatype->typoid, false, var->dno);
+									/*
+									 * The value is casted to the type of the
+									 * (only) column of result. Don't check it,
+									 * when result tuple desc is fake (the
+									 * function returns setof record).
+									 */
+									if (!cstate->fake_rtd)
+									{
+										Oid			target_typoid = cstate->estate->func->fn_rettype;
+										int32		target_typmod = -1;
+
+										if (natts == 1 && type_is_rowtype(target_typoid))
+										{
+											target_typoid = TupleDescAttr(tupdesc, 0)->atttypid;
+											target_typmod = TupleDescAttr(tupdesc, 0)->atttypmod;
+										}
+
+										plpgsql_check_assign_to_target_type(cstate,
+																			target_typoid, target_typmod,
+																			var->datatype->typoid, false, var->dno);
+									}
 								}
 								break;
 
@@ -925,7 +944,11 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 												 errdetail("The tuple structure of a not-yet-assigned"
 														   " record is indeterminate.")));
 
-									if (tupdesc)
+									/*
+									 * don't do next check, when result tuple
+									 * desc is fake
+									 */
+									if (tupdesc && !cstate->fake_rtd)
 									{
 										TupleConversionMap *tupmap;
 

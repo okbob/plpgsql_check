@@ -1364,3 +1364,61 @@ select * from plpgsql_check_function('sw_plan_checks', fatal_errors => false);
 
 drop function sw_plan_checks(int);
 drop table sw_plan_tab;
+-- the structure of result of function returning setof record is not
+-- known, and the scalar value is casted to the column of composite type
+-- with one column
+create type sw_onecol as (a int);
+create function sw_rn_record()
+returns setof record as $$
+declare r record;
+begin
+  for r in select 1 as a, 2 as b
+  loop
+    return next r;
+  end loop;
+  return;
+end;
+$$ language plpgsql;
+create function sw_rn_record_scalar()
+returns setof record as $$
+declare v int := 1;
+begin
+  return next v;
+  return;
+end;
+$$ language plpgsql;
+create function sw_rn_onecol()
+returns setof sw_onecol as $$
+declare
+  v int := 1;
+  d date := current_date;
+begin
+  return next v;
+  -- should be reported
+  return next d;
+  return;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('sw_rn_record()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function('sw_rn_record_scalar()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+select * from plpgsql_check_function('sw_rn_onecol()');
+                              plpgsql_check_function                              
+----------------------------------------------------------------------------------
+ warning:42804:8:RETURN NEXT:target type is different type than source type
+ Detail: cast "date" value to "integer" type
+ Hint: There are no possible explicit coercion between those types, possibly bug!
+ Context: at RETURN NEXT of variable "d" declared on line 4
+(4 rows)
+
+drop function sw_rn_record();
+drop function sw_rn_record_scalar();
+drop function sw_rn_onecol();
+drop type sw_onecol;
