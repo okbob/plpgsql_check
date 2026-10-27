@@ -2524,6 +2524,7 @@ show_shared_profile(PLpgSQL_function *func,
 {
 	FuncStmtsStats *fss;
 	bool		found;
+	StmtStats  *loc_sstats = NULL;
 
 	LWLockAcquire(profiler_ss->func_stmts_stats_lock, LW_SHARED);
 
@@ -2532,29 +2533,24 @@ show_shared_profile(PLpgSQL_function *func,
 										 HASH_FIND,
 										 &found);
 
+	/*
+	 * The report has one row per line of the source code, so building it can
+	 * take a long time. Don't hold the spinlock (and the LWLock) all this
+	 * time - the backends updating the statistics of the function would spin
+	 * on the spinlock (and eventually fail with "stuck spinlock" PANIC).
+	 * Build the report from a local copy of the statistics instead.
+	 */
 	if (found)
-	{
-		SpinLockAcquire(&fss->mutex);
-		context->sstats = &SharedStmtStatsArray[fss->shared_sstats_offset];
-	}
-
-	PG_TRY();
-	{
-		show_profile(func, context);
-	}
-	PG_CATCH();
-	{
-		if (found)
-			SpinLockRelease(&fss->mutex);
-
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-
-	if (found)
-		SpinLockRelease(&fss->mutex);
+		loc_sstats = statement_stats_local_copy(fss);
 
 	LWLockRelease(profiler_ss->func_stmts_stats_lock);
+
+	context->sstats = loc_sstats;
+
+	show_profile(func, context);
+
+	if (loc_sstats)
+		pfree(loc_sstats);
 }
 
 /*
