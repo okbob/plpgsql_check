@@ -254,7 +254,15 @@ select * from plpgsql_check_function('dynamic_sql_forms(text)',
  security extra:00000:6:EXECUTE:function identifier is not qualified
  Query: format('select * from %I', tname)
  --     ^
-(10 rows)
+ security extra:00000:7:assignment:operator identifier is not qualified
+ Query: query := 'select * from ' || quote_ident(tname)
+ --              ^
+ Context: at assignment to variable "query" declared on line 3
+ security extra:00000:7:assignment:function identifier is not qualified
+ Query: query := 'select * from ' || quote_ident(tname)
+ --                                  ^
+ Context: at assignment to variable "query" declared on line 3
+(18 rows)
 
 drop function dynamic_sql_forms(text);
 drop table dynsql_tab;

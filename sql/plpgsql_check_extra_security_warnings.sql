@@ -212,3 +212,36 @@ select * from plpgsql_check_function('fx_extra_security(int)', extra_security_wa
 
 drop function fx_extra_security(int);
 drop table fx_extra_security_t;
+
+-- assignments and CALL statements should be checked too
+create procedure fx_extra_security_proc(a int)
+as $$
+begin
+  raise notice '%', a;
+end;
+$$ language plpgsql;
+
+create or replace function fx_extra_security()
+returns int as $$
+declare i int;
+begin
+  i := length('abc');
+  i := (select max(c.oid::int) from pg_class c);
+  i := '10'::int8;
+  call fx_extra_security_proc(abs(i));
+
+  -- qualified identifiers should not be reported
+  i := pg_catalog.length('abc');
+  i := (select pg_catalog.max(c.oid::int) from pg_catalog.pg_class c);
+  i := '10'::pg_catalog.int8;
+  call public.fx_extra_security_proc(pg_catalog.abs(i));
+
+  return i;
+end;
+$$ language plpgsql
+set search_path = pg_catalog, public;
+
+select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
+
+drop function fx_extra_security();
+drop procedure fx_extra_security_proc(int);

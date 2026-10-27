@@ -550,15 +550,23 @@ detect_unqualified_objects(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 				case T_DeleteStmt:
 				case T_UpdateStmt:
 
-#if PG_VERSION_NUM > 150000
+#if PG_VERSION_NUM >= 150000
 
 				case T_MergeStmt:
 
 #endif
 
 				case T_SelectStmt:
+				case T_PLAssignStmt:
 					detect_unqualified_identifiers_walker(parseTree, &context);
 					break;
+
+				case T_CallStmt:
+					/* raw_expression_tree_walker doesn't support CallStmt */
+					detect_unqualified_identifiers_walker((Node *) ((CallStmt *) parseTree)->funccall,
+														  &context);
+					break;
+
 				default:
 					break;
 			}
