@@ -1213,7 +1213,6 @@ plpgsql_check_put_profile_statement(plpgsql_check_result_info *ri,
 	SET_RESULT_INT64(Anum_profiler_statements_raised_errors, raised_errors);
 	SET_RESULT_INT64(Anum_profiler_statements_processed_rows, processed_rows);
 	SET_RESULT_FLOAT8(Anum_profiler_statements_total_time, total_time / 1000.0);
-	SET_RESULT_FLOAT8(Anum_profiler_statements_total_time, total_time / 1000.0);
 	SET_RESULT_FLOAT8(Anum_profiler_statements_max_time, max_time / 1000.0);
 	SET_RESULT_NULLABLE_CSTR_TO_TEXT(Anum_profiler_statements_stmtname, stmtname);
 
