@@ -3705,4 +3705,13 @@ select exec_stmts, exec_stmts_err, raised_errors, source from plpgsql_profiler_f
             |                |               | end;
 (4 rows)
 
+select exec_stmts, exec_stmts_err, raised_errors, source from plpgsql_profiler_function_tb('fx_outer()'::regprocedure);
+ exec_stmts | exec_stmts_err | raised_errors |        source         
+------------+----------------+---------------+-----------------------
+            |                |               | 
+ {1}        | {1}            | {0}           | begin
+ {1}        | {1}            | {0}           |   perform fx_inner();
+            |                |               | end;
+(4 rows)
+
 set plpgsql_check.profiler to off;

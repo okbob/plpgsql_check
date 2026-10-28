@@ -1326,6 +1326,6 @@ select fx_outer();
 
 select exec_stmts, exec_stmts_err, raised_errors, source from plpgsql_profiler_function_tb('fx_outer');
 select exec_stmts, exec_stmts_err, raised_errors, source from plpgsql_profiler_function_tb('fx_inner');
-
+select exec_stmts, exec_stmts_err, raised_errors, source from plpgsql_profiler_function_tb('fx_outer()'::regprocedure);
 
 set plpgsql_check.profiler to off;
