@@ -119,7 +119,7 @@ plch_has_config(plpgsql_check_info *cinfo, char *name)
 
 	a = DatumGetArrayTypeP(proconfig);
 
-	for (i = 0; i <= ARR_DIMS(a)[0]; i++)
+	for (i = 1; i <= ARR_DIMS(a)[0]; i++)
 	{
 		Datum		d;
 
