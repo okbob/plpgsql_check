@@ -281,9 +281,6 @@ plch_release_fextra(plch_fextra *fextra)
 {
 	Assert(fextra->use_count > 0);
 
-	/* until now, referenced PLpgSQL_function should be still valid */
-	Assert(fextra->hk.fn_oid == fextra->func->fn_oid);
-
 	if (OidIsValid(fextra->fn_oid))
 	{
 		/*
