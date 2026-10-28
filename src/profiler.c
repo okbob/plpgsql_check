@@ -470,6 +470,13 @@ plpgsql_check_profiler_ctrl(PG_FUNCTION_ARGS)
 
 /*
  * Reset all local and shared profiler statistics.
+ *
+ * Against pg_stat_statements, the persistent profile is not protected,
+ * and anybody can access these data. We don't see strong reason to implement
+ * some protection, because source code is usually accessable in pg_proc.
+ * The profiler data cannot be used for auditing - the profiler doesn't
+ * ensure storing profile in all cases - so there is not a reason to allow
+ * the reset profiler statistics only to superuser.
  */
 Datum
 plpgsql_profiler_reset_all(PG_FUNCTION_ARGS)
@@ -621,6 +628,17 @@ Datum
 plpgsql_profiler_install_fake_queryid_hook(PG_FUNCTION_ARGS)
 {
 	(void) fcinfo;
+
+	/*
+	 * This hook overwrites the query identifier of every query executed in
+	 * the session, which would corrupt the statistics of pg_stat_statements
+	 * and other query id consumers.  It is intended for regression tests
+	 * only.
+	 */
+	if (!superuser())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("must be superuser to install fake queryid hook")));
 
 	if (post_parse_analyze_hook == profiler_fake_queryid_hook)
 		PG_RETURN_VOID();
