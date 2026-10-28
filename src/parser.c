@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * parse_name.c
+ * parser.c
  *
  *			  parse function signature
  *			  parse identifier, and type name

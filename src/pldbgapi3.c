@@ -363,7 +363,7 @@ func_setup(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 	 *
 	 * The workaround - using context from simple_eval_estate is not nice,
 	 * because it enforce plugin_reset before final raising an exception.
-	 * inline block hash not use shared simple eval estate, and every inline
+	 * inline block does not use shared simple eval estate, and every inline
 	 * block has unique simple eval estate.
 	 *
 	 * The advantage of using es_query_cxt context instead caller context is a

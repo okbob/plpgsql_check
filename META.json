@@ -8,7 +8,7 @@
    "provides": {
       "plpgsql_check": {
          "abstract": "Additional tools for plpgsql functions validation",
-         "file": "sql/plpgsql_check_active.sql",
+         "file": "plpgsql_check--2.11.sql",
          "docfile": "README.md",
          "version": "2.11.0"
       }

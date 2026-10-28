@@ -888,7 +888,7 @@ skip_plch_errcontext(ErrorContextCallback *econtext)
 }
 
 /*
- * get_caller_estate - try to returns near outer estate
+ * get_outer_info - try to returns near outer estate
  */
 static void
 get_outer_info(char **errcontextstr, int *frame_num)

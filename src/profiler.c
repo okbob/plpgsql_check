@@ -274,10 +274,10 @@ static int	used_stmt_stats_count = 0;
 static int	estimated_stmt_stats_count = 0;
 
 /*
- * plpgsql_profiler_reset_all destroy lxcache_mcxt. It emits
+ * plpgsql_profiler_reset_all destroys lxcache_mcxt. It emits
  * execution of lxcache_reset_callback. But in this case, we
- * don't want to persistenting the content of lxcache.
- * A flag skip_cirrent_lxcache signalize this case.
+ * don't want to persist the content of lxcache.
+ * A flag skip_current_lxcache signalize this case.
  */
 static bool skip_current_lxcache = false;
 
@@ -784,9 +784,9 @@ lxcache_ht_init(void)
 	ctl.entrysize = sizeof(LXCache);
 
 	/*
-	 * Originally I used lxcache_mcxt for hashtable. Unfortunaly it doesn't
+	 * Originally I used lxcache_mcxt for hashtable. Unfortunately it doesn't
 	 * work, because hashtable creates and uses always own child context, that
-	 * is destroyed before lxcache_mcxt. Becase I need to access lxcache_ht at
+	 * is destroyed before lxcache_mcxt. Because I need to access lxcache_ht at
 	 * transaction end, then I need to use TopMemoryContext, and then destroy
 	 * hashtab explicitly.
 	 */
@@ -2229,7 +2229,7 @@ shared_statements_stats_report(plch_fidentity_hk *hk,
  * Build simple statement statistics report (statement profile)
  *
  * This is simple report - one statement, one line (and then there is not any
- * cummulation per lines).
+ * acummulation per lines).
  */
 void
 plch_statements_stats_report(plpgsql_check_info *cinfo,
@@ -2267,7 +2267,7 @@ plch_statements_stats_report(plpgsql_check_info *cinfo,
 }
 
 /*
- * Profiler report is more terrible becase maps statements to lines, and because
+ * Profiler report is more complicated becase maps statements to lines, and because
  * more statements can be placed on one line, then some stats are merged in an arrays.
  * Next complication is synchronization reported stats with function source code.
  */
