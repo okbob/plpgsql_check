@@ -288,7 +288,8 @@ end;
 $$;
 select pl_big();
 WARNING:  cannot allocate local memory for profiler statistics
-DETAIL:  Statistics can be cleaned by calling function "plpgsql_profiler_reset_all()".
+DETAIL:  the used memory exceeds "plpgsql_check.max_stats_size" (64kB)
+HINT:  Statistics can be cleaned by calling function "plpgsql_profiler_reset_all()".
  pl_big 
 --------
  

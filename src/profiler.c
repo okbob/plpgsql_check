@@ -1209,7 +1209,7 @@ update_local_persistent_stmts_stats(profiler_info *pinfo)
 					 errmsg("cannot allocate local memory for profiler statistics"),
 					 errdetail("the used memory exceeds \"plpgsql_check.max_stats_size\" (%dkB)",
 							   plch_max_stat_size),
-					 errdetail("Statistics can be cleaned by calling function \"plpgsql_profiler_reset_all()\".")));
+					 errhint("Statistics can be cleaned by calling function \"plpgsql_profiler_reset_all()\".")));
 
 			return;
 		}
