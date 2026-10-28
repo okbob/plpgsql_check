@@ -49,7 +49,7 @@ plpgsql_check_record_variable_usage(PLpgSQL_checkstate *cstate, int dno, bool wr
 
 				initStringInfo(&message);
 
-				appendStringInfo(&message, "auto varible \"%s\" should not be modified by user", var->refname);
+				appendStringInfo(&message, "auto variable \"%s\" should not be modified by user", var->refname);
 				plpgsql_check_put_error(cstate,
 										0, var->lineno,
 										message.data,

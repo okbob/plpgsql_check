@@ -167,9 +167,9 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('prg_unsupported');
-WARNING:  unsuported pragma: unknown_switch
-WARNING:  unsuported pragma: unknown_switch
-WARNING:  unsuported pragma: unknown_switch
+WARNING:  unsupported pragma: unknown_switch
+WARNING:  unsupported pragma: unknown_switch
+WARNING:  unsupported pragma: unknown_switch
 WARNING:  unsupported pragma: unknown_pragma: something
  plpgsql_check_function 
 ------------------------

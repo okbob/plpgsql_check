@@ -1,12 +1,12 @@
 plpgsql_check_passive.out			PostgreSQL 14, 15, 16
 plpgsql_check_passive_2.out			PostgreSQL 18, 19, 20
+
 plpgsql_check_active_2.out			PostgreSQL 14, 15, 16
 plpgsql_check_active_3.out			PostgreSQL 18
 plpgsql_check_active_4.out			PostgreSQL 19, 20
 plpgsql_check_active.out			PostgreSQL 17
 
-plpgsql_pragma_generator.out		PostgreSQL 14 and higher (all versions)
-
+plpgsql_check_assign_1.out			PostgreSQL 14
 plpgsql_check_parser_1.out			PostgreSQL 14
 plpgsql_check_stmtwalk_1.out		PostgreSQL 14
 plpgsql_check_nocrash_1.out			PostgreSQL 14

@@ -121,7 +121,7 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 				 pv->disable_constants_tracing ? "disabled" : "enabled");
 		else
 		{
-			elog(WARNING, "unsuported pragma: %s", pragma_str);
+			elog(WARNING, "unsupported pragma: %s", pragma_str);
 			is_valid = false;
 		}
 	}
@@ -152,7 +152,7 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 			pv->disable_constants_tracing = false;
 		else
 		{
-			elog(WARNING, "unsuported pragma: %s", pragma_str);
+			elog(WARNING, "unsupported pragma: %s", pragma_str);
 			is_valid = false;
 		}
 	}
@@ -183,7 +183,7 @@ pragma_apply(PLpgSQL_checkstate *cstate,
 			pv->disable_constants_tracing = true;
 		else
 		{
-			elog(WARNING, "unsuported pragma: %s", pragma_str);
+			elog(WARNING, "unsupported pragma: %s", pragma_str);
 			is_valid = false;
 		}
 	}

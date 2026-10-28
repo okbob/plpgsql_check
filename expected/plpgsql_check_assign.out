@@ -23,9 +23,9 @@ select * from plpgsql_check_function('as_f1', extra_warnings => false);
 (0 rows)
 
 select * from plpgsql_check_function('as_f1', extra_warnings => true);
-                              plpgsql_check_function                              
-----------------------------------------------------------------------------------
- warning extra:00000:6:assignment:auto varible "i" should not be modified by user
+                              plpgsql_check_function                               
+-----------------------------------------------------------------------------------
+ warning extra:00000:6:assignment:auto variable "i" should not be modified by user
  Context: at assignment
 (2 rows)
 
@@ -38,9 +38,9 @@ begin
 end;
 $$ language plpgsql;
 select * from plpgsql_check_function('as_f2', extra_warnings => true);
-                                plpgsql_check_function                                
---------------------------------------------------------------------------------------
- warning extra:00000:3:assignment:auto varible "found" should not be modified by user
+                                plpgsql_check_function                                 
+---------------------------------------------------------------------------------------
+ warning extra:00000:3:assignment:auto variable "found" should not be modified by user
  Context: at assignment
 (2 rows)
 
