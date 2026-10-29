@@ -860,6 +860,8 @@ get_lxcache(profiler_info *pinfo)
 
 	plch_init_fidentity_hk(&hk, pinfo->func);
 
+#if PG_VERSION_NUM >= 160000
+
 	lxcache = (LXCache *) hash_search(lxcache_ht,
 									  (void *) &hk,
 									  HASH_ENTER_NULL,
@@ -873,6 +875,16 @@ get_lxcache(profiler_info *pinfo)
 	 */
 	if (!lxcache)
 		return NULL;
+
+#else
+
+	/* pg 15- doesn't support HASH_ENTER_NULL on palloc-based allocators */
+	lxcache = (LXCache *) hash_search(lxcache_ht,
+									  (void *) &hk,
+									  HASH_ENTER,
+									  &found);
+
+#endif
 
 	if (!found)
 	{
@@ -1049,6 +1061,8 @@ update_local_persistent_fstats(profiler_info *pinfo,
 
 	init_func_hk(&hk, pinfo->func->fn_oid);
 
+#if PG_VERSION_NUM >= 160000
+
 	fs = (FuncStats *) hash_search(func_stats_ht,
 								   (void *) &hk,
 								   HASH_ENTER_NULL,
@@ -1068,6 +1082,15 @@ update_local_persistent_fstats(profiler_info *pinfo,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("could not create new FuncStats entry for profiler statistics")));
 	}
+
+#else
+
+	fs = (FuncStats *) hash_search(func_stats_ht,
+								   (void *) &hk,
+								   HASH_ENTER,
+								   &found);
+
+#endif
 
 	if (!found)
 		init_fstats(fs);
@@ -1268,6 +1291,8 @@ update_local_persistent_stmts_stats(profiler_info *pinfo)
 
 	plch_init_fidentity_hk(&hk, pinfo->func);
 
+#if PG_VERSION_NUM >= 160000
+
 	/* don't need too strong lock for reading local memory */
 	fss = (FuncStmtsStats *) hash_search(func_stmts_stats_ht,
 										 (void *) &hk,
@@ -1283,6 +1308,15 @@ update_local_persistent_stmts_stats(profiler_info *pinfo)
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("could not create new FuncStmtStats entry for profiler statistics")));
 	}
+
+#else
+
+	fss = (FuncStmtsStats *) hash_search(func_stmts_stats_ht,
+										 (void *) &hk,
+										 HASH_ENTER,
+										 &found);
+
+#endif
 
 	if (!found)
 	{
