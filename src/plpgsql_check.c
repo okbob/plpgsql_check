@@ -19,7 +19,7 @@
  *
  * 3) The environment is referenced by stored execution plans. The actual plan should
  *    not be linked with fake environment. All expressions created in checking time
- *    should be relased by release_exprs(cstate.exprs) function.
+ *    should be released by release_exprs(cstate.exprs) function.
  *
  */
 
@@ -133,7 +133,7 @@ pg_extension_cache_callback(Datum arg, int cacheid, uint32 hashvalue)
 #endif
 
 /*
- * load_external_function retursn PGFunctions - we need generic function, so
+ * load_external_function returns PGFunction - we need generic function, so
  * it is not 100% correct, but in used context it is not a problem.
  */
 #define LOAD_EXTERNAL_FUNCTION(file, funcname)	((void *) (load_external_function(file, funcname, true, NULL)))

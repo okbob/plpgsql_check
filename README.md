@@ -347,7 +347,18 @@ Functions can be checked upon execution - plpgsql_check module must be loaded (v
     plpgsql_check.fatal_errors = [ yes | no ]
 
     plpgsql_check.show_nonperformance_warnings = false
+    plpgsql_check.show_nonperformance_extra_warnings = false
     plpgsql_check.show_performance_warnings = false
+    plpgsql_check.compatibility_warnings = false
+    plpgsql_check.extra_security_warnings_level = 0
+    plpgsql_check.constants_tracing = true
+
+These settings control the passive mode, where the check is executed before a
+function is started. They correspond to the `fatal_errors`, `other_warnings`,
+`extra_warnings`, `performance_warnings`, `compatibility_warnings`,
+`extra_security_warnings_level` and `constant_tracing` arguments of
+`plpgsql_check_function`. `plpgsql_check.extra_security_warnings_level` accepts
+the same range 0..4 as the function argument.
 
 Default mode is <i>by_function</i>, that means that the enhanced check is done only in
 active mode - by calling the <i>plpgsql_check_function</i>. `fresh_start` means cold start (first the function is called).
@@ -820,9 +831,10 @@ assertions are disabled.
 Attention: When plpgsql assertions is enabled, then assert expression is evaluated
 2x times - first by plpgsql_check's tracer, second by plpgsql engine.
 
-Tracer can show usage of subtransaction buffer id (`nxids`). The displayed `tnl` number
-is transaction nesting level number (for plpgsql it depends on deep of blocks with
-exception's handlers).
+Tracer can show the number of subtransaction ids cached in the backend's PGPROC entry
+(`nxids`, or `nxids=OF` when the cache overflowed) when `plpgsql_check.tracer_show_nsubxids`
+is `on`. The displayed `tnl` number is transaction nesting level number (for plpgsql it
+depends on deep of blocks with exception's handlers).
 
 ## Detection of unclosed cursors
 
@@ -834,7 +846,9 @@ Without it the significant memory issues are possible.
 
 When OPEN statement try to use cursor that is not closed yet, the warning is raised.
 This feature can be disabled by setting `plpgsql_check.cursors_leaks to off`. This check
-is not active, when routine is called recursively.
+is not active, when routine is called recursively. The level of the reported message
+(`notice`, `warning` or `error`) can be set by `plpgsql_check.cursors_leaks_errlevel`
+(default is `warning`).
 
 The unclosed cursors can be checked immediately when function is finished. This check is
 disabled by default, and should be enabled by `plpgsql_check.strict_cursors_leaks to on`.

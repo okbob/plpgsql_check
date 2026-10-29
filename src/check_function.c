@@ -467,7 +467,7 @@ passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_f
 
 		/*
 		 * don't allow repeated execution on checked function when it is not
-		 * requsted.
+		 * requested.
 		 */
 		if (plpgsql_check_mode == PLPGSQL_CHECK_MODE_FRESH_START &&
 			plpgsql_check_is_checked(func))

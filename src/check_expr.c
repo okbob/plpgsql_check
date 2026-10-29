@@ -663,7 +663,7 @@ plpgsql_check_get_plan_source(PLpgSQL_checkstate *cstate, SPIPlanPtr plan)
 			cstate->found_mp = true;
 		}
 		else
-			elog(ERROR, "plan is not single execution plany");
+			elog(ERROR, "plan is not a single execution plan");
 	}
 	else if (nplans == 1)
 		plansource = (CachedPlanSource *) linitial(plan->plancache_list);
@@ -1098,7 +1098,7 @@ plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 			 * so there should not be a risk of memory releasing plan context
 			 * by ReleaseCachedPlan, and poisoning memory referenced by result
 			 * pointer. On second hand, return direct pointer is dirty (when
-			 * plan is "released" immediately. Using copyObject is probabably
+			 * plan is "released" immediately. Using copyObject is probably
 			 * not necessary, but it is more robust, safe and reduces possible
 			 * bugs in future.
 			 */

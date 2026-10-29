@@ -2,7 +2,7 @@
  *
  * fextra_cache
  *
- *			cache with function extra informations - mostly AST based
+ *			cache with function extra information - mostly AST based
  *
  * by Pavel Stehule 2013-2026
  *

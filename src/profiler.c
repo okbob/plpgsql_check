@@ -481,7 +481,7 @@ plpgsql_check_profiler_ctrl(PG_FUNCTION_ARGS)
 Datum
 plpgsql_profiler_reset_all(PG_FUNCTION_ARGS)
 {
-	/* be compiler quite */
+	/* keep compiler quiet */
 	(void) fcinfo;
 
 	if (shared_func_stats_ht)
@@ -687,7 +687,7 @@ profiler_fake_queryid_hook(ParseState *pstate, Query *query, JumbleState *jstate
 	 * force fake queryid
 	 *
 	 * profiler_fake_queryid_hook is active only for one plpgsql_check regress
-	 * test. For this case, we can force fake queryid, althought is possible,
+	 * test. For this case, we can force fake queryid, although it is possible,
 	 * so real queryid (computed by pg_stat_statements) is already computed.
 	 *
 	 * Because this fake queryid hook is designed only for one test, I don't
@@ -1856,8 +1856,8 @@ profiler_get_queryid(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt,
 
 		/*
 		 * Attention - the expression used in EXECUTE commands is executed 2x.
-		 * Unfortunatelly there is not any other way how to get queryid of
-		 * query maked by the expression. Usually this is not a problem, but
+		 * Unfortunately there is not any other way how to get queryid of
+		 * query made by the expression. Usually this is not a problem, but
 		 * when volatile function is executed, then some unwanted side effect
 		 * can be detected. In this case the computed queryid can be false,
 		 * and looks so can be better in this case don't compute queryid.

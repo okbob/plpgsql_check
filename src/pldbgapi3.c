@@ -20,7 +20,7 @@
  * more plugins. Against previous implementation (pldbgapi2), it doesn't
  * use fmgr API. Cleaning statement stack after an exception is implemented
  * by usage memory context reset callback. The main advantage of this design
- * is possibility to access function's runtime data, that are accesible at this
+ * is possibility to access function's runtime data, that are accessible at this
  * time.
  *
  *
