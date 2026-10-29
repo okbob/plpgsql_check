@@ -1121,6 +1121,17 @@ plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
 										  Node *node,
 										  int *location)
 {
+	/*
+	 * The node is NULL when the expression is not a simple expression (it
+	 * has FROM clause, ...). We cannot to check it, so it cannot be
+	 * considered as safe.
+	 */
+	if (!node)
+	{
+		*location = -1;
+		return true;
+	}
+
 	if (IsA(node, FuncExpr))
 	{
 		FuncExpr   *fexpr = (FuncExpr *) node;

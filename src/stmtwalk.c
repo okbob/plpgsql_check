@@ -2049,12 +2049,13 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	expr_node = plpgsql_check_expr_get_node(cstate, query, false);
 
 	/*
-	 * The query is checked before by PL/pgSQL parser. And then result of
-	 * plpgsql_check_expr_get_node should be not NULL every time.
+	 * The result of plpgsql_check_expr_get_node can be NULL, when the
+	 * expression is not a simple expression (PL/pgSQL allows an expression
+	 * with FROM clause like EXECUTE a FROM tab). We know nothing about the
+	 * executed query in this case.
 	 */
-	Assert(expr_node);
 
-	if (IsA(expr_node, FuncExpr))
+	if (expr_node && IsA(expr_node, FuncExpr))
 	{
 		FuncExpr   *fexpr = (FuncExpr *) expr_node;
 
@@ -2116,7 +2117,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 			}
 		}
 	}
-	else
+	else if (expr_node)
 	{
 		dynquery = plpgsql_check_get_const_string(cstate, expr_node, NULL);
 		expr_is_const = (dynquery != NULL);

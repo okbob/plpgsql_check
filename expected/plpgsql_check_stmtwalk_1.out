@@ -1121,3 +1121,59 @@ select * from plpgsql_check_function('repro05_raise_errcode()', fatal_errors => 
 drop function repro05_dynsql_query();
 drop function repro05_dynsql_param();
 drop function repro05_raise_errcode();
+-- expressions with FROM clause are not simple expressions, should not crash
+create table sw_from_tab(q text);
+create function sw_from_expr()
+returns void as $$
+declare
+  x text;
+  r record;
+begin
+  execute q from sw_from_tab;
+  x := q from sw_from_tab;
+  execute 'select ' || x;
+  for r in execute q from sw_from_tab
+  loop
+  end loop;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('sw_from_expr', security_warnings => true);
+                                plpgsql_check_function                                 
+---------------------------------------------------------------------------------------
+ warning extra:42601:6:EXECUTE:expression is not pure expression
+ Query: q from sw_from_tab
+ --     ^
+ Detail: there is a possibility of unwanted behave
+ Hint: Maybe you forgot to use a semicolon.
+ security:00000:6:EXECUTE:the expression is not SQL injection safe
+ Query: q from sw_from_tab
+ Detail: Cannot ensure so dynamic EXECUTE statement is SQL injection secure.
+ Hint: Use quote_ident, quote_literal or format function to secure variable.
+ warning extra:42601:7:assignment:expression is not pure expression
+ Query: x := q from sw_from_tab
+ --          ^
+ Detail: there is a possibility of unwanted behave
+ Hint: Maybe you forgot to use a semicolon.
+ Context: at assignment to variable "x" declared on line 3
+ security:00000:8:EXECUTE:text type variable is not sanitized
+ Query: 'select ' || x
+ --                  ^
+ Detail: The EXECUTE expression is SQL injection vulnerable.
+ Hint: Use quote_ident, quote_literal or format function to secure variable.
+ warning extra:42601:9:FOR over EXECUTE statement:expression is not pure expression
+ Query: q from sw_from_tab
+ --     ^
+ Detail: there is a possibility of unwanted behave
+ Hint: Maybe you forgot to use a semicolon.
+ security:00000:9:FOR over EXECUTE statement:the expression is not SQL injection safe
+ Query: q from sw_from_tab
+ Detail: Cannot ensure so dynamic EXECUTE statement is SQL injection secure.
+ Hint: Use quote_ident, quote_literal or format function to secure variable.
+ warning:00000:9:FOR over EXECUTE statement:cannot determinate a result of dynamic SQL
+ Detail: There is a risk of related false alarms.
+ Hint: Don't use dynamic SQL and record type together, when you would check function.
+ warning extra:00000:4:DECLARE:never read variable "r"
+(33 rows)
+
+drop function sw_from_expr();
+drop table sw_from_tab;
