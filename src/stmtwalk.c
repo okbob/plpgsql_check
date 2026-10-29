@@ -988,9 +988,15 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 						if (opt->opt_type == PLPGSQL_RAISEOPTION_ERRCODE)
 						{
-							char	   *value;
+							char	   *value = NULL;
 
-							value = plpgsql_check_expr_get_string(cstate, opt->expr, NULL);
+							/*
+							 * When the check of the expression failed (and
+							 * fatal_errors is off), the expression has no
+							 * plan and its value cannot be evaluated.
+							 */
+							if (opt->expr->plan)
+								value = plpgsql_check_expr_get_string(cstate, opt->expr, NULL);
 
 							if (value != NULL)
 								err_code = plpgsql_check__recognize_err_condition_p(value, true);
@@ -1998,6 +2004,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	int			loc = -1;
 	char	   *dynquery = NULL;
 	volatile bool expr_is_const = false;
+	bool		params_are_valid = true;
 
 	volatile bool raise_unknown_rec_warning = false;
 	volatile bool known_type_of_dynexpr = false;
@@ -2021,10 +2028,24 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 	foreach(l, params)
 	{
-		plpgsql_check_expr(cstate, (PLpgSQL_expr *) lfirst(l));
+		PLpgSQL_expr *param = (PLpgSQL_expr *) lfirst(l);
+	
+		plpgsql_check_expr(cstate, param);
+		if (!param->plan)
+			params_are_valid = false;
 	}
 
 	plpgsql_check_expr(cstate, query);
+
+	/*
+	 * When fatal_errors is off, then an exception can be handled inside
+	 * plpgsql_check_expr, and then we have to check if expr has a valid
+	 * plan or not. We can continue in an analyze only when all plans of
+	 * all related expression are valid.
+	 */
+	if (!query->plan || !params_are_valid)
+		return;
+
 	expr_node = plpgsql_check_expr_get_node(cstate, query, false);
 
 	/*

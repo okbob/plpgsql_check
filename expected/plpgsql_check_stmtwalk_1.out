@@ -1076,3 +1076,48 @@ select * from plpgsql_check_function('sw_handler_exit');
 (0 rows)
 
 drop function sw_handler_exit();
+create or replace function repro05_dynsql_query()
+returns void as $$
+begin
+  execute 'select 1' || undefined_var;
+end;
+$$ language plpgsql;
+create or replace function repro05_dynsql_param()
+returns void as $$
+begin
+  execute 'select $1' using undefined_var;
+end;
+$$ language plpgsql;
+create or replace function repro05_raise_errcode()
+returns void as $$
+begin
+  raise exception 'x' using errcode = undefined_var;
+end;
+$$ language plpgsql;
+select * from plpgsql_check_function('repro05_dynsql_query()', fatal_errors => false);
+                   plpgsql_check_function                    
+-------------------------------------------------------------
+ error:42703:3:EXECUTE:column "undefined_var" does not exist
+ Query: 'select 1' || undefined_var
+ --                   ^
+(3 rows)
+
+select * from plpgsql_check_function('repro05_dynsql_param()', fatal_errors => false);
+                   plpgsql_check_function                    
+-------------------------------------------------------------
+ error:42703:3:EXECUTE:column "undefined_var" does not exist
+ Query: undefined_var
+ --     ^
+(3 rows)
+
+select * from plpgsql_check_function('repro05_raise_errcode()', fatal_errors => false);
+                  plpgsql_check_function                   
+-----------------------------------------------------------
+ error:42703:3:RAISE:column "undefined_var" does not exist
+ Query: undefined_var
+ --     ^
+(3 rows)
+
+drop function repro05_dynsql_query();
+drop function repro05_dynsql_param();
+drop function repro05_raise_errcode();
