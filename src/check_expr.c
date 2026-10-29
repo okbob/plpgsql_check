@@ -27,8 +27,6 @@
 #include "tcop/utility.h"
 #include "utils/lsyscache.h"
 
-#include "nodes/print.h"
-
 static void collect_volatility(PLpgSQL_checkstate *cstate, Query *query);
 static Query *ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, CachedPlanSource *plansource);
 static void check_pure_expr(PLpgSQL_checkstate *cstate, Query *query, char *query_str);
