@@ -1429,7 +1429,6 @@ get_int_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_i
 	return (int) val;
 }
 
-
 static char *
 get_name_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_info *cinfo)
 {
