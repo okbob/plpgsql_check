@@ -1387,44 +1387,45 @@ get_int_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_i
 {
 	PragmaTokenType token,
 			   *_token;
+	char	   *str;
+	double		val;
+	char	   *endptr;
 
 	_token = get_token(tstate, &token);
+
+	/* there is not a default value for int comment option */
 	if (!_token)
-		return true;
+		elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (missing int value)",
+			 name, cinfo->fn_oid);
 
 	if (_token->value == '=')
 	{
-		char	   *str;
-		double		val;
-		char	   *endptr;
-
 		_token = get_token(tstate, &token);
 		if (!_token || _token->value != PRAGMA_TOKEN_NUMBER)
 			elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected int value after \"=\")",
 				 name, cinfo->fn_oid);
-
-		str = make_string(_token);
-		errno = 0;
-
-		val = strtod(str, &endptr);
-		if (errno != 0 || *endptr != '\0')
-			elog(ERROR, "internal error");
-
-		val = rint(val);
-
-		/* Range check */
-		if (unlikely(isnan(val) || !FLOAT8_FITS_IN_INT32(val)))
-			elog(ERROR, "integer out of range");
-
-		return (int) val;
 	}
 	else
-		elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected int value)",
-			 name, cinfo->fn_oid);
+	{
+		if (_token->value != PRAGMA_TOKEN_NUMBER)
+			elog(ERROR, "syntax error in comment option \"%s\" (fnoid: %u) (expected int value)",
+				 name, cinfo->fn_oid);
+	}
 
-	/* fix warning C4715 on msvc */
-	Assert(0);
-	return false;
+	str = make_string(_token);
+	errno = 0;
+
+	val = strtod(str, &endptr);
+	if (errno != 0 || *endptr != '\0')
+		elog(ERROR, "internal error");
+
+	val = rint(val);
+
+	/* Range check */
+	if (unlikely(isnan(val) || !FLOAT8_FITS_IN_INT32(val)))
+		elog(ERROR, "integer out of range");
+
+	return (int) val;
 }
 
 
