@@ -952,9 +952,6 @@ Shorter syntax for pragma is supported too:
 
 * `assert-column: [varname_schema, ], varname_table , varname` - ensure so column specified by variables is valid
 
-The historical spelling `status:constants_trancing` remains an alias for
-`status:constants_tracing`; prefer the correctly spelled form.
-
 # Table pragmas generator
 
 <i>plpgsql_check</i> cannot verify queries over temporary tables that are created at runtime.
