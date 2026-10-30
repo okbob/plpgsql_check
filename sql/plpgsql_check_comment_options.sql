@@ -792,4 +792,47 @@ select * from co_check('fx()');
 
 drop function fx();
 
+-- the value of an int option is required, "=" is optional
+create or replace function fx()
+returns int as $$
+-- @plpgsql_check_options: extra_security_warnings_level
+begin
+  return length('x');
+end;
+$$ language plpgsql;
+
+select * from co_check('fx()');
+
+create or replace function fx()
+returns int as $$
+-- @plpgsql_check_options: extra_security_warnings_level, other_warnings
+begin
+  return length('x');
+end;
+$$ language plpgsql;
+
+select * from co_check('fx()');
+
+create or replace function fx()
+returns int as $$
+-- @plpgsql_check_options: extra_security_warnings_level 2
+begin
+  return length('x');
+end;
+$$ language plpgsql;
+
+select * from co_check('fx()');
+
+create or replace function fx()
+returns int as $$
+-- @plpgsql_check_options: extra_security_warnings_level = 100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+begin
+  return length('x');
+end;
+$$ language plpgsql;
+
+select * from co_check('fx()');
+
+drop function fx();
+
 drop function co_check(text, regclass);

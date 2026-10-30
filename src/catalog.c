@@ -150,7 +150,8 @@ plch_has_config(plpgsql_check_info *cinfo, char *name)
 /*
  * Process necessary checking before code checking
  *     a) disallow other than plpgsql check function,
- *     b) when function is trigger function, then reloid must be defined
+ *     b) when function is trigger function, then reloid must be defined,
+ *     c) option values must be valid
  */
 void
 plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo)
@@ -207,6 +208,13 @@ plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo)
 						 errmsg("function is not trigger"),
 						 errhint("Trigger relation oid must not be valid for non dml trigger function.")));
 		}
+
+		if (cinfo->extra_security_warnings_level < 0 ||
+			cinfo->extra_security_warnings_level > 4)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("extra_security_warnings_level %d is outside the valid range 0..4",
+							cinfo->extra_security_warnings_level)));
 	}
 
 	pfree(funcname);

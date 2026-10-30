@@ -111,4 +111,6 @@ select * from plpgsql_check_function('fx_extra_security', extra_security_warning
 ------------------------
 (0 rows)
 
+select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 5);
+ERROR:  extra_security_warnings_level 5 is outside the valid range 0..4
 drop function fx_extra_security();

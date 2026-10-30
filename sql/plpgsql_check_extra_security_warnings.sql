@@ -73,4 +73,6 @@ set search_path = 'pg_catalog';
 
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
 
+select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 5);
+
 drop function fx_extra_security();

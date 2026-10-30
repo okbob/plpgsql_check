@@ -12,6 +12,7 @@
 
 #include "plpgsql_check.h"
 
+#include <errno.h>
 #include <string.h>
 
 #include "catalog/namespace.h"
@@ -1417,7 +1418,7 @@ get_int_comment_option(TokenizerState *tstate, const char *name, plpgsql_check_i
 
 	val = strtod(str, &endptr);
 	if (errno != 0 || *endptr != '\0')
-		elog(ERROR, "internal error");
+		elog(ERROR, "internal error (%m)");
 
 	val = rint(val);
 
