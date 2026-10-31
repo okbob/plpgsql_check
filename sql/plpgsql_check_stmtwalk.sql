@@ -982,3 +982,39 @@ select * from plpgsql_check_function('sw_from_expr', security_warnings => true);
 
 drop function sw_from_expr();
 drop table sw_from_tab;
+
+-- an error in an expression should not cause other bogus errors
+-- when fatal_errors is false
+create procedure sw_nf_proc(inout a int)
+as $$
+begin
+end;
+$$ language plpgsql;
+
+create function sw_nonfatal(p int)
+returns setof int as $$
+declare
+  c refcursor;
+  c2 cursor(a int) for select a;
+  v int;
+begin
+  raise notice 'x' using errcode = nonexisting_errcode;
+  raise notice 'x' using errcode = (1/0)::text;
+  execute nonexisting_query into v;
+  execute 'select $1' using nonexisting_param;
+  execute (1/0)::text;
+  open c for execute nonexisting_query;
+  return query execute nonexisting_query;
+  call sw_nf_proc(nonexisting_arg);
+  open c for select 1/0;
+  for r in c2(nonexisting_arg)
+  loop
+    raise notice '%', r.a + nonexisting_var;
+  end loop;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_nonfatal', fatal_errors => false);
+
+drop function sw_nonfatal(int);
+drop procedure sw_nf_proc(int);

@@ -219,6 +219,13 @@ typedef struct PLpgSQL_checkstate
 	 * static, then all necessary info are in cursor variable.
 	 */
 	PLpgSQL_stmt_open **dyn_stmt_open;
+
+	/*
+	 * These fields allow to detect some problems with planning. They are
+	 * used as protection aginst duplicate error messages.
+	 */
+	PLpgSQL_expr *last_expr;
+	bool		last_expr_plan_is_valid;
 } PLpgSQL_checkstate;
 
 /*
@@ -339,7 +346,7 @@ extern void plpgsql_check_assignment_with_possible_slices(PLpgSQL_checkstate *cs
 														  PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow, int targetdno, bool use_element_type);
 extern void plpgsql_check_expr_as_sqlstmt_nodata(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 extern void plpgsql_check_expr_as_sqlstmt_data(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
-extern bool plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
+extern bool plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *returns_data);
 extern void plpgsql_check_assignment(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 									 PLpgSQL_rec *targetrec, PLpgSQL_row *targetrow, int targetdno);
 extern void plpgsql_check_expr_generic(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);

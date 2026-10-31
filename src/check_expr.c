@@ -628,6 +628,9 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 	CachedPlanSource *plansource = NULL;
 	bool		is_valid;
 
+	cstate->last_expr = expr;
+	cstate->last_expr_plan_is_valid = false;
+
 	do
 	{
 		_prepare_plan(cstate, expr, cursorOptions, parser_setup, arg);
@@ -1155,6 +1158,10 @@ get_cached_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *has_result
 	CachedPlanSource *plansource = NULL;
 	CachedPlan *cplan;
 
+	Assert(cstate->last_expr == expr);
+
+	cstate->last_expr_plan_is_valid = false;
+
 	plansource = plpgsql_check_get_plan_source(cstate, expr->plan);
 	if (!plansource)
 	{
@@ -1165,6 +1172,8 @@ get_cached_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *has_result
 	*has_result_desc = plansource->resultDesc ? true : false;
 
 	cplan = GetCachedPlan(plansource, NULL, CurrentResourceOwner, NULL);
+
+	cstate->last_expr_plan_is_valid = true;
 
 	return cplan;
 }
@@ -2349,7 +2358,6 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 												   NULL, NULL);
 }
 
-
 /*
  * Check a SQL statement, should not to return data
  *
@@ -2357,10 +2365,15 @@ plpgsql_check_expr_as_rvalue(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr,
 void
 plpgsql_check_expr_as_sqlstmt_nodata(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 {
-	if (expr && plpgsql_check_expr_as_sqlstmt(cstate, expr))
-		ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("query has no destination for result data")));
+	bool		returns_data;
+
+	if (expr && plpgsql_check_expr_as_sqlstmt(cstate, expr, &returns_data))
+	{
+		if (returns_data)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("query has no destination for result data")));
+	}
 }
 
 /*
@@ -2370,25 +2383,39 @@ plpgsql_check_expr_as_sqlstmt_nodata(PLpgSQL_checkstate *cstate, PLpgSQL_expr *e
 void
 plpgsql_check_expr_as_sqlstmt_data(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 {
-	if (expr && !plpgsql_check_expr_as_sqlstmt(cstate, expr))
-		ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("query does not return data")));
+	bool		returns_data;
+
+	if (expr && plpgsql_check_expr_as_sqlstmt(cstate, expr, &returns_data))
+	{
+		if (!returns_data)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("query does not return data")));
+	}
 }
 
 /*
- * Check a SQL statement, can (not) return data. Returns true
- * when statement returns data - we are able to get tuple descriptor.
+ * Check a SQL statement, can (not) return data. Returns true, when the expression
+ * is valid, or false when not.
+ *
+ * The flag returns_data is true, when statement returns some data and we are able
+ * to get tuple descriptor.
+ *
  */
 bool
-plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate,
+							  PLpgSQL_expr *expr, bool *returns_data)
 {
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
-	volatile bool result = false;
+	volatile bool result = true;
+
+	*returns_data = false;
 
 	if (!expr)
+	{
 		return true;
+	}
 
 	oldowner = CurrentResourceOwner;
 	BeginInternalSubTransaction(NULL);
@@ -2406,7 +2433,7 @@ plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 		tupdesc = plpgsql_check_expr_get_desc(cstate, expr, false, false, false, NULL);
 		if (tupdesc)
 		{
-			result = true;
+			*returns_data = true;
 			ReleaseTupleDesc(tupdesc);
 		}
 
@@ -2425,6 +2452,8 @@ plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
+
+		result = false;
 
 		/*
 		 * If fatal_errors is true, we just propagate the error up to the

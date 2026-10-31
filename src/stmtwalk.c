@@ -47,6 +47,19 @@ typedef struct DynSQLParams
 	bool		use_params;
 } DynSQLParams;
 
+static bool
+no_valid_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+{
+	if (!expr->plan)
+		return true;
+
+	if (cstate->last_expr == expr &&
+		!cstate->last_expr_plan_is_valid)
+		return true;
+
+	return false;
+}
+
 static void
 check_variable(PLpgSQL_checkstate *cstate, PLpgSQL_variable *var)
 {
@@ -714,7 +727,13 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				break;
 
 			case PLPGSQL_STMT_PERFORM:
-				plpgsql_check_expr_as_sqlstmt(cstate, ((PLpgSQL_stmt_perform *) stmt)->expr);
+				{
+					bool returns_data;
+
+					plpgsql_check_expr_as_sqlstmt(cstate,
+												  ((PLpgSQL_stmt_perform *) stmt)->expr,
+												  &returns_data);
+					(void) returns_data;
 
 				/*
 				 * Note: if you want to raise warning when used expressions
@@ -727,7 +746,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 				 * check_expr_with_expected_scalar_type(cstate,
 				 * ((PLpgSQL_stmt_perform *) stmt)->expr, VOIDOID, true);
 				 */
-
+				}
 				break;
 
 			case PLPGSQL_STMT_RETURN:
@@ -995,7 +1014,9 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 							 * fatal_errors is off), the expression has no
 							 * plan and its value cannot be evaluated.
 							 */
-							if (opt->expr->plan)
+							Assert(cstate->last_expr == opt->expr);
+
+							if (opt->expr->plan && cstate->last_expr_plan_is_valid)
 								value = plpgsql_check_expr_get_string(cstate, opt->expr, NULL);
 
 							if (value != NULL)
@@ -1232,26 +1253,28 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					PLpgSQL_row *target;
 					bool		has_data;
 
-					has_data = plpgsql_check_expr_as_sqlstmt(cstate, stmt_call->expr);
-
-					/*
-					 * any check_expr_xxx should be called before
-					 * CallExprGetRowTarget
-					 */
-					target = plpgsql_check_CallExprGetRowTarget(cstate, stmt_call->expr);
-
-					if (has_data != (target != NULL))
-						elog(ERROR, "plpgsql internal error, broken CALL statement");
-
-					if (target != NULL)
+					if (plpgsql_check_expr_as_sqlstmt(cstate, stmt_call->expr, &has_data))
 					{
-						check_variable(cstate, (PLpgSQL_variable *) target);
 
-						plpgsql_check_assignment_to_variable(cstate, stmt_call->expr,
-															 (PLpgSQL_variable *) target, -1);
+						/*
+						 * any check_expr_xxx should be called before
+						 * CallExprGetRowTarget
+						 */
+						target = plpgsql_check_CallExprGetRowTarget(cstate, stmt_call->expr);
 
-						pfree(target->varnos);
-						pfree(target);
+						if (has_data != (target != NULL))
+							elog(ERROR, "plpgsql internal error, broken CALL statement");
+
+						if (target != NULL)
+						{
+							check_variable(cstate, (PLpgSQL_variable *) target);
+
+							plpgsql_check_assignment_to_variable(cstate, stmt_call->expr,
+																 (PLpgSQL_variable *) target, -1);
+
+							pfree(target->varnos);
+							pfree(target);
+						}
 					}
 				}
 				break;
@@ -2031,7 +2054,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		PLpgSQL_expr *param = (PLpgSQL_expr *) lfirst(l);
 	
 		plpgsql_check_expr(cstate, param);
-		if (!param->plan)
+		if (no_valid_plan(cstate, param))
 			params_are_valid = false;
 	}
 
@@ -2043,8 +2066,18 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	 * plan or not. We can continue in an analyze only when all plans of
 	 * all related expression are valid.
 	 */
-	if (!query->plan || !params_are_valid)
+	if (no_valid_plan(cstate, query) || !params_are_valid)
+	{
+		cstate->found_unknown_query = true;
+
+		if (stmt->cmd_type == PLPGSQL_STMT_RETURN_QUERY)
+			cstate->found_return_dyn_query = true;
+
+		if (into)
+			check_variable(cstate, target);
+
 		return;
+	}
 
 	expr_node = plpgsql_check_expr_get_node(cstate, query, false);
 
