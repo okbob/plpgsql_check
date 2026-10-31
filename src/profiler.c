@@ -1427,7 +1427,7 @@ update_shared_persistent_stmts_stats(profiler_info *pinfo)
 
 			ereport(WARNING,
 					(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
-					 errmsg("cannot use share memory for profiler statistics"),
+					 errmsg("cannot use shared memory for profiler statistics"),
 					 errdetail("the used memory exceeds \"plpgsql_check.max_stats_size\" (%dkB)",
 							   plch_max_stat_size),
 					 errhint("Statistics can be cleaned by calling function \"plpgsql_profiler_reset_all()\".")));
@@ -1518,7 +1518,7 @@ merge_lxcached_shared_stmts_stats(LXCache *lxcache,
 			{
 				ereport(WARNING,
 						(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
-						 errmsg("cannot use share memory for profiler statistics"),
+						 errmsg("cannot use shared memory for profiler statistics"),
 						 errdetail("the used memory exceeds \"plpgsql_check.max_stats_size\" (%dkB)",
 								   plch_max_stat_size),
 						 errhint("Statistics can be cleaned by calling function \"plpgsql_profiler_reset_all()\".")));
