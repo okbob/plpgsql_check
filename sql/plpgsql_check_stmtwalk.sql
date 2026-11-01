@@ -1018,3 +1018,35 @@ select * from plpgsql_check_function('sw_nonfatal', fatal_errors => false);
 
 drop function sw_nonfatal(int);
 drop procedure sw_nf_proc(int);
+
+-- WHEN OTHERS catches the exception, the code after the block is reachable
+create function sw_others1(p int)
+returns int as $$
+begin
+  begin
+    raise exception 'error %', p;
+  exception when others then
+    raise notice 'caught';
+  end;
+  return 1;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_others1');
+
+-- the end of the function is reachable, the missing RETURN is reported
+create function sw_others2(p int)
+returns int as $$
+begin
+  begin
+    raise exception 'error %', p;
+  exception when others then
+    raise notice 'caught';
+  end;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_others2');
+
+drop function sw_others1(int);
+drop function sw_others2(int);

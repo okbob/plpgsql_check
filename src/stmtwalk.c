@@ -1893,12 +1893,27 @@ exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond)
 		 * assert-failure.  If you're foolish enough, you can match those
 		 * explicitly.
 		 */
+
+#if PG_VERSION_NUM >= 180000
+
+		if (_sqlerrstate == PLPGSQL_OTHERS)
+		{
+			if (sqlerrstate != ERRCODE_QUERY_CANCELED &&
+				sqlerrstate != ERRCODE_ASSERT_FAILURE)
+				return true;
+		}
+
+#else
+
 		if (_sqlerrstate == 0)
 		{
 			if (sqlerrstate != ERRCODE_QUERY_CANCELED &&
 				sqlerrstate != ERRCODE_ASSERT_FAILURE)
 				return true;
 		}
+
+#endif
+
 		/* Exact match? */
 		else if (sqlerrstate == _sqlerrstate)
 			return true;
