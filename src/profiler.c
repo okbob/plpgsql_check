@@ -125,6 +125,7 @@ typedef struct ProfilerSharedState
 	LWLock	   *func_stmts_stats_lock;
 	int			stmt_stats_count;
 	int			used_stmt_stats_count;
+	int			starttime_max_stat_size;	/* used only in warning message */
 } ProfilerSharedState;
 
 /*
@@ -272,6 +273,7 @@ bool		plch_report_dynquery_queryid = false;
 
 static int	used_stmt_stats_count = 0;
 static int	estimated_stmt_stats_count = 0;
+static int	starttime_max_stat_size = 0;
 
 /*
  * plpgsql_profiler_reset_all destroys lxcache_mcxt. It emits
@@ -306,6 +308,7 @@ plpgsql_check_shmem_size(void)
 
 	num_bytes = MAXALIGN(sizeof(ProfilerSharedState));
 
+	starttime_max_stat_size = plch_max_stat_size;
 	estimated_stmt_stats_count = (((Size) plch_max_stat_size) * 1024) / sizeof(StmtStats);
 
 	num_bytes = add_size(num_bytes, mul_size(estimated_stmt_stats_count, sizeof(StmtStats)));
@@ -368,6 +371,7 @@ plpgsql_check_profiler_shmem_startup(void)
 		profiler_ss->func_stmts_stats_lock = &(GetNamedLWLockTranche("plpgsql_check profiler func stmts stats"))->lock;
 		profiler_ss->stmt_stats_count = estimated_stmt_stats_count;
 		profiler_ss->used_stmt_stats_count = 0;
+		profiler_ss->starttime_max_stat_size = starttime_max_stat_size;
 	}
 
 	SharedStmtStatsArray = ShmemInitStruct("plpgsql_check profiler shared statements stats",
@@ -1522,7 +1526,7 @@ merge_lxcached_shared_stmts_stats(LXCache *lxcache,
 						(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
 						 errmsg("cannot use shared memory for profiler statistics"),
 						 errdetail("the used memory exceeds \"plpgsql_check.max_stats_size\" (%dkB)",
-								   plch_max_stat_size),
+								   profiler_ss->starttime_max_stat_size),
 						 errhint("Statistics can be cleaned by calling function \"plpgsql_profiler_reset_all()\".")));
 
 				*raise_warning_sstats = false;
