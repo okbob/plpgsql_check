@@ -25,7 +25,7 @@
 #include "utils/regproc.h"
 
 /*
- * Originaly this structure was named TokenType, but this is in collision
+ * Originally this structure was named TokenType, but this is in collision
  * with name from NT SDK. So it is renamed to PragmaTokenType.
  */
 typedef struct PragmaTokenType
@@ -314,7 +314,7 @@ get_token(TokenizerState *state, PragmaTokenType *token)
 		return &state->saved_token;
 	}
 
-	/* skip inital spaces */
+	/* skip initial spaces */
 	while (scanner_isspace(*state->str))
 		state->str++;
 

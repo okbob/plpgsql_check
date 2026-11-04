@@ -635,7 +635,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					int			closing_local;
 					List	   *exceptions_local;
 
-					/* prepare plan if desn't exist yet */
+					/* prepare plan if doesn't exist yet */
 					plpgsql_check_assignment(cstate, stmt_fori->lower, NULL, NULL, dno);
 					plpgsql_check_assignment(cstate, stmt_fori->upper, NULL, NULL, dno);
 
@@ -729,7 +729,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 					/*
 					 * When slice > 0, then result and target are a array. We
-					 * shoudl to disable a array element refencing.
+					 * should disable a array element refencing.
 					 */
 					use_element_type = stmt_foreach_a->slice == 0;
 
@@ -1604,7 +1604,7 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 }
 
 /*
- * Using reserved world as label is bad practice
+ * Using reserved word as label is bad practice
  */
 static void
 check_label(PLpgSQL_checkstate *cstate, char *label)
@@ -2148,17 +2148,17 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	 * possible checks:
 	 *
 	 * 1. When expression is string literal, then we can check this query
-	 * similary like cursor query with parameters. When this query has not a
+	 * similarly like cursor query with parameters. When this query has not a
 	 * parameters, and it is not DDL, DML, then we can raise a performance
 	 * warning'.
 	 *
 	 * 2. When expression is real expression, then we should to check any
 	 * string kind parameters if are sanitized by functions quote_ident,
-	 * qoute_literal, or format.
+	 * quote_literal, or format.
 	 *
 	 * 3. When expression is based on calling format function, and there are
 	 * used only placeholders %I and %L, then we can try to check syntax of
-	 * embeded query.
+	 * embedded query.
 	 */
 
 	foreach(l, params)

@@ -41,7 +41,7 @@ typedef struct plpgsql_plugin_info
 
 	void	   *prev_plugin_info;
 
-	/* for assertations */
+	/* for assertions */
 	Oid			fn_oid;
 	PLpgSQL_execstate *estate;
 
@@ -217,7 +217,7 @@ plugin_info_reset(void *arg)
 	}
 
 	/*
-	 * When current plugin_info is not not top plugin_info, then memory is
+	 * When current plugin_info is not the top plugin_info, then memory is
 	 * released in unexpected order. But we can fix it, by explicit call of
 	 * plugin_info_reset, so call all plugin_info_reset for all nested
 	 * executed functions.
@@ -654,7 +654,7 @@ stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	Assert(plugin_info->fn_oid == estate->func->fn_oid);
 
 	/*
-	 * When current plugin_info is not not top plugin_info, then memory is
+	 * When current plugin_info is not the top plugin_info, then memory is
 	 * released in unexpected order. But we can fix it, by explicit call of
 	 * plugin_info_reset, so call all plugin_info_reset for all nested
 	 * executed functions.

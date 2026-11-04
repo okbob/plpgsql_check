@@ -533,7 +533,7 @@ plpgsql_check_put_error_internal(PLpgSQL_checkstate *cstate,
 
 		/*
 		 * when a passive mode is active and fatal_errors is false, then raise
-		 * warning everytime.
+		 * warning every time.
 		 */
 		if (!cstate->is_active_mode && !cstate->cinfo->fatal_errors)
 			elevel = WARNING;
@@ -887,7 +887,7 @@ close_and_save(plpgsql_check_result_info *ri)
 }
 
 /*
- * format_error_xml formats and collects a identifided issues
+ * format_error_xml formats and collects identifided issues
  */
 static void
 format_error_xml(StringInfo str,
@@ -943,7 +943,7 @@ format_error_xml(StringInfo str,
 }
 
 /*
- * format_error_json formats and collects a identifided issues
+ * format_error_json formats and collects identifided issues
  */
 static void
 format_error_json(StringInfo str,
@@ -965,8 +965,6 @@ format_error_json(StringInfo str,
 	Assert(message != NULL);
 
 	initStringInfo(&sinfo);
-
-	/* flush tag */
 
 	if (is_first_item)
 		appendStringInfoString(str, "    {\n");
@@ -1016,10 +1014,6 @@ format_error_json(StringInfo str,
 	/* placing this property last as to avoid a trailing comma */
 	appendStringInfo(str, "      \"sqlState\": \"%s\"\n", unpack_sql_state(sqlerrcode));
 
-	/*
-	 * flush closing tag. Needs comman jus in case there is more than one
-	 * issue. Comma removed in epilog
-	 */
 	appendStringInfoString(str, "    }");
 }
 

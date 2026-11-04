@@ -252,7 +252,7 @@ put_operator_dependency(PLpgSQL_checkstate *cstate, Oid opno)
 }
 
 /*
- * Send to ouput all not yet displayed relations, operators and functions.
+ * Send to output all not yet displayed relations, operators and functions.
  */
 static bool
 detect_dependency_walker(Node *node, void *context)
@@ -352,7 +352,7 @@ plpgsql_check_detect_dependency(PLpgSQL_checkstate *cstate, Query *query)
 
 /*
  * When sequence related functions has constant oid parameter, then ensure, so
- * this oid is related to some sequnce object.
+ * this oid is related to some sequence object.
  *
  */
 static bool
@@ -923,7 +923,7 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 }
 
 /*
- * Returns number of rquired arguments or -1 when we cannot detect this number.
+ * Returns number of required arguments or -1 when we cannot detect this number.
  * When no_error is true, then this function doesn't raise a error or warning.
  * When unsafe_expr_location is valid pointer, then it check if %s arguments
  * are sanitized. It is separete task from format check, but we don't want to
@@ -1024,7 +1024,7 @@ check_fmt_string(const char *fmt,
 			}
 		}
 
-		/* Check safety of argument againt SQL injection when it is required */
+		/* Check safety of argument against SQL injection when it is required */
 		if (unsafe_expr_location)
 		{
 			if (*cp == 's')
@@ -1400,8 +1400,8 @@ plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
 
 /*
  * These checker function returns volatility or immutability of any function.
- * Special case is plpgsql_check_pragma function. This function is vollatile,
- * but we should to fake flags to be immutable - becase we would not to change
+ * Special case is plpgsql_check_pragma function. This function is volatile,
+ * but we should to fake flags to be immutable - because we would not to change
  * result of analyzes and we know so this function has not any negative side
  * effect.
  */
@@ -1600,7 +1600,7 @@ contain_mutable_functions_walker(Node *node, void *context)
 }
 
 /*
- * This is same like Postgres buildin function, but it ignores used
+ * This is same like Postgres built-in function, but it ignores used
  * plpgsql_check pragma function
  */
 bool

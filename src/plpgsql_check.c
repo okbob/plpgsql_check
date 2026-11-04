@@ -15,7 +15,7 @@
  *
  * 2) Reusing some plpgsql_xxx functions requires full run-time environment. It is
  *    emulated by fake expression context and fake fceinfo (these are created when
- *    active checking is used) - see: setup_fake_fcinfo, setup_cstate.
+ *    active checking is used) - see: plpgsql_check_setup_fcinfo, setup_cstate.
  *
  * 3) The environment is referenced by stored execution plans. The actual plan should
  *    not be linked with fake environment. All expressions created in checking time

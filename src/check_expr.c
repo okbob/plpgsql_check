@@ -217,7 +217,7 @@ _prepare_plan(PLpgSQL_checkstate *cstate,
 					break;
 
 				default:
-					elog(ERROR, "SPI_prepare_params failed for \"%s\": %s",
+					elog(ERROR, "SPI_prepare_extended failed for \"%s\": %s",
 						 expr->query, SPI_result_code_string(SPI_result));
 			}
 		}
@@ -814,7 +814,7 @@ collect_volatility(PLpgSQL_checkstate *cstate, Query *query)
 		}
 		else
 		{
-			/* not read only statements requare VOLATILE flag */
+			/* not read only statements require VOLATILE flag */
 			curr_volatility = PROVOLATILE_VOLATILE;
 
 			/*
@@ -1620,7 +1620,8 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
 }
 
 /*
- * Checks used for RETURN QUERY
+ * Checks the expression of RETURN or RETURN NEXT (is_expression is true),
+ * or the query of RETURN QUERY (is_expression is false).
  *
  */
 void
@@ -1728,7 +1729,7 @@ plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
 
 		if (tupdesc)
 		{
-			/* enforce check for trigger function - result must be composit */
+			/* enforce check for trigger function - result must be composite */
 			if (func->fn_retistuple && is_expression
 				&& !((tupdesc->natts > 0 && type_is_rowtype(TupleDescAttr(tupdesc, 0)->atttypid)) ||
 					 type_is_rowtype(first_level_typ) || tupdesc->natts > 1))
@@ -2234,7 +2235,7 @@ plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
 				str = plpgsql_check_expr_get_string(cstate, expr, NULL);
 
 				/*
-				 * We are not able take an alement from an array string. We
+				 * We are not able take an element from an array string. We
 				 * don't trace typid, so we are not able to do correct
 				 * deserialization. It is necessary for correct casting to
 				 * target element type, because simple IO casting can fail for
@@ -2627,7 +2628,7 @@ plpgsql_check_assignment_to_variable(PLpgSQL_checkstate *cstate,
 }
 
 /*
- * row->nfields can cound dropped columns. When this behave can raise
+ * row->nfields can count dropped columns. When this behave can raise
  * false alarms, we should to count fields more precisely.
  */
 static int

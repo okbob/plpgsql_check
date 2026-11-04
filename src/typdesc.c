@@ -314,9 +314,9 @@ pofce_get_desc(PLpgSQL_checkstate *cstate,
 				Assert(inargno < procStruct->pronargs);
 
 				/*
-				 * fn->args are transformated already, so items in this list
+				 * fn->args are transformed already, so items in this list
 				 * must match fields in proargtypes. This matching is
-				 * fundamental prerequsity of this routine.
+				 * fundamental prerequisite of this routine.
 				 */
 				arg = list_nth(fn->args, inargno);
 
@@ -389,8 +389,10 @@ pofce_get_desc(PLpgSQL_checkstate *cstate,
 }
 
 /*
- * Returns a tuple descriptor based on existing plan, When error is detected
- * returns null. Does hardwork when result is based on record type.
+ * Returns a tuple descriptor based on existing plan. Errors are raised.
+ * Returns null when the plan has no result description (an empty query
+ * string of EXECUTE, or a statement without result when is_expression is
+ * false). Does the hard work when result is based on record type.
  *
  */
 TupleDesc
@@ -552,7 +554,7 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 		/*
 		 * When tupdesc is related to unpined record, we will try to check
 		 * plan if it is just function call and if it is then we can try to
-		 * derive a tupledes from function's description.
+		 * derive a tupledesc from function's description.
 		 */
 		cplan = GetCachedPlan(plansource, NULL, CurrentResourceOwner, NULL);
 		_stmt = (PlannedStmt *) linitial(cplan->stmt_list);

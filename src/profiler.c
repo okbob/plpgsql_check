@@ -70,7 +70,7 @@ typedef struct QParams
 
 /*
  * PLpgSQL statement instrumentation
- * Attention - the commands that can contains nestested commands
+ * Attention - the commands that can contain nested commands
  * has attached own time and nested statements time too.
  *
  * The exec_count_err contains a number of abort_stmt executions.
@@ -174,8 +174,8 @@ enum
  * lxcache_ht is created in top memory context, but the content
  * is transactional. This is necessary, because we want to use
  * lxcache_ht from lxcache mcx reset callback. Sometimes can be
- * problem who is responsible for destroing this table. We can
- * do this at lxcace reset callback. Then this table cannot be
+ * problem who is responsible for destroying this table. We can
+ * do this at lxcache reset callback. Then this table cannot be
  * orphaned. This structure will be used as a arg of MemoryContext
  * reset callback;
  */
@@ -600,9 +600,9 @@ plpgsql_profiler_reset(PG_FUNCTION_ARGS)
 	if (shared_func_stmts_stats_ht)
 	{
 		/*
-		 * In this case we doesn't release memory from SharedStmtStatsArray.
+		 * In this case we don't release memory from SharedStmtStatsArray.
 		 * Probably it is possible if we use DSA. But user friendly API for
-		 * DSA is in Ph 18+. So DSA is not supported now.
+		 * DSA is in PG 18+. So DSA is not supported now.
 		 */
 		LWLockAcquire(profiler_ss->func_stmts_stats_lock, LW_EXCLUSIVE);
 		hash_search(shared_func_stmts_stats_ht, (void *) &hk, HASH_REMOVE, NULL);
@@ -965,13 +965,13 @@ lxcache_reset_callback(void *arg)
 		hash_destroy(lxcinfo->lxcache_ht);
 
 		/*
-		 * Invalidate static variables if referenced to currently resetted
+		 * Invalidate static variables if referenced to currently reset
 		 * (released) lxcache.
 		 */
 		if (lxcache_mcxt == lxcinfo->lxcache_mcxt)
 		{
 			/*
-			 * Invalidate static variables if referenced to currently resetted
+			 * Invalidate static variables if referenced to currently reset
 			 * (released) lxcache.
 			 */
 			lxcache_mcxt = NULL;
@@ -1555,7 +1555,7 @@ merge_lxcached_shared_stmts_stats(LXCache *lxcache,
 /*
  * Calculate statement statistics from statement instrumentation.
  * statement exec time is calculated as statement total exec time
- * minus total exec time of nestated statements.
+ * minus total exec time of nested statements.
  */
 typedef struct count_stmt_exec_time_context
 {
@@ -2287,7 +2287,7 @@ shared_statements_stats_report(plch_fidentity_hk *hk,
  * Build simple statement statistics report (statement profile)
  *
  * This is simple report - one statement, one line (and then there is not any
- * acummulation per lines).
+ * cumulation per lines).
  */
 void
 plch_statements_stats_report(plpgsql_check_info *cinfo,
@@ -2325,7 +2325,7 @@ plch_statements_stats_report(plpgsql_check_info *cinfo,
 }
 
 /*
- * Profiler report is more complicated becase maps statements to lines, and because
+ * Profiler report is more complicated because maps statements to lines, and because
  * more statements can be placed on one line, then some stats are merged in an arrays.
  * Next complication is synchronization reported stats with function source code.
  */
@@ -2626,7 +2626,7 @@ coverage_statements_walker(PLpgSQL_stmt *stmt, coverage_statements_context *cont
 }
 
 /*
- * Coverage branches is more difficult, becase we have not branch walker.
+ * Coverage branches is more difficult, because we have not branch walker.
  * Any branch is a list of statements, and we can check of number of execution
  * of first statement in the list.
  */
@@ -3057,7 +3057,7 @@ cutline(char *str, char **line)
 
 			/*
 			 * ignore last empty rows, reduce garbage row. We cannot to skip
-			 * first usuall empty row, because we don't want to break relation
+			 * first usually empty row, because we don't want to break relation
 			 * between lineno and statement's lineno. Last empty line we can
 			 * throw without any impact.
 			 */

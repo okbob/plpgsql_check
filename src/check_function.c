@@ -440,9 +440,9 @@ is_active(PLpgSQL_execstate *estate, PLpgSQL_function *func)
 }
 
 /*
- * plpgsql_check_on_func_beg - passive mode
+ * passive_check_func_beg - passive mode
  *
- *      callback function - called by plgsql executor, when function is started
+ *      callback function - called by plpgsql executor, when function is started
  *      and local variables are initialized.
  *
  */
@@ -550,7 +550,7 @@ passive_check_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func, plch_f
 		estate->err_text = NULL;
 
 		/*
-		 * Raised exception should be trapped in outer functtion. Protection
+		 * Raised exception should be trapped in outer function. Protection
 		 * against outer trap is QUERY_CANCELED exception.
 		 */
 		oldcontext = CurrentMemoryContext;
@@ -770,7 +770,7 @@ trigger_check(PLpgSQL_function *func, Node *tdata, PLpgSQL_checkstate *cstate)
 		 */
 
 		/*
-		 * find all PROMISE VARIABLES and initit their
+		 * find all PROMISE variables and initit their
 		 */
 		for (i = 0; i < func->ndatums; i++)
 		{
@@ -1187,7 +1187,7 @@ plpgsql_check_setup_fcinfo(plpgsql_check_info *cinfo,
 		if (IsPolymorphicType(cinfo->rettype))
 		{
 			/*
-			 * ensure replacament of polymorphic rettype, but this error is
+			 * ensure replacement of polymorphic rettype, but this error is
 			 * checked in validation stage, so this case should not be
 			 * possible.
 			 */

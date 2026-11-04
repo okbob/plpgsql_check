@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * cursors_leak.c
+ * cursors_leaks.c
  *
  *			  detection unclosed cursors code
  *

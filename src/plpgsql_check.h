@@ -273,7 +273,6 @@ extern char *plpgsql_check_prepare_err_text_with_target_vardecl(PLpgSQL_checksta
 /*
  * function from catalog.c
  */
-extern bool plpgsql_check_is_eventtriggeroid(Oid typoid);
 extern void plpgsql_check_get_function_info(plpgsql_check_info *cinfo);
 extern void plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo);
 extern bool plch_has_config(plpgsql_check_info *cinfo, char *name);
@@ -303,7 +302,6 @@ extern void plpgsql_check_set_without_warnings(plpgsql_check_info *cinfo);
  * functions from check_function.c
  */
 extern void plpgsql_check_function_internal(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo);
-extern void plpgsql_check_on_func_beg(PLpgSQL_execstate *estate, PLpgSQL_function *func);
 extern void plpgsql_check_HashTableInit(void);
 extern bool plpgsql_check_is_checked(PLpgSQL_function *func);
 extern void plpgsql_check_mark_as_checked(PLpgSQL_function *func);
@@ -434,12 +432,6 @@ extern void plch_profiler_init_local_hash_tables(void);
 extern void plpgsql_check_profiler_show_profile(plpgsql_check_result_info *ri, plpgsql_check_info *cinfo);
 extern void plpgsql_check_profiler_iterate_over_all_profiles(plpgsql_check_result_info *ri);
 
-extern void plpgsql_check_init_trace_info(PLpgSQL_execstate *estate);
-extern bool plpgsql_check_get_trace_info(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, PLpgSQL_execstate **outer_estate, int *frame_num, int *level, instr_time *start_time);
-
-extern void plpgsql_check_get_trace_stmt_info(PLpgSQL_execstate *estate, int stmt_id, instr_time **start_time);
-extern bool *plpgsql_check_get_disable_tracer_on_stack(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
-
 extern void plpgsql_check_profiler_init(void);
 
 extern void plch_statements_stats_report(plpgsql_check_info *cinfo, plpgsql_check_result_info *ri);
@@ -461,10 +453,6 @@ extern PGErrorVerbosity plpgsql_check_trace_assert_verbosity;
 
 extern bool plpgsql_check_regress_test_mode;
 extern bool plpgsql_check_tracer_show_nsubxids;
-
-extern void plpgsql_check_trace_assert_on_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt);
-
-extern void plpgsql_check_set_stmt_group_number(PLpgSQL_stmt *stmt, int *group_numbers, int *parent_group_numbers, int sgn, int *cgn, int psgn);
 
 extern void plpgsql_check_tracer_init(void);
 
@@ -573,8 +561,6 @@ extern void plch_register_plugin(plch_plugin *plugin);
 extern void plch_finish_plugin(void);
 
 #endif
-
-extern void simple_plugin_init(void);
 
 /*
  * functions from cursors_leaks.c
