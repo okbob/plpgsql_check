@@ -227,6 +227,7 @@ typedef struct PLpgSQL_checkstate
 	 */
 	PLpgSQL_expr *last_expr;
 	bool		last_expr_plan_is_valid;
+	bool		sqlerrcode;
 } PLpgSQL_checkstate;
 
 /*

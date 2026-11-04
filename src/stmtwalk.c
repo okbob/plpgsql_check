@@ -519,6 +519,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					List	   *exceptions_local;
 					ListCell   *l;
 					int			closing_all_paths = PLPGSQL_CHECK_UNKNOWN;
+					bool		check_when_exprs = true;
 
 					if (stmt_case->t_expr != NULL)
 					{
@@ -529,35 +530,53 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						 * we need to set hidden variable type
 						 */
 						plpgsql_check_expr_generic(cstate, stmt_case->t_expr);
-
-						/* record all variables used by the query */
-						cstate->used_variables = bms_add_members(cstate->used_variables,
+						if (cstate->last_expr == stmt_case->t_expr &&
+							cstate->last_expr_plan_is_valid)
+						{
+							/* record all variables used by the query */
+							cstate->used_variables = bms_add_members(cstate->used_variables,
 																 stmt_case->t_expr->paramnos);
 
-						tupdesc = plpgsql_check_expr_get_desc(cstate,
-															  stmt_case->t_expr,
-															  false,	/* no element type */
-															  true, /* expand record */
-															  true, /* is expression */
-															  &result_oid);
+							tupdesc = plpgsql_check_expr_get_desc(cstate,
+																  stmt_case->t_expr,
+																  false,	/* no element type */
+																  true, /* expand record */
+																  true, /* is expression */
+																  &result_oid);
 
-						if (tupdesc)
+							if (tupdesc)
+							{
+								/*
+								 * When expected datatype is different from real,
+								 * change it. Note that what we're modifying here
+								 * is an execution copy of the datum, so this
+								 * doesn't affect the originally stored function
+								 * parse tree.
+								 */
+								if (t_var->datatype->typoid != result_oid)
+
+									t_var->datatype = plpgsql_check__build_datatype_p(result_oid,
+																					  -1,
+																					  cstate->estate->func->fn_input_collation,
+																					  t_var->datatype->origtypname);
+
+								ReleaseTupleDesc(tupdesc);
+							}
+						}
+						else
 						{
 							/*
-							 * When expected datatype is different from real,
-							 * change it. Note that what we're modifying here
-							 * is an execution copy of the datum, so this
-							 * doesn't affect the originally stored function
-							 * parse tree.
+							 * When the check failed (fatal_errors is false), the
+							 * error was reported already. The type of hidden
+							 * variable is unknown, and then we cannot to check
+							 * WHEN expressions (they compare hidden variable with
+							 * values), but we can check nested statements.
 							 */
-							if (t_var->datatype->typoid != result_oid)
+							check_when_exprs = false;
 
-								t_var->datatype = plpgsql_check__build_datatype_p(result_oid,
-																				  -1,
-																				  cstate->estate->func->fn_input_collation,
-																				  t_var->datatype->origtypname);
-
-							ReleaseTupleDesc(tupdesc);
+							/* don't raise false warning about unused variable */
+							cstate->used_variables = bms_add_member(cstate->used_variables,
+																	stmt_case->t_varno);
 						}
 					}
 
@@ -565,7 +584,9 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					{
 						PLpgSQL_case_when *cwt = (PLpgSQL_case_when *) lfirst(l);
 
-						plpgsql_check_expr(cstate, cwt->expr);
+						if (check_when_exprs)
+							plpgsql_check_expr(cstate, cwt->expr);
+
 						check_stmts(cstate, cwt->stmts, &closing_local, &exceptions_local);
 						closing_all_paths = merge_closing(closing_all_paths,
 														  closing_local,

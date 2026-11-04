@@ -1281,3 +1281,41 @@ $$ language plpgsql;
 select * from plpgsql_check_function('sw_err_stmt(int)', fatal_errors => false);
 
 drop function sw_err_stmt(int);
+
+-- the rest of statement should be checked after an error
+-- in CASE selector or in constant dynamic query
+create function sw_nonfatal2(a int)
+returns int as $$
+declare
+  r record;
+  v int;
+begin
+  case a + nonexisting_col
+    when 1 then v := 1 + nonexisting_var;
+    else v := 2;
+  end case;
+  for r in execute 'select nonexisting_col2 as x'
+  loop
+    v := v + nonexisting_var2;
+  end loop;
+  return v;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_nonfatal2', fatal_errors => false);
+select * from plpgsql_check_function('sw_nonfatal2');
+
+create function sw_case_text(a int)
+returns int as $$
+begin
+  case a::text
+    when 'abc' then return 1;
+    else return 2;
+  end case;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_case_text', fatal_errors => false);
+
+drop function sw_nonfatal2(int);
+drop function sw_case_text(int);
