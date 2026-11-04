@@ -911,3 +911,16 @@ select * from plpgsql_check_function('ew_sanit', security_warnings => true);
 
 drop function ew_sanit(text, text[]);
 drop table ew_sanit_tab;
+
+-- the check of SQL injection parses the format string again, but the error
+-- of the format string is reported only once
+create function ew_f18i(p text)
+returns void as $$
+begin
+  execute format('select %I %s', p);
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('ew_f18i', fatal_errors => false, security_warnings => true);
+
+drop function ew_f18i(text);

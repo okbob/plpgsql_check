@@ -691,7 +691,7 @@ append_format_string(StringInfo buf, const char *str, int width, bool left_justi
 #define TOO_FEW_ARGUMENTS_CHECK(arg, nargs) \
 	if ((nargs) >= 0 && (arg) > (nargs)) \
 	{ \
-		if (wp) \
+		if (!no_error) \
 			plpgsql_check_put_error(wp->cstate, \
 									ERRCODE_INVALID_PARAMETER_VALUE, 0, \
 									"too few arguments for format()", \
@@ -912,6 +912,9 @@ plpgsql_check_get_formatted_string(PLpgSQL_checkstate *cstate,
 /*
  * Returns number of rquired arguments or -1 when we cannot detect this number.
  * When no_error is true, then this function doesn't raise a error or warning.
+ * When unsafe_expr_location is valid pointer, then it check if %s arguments
+ * are sanitized. It is separete task from format check, but we don't want to
+ * write two fmt parser routines.
  */
 static int
 check_fmt_string(const char *fmt,
@@ -1027,7 +1030,6 @@ check_fmt_string(const char *fmt,
 																  unsafe_expr_location))
 					{
 						/* found vulnerability, stop */
-						*is_error = false;
 						return -1;
 					}
 				}
@@ -1267,11 +1269,10 @@ plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
 								check_fmt_string(fmt, args, loc, &wp, &is_error, location, true);
 
 								/*
-								 * only in this case, "format" function
-								 * obviously sanitize parameters
+								 * we can ignore errors in this case.
+								 * Vulnerability location is important.
 								 */
-								if (!is_error)
-									return *location != -1;
+								return *location != -1;
 							}
 						}
 						break;
