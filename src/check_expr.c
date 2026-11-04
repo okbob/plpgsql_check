@@ -1970,24 +1970,17 @@ free_string_constant(PLpgSQL_checkstate *cstate, PLpgSQL_row *row)
 	}
 }
 
-/*
- * Check expression as rvalue - on right in assign statement. It is used for
- * only expression check too - when target is unknown.
- *
- */
-void
-plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
-											   PLpgSQL_expr *expr,
-											   PLpgSQL_rec *targetrec,
-											   PLpgSQL_row *targetrow,
-											   int targetdno,
-											   bool use_element_type,
-											   bool is_expression,
-											   ParserSetupHook parser_setup,
-											   void *arg)
+static void
+plpgsql_check_expr_as_rvalue_with_parser_setup_fatal(PLpgSQL_checkstate *cstate,
+													 PLpgSQL_expr *expr,
+													 PLpgSQL_rec *targetrec,
+													 PLpgSQL_row *targetrow,
+													 int targetdno,
+													 bool use_element_type,
+													 bool is_expression,
+													 ParserSetupHook parser_setup,
+													 void *arg)
 {
-	ResourceOwner oldowner;
-	MemoryContext oldCxt = CurrentMemoryContext;
 	TupleDesc	tupdesc;
 	bool		is_immutable_null;
 	volatile bool expand = true;
@@ -2041,10 +2034,6 @@ plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
 			}
 		}
 	}
-
-	oldowner = CurrentResourceOwner;
-	BeginInternalSubTransaction(NULL);
-	MemoryContextSwitchTo(oldCxt);
 
 	PG_TRY();
 	{
@@ -2447,6 +2436,61 @@ no_other_check:
 
 		if (free_local_err_text)
 			pfree(local_err_text);
+	}
+	PG_CATCH();
+	{
+		expr->target_param = save_target_param;
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	expr->target_param = save_target_param;
+}
+
+/*
+ * Check expression as rvalue - on right in assign statement. It is used for
+ * only expression check too - when target is unknown.
+ *
+ */
+void
+plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
+											   PLpgSQL_expr *expr,
+											   PLpgSQL_rec *targetrec,
+											   PLpgSQL_row *targetrow,
+											   int targetdno,
+											   bool use_element_type,
+											   bool is_expression,
+											   ParserSetupHook parser_setup,
+											   void *arg)
+{
+	ResourceOwner oldowner;
+	MemoryContext oldCxt = CurrentMemoryContext;
+
+	if (cstate->cinfo->fatal_errors)
+	{
+		/* without handling an exception inside subtransaction */
+		plpgsql_check_expr_as_rvalue_with_parser_setup_fatal(cstate, expr,
+															 targetrec, targetrow, targetdno,
+															 use_element_type, is_expression,
+															 parser_setup, arg);
+		return;
+	}
+
+	/*
+	 * This routine is used for almost all expressuins, and then the performance is important.
+	 * Start subtransaction only when fatal_errors is false.
+	 */
+	oldowner = CurrentResourceOwner;
+	BeginInternalSubTransaction(NULL);
+	MemoryContextSwitchTo(oldCxt);
+
+	PG_TRY();
+	{
+		plpgsql_check_expr_as_rvalue_with_parser_setup_fatal(cstate, expr,
+															 targetrec, targetrow, targetdno,
+															 use_element_type, is_expression,
+															 parser_setup, arg);
 
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
@@ -2464,16 +2508,6 @@ no_other_check:
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
 
-		expr->target_param = save_target_param;
-
-		/*
-		 * If fatal_errors is true, we just propagate the error up to the
-		 * highest level. Otherwise the error is appended to our current list
-		 * of errors, and we continue checking.
-		 */
-		if (cstate->cinfo->fatal_errors)
-			ReThrowError(edata);
-
 		Assert(cstate->last_expr == expr);
 		cstate->sqlerrcode = edata->sqlerrcode;
 
@@ -2483,8 +2517,6 @@ no_other_check:
 		MemoryContextSwitchTo(oldCxt);
 	}
 	PG_END_TRY();
-
-	expr->target_param = save_target_param;
 }
 
 void
