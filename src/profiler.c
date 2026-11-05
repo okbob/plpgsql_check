@@ -691,8 +691,9 @@ profiler_fake_queryid_hook(ParseState *pstate, Query *query, JumbleState *jstate
 	 * force fake queryid
 	 *
 	 * profiler_fake_queryid_hook is active only for one plpgsql_check regress
-	 * test. For this case, we can force fake queryid, although it is possible,
-	 * so real queryid (computed by pg_stat_statements) is already computed.
+	 * test. For this case, we can force fake queryid, although it is
+	 * possible, so real queryid (computed by pg_stat_statements) is already
+	 * computed.
 	 *
 	 * Because this fake queryid hook is designed only for one test, I don't
 	 * check this possibility, and I don't raise any warning (because it
@@ -808,9 +809,9 @@ lxcache_ht_init(void)
 	/*
 	 * Originally I used lxcache_mcxt for hashtable. Unfortunately it doesn't
 	 * work, because hashtable creates and uses always own child context, that
-	 * is destroyed before lxcache_mcxt. Because I need to access lxcache_ht at
-	 * transaction end, then I need to use TopMemoryContext, and then destroy
-	 * hashtab explicitly.
+	 * is destroyed before lxcache_mcxt. Because I need to access lxcache_ht
+	 * at transaction end, then I need to use TopMemoryContext, and then
+	 * destroy hashtab explicitly.
 	 */
 	ctl.hcxt = TopMemoryContext;
 
@@ -872,10 +873,10 @@ get_lxcache(profiler_info *pinfo)
 									  &found);
 
 	/*
-	 * When there is not a memory for new lxcache entry, do nothing.
-	 * It is probably best thing what can be possible, with minimal
-	 * impact on profiled code. In this case, we just lose statistics
-	 * from last run, but we don't break possibly ending transaction.
+	 * When there is not a memory for new lxcache entry, do nothing. It is
+	 * probably best thing what can be possible, with minimal impact on
+	 * profiled code. In this case, we just lose statistics from last run, but
+	 * we don't break possibly ending transaction.
 	 */
 	if (!lxcache)
 		return NULL;
@@ -1075,9 +1076,9 @@ update_local_persistent_fstats(profiler_info *pinfo,
 								   &found);
 
 	/*
-	 * We want to signalize not enough memory for storing statistics.
-	 * But on second hand we don't want to needlessly break ending transaction,
-	 * so we raise an error, only when transaction is not in aborted state.
+	 * We want to signalize not enough memory for storing statistics. But on
+	 * second hand we don't want to needlessly break ending transaction, so we
+	 * raise an error, only when transaction is not in aborted state.
 	 */
 	if (!fs)
 	{
@@ -3057,9 +3058,9 @@ cutline(char *str, char **line)
 
 			/*
 			 * ignore last empty rows, reduce garbage row. We cannot to skip
-			 * first usually empty row, because we don't want to break relation
-			 * between lineno and statement's lineno. Last empty line we can
-			 * throw without any impact.
+			 * first usually empty row, because we don't want to break
+			 * relation between lineno and statement's lineno. Last empty line
+			 * we can throw without any impact.
 			 */
 			if (*ptr == '\0')
 				return NULL;

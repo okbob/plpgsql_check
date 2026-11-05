@@ -315,12 +315,12 @@ _PG_init(void)
 							 NULL, NULL, NULL);
 
 	DefineCustomIntVariable("plpgsql_check.extra_security_warnings_level",
-							 "0..4 extra security warnings level",
-							 NULL,
-							 &plch_extra_security_warnings_level,
-							 0, 0, 4,
-							 PGC_USERSET, 0,
-							 NULL, NULL, NULL);
+							"0..4 extra security warnings level",
+							NULL,
+							&plch_extra_security_warnings_level,
+							0, 0, 4,
+							PGC_USERSET, 0,
+							NULL, NULL, NULL);
 
 
 	DefineCustomBoolVariable("plpgsql_check.constants_tracing",

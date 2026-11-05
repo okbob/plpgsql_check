@@ -25,10 +25,12 @@ enum
 	PLPGSQL_CHECK_WARNING_EXTRA,	/* check shadowed variables */
 	PLPGSQL_CHECK_WARNING_PERFORMANCE,	/* invisible cast check */
 	PLPGSQL_CHECK_WARNING_SECURITY, /* sql injection check */
-	PLPGSQL_CHECK_WARNING_COMPATIBILITY, /* obsolete setting of cursor's or
-										 * refcursor's variable */
-	PLPGSQL_CHECK_WARNING_EXTRA_SECURITY /* extra check like test of assigned search path
-										  * or searching unqualified identifiers */
+	PLPGSQL_CHECK_WARNING_COMPATIBILITY,	/* obsolete setting of cursor's or
+											 * refcursor's variable */
+	PLPGSQL_CHECK_WARNING_EXTRA_SECURITY	/* extra check like test of
+											 * assigned search path or
+											 * searching unqualified
+											 * identifiers */
 
 };
 
@@ -222,14 +224,14 @@ typedef struct PLpgSQL_checkstate
 	bool		is_dynsql;
 
 	/*
-	 * Holds the result of the check of the OPEN statement of every
-	 * cursor variable (indexed by dno).
-	*/
+	 * Holds the result of the check of the OPEN statement of every cursor
+	 * variable (indexed by dno).
+	 */
 	plch_cursorvar *cursorvars;
 
 	/*
-	 * These fields allow to detect some problems with planning. They are
-	 * used as protection aginst duplicate error messages.
+	 * These fields allow to detect some problems with planning. They are used
+	 * as protection aginst duplicate error messages.
 	 */
 	PLpgSQL_expr *last_expr;
 	bool		last_expr_plan_is_valid;

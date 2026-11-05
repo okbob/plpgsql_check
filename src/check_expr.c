@@ -243,7 +243,8 @@ typedef struct detect_unqualified_identifiers_walker_context
 	PLpgSQL_checkstate *cstate;
 	PLpgSQL_expr *expr;
 	List	   *ctenames;		/* names of CTEs visible in the current scope */
-	List	   *targets;		/* target relations (RangeVar) of DML statements */
+	List	   *targets;		/* target relations (RangeVar) of DML
+								 * statements */
 } detect_unqualified_identifiers_walker_context;
 
 /*
@@ -427,14 +428,14 @@ detect_unqualified_identifiers_walker(Node *node, void *context)
 	else if (IsA(node, LockingClause))
 	{
 		/*
-		 * FOR UPDATE OF clause references relations by unqualified names
-		 * (or aliases) from FROM clause.
+		 * FOR UPDATE OF clause references relations by unqualified names (or
+		 * aliases) from FROM clause.
 		 */
 		return false;
 	}
 	else if (IsA(node, FuncCall))
 	{
-		if (list_length( ((FuncCall *) node)->funcname) == 1)
+		if (list_length(((FuncCall *) node)->funcname) == 1)
 		{
 			if (esw_level >= 2)
 				plpgsql_check_put_error(cstate,
@@ -447,7 +448,7 @@ detect_unqualified_identifiers_walker(Node *node, void *context)
 	}
 	else if (IsA(node, TypeName))
 	{
-		TypeName *typname = (TypeName *) node;
+		TypeName   *typname = (TypeName *) node;
 
 		if (!OidIsValid(typname->typeOid) && list_length(typname->names) == 1)
 		{
@@ -480,7 +481,7 @@ detect_unqualified_identifiers_walker(Node *node, void *context)
 	}
 	else if (IsA(node, RangeVar))
 	{
-		RangeVar *rv = (RangeVar *) node;
+		RangeVar   *rv = (RangeVar *) node;
 
 		/*
 		 * CTE or transition table cannot be qualified. But CTE doesn't hide
@@ -502,7 +503,7 @@ detect_unqualified_identifiers_walker(Node *node, void *context)
 	}
 	else if (IsA(node, A_Expr))
 	{
-		A_Expr *a_expr = (A_Expr *) node;
+		A_Expr	   *a_expr = (A_Expr *) node;
 
 		/*
 		 * Operators of other kinds (IN, LIKE, BETWEEN, NULLIF, ...) are
@@ -562,7 +563,7 @@ static void
 detect_unqualified_objects(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 {
 	detect_unqualified_identifiers_walker_context context;
-	ListCell *lc;
+	ListCell   *lc;
 
 	if (cstate->pragma_vector.disable_extra_security_warnings ||
 		cstate->cinfo->extra_security_warnings_level == 0)
@@ -579,7 +580,7 @@ detect_unqualified_objects(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 
 		if (cps->raw_parse_tree)
 		{
-			Node *parseTree = cps->raw_parse_tree->stmt;
+			Node	   *parseTree = cps->raw_parse_tree->stmt;
 
 			switch (nodeTag(parseTree))
 			{
@@ -2478,8 +2479,9 @@ plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
 	}
 
 	/*
-	 * This routine is used for almost all expressuins, and then the performance is important.
-	 * Start subtransaction only when fatal_errors is false.
+	 * This routine is used for almost all expressuins, and then the
+	 * performance is important. Start subtransaction only when fatal_errors
+	 * is false.
 	 */
 	oldowner = CurrentResourceOwner;
 	BeginInternalSubTransaction(NULL);

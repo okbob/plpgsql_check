@@ -1211,9 +1211,9 @@ plpgsql_check_is_sql_injection_vulnerable(PLpgSQL_checkstate *cstate,
 										  int *location)
 {
 	/*
-	 * The node is NULL when the expression is not a simple expression (it
-	 * has FROM clause, ...). We cannot to check it, so it cannot be
-	 * considered as safe.
+	 * The node is NULL when the expression is not a simple expression (it has
+	 * FROM clause, ...). We cannot to check it, so it cannot be considered as
+	 * safe.
 	 */
 	if (!node)
 	{
@@ -1517,9 +1517,9 @@ contain_mutable_functions_walker(Node *node, void *context)
 		is_jsonb = ctor->returning->format->format_type == JS_FORMAT_JSONB;
 
 		/*
-		 * Check argument_type => json[b] conversions specifically (the
-		 * result can depend on TimeZone, for example). We still recurse to
-		 * check 'args' below.
+		 * Check argument_type => json[b] conversions specifically (the result
+		 * can depend on TimeZone, for example). We still recurse to check
+		 * 'args' below.
 		 */
 		foreach(lc, ctor->args)
 		{

@@ -450,8 +450,8 @@ plpgsql_check_error_callback(void *arg)
 		MemoryContext oldcxt;
 
 		/*
-		 * Use preallocated 8kB private static error context. Then CopyErrorData()
-		 * should be safe operation.
+		 * Use preallocated 8kB private static error context. Then
+		 * CopyErrorData() should be safe operation.
 		 */
 		oldcxt = MemoryContextSwitchTo(plugin_ErrorContext);
 

@@ -1469,10 +1469,10 @@ trace_assert(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt, tracer_info *tinfo)
 	 * enabled in plpgsql). Theoretically we can catch ERRCODE_ASSERT_FAILURE
 	 * by overwriting error_context_stack, and then print variables content,
 	 * from error_context_stack. Unfortunately, the print_all_variables, can
-	 * build large strings and there is a risk of exhausting ErrorContext.
-	 * So multiple evaluation of assert condition looks more acceptable.
-	 * Usually, there should not be any really volatile expressions, because
-	 * then the assertions are volatile too.
+	 * build large strings and there is a risk of exhausting ErrorContext. So
+	 * multiple evaluation of assert condition looks more acceptable. Usually,
+	 * there should not be any really volatile expressions, because then the
+	 * assertions are volatile too.
 	 */
 	tracer_plugin.assign_expr(estate, (PLpgSQL_datum *) &result, stmt_assert->cond);
 
