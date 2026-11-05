@@ -1223,9 +1223,6 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					plpgsql_check_expr_as_sqlstmt_data(cstate, var->cursor_explicit_expr);
 					plpgsql_check_expr_as_sqlstmt_data(cstate, stmt_open->query);
 
-					if (stmt_open->query != NULL)
-						var->cursor_explicit_expr = stmt_open->query;
-
 					plpgsql_check_expr_as_sqlstmt_data(cstate, stmt_open->argquery);
 
 					if (stmt_open->dynquery)
@@ -1236,17 +1233,18 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 										  false,
 										  NULL,
 										  stmt_open->params);
+					}
 
-						if (!cstate->dyn_stmt_open)
+					if (stmt_open->query || stmt_open->dynquery)
+					{
+						if (!cstate->cursorvars)
 						{
-							MemoryContext oldcxt = MemoryContextSwitchTo(cstate->check_cxt);
-
-							cstate->dyn_stmt_open = palloc0(cstate->estate->ndatums * sizeof(PLpgSQL_stmt_open *));
-
-							MemoryContextSwitchTo(oldcxt);
+							cstate->cursorvars =
+								MemoryContextAllocZero(cstate->check_cxt,
+													   cstate->estate->ndatums * sizeof(plch_cursorvar));
 						}
 
-						cstate->dyn_stmt_open[stmt_open->curvar] = stmt_open;
+						cstate->cursorvars[stmt_open->curvar].stmt_open = stmt_open;
 					}
 
 					plpgsql_check_target(cstate, stmt_open->curvar, NULL, NULL);
@@ -1304,25 +1302,29 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 
 					if (!stmt_fetch->is_move && var)
 					{
+						PLpgSQL_stmt_open *stmt_open = NULL;
+
+						if (cstate->cursorvars)
+							stmt_open = cstate->cursorvars[stmt_fetch->curvar].stmt_open;
+
 						if (var->cursor_explicit_expr != NULL)
 						{
 							plpgsql_check_assignment_to_variable(cstate, var->cursor_explicit_expr,
 																 stmt_fetch->target, -1);
 						}
-						else if (cstate->dyn_stmt_open)
+						else if (stmt_open && stmt_open->query)
 						{
-							/* maybe, the cursor is dynamic */
-							PLpgSQL_stmt_open *stmt_open = cstate->dyn_stmt_open[var->dno];
-
-							if (stmt_open)
-							{
-								check_dynamic_sql(cstate,
-												  stmt,
-												  stmt_open->dynquery,
-												  true,
-												  stmt_fetch->target,
-												  stmt_open->params);
-							}
+							plpgsql_check_assignment_to_variable(cstate, stmt_open->query,
+																 stmt_fetch->target, -1);
+						}
+						else if (stmt_open && stmt_open->dynquery)
+						{
+							check_dynamic_sql(cstate,
+											  stmt,
+											  stmt_open->dynquery,
+											  true,
+											  stmt_fetch->target,
+											  stmt_open->params);
 						}
 					}
 

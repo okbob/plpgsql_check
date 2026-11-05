@@ -1319,3 +1319,64 @@ select * from plpgsql_check_function('sw_case_text', fatal_errors => false);
 
 drop function sw_nonfatal2(int);
 drop function sw_case_text(int);
+
+-- the query of OPEN FOR is not stored in the cursor variable, so the next
+-- OPEN doesn't check it again, the variable is not considered as a bound
+-- cursor, and FETCH uses the query of the last OPEN
+create table sw_open_tab(a int);
+
+create function sw_open_reopen(v numeric)
+returns void as $$
+declare
+  c refcursor;
+  r record;
+begin
+  open c for select a from sw_open_tab where a = v;
+  close c;
+  open c for select 1 as x;
+  fetch c into r;
+  raise notice '%', r.x;
+  close c;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_open_reopen(numeric)', performance_warnings => true);
+
+create function sw_open_assign()
+returns refcursor as $$
+declare
+  c refcursor;
+  d refcursor;
+begin
+  open c for select 1;
+  close c;
+  open d for select 2;
+  c := d;
+  return c;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_open_assign()', compatibility_warnings => true);
+
+create function sw_open_dynamic()
+returns int as $$
+declare
+  c refcursor;
+  r record;
+begin
+  open c for select 1 as a, 2 as b;
+  close c;
+  open c for execute 'select 3 as x';
+  fetch c into r;
+  close c;
+  return r.x;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_open_dynamic()');
+select sw_open_dynamic();
+
+drop function sw_open_reopen(numeric);
+drop function sw_open_assign();
+drop function sw_open_dynamic();
+drop table sw_open_tab;
