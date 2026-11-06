@@ -33,7 +33,7 @@ static int	possibly_closed(int c);
 static int	merge_closing(int c, int c_local, List **exceptions, List *exceptions_local, int err_code);
 static bool exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond);
 static bool found_shadowed_variable(char *varname, PLpgSQL_stmt_stack_item *current, PLpgSQL_checkstate *cstate);
-static void check_dynamic_sql(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, PLpgSQL_expr *query, bool into, PLpgSQL_variable *target, List *params);
+static void check_dynamic_sql(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, PLpgSQL_expr *query, plch_cursorvar *cvar, bool into, PLpgSQL_variable *target, List *params);
 static bool is_inside_protected_block(PLpgSQL_stmt_stack_item *current);
 
 typedef struct DynSQLParams
@@ -731,6 +731,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					check_dynamic_sql(cstate,
 									  stmt,
 									  stmt_dynfors->query,
+									  NULL,
 									  true,
 									  stmt_dynfors->var,
 									  stmt_dynfors->params);
@@ -1084,6 +1085,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						check_dynamic_sql(cstate,
 										  stmt,
 										  stmt_rq->dynquery,
+										  NULL,
 										  false,
 										  NULL,
 										  stmt_rq->params);
@@ -1210,6 +1212,7 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					check_dynamic_sql(cstate,
 									  stmt,
 									  stmt_dynexecute->query,
+									  NULL,
 									  stmt_dynexecute->into,
 									  stmt_dynexecute->target,
 									  stmt_dynexecute->params);
@@ -1221,6 +1224,19 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					PLpgSQL_stmt_open *stmt_open = (PLpgSQL_stmt_open *) stmt;
 					PLpgSQL_var *var = (PLpgSQL_var *) (cstate->estate->datums[stmt_open->curvar]);
 
+					if (!cstate->cursorvars)
+					{
+						cstate->cursorvars =
+							MemoryContextAllocZero(cstate->check_cxt,
+												   cstate->estate->ndatums * sizeof(plch_cursorvar));
+					}
+
+					/* reset cvar, when cursor was reused by second OPEN */
+					if (cstate->cursorvars[stmt_open->curvar].stmt_open != stmt_open)
+						memset(&cstate->cursorvars[stmt_open->curvar], 0, sizeof(plch_cursorvar));
+
+					cstate->cursorvars[stmt_open->curvar].stmt_open = stmt_open;
+
 					plpgsql_check_expr_as_sqlstmt_data(cstate, var->cursor_explicit_expr);
 					plpgsql_check_expr_as_sqlstmt_data(cstate, stmt_open->query);
 
@@ -1231,21 +1247,10 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						check_dynamic_sql(cstate,
 										  stmt,
 										  stmt_open->dynquery,
+										  &cstate->cursorvars[stmt_open->curvar],
 										  false,
 										  NULL,
 										  stmt_open->params);
-					}
-
-					if (stmt_open->query || stmt_open->dynquery)
-					{
-						if (!cstate->cursorvars)
-						{
-							cstate->cursorvars =
-								MemoryContextAllocZero(cstate->check_cxt,
-													   cstate->estate->ndatums * sizeof(plch_cursorvar));
-						}
-
-						cstate->cursorvars[stmt_open->curvar].stmt_open = stmt_open;
 					}
 
 					plpgsql_check_target(cstate, stmt_open->curvar, NULL, NULL);
@@ -1299,34 +1304,46 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 					PLpgSQL_stmt_fetch *stmt_fetch = (PLpgSQL_stmt_fetch *) stmt;
 					PLpgSQL_var *var = (PLpgSQL_var *) (cstate->estate->datums[stmt_fetch->curvar]);
 
+					if (!cstate->cursorvars)
+					{
+						cstate->cursorvars =
+							MemoryContextAllocZero(cstate->check_cxt,
+												   cstate->estate->ndatums * sizeof(plch_cursorvar));
+					}
+
 					check_variable(cstate, stmt_fetch->target);
 
 					if (!stmt_fetch->is_move && var)
 					{
 						PLpgSQL_stmt_open *stmt_open = NULL;
+						plch_cursorvar *cvar;
 
-						if (cstate->cursorvars)
-							stmt_open = cstate->cursorvars[stmt_fetch->curvar].stmt_open;
+						cvar = &cstate->cursorvars[stmt_fetch->curvar];
 
-						if (var->cursor_explicit_expr != NULL)
+						stmt_open = cstate->cursorvars[stmt_fetch->curvar].stmt_open;
+
+						if (!cvar->query || cvar->query->plan)
 						{
-							plpgsql_check_assignment_to_variable(cstate, var->cursor_explicit_expr,
-																 stmt_fetch->target, -1);
+							if (cvar->query)
+							{
+								plpgsql_check_assignment_to_variable(cstate, cvar->query,
+																	 stmt_fetch->target, -1);
+							}
+							else if (stmt_open && stmt_open->dynquery)
+							{
+								check_dynamic_sql(cstate,
+												  stmt,
+												  stmt_open->dynquery,
+												  &cstate->cursorvars[stmt_fetch->curvar],
+												  true,
+												  stmt_fetch->target,
+												  stmt_open->params);
+							}
+							else
+								plpgsql_check_target(cstate, stmt_fetch->target->dno, NULL, NULL);
 						}
-						else if (stmt_open && stmt_open->query)
-						{
-							plpgsql_check_assignment_to_variable(cstate, stmt_open->query,
-																 stmt_fetch->target, -1);
-						}
-						else if (stmt_open && stmt_open->dynquery)
-						{
-							check_dynamic_sql(cstate,
-											  stmt,
-											  stmt_open->dynquery,
-											  true,
-											  stmt_fetch->target,
-											  stmt_open->params);
-						}
+						else
+							plpgsql_check_target(cstate, stmt_fetch->target->dno, NULL, NULL);
 					}
 
 					plpgsql_check_expr(cstate, stmt_fetch->expr);
@@ -2154,6 +2171,7 @@ static void
 check_dynamic_sql(PLpgSQL_checkstate *cstate,
 				  PLpgSQL_stmt *stmt,
 				  PLpgSQL_expr *query,
+				  plch_cursorvar *cvar,
 				  bool into,
 				  PLpgSQL_variable *target,
 				  List *params)
@@ -2167,6 +2185,9 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 	volatile bool raise_unknown_rec_warning = false;
 	volatile bool known_type_of_dynexpr = false;
+
+	volatile bool is_error = false;
+	volatile bool no_report = false;
 
 	/*
 	 * possible checks:
@@ -2184,7 +2205,6 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	 * used only placeholders %I and %L, then we can try to check syntax of
 	 * embedded query.
 	 */
-
 	foreach(l, params)
 	{
 		PLpgSQL_expr *param = (PLpgSQL_expr *) lfirst(l);
@@ -2292,6 +2312,32 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		expr_is_const = (dynquery != NULL);
 	}
 
+	/*
+	 * Don't try to repeat dynquery check when previous check failed.
+	 */
+	if (dynquery)
+	{
+		if (cvar && cvar->query && !cvar->query->plan)
+		{
+			dynquery = NULL;
+			cvar = NULL;
+			is_error = true;
+			no_report = true;
+		}
+	}
+
+	/*
+	 * Don't repeat checks and warnings on one dynamic query multiply
+	 * referenced by OPEN and FETCH stmt.
+	 */
+	if (cvar)
+	{
+		if (cvar->dynquery_is_checked)
+			no_report = true;
+		else
+			cvar->dynquery_is_checked = true;
+	}
+
 	if (dynquery)
 	{
 		PLpgSQL_expr *dynexpr = NULL;
@@ -2319,6 +2365,9 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 															 dynexpr,
 															 (ParserSetupHook) dynsql_parser_setup,
 															 &dsp);
+
+				if (cstate->last_expr == dynexpr && !cstate->last_expr_plan_is_valid)
+					is_ok = false;
 			}
 			else
 			{
@@ -2332,11 +2381,16 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 																		  dynexpr,
 																		  (ParserSetupHook) dynsql_parser_setup,
 																		  &dsp);
-				if (!is_ok)
-					cstate->found_unknown_query = true;
 			}
 
-			if (is_ok && expr_is_const && !cstate->found_mp && (!params || !dsp.use_params))
+			if (!is_ok)
+			{
+				cstate->found_unknown_query = true;
+				is_error = true;
+				no_report = true;
+			}
+
+			if (!no_report && expr_is_const && !cstate->found_mp && (!params || !dsp.use_params))
 			{
 				/* probably useless dynamic command */
 				plpgsql_check_put_error(cstate,
@@ -2348,7 +2402,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 										0, NULL, NULL);
 			}
 
-			if (is_ok && params && !dsp.use_params)
+			if (!no_report && params && !dsp.use_params)
 			{
 				plpgsql_check_put_error(cstate,
 										0, 0,
@@ -2391,7 +2445,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		/* when we have not dynquery, we cannot to do volatility check */
 		cstate->found_unknown_query = true;
 
-	if (!expr_is_const)
+	if (!no_report && !expr_is_const)
 	{
 		/*
 		 * execute string is not constant (is not safe), but we can check
@@ -2447,9 +2501,10 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 		check_variable(cstate, target);
 
-		if (raise_unknown_rec_warning ||
-			(target->dtype == PLPGSQL_DTYPE_REC &&
-			 !has_assigned_tupdesc(cstate, (PLpgSQL_rec *) target)))
+		if (!is_error &&
+			(raise_unknown_rec_warning ||
+			 (target->dtype == PLPGSQL_DTYPE_REC &&
+			  !has_assigned_tupdesc(cstate, (PLpgSQL_rec *) target))))
 		{
 			if (!bms_is_member(target->dno, cstate->typed_variables))
 				plpgsql_check_put_error(cstate,

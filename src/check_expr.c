@@ -613,6 +613,90 @@ detect_unqualified_objects(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 }
 
 /*
+ * Some cstate settings can be deduced from the current cstate->estate
+ * and from the expression.
+ *
+ * One usage is protection against repeated reporting of errors
+ * related to repeated referenced cursors.
+ */
+static void
+precheck_cstate_set(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
+{
+	PLpgSQL_stmt *stmt = cstate->estate->err_stmt;
+
+	cstate->last_expr = expr;
+	cstate->last_expr_plan_is_valid = false;
+	cstate->skip_query_checks = false;
+
+	if ((stmt->cmd_type == PLPGSQL_STMT_OPEN) ||
+		(stmt->cmd_type == PLPGSQL_STMT_FETCH))
+	{
+		PLpgSQL_stmt_open *stmt_open;
+		PLpgSQL_var *var;
+		plch_cursorvar *cvar;
+		bool		expr_is_cursor_query = false;
+		bool		expr_is_dynquery = false;
+		PLpgSQL_expr *cursor_query = NULL;
+
+		if (stmt->cmd_type == PLPGSQL_STMT_OPEN)
+		{
+			stmt_open = (PLpgSQL_stmt_open *) stmt;
+			var = (PLpgSQL_var *) (cstate->estate->datums[stmt_open->curvar]);
+			cvar = &cstate->cursorvars[stmt_open->curvar];
+		}
+		else
+		{
+			PLpgSQL_stmt_fetch *stmt_fetch = (PLpgSQL_stmt_fetch *) stmt;
+
+			var = (PLpgSQL_var *) (cstate->estate->datums[stmt_fetch->curvar]);
+			cvar = &cstate->cursorvars[stmt_fetch->curvar];
+			stmt_open = cvar->stmt_open;
+		}
+
+		if (var && var->cursor_explicit_expr == expr)
+		{
+			expr_is_cursor_query = true;
+			expr_is_dynquery = false;
+		}
+		else if (stmt_open && stmt_open->query == expr)
+		{
+			expr_is_cursor_query = true;
+			expr_is_dynquery = false;
+		}
+		else if (stmt_open && stmt_open->dynquery == expr)
+		{
+			expr_is_cursor_query = true;
+			expr_is_dynquery = true;
+		}
+		else if (stmt_open && stmt_open->dynquery && cstate->is_dynsql)
+		{
+			expr_is_cursor_query = true;
+			expr_is_dynquery = false;
+		}
+
+		if (expr_is_cursor_query)
+		{
+			if (!expr_is_dynquery)
+				cvar->query = expr;
+
+			if (stmt->cmd_type == PLPGSQL_STMT_FETCH)
+				cstate->skip_query_checks = true;
+		}
+	}
+}
+
+static void
+postcheck_cstate_set(PLpgSQL_checkstate *cstate,
+					 PLpgSQL_expr *expr, ErrorData *edata)
+{
+	Assert(cstate->last_expr == expr);
+
+	cstate->skip_query_checks = false;
+
+	cstate->sqlerrcode = edata ? edata->sqlerrcode : ERRCODE_SUCCESSFUL_COMPLETION;
+}
+
+/*
  * Generate a prepared plan - this is simplified copy from pl_exec.c Is not
  * necessary to check simple plan. The planning is forced when plancache is
  * not valid.
@@ -629,8 +713,7 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 	CachedPlanSource *plansource = NULL;
 	bool		is_valid;
 
-	cstate->last_expr = expr;
-	cstate->last_expr_plan_is_valid = false;
+	Assert(cstate->last_expr == expr);
 
 	do
 	{
@@ -650,6 +733,9 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 		}
 	}
 	while (!is_valid);
+
+	if (cstate->skip_query_checks)
+		return;
 
 	if (list_length(expr->plan->plancache_list) > 1)
 	{
@@ -752,7 +838,26 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 void
 plch_expr_prepare_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 {
-	prepare_plan(cstate, expr, 0, NULL, NULL, false);
+	PG_TRY();
+	{
+		precheck_cstate_set(cstate, expr);
+		prepare_plan(cstate, expr, 0, NULL, NULL, false);
+		postcheck_cstate_set(cstate, expr, NULL);
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		MemoryContextSwitchTo(cstate->check_cxt);
+		edata = CopyErrorData();
+
+		postcheck_cstate_set(cstate, expr, edata);
+
+		FreeErrorData(edata);
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 }
 
 static const char *
@@ -1161,12 +1266,13 @@ get_cached_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *has_result
 
 	Assert(cstate->last_expr == expr);
 
-	cstate->last_expr_plan_is_valid = false;
-
 	plansource = plpgsql_check_get_plan_source(cstate, expr->plan);
+
+	/* the plan can be empty */
 	if (!plansource)
 	{
 		*has_result_desc = false;
+		cstate->last_expr_plan_is_valid = true;
 		return NULL;
 	}
 
@@ -1174,6 +1280,7 @@ get_cached_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *has_result
 
 	cplan = GetCachedPlan(plansource, NULL, CurrentResourceOwner, NULL);
 
+	Assert(cstate->last_expr == expr);
 	cstate->last_expr_plan_is_valid = true;
 
 	return cplan;
@@ -1186,6 +1293,9 @@ get_cached_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *has_result
 static void
 plan_checks(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str)
 {
+	if (cstate->skip_query_checks)
+		return;
+
 	/* disallow write op in read only function */
 	prohibit_write_plan(cstate, cplan, query_str);
 
@@ -1307,8 +1417,8 @@ check_fishy_qual(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str)
 	}
 }
 
-Node *
-plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool force_plan_checks)
+static Node *
+_plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool force_plan_checks)
 {
 	PlannedStmt *_stmt;
 	CachedPlan *cplan;
@@ -1354,6 +1464,36 @@ plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 
 	return result;
 }
+
+Node *
+plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool force_plan_checks)
+{
+	Node	   *result;
+
+	precheck_cstate_set(cstate, expr);
+
+	PG_TRY();
+	{
+		result = _plpgsql_check_expr_get_node(cstate, expr, force_plan_checks);
+		postcheck_cstate_set(cstate, expr, NULL);
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		MemoryContextSwitchTo(cstate->check_cxt);
+		edata = CopyErrorData();
+
+		postcheck_cstate_set(cstate, expr, edata);
+		FreeErrorData(edata);
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	return result;
+}
+
 
 /*
  * Returns Const Value from expression if it is possible.
@@ -1517,8 +1657,7 @@ plpgsql_check_expr_generic(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 	BeginInternalSubTransaction(NULL);
 	MemoryContextSwitchTo(oldCxt);
 
-	cstate->last_expr = expr;
-	cstate->sqlerrcode = ERRCODE_SUCCESSFUL_COMPLETION;
+	precheck_cstate_set(cstate, expr);
 
 	PG_TRY();
 	{
@@ -1528,6 +1667,8 @@ plpgsql_check_expr_generic(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
+
+		postcheck_cstate_set(cstate, expr, NULL);
 	}
 	PG_CATCH();
 	{
@@ -1541,6 +1682,8 @@ plpgsql_check_expr_generic(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
 
+		postcheck_cstate_set(cstate, expr, edata);
+
 		/*
 		 * If fatal_errors is true, we just propagate the error up to the
 		 * highest level. Otherwise the error is appended to our current list
@@ -1548,9 +1691,6 @@ plpgsql_check_expr_generic(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 		 */
 		if (cstate->cinfo->fatal_errors)
 			ReThrowError(edata);
-
-		Assert(cstate->last_expr == expr);
-		cstate->sqlerrcode = edata->sqlerrcode;
 
 		plpgsql_check_put_error_edata(cstate, edata);
 		FreeErrorData(edata);
@@ -1569,8 +1709,7 @@ plpgsql_check_expr_generic_with_parser_setup(PLpgSQL_checkstate *cstate,
 	ResourceOwner oldowner;
 	MemoryContext oldCxt = CurrentMemoryContext;
 
-	cstate->last_expr = expr;
-	cstate->sqlerrcode = ERRCODE_SUCCESSFUL_COMPLETION;
+	precheck_cstate_set(cstate, expr);
 
 	oldowner = CurrentResourceOwner;
 	BeginInternalSubTransaction(NULL);
@@ -1584,6 +1723,8 @@ plpgsql_check_expr_generic_with_parser_setup(PLpgSQL_checkstate *cstate,
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
+
+		postcheck_cstate_set(cstate, expr, NULL);
 	}
 	PG_CATCH();
 	{
@@ -1597,6 +1738,8 @@ plpgsql_check_expr_generic_with_parser_setup(PLpgSQL_checkstate *cstate,
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
 
+		postcheck_cstate_set(cstate, expr, edata);
+
 		/*
 		 * If fatal_errors is true, we just propagate the error up to the
 		 * highest level. Otherwise the error is appended to our current list
@@ -1604,9 +1747,6 @@ plpgsql_check_expr_generic_with_parser_setup(PLpgSQL_checkstate *cstate,
 		 */
 		if (cstate->cinfo->fatal_errors)
 			ReThrowError(edata);
-
-		Assert(cstate->last_expr == expr);
-		cstate->sqlerrcode = edata->sqlerrcode;
 
 		plpgsql_check_put_error_edata(cstate, edata);
 		FreeErrorData(edata);
@@ -1644,8 +1784,7 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
 		return;
 	}
 
-	cstate->last_expr = expr;
-	cstate->sqlerrcode = ERRCODE_SUCCESSFUL_COMPLETION;
+	precheck_cstate_set(cstate, expr);
 
 	oldowner = CurrentResourceOwner;
 	BeginInternalSubTransaction(NULL);
@@ -1686,6 +1825,8 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
+
+		postcheck_cstate_set(cstate, expr, NULL);
 	}
 	PG_CATCH();
 	{
@@ -1699,6 +1840,8 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
 
+		postcheck_cstate_set(cstate, expr, edata);
+
 		/*
 		 * If fatal_errors is true, we just propagate the error up to the
 		 * highest level. Otherwise the error is appended to our current list
@@ -1706,9 +1849,6 @@ plpgsql_check_expr_with_scalar_type(PLpgSQL_checkstate *cstate,
 		 */
 		if (cstate->cinfo->fatal_errors)
 			ReThrowError(edata);
-
-		Assert(cstate->last_expr == expr);
-		cstate->sqlerrcode = edata->sqlerrcode;
 
 		plpgsql_check_put_error_edata(cstate, edata);
 		FreeErrorData(edata);
@@ -1741,8 +1881,7 @@ plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
 	BeginInternalSubTransaction(NULL);
 	MemoryContextSwitchTo(oldCxt);
 
-	cstate->last_expr = expr;
-	cstate->sqlerrcode = ERRCODE_SUCCESSFUL_COMPLETION;
+	precheck_cstate_set(cstate, expr);
 
 	PG_TRY();
 	{
@@ -1886,6 +2025,8 @@ plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
+
+		postcheck_cstate_set(cstate, expr, NULL);
 	}
 	PG_CATCH();
 	{
@@ -1899,6 +2040,8 @@ plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
 
+		postcheck_cstate_set(cstate, expr, edata);
+
 		/*
 		 * If fatal_errors is true, we just propagate the error up to the
 		 * highest level. Otherwise the error is appended to our current list
@@ -1906,9 +2049,6 @@ plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
 		 */
 		if (cstate->cinfo->fatal_errors)
 			ReThrowError(edata);
-
-		Assert(cstate->last_expr == expr);
-		cstate->sqlerrcode = edata->sqlerrcode;
 
 		plpgsql_check_put_error_edata(cstate, edata);
 		FreeErrorData(edata);
@@ -1998,9 +2138,6 @@ plpgsql_check_expr_as_rvalue_with_parser_setup_fatal(PLpgSQL_checkstate *cstate,
 	 */
 	int			save_target_param = expr->target_param;
 
-	cstate->last_expr = expr;
-	cstate->sqlerrcode = ERRCODE_SUCCESSFUL_COMPLETION;
-
 	if (targetdno != -1)
 	{
 		plpgsql_check_target(cstate, targetdno, &expected_typoid, &expected_typmod);
@@ -2035,6 +2172,8 @@ plpgsql_check_expr_as_rvalue_with_parser_setup_fatal(PLpgSQL_checkstate *cstate,
 			}
 		}
 	}
+
+	precheck_cstate_set(cstate, expr);
 
 	PG_TRY();
 	{
@@ -2437,16 +2576,26 @@ no_other_check:
 
 		if (free_local_err_text)
 			pfree(local_err_text);
+
+		expr->target_param = save_target_param;
+		postcheck_cstate_set(cstate, expr, NULL);
 	}
 	PG_CATCH();
 	{
+		ErrorData  *edata;
+
 		expr->target_param = save_target_param;
+
+		MemoryContextSwitchTo(cstate->check_cxt);
+		edata = CopyErrorData();
+
+		postcheck_cstate_set(cstate, expr, NULL);
+
+		FreeErrorData(edata);
 
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	expr->target_param = save_target_param;
 }
 
 /*
@@ -2509,9 +2658,6 @@ plpgsql_check_expr_as_rvalue_with_parser_setup(PLpgSQL_checkstate *cstate,
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
-
-		Assert(cstate->last_expr == expr);
-		cstate->sqlerrcode = edata->sqlerrcode;
 
 		plpgsql_check_put_error_edata(cstate, edata);
 		FreeErrorData(edata);
@@ -2591,8 +2737,7 @@ plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate,
 		return true;
 	}
 
-	cstate->last_expr = expr;
-	cstate->sqlerrcode = ERRCODE_SUCCESSFUL_COMPLETION;
+	precheck_cstate_set(cstate, expr);
 
 	oldowner = CurrentResourceOwner;
 	BeginInternalSubTransaction(NULL);
@@ -2617,6 +2762,8 @@ plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate,
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
+
+		postcheck_cstate_set(cstate, expr, NULL);
 	}
 	PG_CATCH();
 	{
@@ -2630,6 +2777,8 @@ plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate,
 		MemoryContextSwitchTo(oldCxt);
 		CurrentResourceOwner = oldowner;
 
+		postcheck_cstate_set(cstate, expr, edata);
+
 		result = false;
 
 		/*
@@ -2639,9 +2788,6 @@ plpgsql_check_expr_as_sqlstmt(PLpgSQL_checkstate *cstate,
 		 */
 		if (cstate->cinfo->fatal_errors)
 			ReThrowError(edata);
-
-		Assert(cstate->last_expr == expr);
-		cstate->sqlerrcode = edata->sqlerrcode;
 
 		plpgsql_check_put_error_edata(cstate, edata);
 		FreeErrorData(edata);

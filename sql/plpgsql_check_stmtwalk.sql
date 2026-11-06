@@ -1380,3 +1380,70 @@ drop function sw_open_reopen(numeric);
 drop function sw_open_assign();
 drop function sw_open_dynamic();
 drop table sw_open_tab;
+
+
+-- FETCH doesn't check the query of the cursor again (the query was checked
+-- by OPEN), it checks only the assignment of the result of the query
+create table sw_fetch_tab(a int);
+
+create function sw_fetch_static(v numeric)
+returns int as $$
+declare
+  c cursor for select a from sw_fetch_tab where a = v;
+  d refcursor;
+  r record;
+  s int;
+begin
+  open c;
+  fetch c into r;
+  open d for select a from sw_fetch_tab where a = v;
+  fetch d into s;
+  return r.a + s;
+end;
+$$ language plpgsql stable;
+
+select * from plpgsql_check_function('sw_fetch_static(numeric)', performance_warnings => true);
+
+create function sw_fetch_dynamic(tname text)
+returns int as $$
+declare
+  c refcursor;
+  r record;
+  q text;
+begin
+  open c for execute 'select * from ' || tname;
+  fetch c into r;
+  close c;
+  q := 'select 1 as a';
+  open c for execute q;
+  q := 'select 2 as b';
+  fetch c into r;
+  close c;
+  return r.a;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_fetch_dynamic(text)', security_warnings => true);
+select sw_fetch_dynamic('sw_fetch_tab');
+
+create function sw_fetch_nonfatal()
+returns void as $$
+declare
+  c refcursor;
+  r record;
+begin
+  open c for execute 'select nocol from sw_fetch_tab';
+  fetch c into r;
+  close c;
+  open c for select nocol from sw_fetch_tab;
+  fetch c into r;
+  close c;
+end;
+$$ language plpgsql;
+
+select * from plpgsql_check_function('sw_fetch_nonfatal()', fatal_errors => false, extra_warnings => false);
+
+drop function sw_fetch_static(numeric);
+drop function sw_fetch_dynamic(text);
+drop function sw_fetch_nonfatal();
+drop table sw_fetch_tab;

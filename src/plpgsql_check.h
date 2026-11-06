@@ -161,6 +161,23 @@ typedef struct plpgsql_check_pragma_vector
 typedef struct plch_cursorvar
 {
 	PLpgSQL_stmt_open *stmt_open;
+
+	/*
+	 * Currently used query at OPEN stmt execution. We need to hold dynamicly
+	 * genared query (plan) from OPEN stmt execution time, because at the
+	 * FETCH stmt execution time, the constants can be different, and we can
+	 * get different dynquery. Because we need to hold the query for dynamic
+	 * cursors, we can use it for all cursor as a flag of first processing and
+	 * ending state of processing (assigned query without plan signalizes not
+	 * valid query.
+	 */
+	PLpgSQL_expr *query;
+
+	/*
+	 * When it true, then dynamic query was already checked, and we don't want
+	 * to repeat it. It is a protection against repeated security errors.
+	 */
+	bool		dynquery_is_checked;
 } plch_cursorvar;
 
 typedef struct PLpgSQL_checkstate
@@ -207,6 +224,8 @@ typedef struct PLpgSQL_checkstate
 								 * allowed */
 	bool		found_mp;		/* true, when multiple plan was used, disable
 								 * useless dynsql query warning */
+	bool		skip_query_checks;	/* true, when we don't want to run query
+									 * checks (because it was done before */
 	bool		was_pragma;		/* true, when last expression was a
 								 * plpgsql_check pragma */
 	plpgsql_check_pragma_vector pragma_vector;
