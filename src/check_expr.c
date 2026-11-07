@@ -636,7 +636,6 @@ precheck_cstate_set(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 		plch_cursorvar *cvar;
 		bool		expr_is_cursor_query = false;
 		bool		expr_is_dynquery = false;
-		PLpgSQL_expr *cursor_query = NULL;
 
 		if (stmt->cmd_type == PLPGSQL_STMT_OPEN)
 		{
