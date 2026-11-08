@@ -255,6 +255,13 @@ typedef struct PLpgSQL_checkstate
 	PLpgSQL_expr *last_expr;
 	bool		last_expr_plan_is_valid;
 	bool		sqlerrcode;
+
+	/*
+	 * safe guard - precheck_cstate_set and postcheck_cstate_set should
+	 * be called in correct order - now these routines are idempotent, but
+	 * it should not be in future (or there can be some other dependencies).
+	 */
+	bool		in_query_check;
 } PLpgSQL_checkstate;
 
 /*

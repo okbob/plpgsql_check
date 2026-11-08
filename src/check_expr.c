@@ -624,6 +624,15 @@ precheck_cstate_set(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 {
 	PLpgSQL_stmt *stmt = cstate->estate->err_stmt;
 
+	if (cstate->in_query_check)
+	{
+		elog(WARNING, "nested precheck_cstate_set call");
+		Assert(cstate->last_expr == expr);
+		return;
+	}
+
+	cstate->in_query_check = true;
+
 	cstate->last_expr = expr;
 	cstate->last_expr_plan_is_valid = false;
 	cstate->skip_query_checks = false;
@@ -689,6 +698,14 @@ postcheck_cstate_set(PLpgSQL_checkstate *cstate,
 					 PLpgSQL_expr *expr, ErrorData *edata)
 {
 	Assert(cstate->last_expr == expr);
+
+	if (!cstate->in_query_check)
+	{
+		elog(WARNING, "useless postcheck_cstate_set call");
+		return;
+	}
+
+	cstate->in_query_check = false;
 
 	cstate->skip_query_checks = false;
 
@@ -1464,6 +1481,13 @@ _plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, boo
 	return result;
 }
 
+/*
+ * Wrapper for _plpgsql_check_expr_get_node callable from outside.
+ * don't call this routine inside this module, because it starts
+ * query check process, and usually in routines inside this module,
+ * this process is started already (you can check cstate->in_query_check
+ * state flag).
+ */
 Node *
 plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool force_plan_checks)
 {
@@ -1503,7 +1527,7 @@ plpgsql_check_expr_get_node(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool
 static Const *
 expr_get_const(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
 {
-	Node	   *node = plpgsql_check_expr_get_node(cstate, expr, true);
+	Node	   *node = _plpgsql_check_expr_get_node(cstate, expr, true);
 
 	if (node && node->type == T_Const)
 		return (Const *) node;
@@ -1625,6 +1649,19 @@ plpgsql_check_expr_get_string(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, in
 
 	return plpgsql_check_get_const_string(cstate, node, location);
 }
+
+static char *
+_plpgsql_check_expr_get_string(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, int *location)
+{
+
+	Node	   *node = _plpgsql_check_expr_get_node(cstate, expr, false);
+
+	if (!node)
+		return NULL;
+
+	return plpgsql_check_get_const_string(cstate, node, location);
+}
+
 
 static void
 force_plan_checks(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr)
@@ -1907,7 +1944,7 @@ plpgsql_check_returned_expr_with_parser_setup(PLpgSQL_checkstate *cstate,
 		if (cstate->estate->func->fn_rettype == REFCURSOROID &&
 			cstate->cinfo->compatibility_warnings)
 		{
-			Node	   *node = plpgsql_check_expr_get_node(cstate, expr, false);
+			Node	   *node = _plpgsql_check_expr_get_node(cstate, expr, false);
 			bool		is_ok = true;
 
 			if (node && IsA((Node *) node, Const))
@@ -2196,7 +2233,6 @@ plpgsql_check_expr_as_rvalue_with_parser_setup_fatal(PLpgSQL_checkstate *cstate,
 		}
 
 		prepare_plan(cstate, expr, 0, parser_setup, arg, is_expression);
-		/* record all variables used by the query */
 
 		if (expr->target_param != -1)
 		{
@@ -2205,7 +2241,7 @@ plpgsql_check_expr_as_rvalue_with_parser_setup_fatal(PLpgSQL_checkstate *cstate,
 			Oid			target_typoid = InvalidOid;
 			Oid			value_typoid = InvalidOid;
 
-			node = plpgsql_check_expr_get_node(cstate, expr, false);
+			node = _plpgsql_check_expr_get_node(cstate, expr, false);
 
 			if (node && exprType((Node *) node) != expected_typoid)
 			{
@@ -2360,7 +2396,7 @@ plpgsql_check_expr_as_rvalue_with_parser_setup_fatal(PLpgSQL_checkstate *cstate,
 
 			if (var->dtype == PLPGSQL_DTYPE_VAR && var->datatype->typoid == REFCURSOROID)
 			{
-				Node	   *node = plpgsql_check_expr_get_node(cstate, expr, false);
+				Node	   *node = _plpgsql_check_expr_get_node(cstate, expr, false);
 				bool		is_declare_cursor;
 				bool		is_ok = true;
 
@@ -2427,7 +2463,7 @@ plpgsql_check_expr_as_rvalue_with_parser_setup_fatal(PLpgSQL_checkstate *cstate,
 					 */
 					if (!use_element_type)
 					{
-						Node	   *node = plpgsql_check_expr_get_node(cstate, expr, false);
+						Node	   *node = _plpgsql_check_expr_get_node(cstate, expr, false);
 						int			location;
 
 						is_safe = !plpgsql_check_is_sql_injection_vulnerable(cstate, expr, node, &location);
@@ -2467,7 +2503,7 @@ plpgsql_check_expr_as_rvalue_with_parser_setup_fatal(PLpgSQL_checkstate *cstate,
 			{
 				char	   *str;
 
-				str = plpgsql_check_expr_get_string(cstate, expr, NULL);
+				str = _plpgsql_check_expr_get_string(cstate, expr, NULL);
 
 				/*
 				 * We are not able take an element from an array string. We

@@ -1390,6 +1390,7 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	/* for simple string constants tracing */
 	cstate->strconstvars = NULL;
 
+	cstate->in_query_check = false;
 }
 
 /*
