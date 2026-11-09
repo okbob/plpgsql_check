@@ -19,9 +19,14 @@
  * pldbgapi3 enhancing pl debug API and implementation allows to register
  * more plugins. Against previous implementation (pldbgapi2), it doesn't
  * use fmgr API. Cleaning statement stack after an exception is implemented
- * by usage memory context reset callback. The main advantage of this design
- * is possibility to access function's runtime data, that are accessible at this
- * time.
+ * by usage memory context reset callback. Main reason why I leaved fmgr API
+ * was a one widely used extension developed (and used) by Supabase. One
+ * feaure in this extensions breaks all extension that uses fmgr API.
+ *
+ * Attention: the content of estate variable can be already corrupted
+ * when memory context reset callback is called, because estate is on the
+ * stack! But (in dependency on used memory context) the AST should be
+ * valid.
  *
  *
  */
