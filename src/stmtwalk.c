@@ -1519,6 +1519,8 @@ check_stmts(PLpgSQL_checkstate *cstate, List *stmts, int *closing, List **except
 
 	current_stmts.outer = cstate->top_stmts;
 	current_stmts.invalidate_strconstvars = NULL;
+
+	/* cppcheck-suppress autoVariables */
 	cstate->top_stmts = &current_stmts;
 
 	PG_TRY();
