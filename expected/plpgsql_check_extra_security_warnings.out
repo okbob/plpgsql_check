@@ -2,6 +2,7 @@ load 'plpgsql_check';
 set client_min_messages to warning;
 create extension if not exists plpgsql_check;
 set client_min_messages to notice;
+create schema fxess;
 create or replace function fx_extra_security()
 returns int as $$
 begin
@@ -34,22 +35,25 @@ end;
 $$ language plpgsql
 set search_path = 'pg_catalog';
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 1);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ security extra:00000:The "pg_temp" is not included in the SEARCH_PATH.
+(1 row)
 
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ security extra:00000:The "pg_temp" is not included in the SEARCH_PATH.
+(1 row)
 
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 3);
                          plpgsql_check_function                         
 ------------------------------------------------------------------------
+ security extra:00000:The "pg_temp" is not included in the SEARCH_PATH.
  security extra:00000:3:RETURN:column identifier is not qualified
  Query: (select pg_catalog.count(relname) + 1 from pg_catalog.pg_class)
  --                              ^
-(3 rows)
+(4 rows)
 
 create or replace function fx_extra_security()
 returns int as $$
@@ -59,17 +63,19 @@ end;
 $$ language plpgsql
 set search_path = 'pg_catalog';
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 3);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ security extra:00000:The "pg_temp" is not included in the SEARCH_PATH.
+(1 row)
 
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 4);
                            plpgsql_check_function                           
 ----------------------------------------------------------------------------
+ security extra:00000:The "pg_temp" is not included in the SEARCH_PATH.
  security extra:00000:3:RETURN:operator identifier is not qualified
  Query: (select pg_catalog.count(c.relname) + 1 from pg_catalog.pg_class c)
  --             ^
-(3 rows)
+(4 rows)
 
 create or replace function fx_extra_security()
 returns int as $$
@@ -79,9 +85,10 @@ end;
 $$ language plpgsql
 set search_path = 'pg_catalog';
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 4);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ security extra:00000:The "pg_temp" is not included in the SEARCH_PATH.
+(1 row)
 
 drop function fx_extra_security();
 create or replace function fx_extra_security()
@@ -92,12 +99,13 @@ end;
 $$ language plpgsql
 set search_path = 'pg_catalog';
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
-                     plpgsql_check_function                     
-----------------------------------------------------------------
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ security extra:00000:The "pg_temp" is not included in the SEARCH_PATH.
  security extra:00000:3:RETURN:type identifier is not qualified
  Query: 'hello'::text
  --              ^
-(3 rows)
+(4 rows)
 
 create or replace function fx_extra_security()
 returns text as $$
@@ -107,16 +115,17 @@ end;
 $$ language plpgsql
 set search_path = 'pg_catalog';
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ security extra:00000:The "pg_temp" is not included in the SEARCH_PATH.
+(1 row)
 
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 5);
 ERROR:  extra_security_warnings_level 5 is outside the valid range 0..4
 drop function fx_extra_security();
 -- names of CTE, transition tables and relations in FOR UPDATE OF
 -- clause cannot be qualified, so they should not be reported
-create table fx_extra_security_t(a int);
+create table fxess.fx_extra_security_t(a int);
 create or replace function fx_extra_security()
 returns int as $$
 declare r int;
@@ -129,19 +138,20 @@ begin
 
   select s.a into r from (with w as (select 1 as a) select w.a from w) s;
 
-  select t.a into r from public.fx_extra_security_t t for update of t;
+  select t.a into r from fxess.fx_extra_security_t t for update of t;
 
-  with u as (update public.fx_extra_security_t set a = 1 returning a)
-    insert into public.fx_extra_security_t select u.a from u;
+  with u as (update fxess.fx_extra_security_t set a = 1 returning a)
+    insert into fxess.fx_extra_security_t select u.a from u;
 
   return r;
 end;
 $$ language plpgsql
-set search_path = pg_catalog, public;
+set search_path = pg_catalog, fxess;
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ security extra:00000:The "pg_temp" is not included in the SEARCH_PATH.
+(1 row)
 
 -- but tables should be reported, although there is a CTE with same name
 create or replace function fx_extra_security()
@@ -164,10 +174,11 @@ begin
   return r;
 end;
 $$ language plpgsql
-set search_path = pg_catalog, public;
+set search_path = pg_catalog, fxess;
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
                                                   plpgsql_check_function                                                  
 --------------------------------------------------------------------------------------------------------------------------
+ security extra:00000:The "pg_temp" is not included in the SEARCH_PATH.
  security extra:00000:5:SQL statement:table identifier is not qualified
  Query: with fx_extra_security_t as (select 1 as a)
             delete from fx_extra_security_t where a in (select c.a from fx_extra_security_t c)
@@ -180,7 +191,7 @@ select * from plpgsql_check_function('fx_extra_security', extra_security_warning
  Query: select s.a            from (with fx_extra_security_t as (select 1 as a) select c.a from fx_extra_security_t c) s,
                  fx_extra_security_t
  --              ^
-(12 rows)
+(13 rows)
 
 drop function fx_extra_security();
 create or replace function fx_extra_security_trg()
@@ -193,45 +204,47 @@ begin
 end;
 $$ language plpgsql
 set search_path = 'pg_catalog';
-select * from plpgsql_check_function('fx_extra_security_trg()', 'fx_extra_security_t',
+select * from plpgsql_check_function('fx_extra_security_trg()', 'fxess.fx_extra_security_t',
                                      newtable => 'newtab',
                                      extra_security_warnings_level => 2);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ security extra:00000:The "pg_temp" is not included in the SEARCH_PATH.
+(1 row)
 
 -- passive mode, transition table is registered by executor
-create trigger fx_extra_security_tg after insert on fx_extra_security_t
+create trigger fx_extra_security_tg after insert on fxess.fx_extra_security_t
   referencing new table as newtab
   for each statement execute function fx_extra_security_trg();
 set plpgsql_check.mode = 'every_start';
 set plpgsql_check.extra_security_warnings_level = 2;
-insert into fx_extra_security_t values(1);
+insert into fxess.fx_extra_security_t values(1);
+WARNING:  The "pg_temp" is not included in the SEARCH_PATH.
 NOTICE:  rows: 1
 reset plpgsql_check.extra_security_warnings_level;
 reset plpgsql_check.mode;
-drop table fx_extra_security_t;
+drop table fxess.fx_extra_security_t;
 drop function fx_extra_security_trg();
 -- PL/pgSQL variables and star are not columns
-create table fx_extra_security_t(a int, b int);
+create table fxess.fx_extra_security_t(a int, b int);
 create or replace function fx_extra_security(p int)
 returns int as $$
 declare
   r int;
   rec record;
 begin
-  select t.a into r from public.fx_extra_security_t t where t.b = p;
+  select t.a into r from fxess.fx_extra_security_t t where t.b = p;
   if found and r > 10 then
     return 1;
   end if;
 
-  for rec in select * from public.fx_extra_security_t t
+  for rec in select * from fxess.fx_extra_security_t t
   loop
     raise notice '%', rec.a;
   end loop;
 
   -- should be reported
-  select b into r from public.fx_extra_security_t t;
+  select b into r from fxess.fx_extra_security_t t;
 
   -- should be reported, variables are not visible in dynamic SQL
   execute 'select r from (select 1 as r) s';
@@ -243,13 +256,14 @@ set search_path = pg_catalog;
 select * from plpgsql_check_function('fx_extra_security(int)', extra_security_warnings_level => 3);
                           plpgsql_check_function                          
 --------------------------------------------------------------------------
+ security extra:00000:The "pg_temp" is not included in the SEARCH_PATH.
  security extra:00000:17:SQL statement:column identifier is not qualified
- Query: select b        from public.fx_extra_security_t t
+ Query: select b        from fxess.fx_extra_security_t t
  --            ^
  security extra:00000:20:EXECUTE:column identifier is not qualified
  Query: select r from (select 1 as r) s
  --            ^
-(6 rows)
+(7 rows)
 
 -- variable can be a column, when variable_conflict is use_column
 create or replace function fx_extra_security(p int)
@@ -257,23 +271,24 @@ returns int as $$
 #variable_conflict use_column
 declare r int;
 begin
-  select t.a into r from public.fx_extra_security_t t where t.b = p;
+  select t.a into r from fxess.fx_extra_security_t t where t.b = p;
   return r;
 end;
 $$ language plpgsql
 set search_path = pg_catalog;
 select * from plpgsql_check_function('fx_extra_security(int)', extra_security_warnings_level => 3);
-                          plpgsql_check_function                          
---------------------------------------------------------------------------
+                         plpgsql_check_function                          
+-------------------------------------------------------------------------
+ security extra:00000:The "pg_temp" is not included in the SEARCH_PATH.
  security extra:00000:5:SQL statement:column identifier is not qualified
- Query: select t.a        from public.fx_extra_security_t t where t.b = p
- --                                                                     ^
-(3 rows)
+ Query: select t.a        from fxess.fx_extra_security_t t where t.b = p
+ --                                                                    ^
+(4 rows)
 
 drop function fx_extra_security(int);
-drop table fx_extra_security_t;
+drop table fxess.fx_extra_security_t;
 -- assignments and CALL statements should be checked too
-create procedure fx_extra_security_proc(a int)
+create procedure fxess.fx_extra_security_proc(a int)
 as $$
 begin
   raise notice '%', a;
@@ -292,15 +307,16 @@ begin
   i := pg_catalog.length('abc');
   i := (select pg_catalog.max(c.oid::int) from pg_catalog.pg_class c);
   i := '10'::pg_catalog.int8;
-  call public.fx_extra_security_proc(pg_catalog.abs(i));
+  call fxess.fx_extra_security_proc(pg_catalog.abs(i));
 
   return i;
 end;
 $$ language plpgsql
-set search_path = pg_catalog, public;
+set search_path = pg_temp, pg_catalog, fxess;
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
-                         plpgsql_check_function                         
-------------------------------------------------------------------------
+                               plpgsql_check_function                               
+------------------------------------------------------------------------------------
+ security extra:00000:The "pg_catalog" is not at first position in the SEARCH_PATH.
  security extra:00000:4:assignment:function identifier is not qualified
  Query: i := length('abc')
  --          ^
@@ -323,10 +339,10 @@ select * from plpgsql_check_function('fx_extra_security', extra_security_warning
  security extra:00000:7:CALL:function identifier is not qualified
  Query: call fx_extra_security_proc(abs(i))
  --                                 ^
-(22 rows)
+(23 rows)
 
+drop procedure fxess.fx_extra_security_proc;
 drop function fx_extra_security();
-drop procedure fx_extra_security_proc(int);
 -- operators of ANY/ALL expressions, sublinks and ORDER BY USING
 -- should be qualified too
 create or replace function fx_extra_security(arr int[])
@@ -338,7 +354,7 @@ begin
   return (select u.u from pg_catalog.unnest(fx_extra_security.arr) u order by u.u using < limit 1) is not null;
 end;
 $$ language plpgsql
-set search_path = pg_catalog;
+set search_path = pg_catalog, pg_temp;
 select * from plpgsql_check_function('fx_extra_security(int[])', extra_security_warnings_level => 4);
                                             plpgsql_check_function                                            
 --------------------------------------------------------------------------------------------------------------
@@ -371,8 +387,26 @@ end;
 $$ language plpgsql
 set search_path = pg_catalog;
 select * from plpgsql_check_function('fx_extra_security(int[])', extra_security_warnings_level => 4);
- plpgsql_check_function 
-------------------------
-(0 rows)
+                         plpgsql_check_function                         
+------------------------------------------------------------------------
+ security extra:00000:The "pg_temp" is not included in the SEARCH_PATH.
+(1 row)
 
 drop function fx_extra_security(int[]);
+create schema test_schema;
+grant create on schema test_schema to public;
+create or replace function fx_extra_security()
+returns void as $$
+begin
+end
+$$ language plpgsql
+set search_path = pg_temp, test_schema;
+select * from plpgsql_check_function('fx_extra_security()', extra_security_warnings_level => 1);
+                                    plpgsql_check_function                                     
+-----------------------------------------------------------------------------------------------
+ security extra:00000:There is a schema "test_schema" in SEARCH_PATH, where PUBLIC can create.
+(1 row)
+
+drop schema test_schema;
+drop function fx_extra_security();
+drop schema fxess cascade;

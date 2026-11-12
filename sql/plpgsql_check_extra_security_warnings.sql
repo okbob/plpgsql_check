@@ -4,6 +4,8 @@ set client_min_messages to warning;
 create extension if not exists plpgsql_check;
 set client_min_messages to notice;
 
+create schema fxess;
+
 create or replace function fx_extra_security()
 returns int as $$
 begin
@@ -80,7 +82,7 @@ drop function fx_extra_security();
 
 -- names of CTE, transition tables and relations in FOR UPDATE OF
 -- clause cannot be qualified, so they should not be reported
-create table fx_extra_security_t(a int);
+create table fxess.fx_extra_security_t(a int);
 
 create or replace function fx_extra_security()
 returns int as $$
@@ -94,15 +96,15 @@ begin
 
   select s.a into r from (with w as (select 1 as a) select w.a from w) s;
 
-  select t.a into r from public.fx_extra_security_t t for update of t;
+  select t.a into r from fxess.fx_extra_security_t t for update of t;
 
-  with u as (update public.fx_extra_security_t set a = 1 returning a)
-    insert into public.fx_extra_security_t select u.a from u;
+  with u as (update fxess.fx_extra_security_t set a = 1 returning a)
+    insert into fxess.fx_extra_security_t select u.a from u;
 
   return r;
 end;
 $$ language plpgsql
-set search_path = pg_catalog, public;
+set search_path = pg_catalog, fxess;
 
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
 
@@ -127,7 +129,7 @@ begin
   return r;
 end;
 $$ language plpgsql
-set search_path = pg_catalog, public;
+set search_path = pg_catalog, fxess;
 
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
 
@@ -144,28 +146,28 @@ end;
 $$ language plpgsql
 set search_path = 'pg_catalog';
 
-select * from plpgsql_check_function('fx_extra_security_trg()', 'fx_extra_security_t',
+select * from plpgsql_check_function('fx_extra_security_trg()', 'fxess.fx_extra_security_t',
                                      newtable => 'newtab',
                                      extra_security_warnings_level => 2);
 
 -- passive mode, transition table is registered by executor
-create trigger fx_extra_security_tg after insert on fx_extra_security_t
+create trigger fx_extra_security_tg after insert on fxess.fx_extra_security_t
   referencing new table as newtab
   for each statement execute function fx_extra_security_trg();
 
 set plpgsql_check.mode = 'every_start';
 set plpgsql_check.extra_security_warnings_level = 2;
 
-insert into fx_extra_security_t values(1);
+insert into fxess.fx_extra_security_t values(1);
 
 reset plpgsql_check.extra_security_warnings_level;
 reset plpgsql_check.mode;
 
-drop table fx_extra_security_t;
+drop table fxess.fx_extra_security_t;
 drop function fx_extra_security_trg();
 
 -- PL/pgSQL variables and star are not columns
-create table fx_extra_security_t(a int, b int);
+create table fxess.fx_extra_security_t(a int, b int);
 
 create or replace function fx_extra_security(p int)
 returns int as $$
@@ -173,18 +175,18 @@ declare
   r int;
   rec record;
 begin
-  select t.a into r from public.fx_extra_security_t t where t.b = p;
+  select t.a into r from fxess.fx_extra_security_t t where t.b = p;
   if found and r > 10 then
     return 1;
   end if;
 
-  for rec in select * from public.fx_extra_security_t t
+  for rec in select * from fxess.fx_extra_security_t t
   loop
     raise notice '%', rec.a;
   end loop;
 
   -- should be reported
-  select b into r from public.fx_extra_security_t t;
+  select b into r from fxess.fx_extra_security_t t;
 
   -- should be reported, variables are not visible in dynamic SQL
   execute 'select r from (select 1 as r) s';
@@ -202,7 +204,7 @@ returns int as $$
 #variable_conflict use_column
 declare r int;
 begin
-  select t.a into r from public.fx_extra_security_t t where t.b = p;
+  select t.a into r from fxess.fx_extra_security_t t where t.b = p;
   return r;
 end;
 $$ language plpgsql
@@ -211,10 +213,10 @@ set search_path = pg_catalog;
 select * from plpgsql_check_function('fx_extra_security(int)', extra_security_warnings_level => 3);
 
 drop function fx_extra_security(int);
-drop table fx_extra_security_t;
+drop table fxess.fx_extra_security_t;
 
 -- assignments and CALL statements should be checked too
-create procedure fx_extra_security_proc(a int)
+create procedure fxess.fx_extra_security_proc(a int)
 as $$
 begin
   raise notice '%', a;
@@ -234,17 +236,17 @@ begin
   i := pg_catalog.length('abc');
   i := (select pg_catalog.max(c.oid::int) from pg_catalog.pg_class c);
   i := '10'::pg_catalog.int8;
-  call public.fx_extra_security_proc(pg_catalog.abs(i));
+  call fxess.fx_extra_security_proc(pg_catalog.abs(i));
 
   return i;
 end;
 $$ language plpgsql
-set search_path = pg_catalog, public;
+set search_path = pg_temp, pg_catalog, fxess;
 
 select * from plpgsql_check_function('fx_extra_security', extra_security_warnings_level => 2);
 
+drop procedure fxess.fx_extra_security_proc;
 drop function fx_extra_security();
-drop procedure fx_extra_security_proc(int);
 
 -- operators of ANY/ALL expressions, sublinks and ORDER BY USING
 -- should be qualified too
@@ -257,7 +259,7 @@ begin
   return (select u.u from pg_catalog.unnest(fx_extra_security.arr) u order by u.u using < limit 1) is not null;
 end;
 $$ language plpgsql
-set search_path = pg_catalog;
+set search_path = pg_catalog, pg_temp;
 
 select * from plpgsql_check_function('fx_extra_security(int[])', extra_security_warnings_level => 4);
 
@@ -279,3 +281,21 @@ set search_path = pg_catalog;
 select * from plpgsql_check_function('fx_extra_security(int[])', extra_security_warnings_level => 4);
 
 drop function fx_extra_security(int[]);
+
+create schema test_schema;
+
+grant create on schema test_schema to public;
+
+create or replace function fx_extra_security()
+returns void as $$
+begin
+end
+$$ language plpgsql
+set search_path = pg_temp, test_schema;
+
+select * from plpgsql_check_function('fx_extra_security()', extra_security_warnings_level => 1);
+
+drop schema test_schema;
+drop function fx_extra_security();
+
+drop schema fxess cascade;

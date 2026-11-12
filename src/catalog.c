@@ -100,7 +100,7 @@ plpgsql_check_get_src(HeapTuple procTuple)
 	return TextDatumGetCString(prosrcdatum);
 }
 
-bool
+char *
 plch_has_config(plpgsql_check_info *cinfo, char *name)
 {
 	Datum		proconfig;
@@ -140,11 +140,11 @@ plch_has_config(plpgsql_check_info *cinfo, char *name)
 
 			*pos++ = '\0';
 			if (strcmp(name, configitem) == 0)
-				return true;
+				return pos;
 		}
 	}
 
-	return false;
+	return NULL;
 }
 
 /*

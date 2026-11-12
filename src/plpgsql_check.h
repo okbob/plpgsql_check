@@ -310,7 +310,7 @@ extern char *plpgsql_check_prepare_err_text_with_target_vardecl(PLpgSQL_checksta
  */
 extern void plpgsql_check_get_function_info(plpgsql_check_info *cinfo);
 extern void plpgsql_check_precheck_conditions(plpgsql_check_info *cinfo);
-extern bool plch_has_config(plpgsql_check_info *cinfo, char *name);
+extern char *plch_has_config(plpgsql_check_info *cinfo, char *name);
 extern char *plpgsql_check_get_src(HeapTuple procTuple);
 extern Oid	plpgsql_check_pragma_func_oid(void);
 extern bool plpgsql_check_is_plpgsql_function(Oid foid);

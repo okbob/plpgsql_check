@@ -21,7 +21,11 @@
 
 #endif
 
+#include "access/heapam.h"
+#include "catalog/namespace.h"
+#include "catalog/pg_namespace.h"
 #include "nodes/makefuncs.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
@@ -29,7 +33,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
-#include "access/heapam.h"
+#include "utils/varlena.h"
 
 
 static HTAB *plpgsql_check_HashTable = NULL;
@@ -207,7 +211,9 @@ do_search_path_assignment_warning(PLpgSQL_checkstate *cstate)
 
 	if (OidIsValid(cinfo->fn_oid))
 	{
-		if (!plch_has_config(cinfo, "search_path"))
+		char	   *_search_path = plch_has_config(cinfo, "search_path");
+
+		if (!_search_path)
 			plpgsql_check_put_error(cstate,
 									0, 0,
 									"The function has not assigned SEARCH_PATH configuration variable",
@@ -215,6 +221,105 @@ do_search_path_assignment_warning(PLpgSQL_checkstate *cstate)
 									NULL,
 									PLPGSQL_CHECK_WARNING_EXTRA_SECURITY,
 									0, NULL, NULL);
+
+		if (_search_path)
+		{
+			List	   *namelist;
+			ListCell   *l;
+			int			catalog_namespace_pos = -1;
+			int			temp_namespace_pos = -1;
+			int			current_pos = 1;
+
+			/* Parse string into list of identifiers, should be checked before */
+			if (!SplitIdentifierString(_search_path, ',', &namelist))
+			{
+				elog(ERROR, "List syntax (of assigned SEARCH_PATH) is invalid.");
+				return;
+			}
+
+			foreach(l, namelist)
+			{
+				char	   *curname = (char *) lfirst(l);
+
+				if (strcmp(curname, "pg_temp") == 0)
+				{
+					/* first occurrence is important */
+					if (temp_namespace_pos == -1)
+						temp_namespace_pos = current_pos;
+				}
+				else if (strcmp(curname, "pg_catalog") == 0)
+				{
+					if (catalog_namespace_pos == -1)
+						catalog_namespace_pos = current_pos;
+				}
+				else
+				{
+					Oid			namespaceId = get_namespace_oid(curname, true);
+
+					if (OidIsValid(namespaceId))
+					{
+						AclResult	aclresult;
+
+#if PG_VERSION_NUM >= 160000
+
+						aclresult = object_aclcheck(NamespaceRelationId,
+													namespaceId,
+													ACL_ID_PUBLIC,
+													ACL_CREATE);
+
+#else
+
+						aclresult = pg_namespace_aclcheck(namespaceId, ACL_ID_PUBLIC,
+													ACL_CREATE);
+
+#endif
+
+						if (aclresult == ACLCHECK_OK)
+						{
+							StringInfoData message;
+
+							initStringInfo(&message);
+
+							appendStringInfo(&message,
+											"There is a schema \"%s\" in SEARCH_PATH, where PUBLIC can create.",
+											curname);
+
+							plpgsql_check_put_error(cstate,
+													0, 0,
+													message.data,
+													NULL,
+													NULL,
+													PLPGSQL_CHECK_WARNING_EXTRA_SECURITY,
+													0, NULL, NULL);
+
+						  pfree(message.data);
+						}
+					}
+				}
+
+				current_pos += 1;
+			}
+
+			list_free(namelist);
+
+			if (catalog_namespace_pos != -1 && catalog_namespace_pos != 1)
+				plpgsql_check_put_error(cstate,
+										0, 0,
+										"The \"pg_catalog\" is not at first position in the SEARCH_PATH.",
+										NULL,
+										NULL,
+										PLPGSQL_CHECK_WARNING_EXTRA_SECURITY,
+										0, NULL, NULL);
+
+			if (temp_namespace_pos == -1)
+				plpgsql_check_put_error(cstate,
+										0, 0,
+										"The \"pg_temp\" is not included in the SEARCH_PATH.",
+										NULL,
+										NULL,
+										PLPGSQL_CHECK_WARNING_EXTRA_SECURITY,
+										0, NULL, NULL);
+		}
 	}
 }
 
