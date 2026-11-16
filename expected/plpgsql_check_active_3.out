@@ -3863,9 +3863,15 @@ end
 $$ language plpgsql;
 -- should be ok
 select * from plpgsql_check_function('dyn_sql_3');
- plpgsql_check_function 
-------------------------
-(0 rows)
+                             plpgsql_check_function                              
+---------------------------------------------------------------------------------
+ warning extra:42601:5:statement block:the expression has a label
+ Query: 'select 10 a, 20 b't
+ --     ^
+ Detail: The word "t" is used as a label.
+ Hint: Maybe the expression is not complete or contains some garbage characters.
+ Context: during statement block local variable "v" initialization on line 4
+(6 rows)
 
 drop function dyn_sql_3();
 create or replace function dyn_sql_4()
@@ -6431,3 +6437,42 @@ select * from plpgsql_check_function_tb('unpriv_issue4_rowexpr()');
 (0 rows)
 
 drop function unpriv_issue4_rowexpr();
+create or replace function test_labeled_expressions()
+returns void as $$
+declare v int;
+begin
+  v := 10 x;
+  if v = 10 and then
+    raise notice '%', v xx;
+  end if;
+end;
+$$ language plpgsql;
+select test_labeled_expressions();
+NOTICE:  10
+ test_labeled_expressions 
+--------------------------
+ 
+(1 row)
+
+select * from plpgsql_check_function('test_labeled_expressions()');
+                             plpgsql_check_function                              
+---------------------------------------------------------------------------------
+ warning extra:42601:4:assignment:the expression has a label
+ Query: v := 10 x
+ --          ^
+ Detail: The word "x" is used as a label.
+ Hint: Maybe the expression is not complete or contains some garbage characters.
+ Context: at assignment to variable "v" declared on line 2
+ warning extra:42601:5:IF:the expression has a label
+ Query: v = 10 and
+ --     ^
+ Detail: The word "and" is used as a label.
+ Hint: Maybe the expression is not complete or contains some garbage characters.
+ warning extra:42601:6:RAISE:the expression has a label
+ Query: v xx
+ --     ^
+ Detail: The word "xx" is used as a label.
+ Hint: Maybe the expression is not complete or contains some garbage characters.
+(16 rows)
+
+drop function test_labeled_expressions();

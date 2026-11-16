@@ -4772,3 +4772,21 @@ select unpriv_issue4_rowexpr();
 select * from plpgsql_check_function_tb('unpriv_issue4_rowexpr()');
 
 drop function unpriv_issue4_rowexpr();
+
+create or replace function test_labeled_expressions()
+returns void as $$
+declare v int;
+begin
+  v := 10 x;
+  if v = 10 and then
+    raise notice '%', v xx;
+  end if;
+end;
+$$ language plpgsql;
+
+select test_labeled_expressions();
+
+select * from plpgsql_check_function('test_labeled_expressions()');
+
+drop function test_labeled_expressions();
+

@@ -27,9 +27,12 @@
 #include "tcop/utility.h"
 #include "utils/lsyscache.h"
 
+
+#include "nodes/print.h"
+
 static void collect_volatility(PLpgSQL_checkstate *cstate, Query *query);
 static Query *ExprGetQuery(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, CachedPlanSource *plansource);
-static void check_pure_expr(PLpgSQL_checkstate *cstate, Query *query, char *query_str);
+static bool check_pure_expr(PLpgSQL_checkstate *cstate, Query *query, char *query_str);
 
 static CachedPlan *get_cached_plan(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr, bool *has_result_desc);
 static void plan_checks(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char *query_str);
@@ -40,7 +43,7 @@ static void check_fishy_qual(PLpgSQL_checkstate *cstate, CachedPlan *cplan, char
 static Const *expr_get_const(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 static bool is_const_null_expr(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
 static void force_plan_checks(PLpgSQL_checkstate *cstate, PLpgSQL_expr *expr);
-static bool is_pure_expr(PLpgSQL_checkstate *cstate, Query *query);
+static bool is_pure_expr(PLpgSQL_checkstate *cstate, Query *query, char *query_str);
 
 static int	RowGetValidFields(PLpgSQL_row *row);
 static int	TupleDescNVatts(TupleDesc tupdesc);
@@ -712,6 +715,62 @@ postcheck_cstate_set(PLpgSQL_checkstate *cstate,
 	cstate->sqlerrcode = edata ? edata->sqlerrcode : ERRCODE_SUCCESSFUL_COMPLETION;
 }
 
+
+/*
+ * plpgsql's parser allows messy syntax like IF var = 10 AND THEN ...
+ * In this context, the "AND" is used as a label of expr `var = 10`.
+ * Usually, it is a signal of missing part of expression, and some
+ * warning should be raised.
+ */
+static void
+expr_should_be_unlabeled(PLpgSQL_checkstate *cstate,
+						CachedPlanSource *plansource,
+						char *query_str)
+{
+	RawStmt	   *parsetree = plansource->raw_parse_tree;
+	SelectStmt *select_stmt = NULL;
+
+	if (!cstate->cinfo->extra_warnings)
+		return;
+
+	/*
+	 * This test should be processed on parse tree. On the Query node
+	 * is not possible detect explicitly used label. Lot of commonly
+	 * used expressions are labeled at this stage (casts, field selection, etc)
+	 */
+	if (IsA(parsetree->stmt, SelectStmt))
+		select_stmt = (SelectStmt *) parsetree->stmt;
+	else if (IsA(parsetree->stmt, PLAssignStmt))
+	{
+		if (IsA(((PLAssignStmt *) parsetree->stmt)->val, SelectStmt))
+			select_stmt = (SelectStmt *) ((PLAssignStmt *) parsetree->stmt)->val;
+	}
+
+	if (select_stmt)
+	{
+		if (select_stmt->targetList && IsA(linitial(select_stmt->targetList), ResTarget))
+		{
+			ResTarget  *rt = (ResTarget *) linitial(select_stmt->targetList);
+
+			if (rt->name)
+			{
+				StringInfoData str;
+
+				initStringInfo(&str);
+				appendStringInfo(&str, "The word \"%s\" is used as a label.", rt->name);
+
+				plpgsql_check_put_error(cstate,
+										ERRCODE_SYNTAX_ERROR, 0,
+										"the expression has a label",
+										str.data,
+										"Maybe the expression is not complete or contains some garbage characters.",
+										PLPGSQL_CHECK_WARNING_EXTRA,
+										exprLocation((Node *) rt), query_str, NULL);
+			}
+		}
+	}
+}
+
 /*
  * Generate a prepared plan - this is simplified copy from pl_exec.c Is not
  * necessary to check simple plan. The planning is forced when plancache is
@@ -804,7 +863,11 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 	plpgsql_check_detect_dependency(cstate, query);
 
 	if (is_expression)
-		check_pure_expr(cstate, query, expr->query);
+	{
+		/* check unlabeled expr only when expr is pure */
+		if (check_pure_expr(cstate, query, expr->query))
+			expr_should_be_unlabeled(cstate, plansource, expr->query);
+	}
 	else
 	{
 		if (cstate->estate && cstate->cinfo->performance_warnings)
@@ -828,7 +891,7 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 						if (row->nfields == 1 &&
 							plpgsql_check_is_internal_variable(cstate, target))
 						{
-							if (is_pure_expr(cstate, query))
+							if (is_pure_expr(cstate, query, expr->query))
 							{
 								plpgsql_check_put_error(cstate,
 														0, 0,
@@ -1035,7 +1098,7 @@ plpgsql_check_get_plan_source(PLpgSQL_checkstate *cstate, SPIPlanPtr plan)
  *
  */
 static bool
-is_pure_expr(PLpgSQL_checkstate *cstate, Query *query)
+is_pure_expr(PLpgSQL_checkstate *cstate, Query *query, char *query_str)
 {
 	Node	   *n;
 
@@ -1071,13 +1134,13 @@ is_pure_expr(PLpgSQL_checkstate *cstate, Query *query)
 	return true;
 }
 
-static void
+static bool
 check_pure_expr(PLpgSQL_checkstate *cstate, Query *query, char *query_str)
 {
 	if (!cstate->cinfo->extra_warnings)
-		return;
+		return true;
 
-	if (!is_pure_expr(cstate, query))
+	if (!is_pure_expr(cstate, query, query_str))
 	{
 		plpgsql_check_put_error(cstate,
 								ERRCODE_SYNTAX_ERROR, 0,
@@ -1086,7 +1149,11 @@ check_pure_expr(PLpgSQL_checkstate *cstate, Query *query, char *query_str)
 								"Maybe you forgot to use a semicolon.",
 								PLPGSQL_CHECK_WARNING_EXTRA,
 								exprLocation((Node *) query->targetList), query_str, NULL);
+
+		return false;
 	}
+
+	return true;
 }
 
 /*
