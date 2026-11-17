@@ -2342,8 +2342,8 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 	if (dynquery)
 	{
-		PLpgSQL_expr *dynexpr = NULL;
-		DynSQLParams dsp;
+		volatile PLpgSQL_expr *dynexpr = NULL;
+		volatile DynSQLParams dsp;
 		volatile bool is_ok = true;
 
 		dynexpr = palloc0(sizeof(PLpgSQL_expr));
