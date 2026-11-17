@@ -2364,9 +2364,9 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 			if (expr_is_const)
 			{
 				plpgsql_check_expr_generic_with_parser_setup(cstate,
-															 dynexpr,
+															 (PLpgSQL_expr *) dynexpr,
 															 (ParserSetupHook) dynsql_parser_setup,
-															 &dsp);
+															 (void *) &dsp);
 
 				if (cstate->last_expr == dynexpr && !cstate->last_expr_plan_is_valid)
 					is_ok = false;
@@ -2380,9 +2380,9 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 				 * detection when check is ok. `
 				 */
 				is_ok = plpgsql_check_expr_generic_with_parser_setup_safe(cstate,
-																		  dynexpr,
+																		  (PLpgSQL_expr *) dynexpr,
 																		  (ParserSetupHook) dynsql_parser_setup,
-																		  &dsp);
+																		  (void *) &dsp);
 			}
 
 			if (!is_ok)
@@ -2421,17 +2421,17 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 
 				if (stmt->cmd_type == PLPGSQL_STMT_RETURN_QUERY)
 				{
-					plpgsql_check_returned_expr_with_parser_setup(cstate, dynexpr, false,
+					plpgsql_check_returned_expr_with_parser_setup(cstate, (PLpgSQL_expr *) dynexpr, false,
 																  (ParserSetupHook) dynsql_parser_setup,
-																  &dsp);
+																  (void *) &dsp);
 					cstate->found_return_query = true;
 				}
 				else if (into)
 				{
 					check_variable(cstate, target);
-					plpgsql_check_assignment_to_variable_with_parser_setup(cstate, dynexpr, target, -1,
+					plpgsql_check_assignment_to_variable_with_parser_setup(cstate, (PLpgSQL_expr *) dynexpr, target, -1,
 																		   (ParserSetupHook) dynsql_parser_setup,
-																		   &dsp);
+																		   (void *) &dsp);
 				}
 			}
 		}
