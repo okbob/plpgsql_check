@@ -49,6 +49,10 @@ rm -rf %{buildroot}
 %{pginstdir}/share/extension/*.control
 
 %changelog
+* Wed Nov 18 2026 - Pavel Stehule <pavel.stehule@gmail.com> 2.11.0
+- raise warning when pure expression use a label
+- extra security checks - check assigned SEARCH_PATH
+
 * Wed Jul 15 2026 - Pavel Stehule <pavel.stehule@gmail.com> 2.10.0
 - possibility to pass pragma as an argument
 - possibility to generate pragma from code
