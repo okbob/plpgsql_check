@@ -189,6 +189,21 @@ abort_statements(PLpgSQL_stmt **stmts, int nstmts,
 }
 
 /*
+ * Release the copy of the last error raised by the function. It is
+ * allocated in the long-lived plugin_ErrorContext (see
+ * plpgsql_check_error_callback), so it has to be freed explicitly.
+ */
+static void
+plugin_info_release_error(plpgsql_plugin_info *plugin_info)
+{
+	if (plugin_info->cur_error)
+	{
+		FreeErrorData(plugin_info->cur_error);
+		plugin_info->cur_error = NULL;
+	}
+}
+
+/*
  * This callback function is called when MemoryContext used for
  * function execution state is released. It is called after any
  * type of function ending - end or abort. We don't want to call
@@ -217,6 +232,8 @@ plugin_info_reset(void *arg)
 	{
 		if (top_pldbgapi_plugin_info == plugin_info)
 			top_pldbgapi_plugin_info = plugin_info->prev_pldbgapi_plugin_info;
+
+		plugin_info_release_error(plugin_info);
 
 		return;
 	}
@@ -280,6 +297,7 @@ plugin_info_reset(void *arg)
 		plugin_info->fextra = NULL;
 		plugin_info->estate = NULL;
 		top_pldbgapi_plugin_info = plugin_info->prev_pldbgapi_plugin_info;
+		plugin_info_release_error(plugin_info);
 	}
 	PG_END_TRY();
 }
