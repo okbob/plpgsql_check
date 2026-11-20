@@ -189,16 +189,52 @@ abort_statements(PLpgSQL_stmt **stmts, int nstmts,
 }
 
 /*
+ * Returns a copy of the error that is being processed.
+ *
+ * The copy is allocated in its own memory context (a child of the static
+ * plugin_ErrorContext), and has to be released by release_error_data().
+ * FreeErrorData() is not enough here - it doesn't free all strings
+ * allocated by CopyErrorData() (e.g. filename, funcname or domain), and
+ * these would be leaked, because plugin_ErrorContext is never reset.
+ */
+static ErrorData *
+copy_error_data(void)
+{
+	MemoryContext edata_cxt;
+	MemoryContext oldcxt;
+	ErrorData  *edata;
+
+	edata_cxt = AllocSetContextCreate(plugin_ErrorContext,
+									  "plpgsql_check error data",
+									  ALLOCSET_SMALL_SIZES);
+
+	oldcxt = MemoryContextSwitchTo(edata_cxt);
+	edata = CopyErrorData();
+	MemoryContextSwitchTo(oldcxt);
+
+	return edata;
+}
+
+/*
+ * Releases the copy of an error returned by copy_error_data().
+ */
+static void
+release_error_data(ErrorData *edata)
+{
+	MemoryContextDelete(GetMemoryChunkContext(edata));
+}
+
+/*
  * Release the copy of the last error raised by the function. It is
- * allocated in the long-lived plugin_ErrorContext (see
- * plpgsql_check_error_callback), so it has to be freed explicitly.
+ * allocated in a child of the long-lived plugin_ErrorContext (see
+ * copy_error_data), so it has to be released explicitly.
  */
 static void
 plugin_info_release_error(plpgsql_plugin_info *plugin_info)
 {
 	if (plugin_info->cur_error)
 	{
-		FreeErrorData(plugin_info->cur_error);
+		release_error_data(plugin_info->cur_error);
 		plugin_info->cur_error = NULL;
 	}
 }
@@ -467,22 +503,15 @@ plpgsql_check_error_callback(void *arg)
 	{
 		ErrorData  *cur_error;
 		int			elevel;
-		MemoryContext oldcxt;
-
-		/*
-		 * Use preallocated 8kB private static error context. Then
-		 * CopyErrorData() should be safe operation.
-		 */
-		oldcxt = MemoryContextSwitchTo(plugin_ErrorContext);
+		MemoryContext oldcxt = CurrentMemoryContext;
 
 		/* we don't want to store warnings, notifications, .. */
-		cur_error = CopyErrorData();
+		cur_error = copy_error_data();
 		elevel = cur_error->elevel;
-		MemoryContextSwitchTo(oldcxt);
 
 		if (elevel < ERROR)
 		{
-			FreeErrorData(cur_error);
+			release_error_data(cur_error);
 
 			return;
 		}
@@ -501,18 +530,16 @@ plpgsql_check_error_callback(void *arg)
 			 */
 			plugin_info->err_stmt = plugin_info->estate->err_stmt;
 
-			FreeErrorData(cur_error);
+			release_error_data(cur_error);
 
 			return;
 		}
 
 		/*
-		 * Use preallocated 8kB private error context. Then CopyErrorData()
-		 * should be safe operation. When some plugin needs more memory, then
-		 * should to use own preallocated own ErrorContext.
+		 * Release the copy of the previous error raised (and handled) by
+		 * this call, if any.
 		 */
-		if (plugin_info->cur_error)
-			FreeErrorData(plugin_info->cur_error);
+		plugin_info_release_error(plugin_info);
 
 		plugin_info->cur_error = cur_error;
 		plugin_info->err_stmt = plugin_info->estate->err_stmt;
@@ -524,6 +551,11 @@ plpgsql_check_error_callback(void *arg)
 			void	   *old_plugin_info = estate->plugin_info;
 			int			i;
 
+			/*
+			 * The stmt_error callbacks are called in the private
+			 * plugin_info->ErrorContext. When some plugin needs more memory,
+			 * then should to use own preallocated own ErrorContext.
+			 */
 			PG_TRY();
 			{
 				for (i = 0; i < nplugins; i++)
