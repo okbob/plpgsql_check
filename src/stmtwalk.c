@@ -243,6 +243,13 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 		return;
 
 	/*
+	 * Each nested block is another pair of C frames (this function and
+	 * check_stmts). A function the executor can still run can be deep enough
+	 * to overflow that walk. Stop with the usual stack-depth error first.
+	 */
+	check_stack_depth();
+
+	/*
 	 * The err_stmt is restored when the check of the statement finished, so
 	 * the diagnostics raised after the check of nested statements (like the
 	 * check of ELSIF conditions) are related to the right statement (like at
