@@ -34,6 +34,7 @@ static int	merge_closing(int c, int c_local, List **exceptions, List *exceptions
 static bool exception_matches_conditions(int sqlerrstate, PLpgSQL_condition *cond);
 static bool found_shadowed_variable(char *varname, PLpgSQL_stmt_stack_item *current, PLpgSQL_checkstate *cstate);
 static void check_dynamic_sql(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, PLpgSQL_expr *query, plch_cursorvar *cvar, bool into, PLpgSQL_variable *target, List *params);
+static void check_dynamic_cursor_fetch(PLpgSQL_checkstate *cstate, PLpgSQL_expr *dynexpr, PLpgSQL_variable *target, List *params);
 static bool is_inside_protected_block(PLpgSQL_stmt_stack_item *current);
 
 typedef struct DynSQLParams
@@ -1333,8 +1334,19 @@ plpgsql_check_stmt(PLpgSQL_checkstate *cstate, PLpgSQL_stmt *stmt, int *closing,
 						{
 							if (cvar->query)
 							{
-								plpgsql_check_assignment_to_variable(cstate, cvar->query,
-																	 stmt_fetch->target, -1);
+								/*
+								 * The query of a cursor opened by OPEN ...
+								 * FOR EXECUTE is the dynamic query prepared
+								 * by check_dynamic_sql(), and it has to be
+								 * checked the same way.
+								 */
+								if (stmt_open && stmt_open->dynquery)
+									check_dynamic_cursor_fetch(cstate, cvar->query,
+															   stmt_fetch->target,
+															   stmt_open->params);
+								else
+									plpgsql_check_assignment_to_variable(cstate, cvar->query,
+																		 stmt_fetch->target, -1);
 							}
 							else if (stmt_open && stmt_open->dynquery)
 							{
@@ -2111,6 +2123,56 @@ dynsql_parser_setup(struct ParseState *pstate, void *params)
 	pstate->p_post_columnref_hook = NULL;
 	pstate->p_paramref_hook = dynsql_param_ref;
 	pstate->p_ref_hook_state = (void *) params;
+}
+
+/*
+ * Check the assignment of the result of the dynamic query of a cursor
+ * opened by OPEN ... FOR EXECUTE to the target of FETCH.
+ *
+ * The plan of the query was prepared by check_dynamic_sql() when the OPEN
+ * statement was checked. The parameters of a dynamic query are the USING
+ * expressions, not PL/pgSQL variables, so the query has to be checked in
+ * dynamic SQL mode, and with the dynamic SQL parser hooks.
+ */
+static void
+check_dynamic_cursor_fetch(PLpgSQL_checkstate *cstate,
+						   PLpgSQL_expr *dynexpr,
+						   PLpgSQL_variable *target,
+						   List *params)
+{
+	DynSQLParams *dsp;
+	bool		save_allow_mp = cstate->allow_mp;
+	bool		save_is_dynsql = cstate->is_dynsql;
+	bool		save_found_mp = cstate->found_mp;
+
+	/*
+	 * The plan cache keeps a pointer to the hook state when the plan is
+	 * (re)built, so it has to live as long as the plan.
+	 */
+	dsp = (DynSQLParams *) MemoryContextAllocZero(cstate->check_cxt,
+												  sizeof(DynSQLParams));
+	dsp->args = params;
+	dsp->cstate = cstate;
+	dsp->use_params = false;
+
+	PG_TRY();
+	{
+		cstate->allow_mp = true;
+		cstate->is_dynsql = true;
+		cstate->found_mp = false;
+
+		plpgsql_check_assignment_to_variable_with_parser_setup(cstate, dynexpr,
+															   target, -1,
+															   (ParserSetupHook) dynsql_parser_setup,
+															   (void *) dsp);
+	}
+	PG_FINALLY();
+	{
+		cstate->allow_mp = save_allow_mp;
+		cstate->is_dynsql = save_is_dynsql;
+		cstate->found_mp = save_found_mp;
+	}
+	PG_END_TRY();
 }
 
 /*

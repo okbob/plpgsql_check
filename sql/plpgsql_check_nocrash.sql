@@ -970,3 +970,35 @@ DROP FUNCTION oob_if;
 DROP FUNCTION oob_ret;
 
 DROP TYPE empty_comp;
+
+-- FETCH from a cursor opened by OPEN ... FOR EXECUTE ... USING has to
+-- check the dynamic query with USING expressions as its parameters, not
+-- PL/pgSQL variables (the parameter number used to be used as a datum
+-- number, reading past the end of the datums array)
+CREATE FUNCTION dyncur_fetch_01() RETURNS void LANGUAGE plpgsql AS $$
+DECLARE
+  c refcursor;
+  r record;
+BEGIN
+  OPEN c FOR EXECUTE 'SELECT $10' USING 1, 2, 3, 4, 5, 6, 7, 8, 9, row(1, 2);
+  FETCH c INTO r;
+  RAISE NOTICE '%', r;
+END;
+$$;
+
+CREATE FUNCTION dyncur_fetch_02() RETURNS void LANGUAGE plpgsql AS $$
+DECLARE
+  c refcursor;
+  r record;
+BEGIN
+  OPEN c FOR EXECUTE 'SELECT $2' USING row(1, 2), row(3, 4);
+  FETCH c INTO r;
+  RAISE NOTICE '%', r;
+END;
+$$;
+
+SELECT * FROM plpgsql_check_function('dyncur_fetch_01()');
+SELECT * FROM plpgsql_check_function('dyncur_fetch_02()');
+
+DROP FUNCTION dyncur_fetch_01();
+DROP FUNCTION dyncur_fetch_02();
