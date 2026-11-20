@@ -1496,6 +1496,11 @@ setup_cstate(PLpgSQL_checkstate *cstate,
 	cstate->strconstvars = NULL;
 
 	cstate->in_query_check = false;
+
+	/* be AI check quiet */
+	cstate->last_expr = NULL;
+	cstate->last_expr_plan_is_valid = false;
+	cstate->sqlerrcode = ERRCODE_SUCCESSFUL_COMPLETION;
 }
 
 /*
