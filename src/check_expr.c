@@ -802,7 +802,7 @@ prepare_plan(PLpgSQL_checkstate *cstate,
 		if (!is_valid)
 		{
 			/* replan plan because it is invalid */
-			cstate->exprs = list_delete(cstate->exprs, expr->plan);
+			cstate->exprs = list_delete_ptr(cstate->exprs, expr->plan);
 			SPI_freeplan(expr->plan);
 			expr->plan = NULL;
 		}
