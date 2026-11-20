@@ -2412,7 +2412,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 	if (dynquery)
 	{
 		volatile PLpgSQL_expr *dynexpr = NULL;
-		volatile DynSQLParams dsp;
+		DynSQLParams *dsp;
 		volatile bool is_ok = true;
 
 		dynexpr = palloc0(sizeof(PLpgSQL_expr));
@@ -2420,9 +2420,18 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 		dynexpr->expr_rw_param = NULL;
 		dynexpr->query = dynquery;
 
-		dsp.args = params;
-		dsp.cstate = cstate;
-		dsp.use_params = false;
+		/*
+		 * The plan cache keeps a pointer to the hook state, and uses it when
+		 * the plan has to be rebuilt (e.g. after a change of search_path).
+		 * The plan can be used after we return (FETCH from a cursor opened
+		 * by OPEN ... FOR EXECUTE), so the state has to live as long as the
+		 * plan, i.e. until the end of the check.
+		 */
+		dsp = (DynSQLParams *) MemoryContextAllocZero(cstate->check_cxt,
+													  sizeof(DynSQLParams));
+		dsp->args = params;
+		dsp->cstate = cstate;
+		dsp->use_params = false;
 
 		PG_TRY();
 		{
@@ -2435,7 +2444,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 				plpgsql_check_expr_generic_with_parser_setup(cstate,
 															 (PLpgSQL_expr *) dynexpr,
 															 (ParserSetupHook) dynsql_parser_setup,
-															 (void *) &dsp);
+															 (void *) dsp);
 
 				if (cstate->last_expr == dynexpr && !cstate->last_expr_plan_is_valid)
 					is_ok = false;
@@ -2451,7 +2460,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 				is_ok = plpgsql_check_expr_generic_with_parser_setup_safe(cstate,
 																		  (PLpgSQL_expr *) dynexpr,
 																		  (ParserSetupHook) dynsql_parser_setup,
-																		  (void *) &dsp);
+																		  (void *) dsp);
 			}
 
 			if (!is_ok)
@@ -2461,7 +2470,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 				no_report = true;
 			}
 
-			if (!no_report && expr_is_const && !cstate->found_mp && (!params || !dsp.use_params))
+			if (!no_report && expr_is_const && !cstate->found_mp && (!params || !dsp->use_params))
 			{
 				/* probably useless dynamic command */
 				plpgsql_check_put_error(cstate,
@@ -2473,7 +2482,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 										0, NULL, NULL);
 			}
 
-			if (!no_report && params && !dsp.use_params)
+			if (!no_report && params && !dsp->use_params)
 			{
 				plpgsql_check_put_error(cstate,
 										0, 0,
@@ -2492,7 +2501,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 				{
 					plpgsql_check_returned_expr_with_parser_setup(cstate, (PLpgSQL_expr *) dynexpr, false,
 																  (ParserSetupHook) dynsql_parser_setup,
-																  (void *) &dsp);
+																  (void *) dsp);
 					cstate->found_return_query = true;
 				}
 				else if (into)
@@ -2500,7 +2509,7 @@ check_dynamic_sql(PLpgSQL_checkstate *cstate,
 					check_variable(cstate, target);
 					plpgsql_check_assignment_to_variable_with_parser_setup(cstate, (PLpgSQL_expr *) dynexpr, target, -1,
 																		   (ParserSetupHook) dynsql_parser_setup,
-																		   (void *) &dsp);
+																		   (void *) dsp);
 				}
 			}
 		}

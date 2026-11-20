@@ -1259,3 +1259,33 @@ SELECT * FROM plpgsql_check_function('dyncur_fetch_02()');
 
 DROP FUNCTION dyncur_fetch_01();
 DROP FUNCTION dyncur_fetch_02();
+-- The plan of the dynamic query of such cursor may be rebuilt when FETCH
+-- is checked, e.g. after a change of search_path (made here by an immutable
+-- function evaluated by the planner). The plan cache then calls the dynamic
+-- SQL parser hooks again, with the state passed to them when the plan was
+-- built (it used to be a local variable of check_dynamic_sql()).
+CREATE FUNCTION dyncur_fetch_set_search_path() RETURNS int LANGUAGE plpgsql IMMUTABLE AS $$
+BEGIN
+  PERFORM set_config('search_path', 'pg_temp, public, pg_catalog', false);
+  RETURN 1;
+END;
+$$;
+CREATE FUNCTION dyncur_fetch_03() RETURNS void LANGUAGE plpgsql AS $$
+DECLARE
+  c refcursor;
+  r record;
+  x int;
+BEGIN
+  OPEN c FOR EXECUTE 'SELECT $1' USING row(1, 2);
+  x := dyncur_fetch_set_search_path();
+  FETCH c INTO r;
+  RAISE NOTICE '% %', r, x;
+END;
+$$;
+SELECT * FROM plpgsql_check_function('dyncur_fetch_03()');
+ plpgsql_check_function 
+------------------------
+(0 rows)
+
+DROP FUNCTION dyncur_fetch_03();
+DROP FUNCTION dyncur_fetch_set_search_path();
