@@ -465,7 +465,6 @@ plpgsql_check_expr_get_desc(PLpgSQL_checkstate *cstate,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("FOREACH expression must yield an array, not type %s",
 							format_type_be(TupleDescAttr(tupdesc, 0)->atttypid))));
-			FreeTupleDesc(tupdesc);
 		}
 
 		if (is_expression && first_level_typoid != NULL)
